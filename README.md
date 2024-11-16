@@ -1,4 +1,4 @@
-# better-reader
+# better-reads
 
 To install dependencies:
 

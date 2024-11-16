@@ -16,27 +16,21 @@ export const Layout: FC<{ children: any }> = (props) =>
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <meta
-          property="og:url"
-          content="https://betterreader.nickthesick.com"
-        />
+        <meta property="og:url" content="https://betterreads.nickthesick.com" />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="Better Reader" />
+        <meta property="og:title" content="Better Reads" />
         <meta
           property="og:description"
           content="Goodreads but better. Built on top of Blue Sky."
         />
         <meta property="og:image" content="/public/preview.jpg" />
         <meta name="twitter:card" content="/public/preview.jpg" />
-        <meta
-          property="twitter:domain"
-          content="betterreader.nickthesick.com"
-        />
+        <meta property="twitter:domain" content="betterreads.nickthesick.com" />
         <meta
           property="twitter:url"
-          content="https://betterreader.nickthesick.com"
+          content="https://betterreads.nickthesick.com"
         />
-        <meta name="twitter:title" content="Better Reader" />
+        <meta name="twitter:title" content="Better Reads" />
         <meta
           name="twitter:description"
           content="Goodreads but better. Built on top of Blue Sky."
@@ -44,7 +38,7 @@ export const Layout: FC<{ children: any }> = (props) =>
         <meta name="twitter:image" content="/public/preview.jpg" />
         <link rel="icon" type="image/svg+xml" href="/public/icon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Better Reader</title>
+        <title>Better Reads</title>
         <style>
           ${
             // Inlining the CSS saves a network request
@@ -86,7 +80,7 @@ app.get("/healthcheck", (c) => c.text(time));
 app.get("/", (c) => {
   return c.html(
     <Layout>
-      <div>Better reader</div>
+      <div>Better Reads</div>
     </Layout>,
   );
 });

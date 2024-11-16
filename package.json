@@ -1,5 +1,5 @@
 {
-  "name": "better-reader",
+  "name": "better-reads",
   "type": "module",
   "scripts": {
     "seed:db": "bun run ./src/initialize.js",
