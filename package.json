@@ -1,32 +1,58 @@
 {
-  "name": "better-reads",
+  "name": "book-hive",
+  "packageManager": "pnpm@9.13.2",
   "type": "module",
   "scripts": {
-    "seed:db": "bun run ./src/initialize.js",
-    "dev": "concurrently --kill-others \"bun run dev:backend\" \"bun run dev:css\"",
-    "dev:backend": "bun run --watch ./src/index.tsx",
+    "seed:db": "node ./src/initialize.js",
+    "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\"",
+    "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx",
     "dev:css": "tailwindcss -i ./src/index.css -o ./public/output.css --watch",
     "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
-    "prebuild": "bun run build:css",
-    "build": "bun build src/index.tsx --outfile=server.js --format esm",
+    "prebuild": "pnpm run build:css && pnpm run lexgen",
+    "build": "tsc src/index.ts --outFile=server.js --module es6",
     "test": "echo \"Error: no test specified\"",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*"
   },
   "dependencies": {
-    "hono": "^4"
+    "@atproto/api": "^0.13.16",
+    "@atproto/common": "^0.4.4",
+    "@atproto/identity": "^0.4.3",
+    "@atproto/lexicon": "^0.4.3",
+    "@atproto/oauth-client-node": "^0.2.1",
+    "@atproto/sync": "^0.1.6",
+    "@atproto/syntax": "^0.3.1",
+    "@atproto/xrpc-server": "^0.7.3",
+    "@hono/node-server": "1.13.7",
+    "@types/better-sqlite3": "^7.6.11",
+    "better-sqlite3": "11.5.0",
+    "dotenv": "^16.4.5",
+    "envalid": "^8.0.0",
+    "hono": "^4.6.10",
+    "iron-session": "^8.0.4",
+    "kysely": "^0.27.4",
+    "multiformats": "^13.3.1",
+    "pino": "^9.5.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@typescript-eslint/eslint-plugin": "^7",
-    "@typescript-eslint/parser": "^7",
-    "autoprefixer": "^10",
-    "concurrently": "^8",
-    "eslint": "^8",
-    "postcss": "^8",
-    "prettier": "^3",
-    "prettier-plugin-tailwindcss": "^0.6.5",
-    "tailwindcss": "^3",
-    "tailwindcss-animated": "^1",
-    "typescript": "^5"
+    "@atproto/lex-cli": "^0.5.2",
+    "@typescript-eslint/eslint-plugin": "^8.14.0",
+    "@typescript-eslint/parser": "^8.14.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.15.0",
+    "jiti": "2.4.0",
+    "nodemon": "3.1.7",
+    "postcss": "^8.4.49",
+    "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.6.8",
+    "tailwindcss": "^3.4.15",
+    "tailwindcss-animated": "^1.1.2",
+    "typescript": "^5.6.3"
+  },
+  "patchedDependencies": {
+    "@atproto/jwk-jose@0.1.2": "patches/@atproto%2Fjwk-jose@0.1.2.patch",
+    "@atproto/jwk-webcrypto@0.1.2": "patches/@atproto%2Fjwk-webcrypto@0.1.2.patch",
+    "@atproto/jwk@0.1.1": "patches/@atproto%2Fjwk@0.1.1.patch"
   }
 }

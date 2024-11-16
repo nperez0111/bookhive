@@ -25,3 +25,4 @@ dist-ssr
 db.sqlite*
 /public/output.css
 /server.js
+.env

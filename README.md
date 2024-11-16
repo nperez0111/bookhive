@@ -1,4 +1,6 @@
-# better-reads
+# Book Hive
+
+Goodreads, but better.
 
 To install dependencies:
 

@@ -26,8 +26,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "types": [
-    "bun-types" // add Bun global
-  ]
+  "include": ["src"]
 }
