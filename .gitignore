@@ -22,7 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-db.sqlite*
+*.sqlite*
 /public/output.css
 /server.js
 .env

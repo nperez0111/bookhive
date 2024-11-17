@@ -2,7 +2,9 @@ import pino from "pino";
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
 import type { Database } from "../db";
-import * as Status from "./lexicon/types/xyz/statusphere/status";
+import * as Book from "./lexicon/types/buzz/bookhive/book";
+import * as BookReview from "./lexicon/types/buzz/bookhive/review";
+import { ids } from "./lexicon/lexicons";
 
 export function createIngester(db: Database, idResolver: IdResolver) {
   const logger = pino({ name: "firehose ingestion" });
@@ -17,43 +19,92 @@ export function createIngester(db: Database, idResolver: IdResolver) {
 
         // If the write is a valid status update
         if (
-          evt.collection === "xyz.statusphere.status" &&
-          Status.isRecord(record) &&
-          Status.validateRecord(record).success
+          evt.collection === ids.BuzzBookhiveBook &&
+          Book.isRecord(record) &&
+          Book.validateRecord(record).success
         ) {
-          // Store the status in our SQLite
+          // Store the book in our SQLite
           await db
-            .insertInto("status")
+            .insertInto("book")
             .values({
               uri: evt.uri.toString(),
+              cid: evt.cid.toString(),
               authorDid: evt.did,
-              status: record.status,
               createdAt: record.createdAt,
               indexedAt: now.toISOString(),
+              status: record.status,
+              author: record.author,
+              title: record.title,
+              cover: record.cover?.toString(),
+              year: record.year,
+              isbn: record.isbn?.join(","),
             })
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet({
-                status: record.status,
                 indexedAt: now.toISOString(),
+                status: record.status,
+                author: record.author,
+                title: record.title,
+                cover: record.cover?.toString(),
+                year: record.year,
+                isbn: record.isbn?.join(","),
               }),
             )
             .execute();
+          return;
+        } else if (
+          evt.collection === ids.BuzzBookhiveReview &&
+          BookReview.isRecord(record) &&
+          BookReview.validateRecord(record).success
+        ) {
+          // Store the book review in our SQLite
+          await db
+            .insertInto("book_review")
+            .values({
+              uri: evt.uri.toString(),
+              cid: evt.cid.toString(),
+              authorDid: evt.did,
+              createdAt: record.createdAt,
+              indexedAt: now.toISOString(),
+              bookUri: record.book.uri,
+              bookCid: record.book.cid,
+              commentUri: record.comment?.uri,
+              commentCid: record.comment?.cid,
+              stars: record.stars,
+            })
+            .onConflict((oc) =>
+              oc.column("uri").doUpdateSet({
+                indexedAt: now.toISOString(),
+                bookUri: record.book.uri,
+                commentUri: record.comment?.uri,
+                stars: record.stars,
+              }),
+            )
+            .execute();
+          return;
         }
-      } else if (
-        evt.event === "delete" &&
-        evt.collection === "xyz.statusphere.status"
-      ) {
-        // Remove the status from our SQLite
-        await db
-          .deleteFrom("status")
-          .where("uri", "=", evt.uri.toString())
-          .execute();
+      } else if (evt.event === "delete") {
+        if (evt.collection === ids.BuzzBookhiveBook) {
+          // Remove the status from our SQLite
+          await db
+            .deleteFrom("book")
+            .where("uri", "=", evt.uri.toString())
+            .execute();
+          return;
+        } else if (evt.collection === ids.BuzzBookhiveReview) {
+          // Remove the status from our SQLite
+          await db
+            .deleteFrom("book_review")
+            .where("uri", "=", evt.uri.toString())
+            .execute();
+          return;
+        }
       }
     },
     onError: (err) => {
       logger.error({ err }, "error on firehose ingestion");
     },
-    filterCollections: ["xyz.statusphere.status"],
+    filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveReview],
     excludeIdentity: true,
     excludeAccount: true,
   });

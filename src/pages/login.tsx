@@ -1,28 +1,64 @@
 /** @jsx createElement */
-import { html } from "hono/html";
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
 
-export const Login: FC<{ error?: string }> = ({ error }) =>
-  html`<div id="root">
-    <div id="header">
-      <h1>Statusphere</h1>
-      <p>Set your status on the Atmosphere.</p>
+export const Login: FC<{ error?: string }> = ({ error }) => (
+  <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-sm">
+      <img
+        class="mx-auto h-10 w-auto"
+        src="https://tailwindui.com/plus/img/logos/mark.svg?color=indigo&shade=600"
+        alt="Your Company"
+      />
+      <h2 class="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
+        Sign in to your account
+      </h2>
     </div>
-    <div class="container">
-      <form action="/login" method="post" class="login-form">
-        <input
-          type="text"
-          name="handle"
-          placeholder="Enter your handle (eg alice.bsky.social)"
-          required
-        />
-        <button type="submit">Log in</button>
-        ${error ? html`<p>Error: <i>${error}</i></p>` : undefined}
+
+    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
+      <form action="/login" method="post" class="space-y-6">
+        <div>
+          <label for="handle" class="block text-sm/6 font-medium text-gray-900">
+            Bluesky Handle
+          </label>
+          {error ? (
+            <p>
+              Error: <i>${error}</i>
+            </p>
+          ) : undefined}
+          <div class="mt-2">
+            <input
+              id="handle"
+              type="text"
+              name="handle"
+              placeholder="Enter your handle (eg alice.bsky.social)"
+              required
+              class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6"
+            />
+          </div>
+        </div>
+
+        <div>
+          <button
+            type="submit"
+            class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          >
+            Sign in
+          </button>
+        </div>
       </form>
-      <div class="signup-cta">
+
+      <p class="mt-10 text-center text-sm/6 text-gray-500">
         Don't have an account on the Atmosphere?
-        <a href="https://bsky.app">Sign up for Bluesky</a> to create one now!
-      </div>
+        <br />
+        <a
+          href="https://bsky.app"
+          class="font-semibold text-indigo-600 hover:text-indigo-500"
+        >
+          Sign up for Bluesky
+        </a>{" "}
+        to create one now!
+      </p>
     </div>
-  </div>`;
+  </div>
+);

@@ -5,7 +5,7 @@
   "scripts": {
     "seed:db": "node ./src/initialize.js",
     "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\"",
-    "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx",
+    "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx | pino-pretty",
     "dev:css": "tailwindcss -i ./src/index.css -o ./public/output.css --watch",
     "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
     "prebuild": "pnpm run build:css && pnpm run lexgen",
@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@atproto/lex-cli": "^0.5.2",
+    "@tailwindcss/forms": "0.5.9",
     "@typescript-eslint/eslint-plugin": "^8.14.0",
     "@typescript-eslint/parser": "^8.14.0",
     "autoprefixer": "^10.4.20",
@@ -43,6 +44,7 @@
     "eslint": "^9.15.0",
     "jiti": "2.4.0",
     "nodemon": "3.1.7",
+    "pino-pretty": "13.0.0",
     "postcss": "^8.4.49",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.8",

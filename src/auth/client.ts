@@ -24,5 +24,9 @@ export const createClient = async (db: Database) => {
     },
     stateStore: new StateStore(db),
     sessionStore: new SessionStore(db),
+    // TODO can be smarter about this
+    requestLock: async (_key, cb) => {
+      return cb();
+    },
   });
 };

@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.defs",
+  "defs": {
+    "finished": {
+      "type": "token",
+      "description": "User has finished reading the book"
+    },
+    "reading": {
+      "type": "token",
+      "description": "User is currently reading the book"
+    },
+    "wantToRead": {
+      "type": "token",
+      "description": "User wants to read the book"
+    },
+    "abandoned": {
+      "type": "token",
+      "description": "User has abandoned the book"
+    },
+    "owned": {
+      "type": "token",
+      "description": "User owns the book"
+    }
+  }
+}

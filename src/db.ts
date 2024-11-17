@@ -10,17 +10,37 @@ import {
 // Types
 
 export type DatabaseSchema = {
-  status: Status;
+  book: Book;
+  book_review: BookReview;
   auth_session: AuthSession;
   auth_state: AuthState;
 };
 
-export type Status = {
+export type Book = {
   uri: string;
+  cid: string;
   authorDid: string;
-  status: string;
   createdAt: string;
   indexedAt: string;
+  status: string | null;
+  author: string;
+  title: string;
+  cover: string | null;
+  year: number | null;
+  isbn: string | null;
+};
+
+export type BookReview = {
+  uri: string;
+  cid: string;
+  authorDid: string;
+  createdAt: string;
+  indexedAt: string;
+  bookUri: string;
+  bookCid: string;
+  commentUri: string | null;
+  commentCid: string | null;
+  stars: number | null;
 };
 
 export type AuthSession = {
@@ -50,12 +70,31 @@ const migrationProvider: MigrationProvider = {
 migrations["001"] = {
   async up(db: Kysely<unknown>) {
     await db.schema
-      .createTable("status")
+      .createTable("book")
       .addColumn("uri", "varchar", (col) => col.primaryKey())
+      .addColumn("cid", "varchar", (col) => col.notNull())
       .addColumn("authorDid", "varchar", (col) => col.notNull())
-      .addColumn("status", "varchar", (col) => col.notNull())
       .addColumn("createdAt", "varchar", (col) => col.notNull())
       .addColumn("indexedAt", "varchar", (col) => col.notNull())
+      .addColumn("author", "varchar", (col) => col.notNull())
+      .addColumn("title", "varchar", (col) => col.notNull())
+      .addColumn("status", "varchar")
+      .addColumn("cover", "varchar")
+      .addColumn("year", "integer")
+      .addColumn("isbn", "varchar")
+      .execute();
+    await db.schema
+      .createTable("book_review")
+      .addColumn("uri", "varchar", (col) => col.primaryKey())
+      .addColumn("cid", "varchar", (col) => col.notNull())
+      .addColumn("authorDid", "varchar", (col) => col.notNull())
+      .addColumn("createdAt", "varchar", (col) => col.notNull())
+      .addColumn("indexedAt", "varchar", (col) => col.notNull())
+      .addColumn("bookUri", "varchar", (col) => col.notNull())
+      .addColumn("bookCid", "varchar", (col) => col.notNull())
+      .addColumn("commentUri", "varchar")
+      .addColumn("commentCid", "varchar")
+      .addColumn("stars", "int8")
       .execute();
     await db.schema
       .createTable("auth_session")
@@ -71,7 +110,8 @@ migrations["001"] = {
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("auth_state").execute();
     await db.schema.dropTable("auth_session").execute();
-    await db.schema.dropTable("status").execute();
+    await db.schema.dropTable("book_review").execute();
+    await db.schema.dropTable("book").execute();
   },
 };
 

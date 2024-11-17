@@ -5,10 +5,14 @@ import { ValidationResult, BlobRef } from '@atproto/lexicon'
 import { lexicons } from '../../../lexicons'
 import { isObj, hasProp } from '../../../util'
 import { CID } from 'multiformats/cid'
+import * as ComAtprotoRepoStrongRef from '../../com/atproto/repo/strongRef'
 
 export interface Record {
-  status: string
   createdAt: string
+  book: ComAtprotoRepoStrongRef.Main
+  /** Number of stars given to the book (1-10) which will be mapped to 1-5 stars */
+  stars?: number
+  comment?: ComAtprotoRepoStrongRef.Main
   [k: string]: unknown
 }
 
@@ -16,11 +20,11 @@ export function isRecord(v: unknown): v is Record {
   return (
     isObj(v) &&
     hasProp(v, '$type') &&
-    (v.$type === 'xyz.statusphere.status#main' ||
-      v.$type === 'xyz.statusphere.status')
+    (v.$type === 'buzz.bookhive.review#main' ||
+      v.$type === 'buzz.bookhive.review')
   )
 }
 
 export function validateRecord(v: unknown): ValidationResult {
-  return lexicons.validate('xyz.statusphere.status#main', v)
+  return lexicons.validate('buzz.bookhive.review#main', v)
 }
