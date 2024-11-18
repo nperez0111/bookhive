@@ -2,6 +2,12 @@
 
 Goodreads, but better.
 
+- OAuth with Bluesky with session storage, and persistence
+- Defined Lexicons for books & reviews
+- Reading new books & reviews from the firehose
+
+See more updates on [Bluesky](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u).
+
 To install dependencies:
 
 ```bash
