@@ -2,6 +2,9 @@
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
 import { type BookReview, type Book } from "../db";
+import * as Profile from "../bsky/lexicon/types/app/bsky/actor/profile";
+import { Chat } from "./chat";
+import { Navbar } from "./navbar";
 
 function ts(status: BookReview) {
   const createdAt = new Date(status.createdAt);
@@ -13,7 +16,8 @@ function ts(status: BookReview) {
 type Props = {
   latestReviews: BookReview[];
   didHandleMap: Record<string, string>;
-  profile?: { displayName?: string };
+  profile?: Profile.Record;
+  profileAvatar?: string;
   myBooks?: Book[];
 };
 
@@ -21,48 +25,28 @@ export const Home: FC<Props> = ({
   latestReviews,
   didHandleMap,
   profile,
+  profileAvatar,
   myBooks,
 }) => (
   <div id="root">
-    <div class="error"></div>
-    <div id="header">
-      <h1>Bookhive</h1>
-      <p>Buzz about your books!</p>
-    </div>
-    <div class="container">
-      <div class="card">
-        {profile ? (
-          <form action="/logout" method="post" class="session-form">
-            <div>
-              Hi, <strong>{profile.displayName || "friend"}</strong>.
-            </div>
-            <div>
-              <button type="submit">Log out</button>
-            </div>
-          </form>
-        ) : (
-          <div class="session-form">
-            <div>
-              <a href="/login">Log in</a> to set your status!
-            </div>
-            <div>
-              <a href="/login" class="button">
-                Log in
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
+    <Navbar
+      tab="home"
+      profileAvatar={profileAvatar}
+      hasProfile={Boolean(profile)}
+    />
+
+    <div class="container mx-auto">
       {profile && (
-        <form action="/refresh-books" method="get">
-          <button
-            class="block w-full rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            type="submit"
-          >
-            Refresh books
-          </button>
-        </form>
+        <div>
+          👋, <strong>{profile.displayName || "friend"}</strong>
+        </div>
       )}
+      {!profile && (
+        <div class="flex justify-center">
+          <h1 class="mb-2 mt-3 text-xl">👋, Welcome to the Book Hive 🐝!</h1>
+        </div>
+      )}
+      {/* <Chat /> */}
       {profile && (
         <form action="/books" method="post">
           <div class="space-y-12">
@@ -131,10 +115,25 @@ export const Home: FC<Props> = ({
           </div>
         </form>
       )}
-      <div>
-        Your books
-        {JSON.stringify(myBooks)}
-      </div>
+      {myBooks && (
+        <div>
+          <h2 class="text-md mb-6 mt-3 border-b">Your books</h2>
+          <div class="flex flex-col gap-2">
+            {myBooks.map((book) => {
+              return (
+                <a
+                  href={`/books/${book.uri}`}
+                  class="rounded-md bg-gray-100 px-3 py-1 hover:bg-gray-200"
+                >
+                  <div>
+                    {book.title} by {book.author}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {latestReviews.map((review) => {
         const handle = didHandleMap[review.authorDid] || review.authorDid;
         const date = ts(review);

@@ -4,6 +4,9 @@ import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { prettyJSON } from "hono/pretty-json";
+import { requestId } from "hono/request-id";
+import { compress } from "hono/compress";
+import { etag } from "hono/etag";
 import { pino } from "pino";
 
 import { createClient } from "./auth/client";
@@ -63,6 +66,9 @@ export class Server {
     const app = new Hono();
 
     app.use(prettyJSON());
+    app.use(requestId());
+    app.use(compress());
+    app.use(etag());
 
     // Add context to Hono app
     app.use("*", async (c, next) => {

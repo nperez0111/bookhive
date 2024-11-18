@@ -169,12 +169,26 @@ export function createRouter(ctx: AppContext, app: Hono) {
         ? profileRecord.value
         : {};
 
+    let base64String = undefined;
+    // TODO should separate into a new request to not block the page load
+    if (profile.avatar) {
+      const resp = await agent.com.atproto.sync.getBlob({
+        cid: profile.avatar?.ref.toString()!,
+        did: agent.assertDid,
+      });
+      base64String =
+        "data:" +
+        profile.avatar.mimeType +
+        ";base64, " +
+        Buffer.from(resp.data.buffer).toString("base64");
+    }
     return c.html(
       <Layout>
         <Home
           latestReviews={reviews}
           didHandleMap={didHandleMap}
           profile={profile}
+          profileAvatar={base64String}
           myBooks={myBooks}
         />
       </Layout>,
