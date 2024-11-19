@@ -48,56 +48,6 @@ export const Home: FC<Props> = ({
           <h1 class="mb-2 mt-3 text-xl">👋, Welcome to the Book Hive 🐝!</h1>
         </div>
       )}
-      <input
-        type="text"
-        placeholder="Search for books"
-        id="search-books"
-        class="dark:text-slate-900"
-      />
-      <div id="search-results"></div>
-      <Script
-        script={(document) => {
-          const search = document.getElementById("search-books")!;
-          const searchResults = document.getElementById("search-results")!;
-          // debounce function
-          function debounce(func: (...args: any[]) => void, wait: number) {
-            let timeout: ReturnType<typeof setTimeout> | null = null;
-
-            return (...args: any[]) => {
-              if (timeout) {
-                clearTimeout(timeout);
-              }
-              timeout = setTimeout(() => {
-                func(...args);
-              }, wait);
-            };
-          }
-
-          const searchBooks = debounce(async (query) => {
-            const res = await fetch(`/search-books?q=${query}`);
-            const data: BookResult[] = await res.json();
-            searchResults.innerHTML = "";
-            data.forEach((book) => {
-              const div = document.createElement("div");
-              div.innerHTML = `
-                <div class="flex items-center gap-2">
-                  <img src="${book.cover}" class="h-16 w-16" />
-                  <div>
-                    <h2>${book.title}</h2>
-                    <p>${book.authors.join(", ")}</p>
-                  </div>
-                </div>
-              `;
-              searchResults.appendChild(div);
-            });
-          }, 400);
-
-          search.addEventListener("input", (e) => {
-            const query = (e.target as HTMLInputElement).value;
-            searchBooks(query);
-          });
-        }}
-      />
       {/* <Chat /> */}
       {profile && (
         <form action="/books" method="post">
@@ -116,7 +66,7 @@ export const Home: FC<Props> = ({
                     name="title"
                     type="text"
                     placeholder="Enter the title of the book"
-                    class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6 dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                    class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6 dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700 dark:placeholder:text-gray-800"
                   />
                 </div>
               </div>

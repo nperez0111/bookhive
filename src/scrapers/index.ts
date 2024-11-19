@@ -1,16 +1,16 @@
 import pino from "pino";
-import Google from "./google.ts";
+import Goodreads from "./goodreads.ts";
 
 const logger = pino({ name: "scraper" });
 
-export type { BookResult } from "./google.ts";
+export type { BookResult } from "./goodreads.ts";
 
 export async function findBookDetails(
   query: string,
   fallbackCover = "NONE",
   locale = "en",
 ) {
-  const searchService = new Google(logger);
+  const searchService = new Goodreads(logger);
 
   try {
     const results = await searchService.search(query, fallbackCover, locale);

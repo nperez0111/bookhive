@@ -17,6 +17,7 @@ export interface BookResult {
   url: string;
   source: MetaSourceInfo;
   cover?: string;
+  thumbnail?: string;
   description?: string;
   languages?: string[];
   publisher?: string;
@@ -139,7 +140,7 @@ class Google {
       // For now, we are only searching in one language
       searchQuery += "&langRestrict=" + locale;
 
-      this.logger.trace({ searchQuery });
+      this.logger.trace({ query: searchQuery });
 
       const response = await axios.get<GoogleSearchResponse>(
         `${Google.SEARCH_URL}${searchQuery}`,
@@ -149,7 +150,7 @@ class Google {
         this.parseSearchResult(result, genericCover, locale),
       );
     } catch (error) {
-      this.logger.warn("Error searching Google Books:", error);
+      this.logger.warn({ message: "Error searching Google", error });
       return [];
     }
   }
@@ -176,6 +177,7 @@ class Google {
 
     // Parse cover
     match.cover = this.parseCover(result.volumeInfo, genericCover);
+    match.thumbnail = result.volumeInfo.imageLinks?.thumbnail || genericCover;
 
     // Parse other fields
     match.description = result.volumeInfo.description || "";
@@ -295,7 +297,6 @@ class Google {
       // Get specific language name
       const name = names[langCode as keyof typeof names] || UNKNOWN_TRANSLATION;
       if (name === UNKNOWN_TRANSLATION) {
-        console.log(names);
         this.logger.error(`Missing translation for language name: ${langCode}`);
       }
 

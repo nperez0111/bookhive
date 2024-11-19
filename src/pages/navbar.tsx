@@ -2,6 +2,7 @@
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
 import { Script } from "./utils/script";
+import { SearchBox } from "./components/Searchbox";
 
 export const Navbar: FC<{
   tab?: "home";
@@ -90,6 +91,7 @@ export const Navbar: FC<{
             </div>
           </div>
           <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
+            {hasProfile && <SearchBox />}
             {/* Profile dropdown */}
             {!hasProfile && (
               <a
@@ -157,7 +159,6 @@ export const Navbar: FC<{
 
                     const shouldExpand =
                       btn.getAttribute("aria-expanded") !== "true";
-                    console.log(shouldExpand);
 
                     btn.setAttribute("aria-expanded", String(shouldExpand));
                     menu.style.display = shouldExpand ? "block" : "none";

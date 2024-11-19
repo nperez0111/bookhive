@@ -62,7 +62,11 @@ export function loginRouter(app: HonoServer) {
       await clientSession.save();
     } catch (err) {
       c.get("ctx").logger.error({ err }, "oauth callback failed");
-      return c.redirect("/?error");
+      return c.html(
+        <Layout>
+          <Login error={`Login failed: ${(err as Error).message}`} />
+        </Layout>,
+      );
     }
     return c.redirect("/");
   });

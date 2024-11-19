@@ -350,13 +350,13 @@ export function createRouter(app: HonoServer) {
   });
 
   app.get(
-    "/search-books",
+    "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
       "query",
       z.object({
         q: z.string(),
-        limit: z.number().default(25),
-        offset: z.number().optional().default(0),
+        limit: z.coerce.number().default(25),
+        offset: z.coerce.number().optional().default(0),
       }),
     ),
     async (c) => {

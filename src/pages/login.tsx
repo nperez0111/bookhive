@@ -7,7 +7,7 @@ export const Login: FC<{ error?: string }> = ({ error }) => (
     <div class="sm:mx-auto sm:w-full sm:max-w-sm">
       <div class="mx-auto h-10 w-auto text-center text-4xl">🐝</div>
 
-      <h2 class="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
+      <h2 class="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900 dark:text-gray-50">
         Buzz in to your account
       </h2>
     </div>
@@ -15,7 +15,10 @@ export const Login: FC<{ error?: string }> = ({ error }) => (
     <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
       <form action="/login" method="post" class="space-y-6">
         <div>
-          <label for="handle" class="block text-sm/6 font-medium text-gray-900">
+          <label
+            for="handle"
+            class="block text-sm/6 font-medium text-gray-900 dark:text-gray-50"
+          >
             Bluesky Handle
           </label>
           {error ? (
@@ -30,7 +33,7 @@ export const Login: FC<{ error?: string }> = ({ error }) => (
               name="handle"
               placeholder="Enter your handle (eg buzzer.bsky.social)"
               required
-              class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6"
+              class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6 dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
             />
           </div>
         </div>

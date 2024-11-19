@@ -102,7 +102,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
       }
     },
     onError: (err) => {
-      logger.error({ err }, "error on firehose ingestion");
+      logger.trace({ err }, "error on firehose ingestion");
     },
     filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz],
     excludeIdentity: true,
