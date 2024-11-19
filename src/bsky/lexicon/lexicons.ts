@@ -11,6 +11,7 @@ export const schemaDict = {
       main: {
         type: 'record',
         key: 'tid',
+        description: "A book in the user's library",
         record: {
           type: 'object',
           required: ['title', 'author', 'createdAt'],
@@ -26,6 +27,12 @@ export const schemaDict = {
               description: 'The author of the book',
               minLength: 1,
               maxLength: 512,
+            },
+            hiveId: {
+              type: 'string',
+              format: 'at-uri',
+              description:
+                "The book's hive id, used to correlate user's books with the hive",
             },
             createdAt: {
               type: 'string',
@@ -66,6 +73,50 @@ export const schemaDict = {
       },
     },
   },
+  BuzzBookhiveBuzz: {
+    lexicon: 1,
+    id: 'buzz.bookhive.buzz',
+    defs: {
+      main: {
+        type: 'record',
+        key: 'tid',
+        description: "A user's buzz of a book",
+        record: {
+          type: 'object',
+          required: ['createdAt', 'book'],
+          properties: {
+            createdAt: {
+              type: 'string',
+              format: 'datetime',
+            },
+            hiveId: {
+              type: 'string',
+              format: 'at-uri',
+              description:
+                "The book's hive id, used to correlate user's books with the hive",
+            },
+            book: {
+              type: 'ref',
+              ref: 'lex:com.atproto.repo.strongRef',
+              description: 'A reference to the book being buzzed about',
+            },
+            stars: {
+              type: 'integer',
+              description:
+                'Number of stars given to the book (1-10) which will be mapped to 1-5 stars',
+              minimum: 1,
+              maximum: 10,
+            },
+            comment: {
+              type: 'ref',
+              ref: 'lex:com.atproto.repo.strongRef',
+              description: 'A reference to a review of the book',
+            },
+          },
+        },
+      },
+    },
+  },
   BuzzBookhiveDefs: {
     lexicon: 1,
     id: 'buzz.bookhive.defs',
@@ -89,6 +140,65 @@ export const schemaDict = {
       owned: {
         type: 'token',
         description: 'User owns the book',
+      },
+    },
+  },
+  BuzzBookhiveHiveBook: {
+    lexicon: 1,
+    id: 'buzz.bookhive.hiveBook',
+    defs: {
+      main: {
+        type: 'record',
+        key: 'tid',
+        description: 'A book within the hive',
+        record: {
+          type: 'object',
+          required: ['title', 'author', 'createdAt', 'hiveId', 'cover', 'year'],
+          properties: {
+            title: {
+              type: 'string',
+              description: 'The title of the book',
+              minLength: 1,
+              maxLength: 512,
+            },
+            author: {
+              type: 'string',
+              description: 'The author of the book',
+              minLength: 1,
+              maxLength: 512,
+            },
+            hiveId: {
+              type: 'string',
+              format: 'at-uri',
+              description:
+                "The book's hive id, used to correlate user's books with the hive",
+            },
+            createdAt: {
+              type: 'string',
+              format: 'datetime',
+            },
+            cover: {
+              type: 'blob',
+              description: 'Cover image of the book',
+              accept: ['image/png', 'image/jpeg'],
+              maxSize: 1000000,
+            },
+            year: {
+              type: 'integer',
+              description: 'Year of publication',
+            },
+            isbn: {
+              type: 'array',
+              description: 'Any ISBN numbers for editions of this book',
+              items: {
+                type: 'string',
+                description: 'ISBN number',
+                minLength: 1,
+                maxLength: 32,
+              },
+            },
+          },
+        },
       },
     },
   },
@@ -151,37 +261,53 @@ export const schemaDict = {
       },
     },
   },
-  BuzzBookhiveReview: {
+  BuzzBookhiveSearchBooks: {
     lexicon: 1,
-    id: 'buzz.bookhive.review',
+    id: 'buzz.bookhive.searchBooks',
     defs: {
       main: {
-        type: 'record',
-        key: 'tid',
-        record: {
-          type: 'object',
-          required: ['createdAt', 'book'],
+        type: 'query',
+        description:
+          'Find books matching the search criteria. Does not require auth.',
+        parameters: {
+          type: 'params',
+          required: ['q'],
           properties: {
-            createdAt: {
+            q: {
               type: 'string',
-              format: 'datetime',
-            },
-            book: {
-              type: 'ref',
-              ref: 'lex:com.atproto.repo.strongRef',
-              description: 'A reference to the book being reviewed',
-            },
-            stars: {
-              type: 'integer',
               description:
-                'Number of stars given to the book (1-10) which will be mapped to 1-5 stars',
-              minimum: 1,
-              maximum: 10,
+                'Search query string. Will be matched against title and author fields.',
             },
-            comment: {
-              type: 'ref',
-              ref: 'lex:com.atproto.repo.strongRef',
-              description: 'A reference to a review of the book',
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 25,
+            },
+            offset: {
+              type: 'integer',
+              description: 'Offset for pagination into the result set',
+            },
+          },
+        },
+        output: {
+          encoding: 'application/json',
+          schema: {
+            type: 'object',
+            required: ['books'],
+            properties: {
+              offset: {
+                type: 'integer',
+                description:
+                  'The next offset to use for pagination (result of limit + offset)',
+              },
+              books: {
+                type: 'array',
+                items: {
+                  type: 'ref',
+                  ref: 'lex:buzz.bookhive.hiveBook#record',
+                },
+              },
             },
           },
         },
@@ -215,8 +341,10 @@ export const schemas = Object.values(schemaDict)
 export const lexicons: Lexicons = new Lexicons(schemas)
 export const ids = {
   BuzzBookhiveBook: 'buzz.bookhive.book',
+  BuzzBookhiveBuzz: 'buzz.bookhive.buzz',
   BuzzBookhiveDefs: 'buzz.bookhive.defs',
+  BuzzBookhiveHiveBook: 'buzz.bookhive.hiveBook',
   AppBskyActorProfile: 'app.bsky.actor.profile',
-  BuzzBookhiveReview: 'buzz.bookhive.review',
+  BuzzBookhiveSearchBooks: 'buzz.bookhive.searchBooks',
   ComAtprotoRepoStrongRef: 'com.atproto.repo.strongRef',
 }

@@ -3,7 +3,7 @@ import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
 import type { Database } from "../db";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
-import * as BookReview from "./lexicon/types/buzz/bookhive/review";
+import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";
 
 export function createIngester(db: Database, idResolver: IdResolver) {
@@ -53,13 +53,13 @@ export function createIngester(db: Database, idResolver: IdResolver) {
             .execute();
           return;
         } else if (
-          evt.collection === ids.BuzzBookhiveReview &&
-          BookReview.isRecord(record) &&
-          BookReview.validateRecord(record).success
+          evt.collection === ids.BuzzBookhiveBuzz &&
+          Buzz.isRecord(record) &&
+          Buzz.validateRecord(record).success
         ) {
           // Store the book review in our SQLite
           await db
-            .insertInto("book_review")
+            .insertInto("buzz")
             .values({
               uri: evt.uri.toString(),
               cid: evt.cid.toString(),
@@ -91,10 +91,10 @@ export function createIngester(db: Database, idResolver: IdResolver) {
             .where("uri", "=", evt.uri.toString())
             .execute();
           return;
-        } else if (evt.collection === ids.BuzzBookhiveReview) {
+        } else if (evt.collection === ids.BuzzBookhiveBuzz) {
           // Remove the status from our SQLite
           await db
-            .deleteFrom("book_review")
+            .deleteFrom("buzz")
             .where("uri", "=", evt.uri.toString())
             .execute();
           return;
@@ -104,7 +104,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
     onError: (err) => {
       logger.error({ err }, "error on firehose ingestion");
     },
-    filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveReview],
+    filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz],
     excludeIdentity: true,
     excludeAccount: true,
   });

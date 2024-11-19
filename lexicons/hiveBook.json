@@ -1,14 +1,14 @@
 {
   "lexicon": 1,
-  "id": "buzz.bookhive.book",
+  "id": "buzz.bookhive.hiveBook",
   "defs": {
     "main": {
       "type": "record",
       "key": "tid",
-      "description": "A book in the user's library",
+      "description": "A book within the hive",
       "record": {
         "type": "object",
-        "required": ["title", "author", "createdAt"],
+        "required": ["title", "author", "createdAt", "hiveId", "cover", "year"],
         "properties": {
           "title": {
             "type": "string",
@@ -50,16 +50,6 @@
               "minLength": 1,
               "maxLength": 32
             }
-          },
-          "status": {
-            "type": "string",
-            "knownValues": [
-              "buzz.bookhive.defs#finished",
-              "buzz.bookhive.defs#reading",
-              "buzz.bookhive.defs#wantToRead",
-              "buzz.bookhive.defs#abandoned",
-              "buzz.bookhive.defs#owned"
-            ]
           }
         }
       }

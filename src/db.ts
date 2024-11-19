@@ -8,10 +8,9 @@ import {
 } from "kysely";
 
 // Types
-
 export type DatabaseSchema = {
   book: Book;
-  book_review: BookReview;
+  buzz: Buzz;
   auth_session: AuthSession;
   auth_state: AuthState;
 };
@@ -19,6 +18,7 @@ export type DatabaseSchema = {
 export type Book = {
   uri: string;
   cid: string;
+  hiveId: string | null;
   authorDid: string;
   createdAt: string;
   indexedAt: string;
@@ -30,7 +30,7 @@ export type Book = {
   isbn: string | null;
 };
 
-export type BookReview = {
+export type Buzz = {
   uri: string;
   cid: string;
   authorDid: string;
@@ -38,6 +38,7 @@ export type BookReview = {
   indexedAt: string;
   bookUri: string;
   bookCid: string;
+  hiveId: string | null;
   commentUri: string | null;
   commentCid: string | null;
   stars: number | null;
@@ -78,13 +79,14 @@ migrations["001"] = {
       .addColumn("indexedAt", "varchar", (col) => col.notNull())
       .addColumn("author", "varchar", (col) => col.notNull())
       .addColumn("title", "varchar", (col) => col.notNull())
+      .addColumn("hiveId", "varchar")
       .addColumn("status", "varchar")
       .addColumn("cover", "varchar")
       .addColumn("year", "integer")
       .addColumn("isbn", "varchar")
       .execute();
     await db.schema
-      .createTable("book_review")
+      .createTable("buzz")
       .addColumn("uri", "varchar", (col) => col.primaryKey())
       .addColumn("cid", "varchar", (col) => col.notNull())
       .addColumn("authorDid", "varchar", (col) => col.notNull())
@@ -92,6 +94,7 @@ migrations["001"] = {
       .addColumn("indexedAt", "varchar", (col) => col.notNull())
       .addColumn("bookUri", "varchar", (col) => col.notNull())
       .addColumn("bookCid", "varchar", (col) => col.notNull())
+      .addColumn("hiveId", "varchar")
       .addColumn("commentUri", "varchar")
       .addColumn("commentCid", "varchar")
       .addColumn("stars", "int8")
@@ -110,7 +113,7 @@ migrations["001"] = {
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("auth_state").execute();
     await db.schema.dropTable("auth_session").execute();
-    await db.schema.dropTable("book_review").execute();
+    await db.schema.dropTable("buzz").execute();
     await db.schema.dropTable("book").execute();
   },
 };

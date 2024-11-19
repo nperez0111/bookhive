@@ -10,7 +10,7 @@ const cssFileContent = readFileSync("./public/output.css", "utf-8");
 
 export const Layout: FC<{ children: any }> = (props) =>
   html`<!doctype html>
-    <html lang="en" class="h-full bg-white">
+    <html lang="en" class="h-full bg-white  dark:bg-slate-950 dark:text-white">
       <head>
         <meta charset="UTF-8" />
         <meta property="og:url" content="https://bookhive.buzz" />

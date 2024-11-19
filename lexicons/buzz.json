@@ -1,10 +1,11 @@
 {
   "lexicon": 1,
-  "id": "buzz.bookhive.review",
+  "id": "buzz.bookhive.buzz",
   "defs": {
     "main": {
       "type": "record",
       "key": "tid",
+      "description": "A user's buzz of a book",
       "record": {
         "type": "object",
         "required": ["createdAt", "book"],
@@ -13,10 +14,15 @@
             "type": "string",
             "format": "datetime"
           },
+          "hiveId": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "The book's hive id, used to correlate user's books with the hive"
+          },
           "book": {
             "type": "ref",
             "ref": "com.atproto.repo.strongRef",
-            "description": "A reference to the book being reviewed"
+            "description": "A reference to the book being buzzed about"
           },
           "stars": {
             "type": "integer",

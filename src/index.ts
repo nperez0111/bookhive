@@ -30,9 +30,15 @@ export type AppContext = {
   resolver: BidirectionalResolver;
 };
 
+export type HonoServer = Hono<{
+  Variables: {
+    ctx: AppContext;
+  };
+}>;
+
 export class Server {
   constructor(
-    public app: Hono,
+    public app: HonoServer,
     public server: ServerType,
     public ctx: AppContext,
   ) {}
@@ -63,7 +69,7 @@ export class Server {
     ingester.start();
 
     // Create Hono app
-    const app = new Hono();
+    const app = new Hono() as HonoServer;
 
     app.use(prettyJSON());
     app.use(requestId());
@@ -72,13 +78,12 @@ export class Server {
 
     // Add context to Hono app
     app.use("*", async (c, next) => {
-      // @ts-ignore
       c.set("ctx", ctx);
       await next();
     });
 
     // Routes
-    createRouter(ctx, app);
+    createRouter(app);
 
     app.get("/ping", (c) => c.text("pong"));
 
