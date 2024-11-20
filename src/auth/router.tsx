@@ -57,7 +57,7 @@ export function loginRouter(app: HonoServer) {
         cookieName: "sid",
         password: env.COOKIE_SECRET,
       });
-      assert(!clientSession.did, "session already exists");
+      // assert(!clientSession.did, "session already exists");
       clientSession.did = session.did;
       await clientSession.save();
     } catch (err) {

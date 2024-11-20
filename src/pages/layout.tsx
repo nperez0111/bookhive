@@ -66,6 +66,7 @@ export const Layout: FC<{ children: any }> = (props) =>
               </script>`
             : ""
         }
+        <script type="module" src="/public/js/client.js"></script>
       </head>
       <body>
         ${props["children"]}

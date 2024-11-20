@@ -24,5 +24,6 @@ dist-ssr
 *.sw?
 *.sqlite*
 /public/output.css
+/public/js/*
 /server.js
 .env

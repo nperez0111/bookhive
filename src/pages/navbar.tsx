@@ -2,7 +2,6 @@
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
 import { Script } from "./utils/script";
-import { SearchBox } from "./components/Searchbox";
 
 export const Navbar: FC<{
   tab?: "home";
@@ -91,7 +90,7 @@ export const Navbar: FC<{
             </div>
           </div>
           <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
-            {hasProfile && <SearchBox />}
+            {hasProfile && <div id="mount-search-box" />}
             {/* Profile dropdown */}
             {!hasProfile && (
               <a
