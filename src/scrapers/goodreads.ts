@@ -48,6 +48,7 @@ export interface BookResult {
   publisher?: string;
   publishedDate?: string;
   rating?: number;
+  ratingsCount?: number;
   series?: string;
   series_index?: number;
   tags?: string[];
@@ -135,6 +136,7 @@ class Goodreads {
       thumbnail: result.imageUrl,
       description: this.parseDescription(result.description),
       rating: parseFloat(result.avgRating) || 0,
+      ratingsCount: result.ratingsCount,
       series: seriesMatch ? seriesMatch[1] : undefined,
       series_index: seriesMatch ? parseInt(seriesMatch[2]) : undefined,
     };
@@ -145,7 +147,7 @@ class Goodreads {
   private parseCover(result: GoodreadsBook, genericCover: string): string {
     if (result.imageUrl) {
       // Convert thumbnail URL to full-size image URL
-      return result.imageUrl.replace("._SX50_", "");
+      return result.imageUrl.replace(/\._[A-Z][A-Z]\d+_/, "");
     }
     return genericCover;
   }

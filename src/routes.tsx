@@ -2,6 +2,7 @@
 // @ts-expect-error
 import { createElement } from "hono/jsx";
 import { TID } from "@atproto/common";
+import sharp from "sharp";
 
 import type { HonoServer } from ".";
 import { Layout } from "./pages/layout";
@@ -16,6 +17,7 @@ import { getSessionAgent, loginRouter } from "./auth/router";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { findBookDetails } from "./scrapers";
+import type { BlobRef } from "@atproto/lexicon";
 
 export function createRouter(app: HonoServer) {
   loginRouter(app);
@@ -183,22 +185,53 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    const { author, title, year, status, isbn, hiveId } =
-      await c.req.parseBody();
+    const { author, title, year, status, isbn, hiveId, coverImage } =
+      await c.req.json();
+
+    console.log({ author, title, year, status, isbn, hiveId, coverImage });
+
+    let coverImageBlobRef: BlobRef | undefined = undefined;
+    if (coverImage) {
+      const data = await fetch(coverImage).then((res) => res.arrayBuffer());
+
+      const resizedImage = await sharp(data)
+        .resize({ width: 800, withoutEnlargement: true })
+        .jpeg()
+        .toBuffer();
+      const uploadResponse = await agent.com.atproto.repo.uploadBlob(
+        resizedImage,
+        {
+          encoding: "image/jpeg",
+        },
+      );
+      console.log("uploaded image");
+      if (uploadResponse.success) {
+        coverImageBlobRef = uploadResponse.data.blob;
+      }
+    }
+    console.log("creating book");
     const rkey = TID.nextStr();
     const record = {
       $type: ids.BuzzBookhiveBook,
       createdAt: new Date().toISOString(),
       author: author as string,
       title: title as string,
-      // cover
+      cover: coverImageBlobRef,
       year: year !== undefined ? parseInt(year as string, 10) : undefined,
       status: status as string,
       isbn: isbn ? (isbn as string).split(",") : undefined,
       hiveId: hiveId as string,
     } satisfies Book.Record;
 
-    if (!Book.validateRecord(record).success) {
+    const validation = Book.validateRecord(record);
+    console.log(validation);
+    if (!validation.success) {
+      if (c.req.header()["accept"] === "application/json") {
+        return c.json(
+          { error: "Invalid book", message: validation.error.message },
+          400,
+        );
+      }
       return c.html(
         <Layout>
           <Error
@@ -219,6 +252,7 @@ export function createRouter(app: HonoServer) {
         record,
         validate: false,
       });
+      console.log(record.cover?.ref.toString());
 
       await c
         .get("ctx")
@@ -232,7 +266,7 @@ export function createRouter(app: HonoServer) {
           author: record.author,
           title: record.title,
           hiveId: record.hiveId,
-          // cover: record.cover?.toString(),
+          cover: record.cover?.ref.toString(),
           isbn: record.isbn?.join(","),
           year: record.year,
           status: record.status,
