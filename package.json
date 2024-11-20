@@ -4,15 +4,16 @@
   "type": "module",
   "scripts": {
     "seed:db": "node ./src/initialize.js",
-    "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\"",
+    "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\" \"pnpm run dev:js\"",
     "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx | pino-pretty",
-    "dev:css": "tailwindcss -i ./src/index.css -o ./public/output.css --watch",
+    "dev:css": "pnpm run build:css --watch",
+    "dev:js": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --sourcemap --watch",
     "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
-    "prebuild": "pnpm run build:css && pnpm run lexgen",
-    "build": "tsc src/index.ts --outFile=server.js --module es6",
+    "build": "concurrently \"pnpm run build:css\" \"pnpm run lexgen --yes\"",
     "test": "echo \"Error: no test specified\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*"
+    "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*",
+    "postlexgen": "prettier --write ./src/bsky/lexicon/*"
   },
   "dependencies": {
     "@atproto/api": "^0.13.16",
@@ -44,6 +45,7 @@
     "@typescript-eslint/parser": "^8.15.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
+    "esbuild": "0.24.0",
     "eslint": "^9.15.0",
     "jiti": "2.4.0",
     "nodemon": "3.1.7",
