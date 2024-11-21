@@ -74,7 +74,9 @@ export class Server {
     const app = new Hono() as HonoServer;
 
     app.use(requestId());
-    app.use(prettyJSON());
+    if (env.isDevelopment) {
+      app.use(prettyJSON());
+    }
     app.use(
       pinoLogger({
         pino: logger,
