@@ -7,7 +7,9 @@ import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
+import { secureHeaders } from "hono/secure-headers";
 import { pino } from "pino";
+import { pinoLogger } from "hono-pino";
 
 import { createClient } from "./auth/client";
 import {
@@ -45,7 +47,7 @@ export class Server {
 
   static async create() {
     const { NODE_ENV, HOST, PORT, DB_PATH } = env;
-    const logger = pino({ name: "server start" });
+    const logger = pino({ name: "server", level: "info" });
 
     // Set up the SQLite database
     const db = createDb(DB_PATH);
@@ -71,8 +73,19 @@ export class Server {
     // Create Hono app
     const app = new Hono() as HonoServer;
 
-    app.use(prettyJSON());
     app.use(requestId());
+    app.use(prettyJSON());
+    app.use(
+      pinoLogger({
+        pino: logger,
+        http: {
+          onResLevel(c) {
+            return c.req.path === "/healthcheck" ? "trace" : "info";
+          },
+        },
+      }),
+    );
+    app.use(secureHeaders());
     app.use(compress());
     app.use(etag());
 

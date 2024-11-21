@@ -59,6 +59,9 @@ importers:
       hono:
         specifier: ^4.6.10
         version: 4.6.10
+      hono-pino:
+        specifier: 0.7.0
+        version: 0.7.0(hono@4.6.10)(pino@9.5.0)
       iron-session:
         specifier: ^8.0.4
         version: 8.0.4
@@ -1008,6 +1011,9 @@ packages:
     resolution: {integrity: sha512-rBMvIzlpA8v6E+SJZoo++HAYqsLrkg7MSfIinMPFhmkorw7X+dOXVJQs+QT69zGkzMyfDnIMN2Wid1+NbL3T+A==}
     engines: {node: '>= 0.4'}
 
+  defu@6.1.4:
+    resolution: {integrity: sha512-mEQCMmwJu317oSz8CwdIOdwf3xMif1ttiM8LTufzc3g6kR+9Pe236twL8j3IYT1F7GfRgGcW6MWxzZjLIkuHIg==}
+
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
     engines: {node: '>=0.4.0'}
@@ -1306,6 +1312,13 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  hono-pino@0.7.0:
+    resolution: {integrity: sha512-A3LnJ3HBJ10Pmj/axLz77PnVq4STXW73C+7jWPotOj1mSdpNsdIH5b/QZeCZ+tA7mBU74LKj3zUynnBKOSFnlA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      hono: '>=4.0.0'
+      pino: '>=7.1.0'
 
   hono@4.6.10:
     resolution: {integrity: sha512-IXXNfRAZEahFnWBhUUlqKEGF9upeE6hZoRZszvNkyAz/CYp+iVbxm3viMvStlagRJohjlBRGOQ7f4jfcV0XMGg==}
@@ -3201,6 +3214,8 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.0.1
 
+  defu@6.1.4: {}
+
   delayed-stream@1.0.0: {}
 
   depd@2.0.0: {}
@@ -3531,6 +3546,12 @@ snapshots:
       function-bind: 1.1.2
 
   help-me@5.0.0: {}
+
+  hono-pino@0.7.0(hono@4.6.10)(pino@9.5.0):
+    dependencies:
+      defu: 6.1.4
+      hono: 4.6.10
+      pino: 9.5.0
 
   hono@4.6.10: {}
 
