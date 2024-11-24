@@ -114,7 +114,7 @@ export const BookInfo: FC<{
                       id: "stopped",
                     },
                   ].map((shelf) => {
-                    const Icon = shelf.icon;
+                    // const Icon = shelf.icon;
                     // const isSelected = selectedShelf === shelf.id;
                     return (
                       <button
@@ -126,7 +126,7 @@ export const BookInfo: FC<{
                             : "bg-amber-50 text-amber-800 hover:bg-amber-100"
                         }`}
                       >
-                        <Icon class="h-5 w-5" />
+                        {/* <Icon class="h-5 w-5" /> */}
                         {shelf.label}
                       </button>
                     );
