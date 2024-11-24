@@ -30,7 +30,7 @@ export default defineDriver<
         throw new Error("SQLite location is required");
       }
 
-      const sqlite = new Database(location);
+      const sqlite = new Database(location, { fileMustExist: false });
 
       // Enable WAL mode
       sqlite.pragma("journal_mode = WAL");

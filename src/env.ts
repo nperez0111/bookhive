@@ -8,11 +8,13 @@ export const env = cleanEnv(process.env, {
     devDefault: testOnly("test"),
     choices: ["development", "production", "test"],
   }),
-  HOST: host({ devDefault: testOnly("localhost") }),
   PORT: port({ devDefault: testOnly(3000) }),
   PUBLIC_URL: str({}),
-  DB_PATH: str({ devDefault: ":memory:" }),
-  KV_DB_PATH: str({ devDefault: ":memory:" }),
-  LOG_LEVEL: str({ devDefault: "info" }),
+  DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
+  KV_DB_PATH: str({
+    devDefault: ":memory:",
+    desc: "Path to the KV SQLite database",
+  }),
+  LOG_LEVEL: str({ default: "info", desc: "Log level for the app" }),
   COOKIE_SECRET: str({ devDefault: "00000000000000000000000000000000" }),
 });

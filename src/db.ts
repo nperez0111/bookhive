@@ -93,7 +93,7 @@ migrations["001"] = {
 // APIs
 
 export const createDb = (location: string): Database => {
-  const sqlite = new SqliteDb(location);
+  const sqlite = new SqliteDb(location, { fileMustExist: false });
 
   // Enable WAL mode
   sqlite.pragma("journal_mode = WAL");

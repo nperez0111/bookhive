@@ -1,37 +1,83 @@
-# use the official Bun image
-# see all versions at https://hub.docker.com/r/oven/bun/tags
-FROM oven/bun:1-alpine AS base
+# syntax=docker/dockerfile:1
+
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Dockerfile reference guide at
+# https://docs.docker.com/go/dockerfile-reference/
+
+# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
+
+ARG NODE_VERSION=20
+ARG PNPM_VERSION=9
+
+################################################################################
+# Use node image for base image for all stages.
+FROM node:${NODE_VERSION}-alpine AS base
+
+# Set working directory for all build stages.
 WORKDIR /usr/src/app
 
-# install dependencies into temp directory
-# this will cache them and speed up future builds
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lockb /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
+# Install pnpm.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g pnpm@${PNPM_VERSION}
 
-# install with --production (exclude devDependencies)
-RUN mkdir -p /temp/prod
-COPY package.json bun.lockb /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
+################################################################################
+# Create a stage for installing production dependecies.
+FROM base AS deps
 
-# copy node_modules from temp directory
-# then copy all (non-ignored) project files into the image
-FROM base AS prerelease
-COPY --from=install /temp/dev/node_modules node_modules
+# Download dependencies as a separate step to take advantage of Docker's caching.
+# Leverage a cache mount to /root/.local/share/pnpm/store to speed up subsequent builds.
+# Leverage bind mounts to package.json and pnpm-lock.yaml to avoid having to copy them
+# into this layer.
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile
+
+################################################################################
+# Create a stage for building the application.
+FROM deps AS build
+
+# Download additional development dependencies before building, as some projects require
+# "devDependencies" to be installed to build. If you don't need this, remove this step.
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# Copy the rest of the source files into the image.
 COPY . .
+# Run the build script.
+RUN pnpm run build
 
-# [optional] tests & build
+################################################################################
+# Create a new stage to run the application with minimal runtime dependencies
+# where the necessary files are copied from the build stage.
+FROM base AS final
+
+# Use production node environment by default.
 ENV NODE_ENV=production
-RUN bun test
-RUN bun run build
+ENV PORT=8080
 
-# copy production dependencies and source code into final image
-FROM base AS release
-COPY --from=prerelease /usr/src/app/server.js .
-COPY --from=prerelease /usr/src/app/public/ ./public
+# Create data directory and set permissions
+RUN mkdir -p /data && \
+    chown -R node:node /data && \
+    chmod 755 /data
 
-# run the app
-EXPOSE 3000/tcp
+# Run the application as a non-root user.
+USER node
 
-ENTRYPOINT [ "/bin/sh", "-c", "bun run server.js" ]
+# Copy package.json so that package manager commands can be used.
+COPY package.json .
+
+# Copy the production dependencies from the deps stage and also
+# the built application from the build stage into the image.
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/public ./public
+COPY --from=build /usr/src/app/src ./src
+
+
+# Expose the port that the application listens on.
+EXPOSE 8080
+
+# Run the application.
+CMD ["pnpm", "start"]

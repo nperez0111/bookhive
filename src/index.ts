@@ -50,7 +50,7 @@ export class Server {
   ) {}
 
   static async create() {
-    const { NODE_ENV, HOST, PORT, DB_PATH, LOG_LEVEL, KV_DB_PATH } = env;
+    const { NODE_ENV, PORT, DB_PATH, LOG_LEVEL, KV_DB_PATH } = env;
     const logger = pino({ name: "server", level: LOG_LEVEL });
 
     // Set up the SQLite database
@@ -145,7 +145,7 @@ export class Server {
       },
       ({ port }) => {
         logger.info(
-          `Server (${NODE_ENV}) running on port http://${HOST}:${port}`,
+          `Server (${NODE_ENV}) running on port http://localhost:${port}`,
         );
       },
     );
