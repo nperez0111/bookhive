@@ -3,6 +3,8 @@ import { env } from "../env";
 import { SessionStore, StateStore } from "./storage";
 import type { Storage } from "unstorage";
 
+const time = Date.now();
+
 export const createClient = async (kv: Storage) => {
   const publicUrl = env.PUBLIC_URL;
   const url = publicUrl || `http://127.0.0.1:${env.PORT}`;
@@ -24,8 +26,32 @@ export const createClient = async (kv: Storage) => {
     },
     stateStore: new StateStore(kv),
     sessionStore: new SessionStore(kv),
-    // TODO can be smarter about this
-    requestLock: async (_key, cb) => {
+    requestLock: async function waitForLock(key, cb, attempt = 0) {
+      if (attempt > 10) {
+        throw new Error(`Lock timeout for ${key}`);
+      }
+
+      const lock = await kv.get<number>(key);
+      if (!lock) {
+        try {
+          await kv.set(key, time);
+          return cb();
+        } finally {
+          await kv.del(key);
+        }
+      }
+
+      if (lock !== time) {
+        // Check again in 100ms
+        return new Promise((resolve, reject) =>
+          setTimeout(
+            () => waitForLock(key, cb, attempt++).then(resolve, reject),
+            100,
+          ),
+        );
+      }
+
+      // If we get here, the lock is ours
       return cb();
     },
   });
