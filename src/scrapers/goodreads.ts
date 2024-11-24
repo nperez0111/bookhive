@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { Logger } from "pino";
+import { objectHash, sha256base64 } from "ohash";
 
 // Type definitions
 export interface MetaSourceInfo {
@@ -51,7 +52,6 @@ export interface BookResult {
   ratingsCount?: number;
   series?: string;
   series_index?: number;
-  tags?: string[];
   identifiers: {
     goodreads: string;
   };
@@ -120,7 +120,7 @@ class Goodreads {
     const seriesMatch = result.title.match(/\((.*?),\s*#(\d+)\)/);
 
     const match: BookResult = {
-      id: result.bookId,
+      id: `bk_${sha256base64(objectHash({ title: result.bookTitleBare, author: result.author.name })).slice(0, 20)}`,
       title: result.bookTitleBare,
       authors: [result.author.name],
       url: `${Goodreads.BOOK_URL}${result.bookId}`,

@@ -10,6 +10,8 @@ import { etag } from "hono/etag";
 import { secureHeaders } from "hono/secure-headers";
 import { pino } from "pino";
 import { pinoLogger } from "hono-pino";
+import { createStorage, type Storage } from "unstorage";
+import lruCacheDriver from "unstorage/drivers/lru-cache";
 
 import { createClient } from "./auth/client";
 import {
@@ -22,10 +24,12 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { createRouter } from "./routes.tsx";
+import sqliteKv from "./sqlite-kv.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
   db: Database;
+  kv: Storage;
   ingester: Firehose;
   logger: pino.Logger;
   oauthClient: OAuthClient;
@@ -46,15 +50,34 @@ export class Server {
   ) {}
 
   static async create() {
-    const { NODE_ENV, HOST, PORT, DB_PATH } = env;
-    const logger = pino({ name: "server", level: "info" });
+    const { NODE_ENV, HOST, PORT, DB_PATH, LOG_LEVEL, KV_DB_PATH } = env;
+    const logger = pino({ name: "server", level: LOG_LEVEL });
 
     // Set up the SQLite database
     const db = createDb(DB_PATH);
     await migrateToLatest(db);
 
+    const kv = createStorage({
+      driver: sqliteKv({ location: KV_DB_PATH }),
+    });
+
+    if (env.isProd) {
+      // Not sure that we should store the search cache, so LRU is fine
+      kv.mount("search:", lruCacheDriver({ max: 1000 }));
+    }
+    kv.mount("book:", sqliteKv({ location: KV_DB_PATH, table: "books" }));
+    kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
+    kv.mount(
+      "auth_session:",
+      sqliteKv({ location: KV_DB_PATH, table: "auth_sessions" }),
+    );
+    kv.mount(
+      "auth_state:",
+      sqliteKv({ location: KV_DB_PATH, table: "auth_state" }),
+    );
+
     // Create the atproto utilities
-    const oauthClient = await createClient(db);
+    const oauthClient = await createClient(kv);
     const baseIdResolver = createIdResolver();
     const ingester = createIngester(db, baseIdResolver);
     const resolver = createBidirectionalResolver(baseIdResolver);
@@ -65,7 +88,8 @@ export class Server {
       logger,
       oauthClient,
       resolver,
-    };
+      kv,
+    } satisfies AppContext;
 
     // Subscribe to events on the firehose
     ingester.start();
@@ -97,12 +121,10 @@ export class Server {
       await next();
     });
 
+    app.get("/healthcheck", (c) => c.text(time));
+
     // Routes
     createRouter(app);
-
-    app.get("/ping", (c) => c.text("pong"));
-
-    app.get("/healthcheck", (c) => c.text(time));
 
     app.use(
       "/public/*",

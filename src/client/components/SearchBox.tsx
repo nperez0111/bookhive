@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
 import type { BookResult } from "../../scrapers";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ProgressBar } from "./LoadingBar";
+import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
 
 export const SearchBox: FC = () => {
@@ -153,27 +153,26 @@ export const SearchBox: FC = () => {
                 aria-selected={index === selectedIndex}
                 className={`px-1 py-2 ${index === selectedIndex ? "bg-slate-800" : ""}`}
               >
-                <button
-                  onClick={() => addBookMutation.mutate(book)}
-                  className="flex w-full items-center justify-between gap-x-6 space-x-4 rounded-md px-2 py-3 text-left hover:bg-slate-800"
+                <a
+                  href={`/books/${book.id}`}
+                  class="group flex w-full items-center justify-between gap-x-6 space-x-4 rounded-md px-2 py-3 text-left hover:bg-slate-800"
                 >
                   <div className="flex items-center justify-between space-x-4">
                     <img
-                      className="h-20 rounded object-cover shadow-sm"
+                      className="h-20 rounded object-cover shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-md"
                       src={book.thumbnail || book.cover}
-                      height="80"
-                      width="60"
+                      style={{ aspectRatio: "2/3" }}
                       alt={`Cover of ${book.title}`}
                       loading="lazy"
                     />
                     <div>
                       <p className="text-sm font-semibold">{book.title}</p>
-                      <p className="text-xs text-gray-200">
+                      <p className="text-xs text-gray-700 dark:text-gray-200">
                         by {book.authors.join(", ")}
                       </p>
                     </div>
                   </div>
-                </button>
+                </a>
               </li>
             ))}
           {debouncedQuery.length > 2 && bookResults.data?.length === 0 && (

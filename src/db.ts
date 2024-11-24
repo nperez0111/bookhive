@@ -11,8 +11,6 @@ import {
 export type DatabaseSchema = {
   book: Book;
   buzz: Buzz;
-  auth_session: AuthSession;
-  auth_state: AuthState;
 };
 
 export type Book = {
@@ -43,20 +41,6 @@ export type Buzz = {
   commentCid: string | null;
   stars: number | null;
 };
-
-export type AuthSession = {
-  key: string;
-  session: AuthSessionJson;
-};
-
-export type AuthState = {
-  key: string;
-  state: AuthStateJson;
-};
-
-type AuthStateJson = string;
-
-type AuthSessionJson = string;
 
 // Migrations
 
@@ -99,20 +83,8 @@ migrations["001"] = {
       .addColumn("commentCid", "varchar")
       .addColumn("stars", "int8")
       .execute();
-    await db.schema
-      .createTable("auth_session")
-      .addColumn("key", "varchar", (col) => col.primaryKey())
-      .addColumn("session", "varchar", (col) => col.notNull())
-      .execute();
-    await db.schema
-      .createTable("auth_state")
-      .addColumn("key", "varchar", (col) => col.primaryKey())
-      .addColumn("state", "varchar", (col) => col.notNull())
-      .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("auth_state").execute();
-    await db.schema.dropTable("auth_session").execute();
     await db.schema.dropTable("buzz").execute();
     await db.schema.dropTable("book").execute();
   },
@@ -121,9 +93,14 @@ migrations["001"] = {
 // APIs
 
 export const createDb = (location: string): Database => {
+  const sqlite = new SqliteDb(location);
+
+  // Enable WAL mode
+  sqlite.pragma("journal_mode = WAL");
+
   return new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
-      database: new SqliteDb(location),
+      database: sqlite,
     }),
   });
 };

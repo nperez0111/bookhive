@@ -4,7 +4,6 @@
 import { createElement } from "hono/jsx";
 import { isValidHandle } from "@atproto/syntax";
 import { getIronSession } from "iron-session";
-import assert from "node:assert";
 
 import { Agent } from "@atproto/api";
 import { OAuthResolverError } from "@atproto/oauth-client-node";

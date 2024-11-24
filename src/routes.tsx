@@ -4,7 +4,7 @@ import { createElement } from "hono/jsx";
 import { TID } from "@atproto/common";
 import sharp from "sharp";
 
-import type { HonoServer } from ".";
+import type { AppContext, HonoServer } from ".";
 import { Layout } from "./pages/layout";
 
 import * as Profile from "./bsky/lexicon/types/app/bsky/actor/profile";
@@ -16,8 +16,89 @@ import { ids } from "./bsky/lexicon/lexicons";
 import { getSessionAgent, loginRouter } from "./auth/router";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { findBookDetails } from "./scrapers";
+import { findBookDetails, type BookResult } from "./scrapers";
 import type { BlobRef } from "@atproto/lexicon";
+import { BookInfo } from "./pages/bookInfo";
+import type { Agent } from "@atproto/api";
+import type { StorageValue } from "unstorage";
+
+function readThroughCache<T extends StorageValue>(
+  ctx: AppContext,
+  key: string,
+  fetch: () => Promise<T>,
+): Promise<T> {
+  ctx.logger.trace({ key }, "readThroughCache");
+  return ctx.kv.get<T>(key).then((cached) => {
+    if (cached) {
+      ctx.logger.trace({ key, cached }, "readThroughCache hit");
+      return cached;
+    }
+
+    ctx.logger.trace({ key }, "readThroughCache miss");
+    return fetch().then((fresh) => {
+      ctx.logger.trace({ key, fresh }, "readThroughCache set");
+      ctx.kv.set(key, fresh);
+      return fresh;
+    });
+  });
+}
+
+async function getProfile(
+  agent: Agent,
+  ctx: AppContext,
+): Promise<{
+  profile: Profile.Record | null;
+  profileAvatar: string | null;
+}> {
+  const profile = await readThroughCache(
+    ctx,
+    "profile:" + agent.assertDid,
+    async () => {
+      const { data: profileRecord } = await agent.com.atproto.repo.getRecord({
+        repo: agent.assertDid,
+        collection: ids.AppBskyActorProfile,
+        rkey: "self",
+      });
+
+      const profile =
+        Profile.isRecord(profileRecord.value) &&
+        Profile.validateRecord(profileRecord.value).success
+          ? profileRecord.value
+          : undefined;
+      if (!profile) {
+        return null;
+      }
+
+      return profile;
+    },
+  );
+
+  if (!profile) {
+    return { profile: null, profileAvatar: null };
+  }
+
+  const profileAvatar = await readThroughCache(
+    ctx,
+    "profile:" + agent.assertDid + ":avatar",
+    async () => {
+      if (profile.avatar) {
+        const resp = await agent.com.atproto.sync.getBlob({
+          cid: profile.avatar?.ref.toString()!,
+          did: agent.assertDid,
+        });
+        return (
+          "data:" +
+          profile.avatar.mimeType +
+          ";base64, " +
+          Buffer.from(resp.data.buffer).toString("base64")
+        );
+      }
+      return null;
+    },
+  );
+
+  return { profile, profileAvatar };
+}
 
 export function createRouter(app: HonoServer) {
   loginRouter(app);
@@ -57,38 +138,15 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    const { data: profileRecord } = await agent.com.atproto.repo.getRecord({
-      repo: agent.assertDid,
-      collection: ids.AppBskyActorProfile,
-      rkey: "self",
-    });
+    const { profile, profileAvatar } = await getProfile(agent, c.get("ctx"));
 
-    const profile =
-      Profile.isRecord(profileRecord.value) &&
-      Profile.validateRecord(profileRecord.value).success
-        ? profileRecord.value
-        : {};
-
-    let base64String = undefined;
-    // TODO should separate into a new request to not block the page load
-    if (profile.avatar) {
-      const resp = await agent.com.atproto.sync.getBlob({
-        cid: profile.avatar?.ref.toString()!,
-        did: agent.assertDid,
-      });
-      base64String =
-        "data:" +
-        profile.avatar.mimeType +
-        ";base64, " +
-        Buffer.from(resp.data.buffer).toString("base64");
-    }
     return c.html(
       <Layout>
         <Home
           latestBuzzes={buzzes}
           didHandleMap={didHandleMap}
-          profile={profile}
-          profileAvatar={base64String}
+          profile={profile ?? undefined}
+          profileAvatar={profileAvatar ?? undefined}
           myBooks={myBooks}
         />
       </Layout>,
@@ -168,6 +226,52 @@ export function createRouter(app: HonoServer) {
       .execute();
 
     return c.json(books);
+  });
+
+  app.get("/books/:id", async (c) => {
+    const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid Session"
+            description="Login to view a book"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    const [{ profile, profileAvatar }, book] = await Promise.all([
+      getProfile(agent, c.get("ctx")),
+      c.get("ctx").kv.get<BookResult>(`book:${c.req.param("id")}`),
+    ]);
+
+    console.log({ book });
+
+    if (!book) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Book not found"
+            description="The book you are looking for does not exist"
+            statusCode={404}
+          />
+        </Layout>,
+        404,
+      );
+    }
+
+    return c.html(
+      <Layout>
+        <BookInfo
+          profile={profile ?? undefined}
+          profileAvatar={profileAvatar ?? undefined}
+          book={book}
+        />
+      </Layout>,
+    );
   });
 
   app.post("/books", async (c) => {
@@ -409,11 +513,22 @@ export function createRouter(app: HonoServer) {
       }
       const { q, limit, offset } = c.req.valid("query");
 
-      const bookSearch = await findBookDetails(q);
+      const bookSearch = await readThroughCache(
+        c.get("ctx"),
+        `search:${q}`,
+        () => findBookDetails(q),
+      );
 
       if (!bookSearch.success) {
         return c.json([]);
       }
+
+      c.get("ctx").kv.setItems(
+        bookSearch.data.map((book) => ({
+          key: `book:${book.id}`,
+          value: book,
+        })),
+      );
 
       return c.json(bookSearch.data.slice(offset, offset + limit));
     },
