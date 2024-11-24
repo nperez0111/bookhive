@@ -9,14 +9,14 @@ export const Navbar: FC<{
   hasProfile: boolean;
 }> = ({ tab, profileAvatar, hasProfile }) => {
   return (
-    <nav class="bg-gray-800">
+    <nav class="bg-slate-800">
       <div class="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
         <div class="relative flex h-16 items-center justify-between">
           <div class="absolute inset-y-0 left-0 flex items-center sm:hidden">
             {/* Mobile menu button*/}
             <button
               type="button"
-              class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+              class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:ring-2 focus:ring-white focus:outline-hidden focus:ring-inset"
               aria-controls="mobile-menu"
               aria-expanded="false"
             >
@@ -95,7 +95,7 @@ export const Navbar: FC<{
             {!hasProfile && (
               <a
                 href="/login"
-                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
               >
                 Buzz in
               </a>
@@ -104,7 +104,7 @@ export const Navbar: FC<{
               <div>
                 <button
                   type="button"
-                  class="relative flex rounded-full bg-gray-800 text-sm text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800"
+                  class="relative flex rounded-full bg-gray-800 text-sm text-gray-400 hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 focus:outline-hidden"
                   id="user-menu-button"
                   aria-expanded="false"
                   aria-haspopup="true"
@@ -167,14 +167,14 @@ export const Navbar: FC<{
 
               <div
                 id="user-menu"
-                class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-none"
+                class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden"
                 role="menu"
                 aria-orientation="vertical"
                 aria-labelledby="user-menu-button"
                 tabindex={-1}
                 style="display: none;"
               >
-                {/* Active: "bg-gray-100 outline-none", Not Active: "" */}
+                {/* Active: "bg-gray-100 outline-hidden", Not Active: "" */}
                 <a
                   href="#"
                   class="block px-4 py-2 text-sm text-gray-700"
@@ -223,7 +223,7 @@ export const Navbar: FC<{
 
       {/* Mobile menu, show/hide based on menu state. */}
       <div class="sm:hidden" id="mobile-menu">
-        <div class="space-y-1 px-2 pb-3 pt-2">
+        <div class="space-y-1 px-2 pt-2 pb-3">
           {/* Current: "bg-gray-900 text-white", Default: "text-gray-300 hover:bg-gray-700 hover:text-white" */}
           <a
             href="#"

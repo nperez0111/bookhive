@@ -4,7 +4,7 @@ import { type FC, createElement } from "hono/jsx";
 
 export const Chat: FC<{}> = () => {
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-800">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-800">
       <form class="overflow-y-auto lg:max-h-[60rem] 2xl:max-h-fit">
         <article class="mb-5">
           <footer class="mb-2 flex items-center justify-between">
@@ -27,7 +27,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment1Button"
               data-dropdown-toggle="dropdownComment1"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -43,7 +43,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment1"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded bg-white shadow dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -132,7 +132,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment2Button"
               data-dropdown-toggle="dropdownComment2"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -148,7 +148,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment2"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded bg-white shadow dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -349,7 +349,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment3Button"
               data-dropdown-toggle="dropdownComment3"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -365,7 +365,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment3"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded bg-white shadow dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -439,7 +439,7 @@ export const Chat: FC<{}> = () => {
                 </p>
               </div>
               <div class="ml-auto flex items-center">
-                <button type="button" class="rounded p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -455,7 +455,7 @@ export const Chat: FC<{}> = () => {
                   </svg>
                   <span class="sr-only">Download</span>
                 </button>
-                <button type="button" class="rounded p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -490,7 +490,7 @@ export const Chat: FC<{}> = () => {
                 </p>
               </div>
               <div class="ml-auto flex items-center">
-                <button type="button" class="rounded p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -506,7 +506,7 @@ export const Chat: FC<{}> = () => {
                   </svg>
                   <span class="sr-only">Download</span>
                 </button>
-                <button type="button" class="rounded p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -543,7 +543,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment4Button"
               data-dropdown-toggle="dropdownComment4"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -559,7 +559,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment4"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded bg-white shadow dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -624,7 +624,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment5Button"
               data-dropdown-toggle="dropdownComment5"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -640,7 +640,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment5"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded bg-white shadow dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -751,7 +751,7 @@ export const Chat: FC<{}> = () => {
             <div class="flex space-x-1 pl-0 sm:pl-2">
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"
@@ -770,7 +770,7 @@ export const Chat: FC<{}> = () => {
               </button>
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"
@@ -789,7 +789,7 @@ export const Chat: FC<{}> = () => {
               </button>
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"

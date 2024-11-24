@@ -112,7 +112,7 @@ export const SearchBox: FC = () => {
 
   return (
     <div ref={searchRef} className="relative ml-3">
-      <div className="relative rounded-md shadow-sm">
+      <div className="relative rounded-md shadow-xs">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
           <span className="text-gray-500 sm:text-sm">🔍</span>
         </div>
@@ -138,7 +138,7 @@ export const SearchBox: FC = () => {
         <ul
           id="search-results"
           role="listbox"
-          className="absolute left-0 z-10 mt-2 w-[calc(100%+64px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-none dark:divide-gray-700 dark:bg-slate-700"
+          className="absolute left-0 z-10 mt-2 w-[calc(100%+64px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-hidden dark:divide-gray-700 dark:bg-slate-700"
         >
           <ProgressBar isActive={bookResults.isFetching} />
           {bookResults.isError && (
@@ -159,7 +159,7 @@ export const SearchBox: FC = () => {
                 >
                   <div className="flex items-center justify-between space-x-4">
                     <img
-                      className="h-20 rounded object-cover shadow-sm transition-transform group-hover:scale-105 group-hover:shadow-md"
+                      className="h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
                       src={book.thumbnail || book.cover}
                       style={{ aspectRatio: "2/3" }}
                       alt={`Cover of ${book.title}`}

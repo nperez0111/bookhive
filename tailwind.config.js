@@ -7,9 +7,6 @@ export default {
   content: ["./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
-      fontFamily: {
-        cursive: ["Playwrite AU TAS", "cursive"],
-      },
       textShadow: {
         sm: "0 1px 2px var(--tw-shadow-color)",
         md: "0 2px 4px var(--tw-shadow-color)",

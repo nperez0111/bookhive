@@ -12,7 +12,7 @@ export const ProgressBar: FC<{
   return (
     <div class={`relative w-full p-[1px] ${containerClass}`}>
       <div
-        class={`absolute inset-0 right-full w-0 animate-[loadingBar_2s_linear_infinite] rounded-sm ${className} ${isActive ? "" : "opacity-0"}`}
+        class={`absolute inset-0 right-full w-0 animate-[loadingBar_2s_linear_infinite] rounded-xs ${className} ${isActive ? "" : "opacity-0"}`}
       ></div>
     </div>
   );

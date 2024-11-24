@@ -26,7 +26,7 @@ export const BookInfo: FC<{
                 <img
                   src={book.cover || book.thumbnail}
                   alt={`Cover of ${book.title}`}
-                  className="aspect-[2/3] w-full rounded-lg object-cover shadow-lg"
+                  className="aspect-2/3 w-full rounded-lg object-cover shadow-lg"
                 />
                 <div className="mt-4 flex items-center justify-between">
                   <button className="rounded-full p-2 hover:bg-gray-100">
