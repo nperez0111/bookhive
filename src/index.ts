@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
 import { compress } from "hono/compress";
+import { jsxRenderer } from "hono/jsx-renderer";
 import { etag } from "hono/etag";
 import { secureHeaders } from "hono/secure-headers";
 import { pino } from "pino";
@@ -36,6 +37,12 @@ export type AppContext = {
   resolver: BidirectionalResolver;
 };
 
+declare module "hono" {
+  interface ContextVariableMap {
+    ctx: AppContext;
+  }
+}
+
 export type HonoServer = Hono<{
   Variables: {
     ctx: AppContext;
@@ -65,7 +72,7 @@ export class Server {
       // Not sure that we should store the search cache, so LRU is fine
       kv.mount("search:", lruCacheDriver({ max: 1000 }));
     }
-    kv.mount("book:", sqliteKv({ location: KV_DB_PATH, table: "books" }));
+    kv.mount("book:", sqliteKv({ location: DB_PATH, table: "book_hive" }));
     kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
     kv.mount(
       "auth_session:",
@@ -114,6 +121,7 @@ export class Server {
     app.use(secureHeaders());
     app.use(compress());
     app.use(etag());
+    app.use(jsxRenderer());
 
     // Add context to Hono app
     app.use("*", async (c, next) => {
