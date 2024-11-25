@@ -30,7 +30,6 @@ export const schemaDict = {
             },
             hiveId: {
               type: "string",
-              format: "at-uri",
               description:
                 "The book's hive id, used to correlate user's books with the hive",
             },

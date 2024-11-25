@@ -1,10 +1,10 @@
 {
   "name": "book-hive",
-  "packageManager": "pnpm@9.13.2",
+  "packageManager": "pnpm@9.14.2",
   "type": "module",
   "scripts": {
     "seed:db": "node ./src/initialize.js",
-    "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\" \"pnpm run dev:js\"",
+    "dev": "concurrently --kill-others \"pnpm run dev:backend\" \"pnpm run dev:css\" \"pnpm run dev:js\" -r -p none",
     "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx | pino-pretty",
     "dev:css": "pnpm run build:css --watch",
     "dev:js": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --alias:react=hono/jsx/dom --sourcemap --watch",
@@ -17,7 +17,7 @@
     "start": "JITI_JSX=true jiti ./src/index.ts"
   },
   "dependencies": {
-    "@atproto/api": "^0.13.16",
+    "@atproto/api": "^0.13.18",
     "@atproto/common": "^0.4.4",
     "@atproto/identity": "^0.4.3",
     "@atproto/lexicon": "^0.4.3",
@@ -29,13 +29,14 @@
     "@hono/zod-validator": "0.4.1",
     "@tailwindcss/cli": "4.0.0-beta.2",
     "@tanstack/react-query": "5.61.0",
-    "@types/better-sqlite3": "^7.6.11",
+    "@types/better-sqlite3": "^7.6.12",
     "axios": "1.7.7",
     "better-sqlite3": "11.5.0",
+    "date-fns": "4.1.0",
     "dotenv": "^16.4.5",
     "envalid": "^8.0.0",
+    "hono": "^4.6.12",
     "hono-pino": "0.7.0",
-    "hono": "^4.6.10",
     "iron-session": "^8.0.4",
     "jiti": "2.4.0",
     "kysely": "^0.27.4",
@@ -58,11 +59,11 @@
     "nodemon": "3.1.7",
     "pino-pretty": "13.0.0",
     "postcss": "^8.4.49",
-    "prettier-plugin-tailwindcss": "^0.6.9",
     "prettier": "^3.3.3",
-    "tailwindcss-animated": "^1.1.2",
+    "prettier-plugin-tailwindcss": "^0.6.9",
     "tailwindcss": "4.0.0-beta.2",
-    "typescript": "^5.6.3"
+    "tailwindcss-animated": "^1.1.2",
+    "typescript": "^5.7.2"
   },
   "patchedDependencies": {
     "@atproto/jwk-jose@0.1.2": "patches/@atproto%2Fjwk-jose@0.1.2.patch",

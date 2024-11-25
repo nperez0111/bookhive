@@ -128,7 +128,7 @@ export const Home: FC<Props> = ({
             {myBooks.map((book) => {
               return (
                 <a
-                  href={`/books/${book.uri}`}
+                  href={`/books/${book.hiveId}`}
                   class="rounded-md bg-gray-100 px-3 py-1 hover:bg-gray-200 dark:bg-gray-800"
                 >
                   <div>

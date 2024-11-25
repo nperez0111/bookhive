@@ -1,9 +1,48 @@
 /** @jsx createElement */
 // @ts-ignore
 import { type FC, createElement, Fragment } from "hono/jsx";
+import { useRequestContext } from "hono/jsx-renderer";
+import { formatDistanceToNow } from "date-fns";
 import { Navbar } from "./navbar";
 import * as Profile from "../bsky/lexicon/types/app/bsky/actor/profile";
 import type { BookResult } from "../scrapers";
+
+async function Recommendations({ book }: { book: BookResult }) {
+  const c = useRequestContext();
+  const relatedBooks = await c
+    .get("ctx")
+    .db.selectFrom("book")
+    .selectAll()
+    .where("book.hiveId", "==", book.id)
+    .limit(10)
+    .execute();
+
+  const didHandleMap = await c
+    .get("ctx")
+    .resolver.resolveDidsToHandles(relatedBooks.map((s) => s.authorDid));
+
+  return (
+    <Fragment>
+      <h3 class="mt-5 mb-5 text-xl leading-2">
+        Who else is reading this book?
+      </h3>
+      {relatedBooks.map((related) => {
+        const handle = didHandleMap[related.authorDid] || related.authorDid;
+        return (
+          <div key={related.authorDid}>
+            <a
+              class="text-blue-600"
+              href={`https://bsky.app/profile/${handle}`}
+            >
+              @{handle}
+            </a>{" "}
+            - {related.status} {formatDistanceToNow(related.createdAt)} ago
+          </div>
+        );
+      })}
+    </Fragment>
+  );
+}
 
 export const BookInfo: FC<{
   profile?: Profile.Record;
@@ -22,22 +61,70 @@ export const BookInfo: FC<{
           {/* Left Column - Book Info */}
           <div className="lg:w-3/4">
             <div className="mb-8 flex flex-col gap-8 rounded-xl bg-white p-6 shadow-md md:flex-row">
-              <div className="w-full md:w-1/3 lg:w-1/4">
-                <img
-                  src={book.cover || book.thumbnail}
-                  alt={`Cover of ${book.title}`}
-                  className="aspect-2/3 w-full rounded-lg object-cover shadow-lg"
-                />
+              <div className="w-full p-1 md:w-1/3 lg:w-1/4">
+                <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
+                  {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
+                  <div className="relative">
+                    {/* Book spine/inside effect */}
+                    <div className="absolute top-[1%] left-4 h-[96%] w-[90%] rounded-r-md border border-gray-400 bg-white shadow-[10px_40px_40px_-10px_rgba(0,0,0,0.12),inset_-2px_0_0_gray,inset_-3px_0_0_#dbdbdb,inset_-4px_0_0_white,inset_-5px_0_0_#dbdbdb,inset_-6px_0_0_white,inset_-7px_0_0_#dbdbdb,inset_-8px_0_0_white,inset_-9px_0_0_#dbdbdb]" />
+
+                    {/* Book cover with image */}
+                    <div className="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
+                      <img
+                        src={book.cover || book.thumbnail}
+                        alt={`Cover of ${book.title}`}
+                        className="col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
+                      />
+
+                      {/* Light effect overlay */}
+                      <div className="absolute top-0 z-[5] ml-4 h-full w-5 border-l-2 border-black/5 bg-gradient-to-r from-white/20 to-transparent transition-all duration-500 group-hover:ml-[14px]" />
+
+                      {/* Shine effect */}
+                      <div className="absolute top-0 right-0 z-[4] h-full w-[90%] rounded bg-gradient-to-r from-transparent to-white/20 opacity-10 transition-all duration-500" />
+                    </div>
+                  </div>
+                </div>
+
+                <form action="/books" method="post" class="mt-4">
+                  {/* author, title, year, status, isbn, hiveId, coverImage */}
+                  <input
+                    type="hidden"
+                    name="author"
+                    value={book.authors.join(", ")}
+                  />
+                  <input type="hidden" name="title" value={book.title} />
+                  {book.publishedDate && (
+                    <input
+                      type="hidden"
+                      name="year"
+                      value={new Date(book.publishedDate).getFullYear()}
+                    />
+                  )}
+                  <input type="hidden" name="status" value="reading" />
+                  <input
+                    type="hidden"
+                    name="isbn"
+                    value={book.identifiers.goodreads}
+                  />
+                  <input type="hidden" name="hiveId" value={book.id} />
+                  <input type="hidden" name="coverImage" value={book.cover} />
+                  <button
+                    type="submit"
+                    class="flex w-full cursor-pointer justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    Add to my hive
+                  </button>
+                </form>
                 <div className="mt-4 flex items-center justify-between">
-                  <button className="rounded-full p-2 hover:bg-gray-100">
+                  <button className="rounded-full bg-indigo-800 p-2 hover:bg-gray-100">
                     Share
                     {/* <Share2 className="h-5 w-5 text-gray-600" /> */}
                   </button>
-                  <button className="rounded-full p-2 hover:bg-gray-100">
+                  <button className="rounded-full bg-indigo-800 p-2 hover:bg-gray-100">
                     Heart
                     {/* <Heart className="h-5 w-5 text-gray-600" /> */}
                   </button>
-                  <button className="rounded-full p-2 hover:bg-gray-100">
+                  <button className="rounded-full bg-indigo-800 p-2 hover:bg-gray-100">
                     ...
                     {/* <MoreHorizontal className="h-5 w-5 text-gray-600" /> */}
                   </button>
@@ -137,7 +224,9 @@ export const BookInfo: FC<{
           </div>
 
           {/* Right Column - Recommendations */}
-          <div className="lg:w-1/4">Sidebar</div>
+          <aside className="lg:w-1/4">
+            <Recommendations book={book} />
+          </aside>
         </div>
       </div>
     </Fragment>

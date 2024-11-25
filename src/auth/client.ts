@@ -31,13 +31,13 @@ export const createClient = async (kv: Storage) => {
         throw new Error(`Lock timeout for ${key}`);
       }
 
-      const lock = await kv.get<number>(key);
+      const lock = await kv.get<number>(`auth_lock:${key}`);
       if (!lock) {
         try {
-          await kv.set(key, time);
+          await kv.set(`auth_lock:${key}`, time);
           return cb();
         } finally {
-          await kv.del(key);
+          await kv.del(`auth_lock:${key}`);
         }
       }
 
