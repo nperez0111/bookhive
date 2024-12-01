@@ -49,7 +49,7 @@ export const Login: FC<{ error?: string }> = ({ error }) => (
       </form>
 
       <p class="mt-10 text-center text-sm/6 text-gray-500">
-        Don't have an account on the Atmosphere?
+        Don't have an account?
         <br />
         <a
           href="https://bsky.app"

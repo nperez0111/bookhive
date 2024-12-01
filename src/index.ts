@@ -26,6 +26,8 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { createRouter } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
+import { getIronSession } from "iron-session";
+import { Agent } from "@atproto/api";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -35,6 +37,8 @@ export type AppContext = {
   logger: pino.Logger;
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
+  baseIdResolver: ReturnType<typeof createIdResolver>;
+  getSessionAgent: (req: Request, res: Response) => Promise<Agent | null>;
 };
 
 declare module "hono" {
@@ -48,6 +52,33 @@ export type HonoServer = Hono<{
     ctx: AppContext;
   };
 }>;
+
+export type Session = { did: string };
+
+// Helper function to get the Atproto Agent for the active session
+export async function getSessionAgent(
+  req: Request,
+  res: Response,
+  ctx: AppContext,
+) {
+  const session = await getIronSession<Session>(req, res, {
+    cookieName: "sid",
+    password: env.COOKIE_SECRET,
+  });
+
+  if (!session.did) {
+    return null;
+  }
+
+  try {
+    const oauthSession = await ctx.oauthClient.restore(session.did);
+    return oauthSession ? new Agent(oauthSession) : null;
+  } catch (err) {
+    ctx.logger.warn({ err }, "oauth restore failed");
+    await session.destroy();
+    return null;
+  }
+}
 
 export class Server {
   constructor(
@@ -88,6 +119,7 @@ export class Server {
     const baseIdResolver = createIdResolver();
     const ingester = createIngester(db, baseIdResolver);
     const resolver = createBidirectionalResolver(baseIdResolver);
+
     const time = new Date().toISOString();
     const ctx = {
       db,
@@ -95,7 +127,10 @@ export class Server {
       logger,
       oauthClient,
       resolver,
+      baseIdResolver,
       kv,
+      getSessionAgent: (req: Request, res: Response): Promise<Agent | null> =>
+        getSessionAgent(req, res, ctx),
     } satisfies AppContext;
 
     // Subscribe to events on the firehose

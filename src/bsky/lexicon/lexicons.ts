@@ -14,7 +14,7 @@ export const schemaDict = {
         description: "A book in the user's library",
         record: {
           type: "object",
-          required: ["title", "author", "createdAt"],
+          required: ["title", "author", "hiveId", "createdAt"],
           properties: {
             title: {
               type: "string",
@@ -46,16 +46,6 @@ export const schemaDict = {
             year: {
               type: "integer",
               description: "Year of publication",
-            },
-            isbn: {
-              type: "array",
-              description: "Any ISBN numbers for editions of this book",
-              items: {
-                type: "string",
-                description: "ISBN number",
-                minLength: 1,
-                maxLength: 32,
-              },
             },
             status: {
               type: "string",
@@ -186,16 +176,6 @@ export const schemaDict = {
               type: "integer",
               description: "Year of publication",
             },
-            isbn: {
-              type: "array",
-              description: "Any ISBN numbers for editions of this book",
-              items: {
-                type: "string",
-                description: "ISBN number",
-                minLength: 1,
-                maxLength: 32,
-              },
-            },
           },
         },
       },
@@ -286,6 +266,10 @@ export const schemaDict = {
             offset: {
               type: "integer",
               description: "Offset for pagination into the result set",
+            },
+            id: {
+              type: "string",
+              description: "The ID of the book within the hive.",
             },
           },
         },

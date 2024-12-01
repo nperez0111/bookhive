@@ -1,6 +1,6 @@
 /** @jsx createElement */
 // @ts-expect-error
-import { createElement } from "hono/jsx";
+import { createElement, Fragment } from "hono/jsx";
 import { TID } from "@atproto/common";
 import sharp from "sharp";
 
@@ -13,15 +13,17 @@ import * as Buzz from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import { Home } from "./pages/home";
 import { Error } from "./pages/error";
 import { ids } from "./bsky/lexicon/lexicons";
-import { getSessionAgent, loginRouter } from "./auth/router";
+import { loginRouter } from "./auth/router";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { findBookDetails, type BookResult } from "./scrapers";
 import type { BlobRef } from "@atproto/lexicon";
 import { BookInfo } from "./pages/bookInfo";
-import type { Agent } from "@atproto/api";
+import { isDid, type Agent } from "@atproto/api";
 import type { StorageValue } from "unstorage";
-import { jsxRenderer } from "hono/jsx-renderer";
+import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
+import { Navbar } from "./pages/navbar";
+import { ProfilePage } from "./pages/profile";
 
 function readThroughCache<T extends StorageValue>(
   ctx: AppContext,
@@ -101,17 +103,103 @@ async function getProfile(
   return { profile, profileAvatar };
 }
 
+async function refetchBooks({
+  agent,
+  ctx,
+  cursor,
+}: {
+  agent: Agent;
+  ctx: AppContext;
+  cursor?: string;
+}) {
+  if (!agent) {
+    return;
+  }
+  const books = await agent.com.atproto.repo.listRecords({
+    repo: agent.assertDid,
+    collection: ids.BuzzBookhiveBook,
+    limit: 100,
+    cursor,
+  });
+
+  if (!cursor) {
+    // Clear existing books
+    await ctx.db
+      .deleteFrom("book")
+      .where("authorDid", "=", agent.assertDid)
+      .execute();
+  }
+
+  await books.data.records.reduce(async (acc, record) => {
+    await acc;
+    const book = record.value as Book.Record;
+
+    await ctx.db
+      .insertInto("book")
+      .values({
+        uri: record.uri,
+        cid: record.cid,
+        authorDid: agent.assertDid,
+        createdAt: book.createdAt,
+        indexedAt: new Date().toISOString(),
+        author: book.author,
+        title: book.title,
+        hiveId: book.hiveId,
+        status: book.status,
+      })
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet({
+          indexedAt: new Date().toISOString(),
+        }),
+      )
+      .execute();
+  }, Promise.resolve());
+
+  // TODO optimize this
+  if (books.data.records.length === 100) {
+    // Fetch next page, after a short delay
+    await setTimeout(() => {}, 100);
+    return refetchBooks({ agent, ctx, cursor: books.data.cursor });
+  }
+}
+
 export function createRouter(app: HonoServer) {
-  loginRouter(app);
+  loginRouter(app, {
+    onLogin: async ({ agent, ctx }) => {
+      if (!agent) {
+        return;
+      }
+
+      // Fetch books on login
+      await refetchBooks({ agent, ctx });
+    },
+  });
 
   // Homepage
   app.get(
     "/",
-    jsxRenderer(({ children }) => {
-      return <Layout title="Book Hive | Home">{children}</Layout>;
+    jsxRenderer(async ({ children }) => {
+      const c = useRequestContext();
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+      let profile: Profile.Record | null = null;
+      let profileAvatar: string | null = null;
+
+      if (agent) {
+        ({ profile, profileAvatar } = await getProfile(agent, c.get("ctx")));
+      }
+
+      return (
+        <Layout title="Book Hive | Profile">
+          <Navbar
+            profileAvatar={profileAvatar ?? undefined}
+            hasProfile={Boolean(profile)}
+          />
+          {children}
+        </Layout>
+      );
     }),
     async (c) => {
-      const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
 
       const buzzes = await c
         .get("ctx")
@@ -142,14 +230,13 @@ export function createRouter(app: HonoServer) {
         );
       }
 
-      const { profile, profileAvatar } = await getProfile(agent, c.get("ctx"));
+      const { profile } = await getProfile(agent, c.get("ctx"));
 
       return c.render(
         <Home
           latestBuzzes={buzzes}
           didHandleMap={didHandleMap}
           profile={profile ?? undefined}
-          profileAvatar={profileAvatar ?? undefined}
           myBooks={myBooks}
         />,
       );
@@ -157,7 +244,7 @@ export function createRouter(app: HonoServer) {
   );
 
   app.get("/refresh-books", async (c) => {
-    const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
     if (!agent) {
       return c.html(
         <Layout>
@@ -171,53 +258,10 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    async function fetchBooks(cursor?: string) {
-      if (!agent) {
-        return;
-      }
-      const books = await agent.com.atproto.repo.listRecords({
-        repo: agent.assertDid,
-        collection: ids.BuzzBookhiveBook,
-        limit: 100,
-        cursor,
-      });
-
-      await books.data.records.reduce(async (acc, record) => {
-        await acc;
-        const book = record.value as Book.Record;
-
-        await c
-          .get("ctx")
-          .db.insertInto("book")
-          .values({
-            uri: record.uri,
-            cid: record.cid,
-            authorDid: agent.assertDid,
-            createdAt: book.createdAt,
-            indexedAt: new Date().toISOString(),
-            author: book.author,
-            title: book.title,
-            // cover: book.cover?.toString(),
-            isbn: book.isbn?.join(","),
-            year: book.year,
-            status: book.status,
-          })
-          .onConflict((oc) =>
-            oc.column("uri").doUpdateSet({
-              indexedAt: new Date().toISOString(),
-            }),
-          )
-          .execute();
-      }, Promise.resolve());
-
-      if (books.data.records.length === 100) {
-        // Fetch next page, after a short delay
-        await setTimeout(() => {}, 100);
-        return fetchBooks(books.data.cursor);
-      }
-    }
-
-    await fetchBooks();
+    await refetchBooks({
+      agent,
+      ctx: c.get("ctx"),
+    });
 
     const books = await c
       .get("ctx")
@@ -231,13 +275,133 @@ export function createRouter(app: HonoServer) {
     return c.json(books);
   });
 
+  // Redirect to profile/:handle
+  app.get("/profile", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid Session"
+            description="Login to view your profile"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    const handle = await c
+      .get("ctx")
+      .resolver.resolveDidToHandle(agent.assertDid);
+
+    return c.redirect(`/profile/${handle}`);
+  });
+
+  app.get(
+    "/profile/:handle",
+    jsxRenderer(async ({ children }) => {
+      const c = useRequestContext();
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+      let profile: Profile.Record | null = null;
+      let profileAvatar: string | null = null;
+
+      if (agent) {
+        ({ profile, profileAvatar } = await getProfile(agent, c.get("ctx")));
+      }
+
+      return (
+        <Layout title="Book Hive | Profile">
+          <Navbar
+            profileAvatar={profileAvatar ?? undefined}
+            hasProfile={Boolean(profile)}
+          />
+          {children}
+        </Layout>
+      );
+    }),
+    async (c) => {
+      const handle = c.req.param("handle");
+
+      const did = isDid(handle)
+        ? handle
+        : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+
+      if (!did) {
+        return c.render(
+          <Fragment>
+            <h1>Profile {handle} not found</h1>
+            <p>
+              This profile may not exist or has not logged any books on bookhive
+            </p>
+          </Fragment>,
+        );
+      }
+
+      const profileRecord = await c
+        .get("ctx")
+        .db.selectFrom("book")
+        .selectAll()
+        .where("authorDid", "=", did)
+        .executeTakeFirst();
+
+      if (!profileRecord) {
+        return c.render(
+          <Fragment>
+            <h1>Profile {handle} not found</h1>
+            <p>
+              This profile may not exist or has not logged any books on bookhive
+            </p>
+          </Fragment>,
+        );
+      }
+
+      const profile = await c
+        .get("ctx")
+        .kv.get<Profile.Record>(`profile:${did}`);
+      const profileAvatar = await c
+        .get("ctx")
+        .kv.get<string>(`profile:${did}:avatar`);
+
+      const books = await c
+        .get("ctx")
+        .db.selectFrom("book")
+        .selectAll()
+        .where("authorDid", "=", did)
+        .orderBy("indexedAt", "desc")
+        .limit(100)
+        .execute();
+
+      const buzzes = await c
+        .get("ctx")
+        .db.selectFrom("buzz")
+        .selectAll()
+        .where("authorDid", "=", did)
+        .orderBy("indexedAt", "desc")
+        .limit(100)
+        .execute();
+
+      return c.render(
+        <Fragment>
+          <ProfilePage
+            handle={handle}
+            books={books}
+            buzzes={buzzes}
+            profile={profile}
+            profileAvatar={profileAvatar}
+          />
+        </Fragment>,
+      );
+    },
+  );
+
   app.get(
     "/books/:id",
     jsxRenderer(({ children }) => {
       return <Layout title="Book Hive | Home">{children}</Layout>;
     }),
     async (c) => {
-      const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
       if (!agent) {
         return c.html(
           <Layout>
@@ -255,8 +419,6 @@ export function createRouter(app: HonoServer) {
         getProfile(agent, c.get("ctx")),
         c.get("ctx").kv.get<BookResult>(`book:${c.req.param("id")}`),
       ]);
-
-      console.log({ book });
 
       if (!book) {
         return c.html(
@@ -281,13 +443,59 @@ export function createRouter(app: HonoServer) {
     },
   );
 
+  app.delete("/books/:id", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid Session"
+            description="Login to delete a book"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    const bookId = c.req.param("id");
+    const bookUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBook}/${bookId}`;
+
+    const book = await c
+      .get("ctx")
+      .db.selectFrom("book")
+      .selectAll()
+      .where("authorDid", "=", agent.assertDid)
+      .where("book.uri", "=", bookUri)
+      .execute();
+
+    if (book.length === 0) {
+      return c.json({ success: false, bookId, book: null });
+    }
+
+    await agent.com.atproto.repo.deleteRecord({
+      repo: agent.assertDid,
+      collection: ids.BuzzBookhiveBook,
+      rkey: bookId,
+    });
+
+    await c
+      .get("ctx")
+      .db.deleteFrom("book")
+      .where("authorDid", "=", agent.assertDid)
+      .where("book.uri", "=", bookUri)
+      .execute();
+
+    return c.json({ success: true, bookId, book: book[0] });
+  });
+
   app.post(
     "/books",
     jsxRenderer(({ children }) => {
       return <Layout title="Book Hive | Home">{children}</Layout>;
     }),
     async (c) => {
-      const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
       if (!agent) {
         return c.html(
           <Layout>
@@ -301,10 +509,10 @@ export function createRouter(app: HonoServer) {
         );
       }
 
-      const { author, title, year, status, isbn, hiveId, coverImage } =
+      const { author, title, year, status, hiveId, coverImage } =
         await c.req.parseBody();
 
-      console.log({ author, title, year, status, isbn, hiveId, coverImage });
+      console.log({ author, title, year, status, hiveId, coverImage });
 
       let coverImageBlobRef: BlobRef | undefined = undefined;
       if (coverImage) {
@@ -322,12 +530,10 @@ export function createRouter(app: HonoServer) {
             encoding: "image/jpeg",
           },
         );
-        console.log("uploaded image");
         if (uploadResponse.success) {
           coverImageBlobRef = uploadResponse.data.blob;
         }
       }
-      console.log("creating book");
       const rkey = TID.nextStr();
       const record = {
         $type: ids.BuzzBookhiveBook,
@@ -337,12 +543,10 @@ export function createRouter(app: HonoServer) {
         cover: coverImageBlobRef,
         year: year !== undefined ? parseInt(year as string, 10) : undefined,
         status: status as string,
-        isbn: isbn ? (isbn as string).split(",") : undefined,
         hiveId: hiveId as string,
       } satisfies Book.Record;
 
       const validation = Book.validateRecord(record);
-      console.log(validation);
       if (!validation.success) {
         if (c.req.header()["accept"] === "application/json") {
           return c.json(
@@ -384,14 +588,12 @@ export function createRouter(app: HonoServer) {
             author: record.author,
             title: record.title,
             hiveId: record.hiveId,
-            cover: record.cover?.ref.toString(),
-            isbn: record.isbn?.join(","),
             year: record.year,
             status: record.status,
           })
           .execute();
 
-        return c.redirect("/");
+        return c.redirect("/books/" + record.hiveId);
       } catch (err) {
         c.get("ctx").logger.warn({ err }, "failed to write book");
         return c.html(
@@ -409,7 +611,7 @@ export function createRouter(app: HonoServer) {
   );
 
   app.post("/buzz", async (c) => {
-    const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
     if (!agent) {
       return c.html(
         <Layout>
@@ -510,10 +712,11 @@ export function createRouter(app: HonoServer) {
         q: z.string(),
         limit: z.coerce.number().default(25),
         offset: z.coerce.number().optional().default(0),
+        id: z.string().optional(),
       }),
     ),
     async (c) => {
-      const agent = await getSessionAgent(c.req.raw, c.res, c.get("ctx"));
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
       if (!agent) {
         return c.html(
           <Layout>
@@ -526,7 +729,14 @@ export function createRouter(app: HonoServer) {
           401,
         );
       }
-      const { q, limit, offset } = c.req.valid("query");
+      const { q, limit, offset, id } = c.req.valid("query");
+
+      if (id) {
+        // short-circuit if we have an ID to look up
+        const book = await c.get("ctx").kv.get<BookResult>(`book:${id}`);
+
+        return c.json([book].filter(Boolean));
+      }
 
       const bookSearch = await readThroughCache(
         c.get("ctx"),

@@ -22,6 +22,10 @@
           "offset": {
             "type": "integer",
             "description": "Offset for pagination into the result set"
+          },
+          "id": {
+            "type": "string",
+            "description": "The ID of the book within the hive."
           }
         }
       },

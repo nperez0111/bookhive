@@ -15,6 +15,8 @@ export interface QueryParams {
   limit: number;
   /** Offset for pagination into the result set */
   offset?: number;
+  /** The ID of the book within the hive. */
+  id?: string;
 }
 
 export type InputSchema = undefined;

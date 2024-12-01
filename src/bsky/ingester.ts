@@ -30,14 +30,13 @@ export function createIngester(db: Database, idResolver: IdResolver) {
               uri: evt.uri.toString(),
               cid: evt.cid.toString(),
               authorDid: evt.did,
+              hiveId: record.hiveId,
               createdAt: record.createdAt,
               indexedAt: now.toISOString(),
               status: record.status,
               author: record.author,
               title: record.title,
-              cover: record.cover?.toString(),
               year: record.year,
-              isbn: record.isbn?.join(","),
             })
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet({
@@ -45,9 +44,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
                 status: record.status,
                 author: record.author,
                 title: record.title,
-                cover: record.cover?.toString(),
                 year: record.year,
-                isbn: record.isbn?.join(","),
               }),
             )
             .execute();

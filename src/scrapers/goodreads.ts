@@ -120,7 +120,12 @@ class Goodreads {
     const seriesMatch = result.title.match(/\((.*?),\s*#(\d+)\)/);
 
     const match: BookResult = {
-      id: `bk_${sha256base64(objectHash({ title: result.bookTitleBare, author: result.author.name })).slice(0, 20)}`,
+      id: `bk_${sha256base64(
+        objectHash({
+          title: result.bookTitleBare.toLocaleLowerCase(),
+          author: result.author.name.toLocaleLowerCase(),
+        }),
+      ).slice(0, 20)}`,
       title: result.bookTitleBare,
       authors: [result.author.name],
       url: `${Goodreads.BOOK_URL}${result.bookId}`,

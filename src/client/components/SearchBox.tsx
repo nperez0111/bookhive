@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
 import type { BookResult } from "../../scrapers";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
 
@@ -32,32 +32,6 @@ export const SearchBox: FC = () => {
       }
 
       return res.json();
-    },
-  });
-
-  // TODO should probably just be a page navigation
-  const addBookMutation = useMutation({
-    mutationFn: async (book: BookResult) => {
-      const response = await fetch(`/books`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          author: book.authors.join(", "),
-          title: book.title,
-          year: book.publishedDate,
-          coverImage: book.cover || book.thumbnail,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to save book");
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      setIsOpened(false);
-      // Could add toast notification here
     },
   });
 
@@ -101,7 +75,7 @@ export const SearchBox: FC = () => {
       case "Enter":
         e.preventDefault();
         if (selectedIndex >= 0 && books[selectedIndex]) {
-          addBookMutation.mutate(books[selectedIndex]);
+          window.location.href = `/books/${books[selectedIndex].id}`;
         }
         break;
       case "Escape":
@@ -127,7 +101,7 @@ export const SearchBox: FC = () => {
           autocomplete="off"
           placeholder="Search books..."
           id="search-books"
-          className="block w-64 rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm/6 dark:placeholder:text-gray-800"
+          className="block w-64 rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm/6 dark:placeholder:text-gray-800"
           value={query}
           onFocus={handleFocus}
           onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
@@ -138,7 +112,7 @@ export const SearchBox: FC = () => {
         <ul
           id="search-results"
           role="listbox"
-          className="absolute left-0 z-10 mt-2 w-[calc(100%+64px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-hidden dark:divide-gray-700 dark:bg-slate-700"
+          className="absolute left-0 z-10 mt-2 w-[calc(100%+64px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden dark:divide-gray-700 dark:bg-slate-700"
         >
           <ProgressBar isActive={bookResults.isFetching} />
           {bookResults.isError && (

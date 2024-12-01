@@ -12,14 +12,12 @@ export interface Record {
   /** The author of the book */
   author: string;
   /** The book's hive id, used to correlate user's books with the hive */
-  hiveId?: string;
+  hiveId: string;
   createdAt: string;
   /** Cover image of the book */
   cover?: BlobRef;
   /** Year of publication */
   year?: number;
-  /** Any ISBN numbers for editions of this book */
-  isbn?: string[];
   status?:
     | "buzz.bookhive.defs#finished"
     | "buzz.bookhive.defs#reading"

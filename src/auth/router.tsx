@@ -5,43 +5,25 @@ import { createElement } from "hono/jsx";
 import { isValidHandle } from "@atproto/syntax";
 import { getIronSession } from "iron-session";
 
-import { Agent } from "@atproto/api";
 import { OAuthResolverError } from "@atproto/oauth-client-node";
 import { env } from "../env";
-import type { AppContext, HonoServer } from "../index";
+import type { AppContext, HonoServer, Session } from "../index";
 import { Layout } from "../pages/layout";
 
 import { Error } from "../pages/error";
 import { Login } from "../pages/login";
+import { Agent } from "@atproto/api";
 
-export type Session = { did: string };
-
-// Helper function to get the Atproto Agent for the active session
-export async function getSessionAgent(
-  req: Request,
-  res: Response,
-  ctx: AppContext,
+export function loginRouter(
+  app: HonoServer,
+  {
+    onLogin = async () => {},
+    onLogout = async () => {},
+  }: {
+    onLogin?: (ctx: { agent: Agent | null; ctx: AppContext }) => Promise<void>;
+    onLogout?: (ctx: { agent: Agent | null; ctx: AppContext }) => Promise<void>;
+  } = {},
 ) {
-  const session = await getIronSession<Session>(req, res, {
-    cookieName: "sid",
-    password: env.COOKIE_SECRET,
-  });
-
-  if (!session.did) {
-    return null;
-  }
-
-  try {
-    const oauthSession = await ctx.oauthClient.restore(session.did);
-    return oauthSession ? new Agent(oauthSession) : null;
-  } catch (err) {
-    ctx.logger.warn({ err }, "oauth restore failed");
-    await session.destroy();
-    return null;
-  }
-}
-
-export function loginRouter(app: HonoServer) {
   // OAuth metadata
   app.get("/client-metadata.json", async (c) => {
     return c.json(c.get("ctx").oauthClient.clientMetadata);
@@ -59,6 +41,12 @@ export function loginRouter(app: HonoServer) {
       // assert(!clientSession.did, "session already exists");
       clientSession.did = session.did;
       await clientSession.save();
+
+      const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
+      const agent = oauthSession ? new Agent(oauthSession) : null;
+      await onLogin({ agent, ctx: c.get("ctx") });
+
+      return c.redirect("/");
     } catch (err) {
       c.get("ctx").logger.error({ err }, "oauth callback failed");
       return c.html(
@@ -67,7 +55,6 @@ export function loginRouter(app: HonoServer) {
         </Layout>,
       );
     }
-    return c.redirect("/");
   });
 
   // Login page
@@ -121,6 +108,9 @@ export function loginRouter(app: HonoServer) {
       cookieName: "sid",
       password: env.COOKIE_SECRET,
     });
+    const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
+    const agent = oauthSession ? new Agent(oauthSession) : null;
+    await onLogout({ agent, ctx: c.get("ctx") });
     await session.destroy();
     return c.redirect("/");
   });

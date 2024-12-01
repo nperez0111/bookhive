@@ -18,8 +18,6 @@ export interface Record {
   cover: BlobRef;
   /** Year of publication */
   year: number;
-  /** Any ISBN numbers for editions of this book */
-  isbn?: string[];
   [k: string]: unknown;
 }
 

@@ -8,7 +8,7 @@
       "description": "A book in the user's library",
       "record": {
         "type": "object",
-        "required": ["title", "author", "createdAt"],
+        "required": ["title", "author", "hiveId", "createdAt"],
         "properties": {
           "title": {
             "type": "string",
@@ -39,16 +39,6 @@
           "year": {
             "type": "integer",
             "description": "Year of publication"
-          },
-          "isbn": {
-            "type": "array",
-            "description": "Any ISBN numbers for editions of this book",
-            "items": {
-              "type": "string",
-              "description": "ISBN number",
-              "minLength": 1,
-              "maxLength": 32
-            }
           },
           "status": {
             "type": "string",

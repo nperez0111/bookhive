@@ -16,16 +16,14 @@ export type DatabaseSchema = {
 export type Book = {
   uri: string;
   cid: string;
-  hiveId: string | null;
+  hiveId: string;
   authorDid: string;
   createdAt: string;
   indexedAt: string;
   status: string | null;
   author: string;
   title: string;
-  cover: string | null;
   year: number | null;
-  isbn: string | null;
 };
 
 export type Buzz = {
@@ -63,11 +61,9 @@ migrations["001"] = {
       .addColumn("indexedAt", "varchar", (col) => col.notNull())
       .addColumn("author", "varchar", (col) => col.notNull())
       .addColumn("title", "varchar", (col) => col.notNull())
-      .addColumn("hiveId", "varchar")
+      .addColumn("hiveId", "varchar", (col) => col.notNull())
       .addColumn("status", "varchar")
-      .addColumn("cover", "varchar")
       .addColumn("year", "integer")
-      .addColumn("isbn", "varchar")
       .execute();
     await db.schema
       .createTable("buzz")
