@@ -33,6 +33,8 @@ export function createIngester(db: Database, idResolver: IdResolver) {
               hiveId: record.hiveId,
               createdAt: record.createdAt,
               indexedAt: now.toISOString(),
+              startedAt: record.startedAt,
+              finishedAt: record.finishedAt,
               status: record.status,
               author: record.author,
               title: record.title,

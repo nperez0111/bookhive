@@ -14,6 +14,8 @@ export interface Record {
   /** The book's hive id, used to correlate user's books with the hive */
   hiveId: string;
   createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
   /** Cover image of the book */
   cover?: BlobRef;
   /** Year of publication */

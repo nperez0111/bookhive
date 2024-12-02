@@ -7,7 +7,6 @@ import sharp from "sharp";
 import type { AppContext, HonoServer } from ".";
 import { Layout } from "./pages/layout";
 
-import * as Profile from "./bsky/lexicon/types/app/bsky/actor/profile";
 import * as Book from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import { Home } from "./pages/home";
@@ -19,11 +18,12 @@ import { z } from "zod";
 import { findBookDetails, type BookResult } from "./scrapers";
 import type { BlobRef } from "@atproto/lexicon";
 import { BookInfo } from "./pages/bookInfo";
-import { isDid, type Agent } from "@atproto/api";
+import { Agent, isDid } from "@atproto/api";
 import type { StorageValue } from "unstorage";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
+import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 
 function readThroughCache<T extends StorageValue>(
   ctx: AppContext,
@@ -49,59 +49,35 @@ function readThroughCache<T extends StorageValue>(
 async function getProfile(
   agent: Agent,
   ctx: AppContext,
-): Promise<{
-  profile: Profile.Record | null;
-  profileAvatar: string | null;
-}> {
-  const profile = await readThroughCache(
-    ctx,
-    "profile:" + agent.assertDid,
-    async () => {
-      const { data: profileRecord } = await agent.com.atproto.repo.getRecord({
-        repo: agent.assertDid,
-        collection: ids.AppBskyActorProfile,
-        rkey: "self",
-      });
+  did: string = agent.assertDid,
+): Promise<ProfileViewDetailed> {
+  return readThroughCache(ctx, "profile:" + did, async () => {
+    return agent
+      .getProfile({
+        actor: did,
+      })
+      .then((res) => res.data);
+  });
+}
 
-      const profile =
-        Profile.isRecord(profileRecord.value) &&
-        Profile.validateRecord(profileRecord.value).success
-          ? profileRecord.value
-          : undefined;
-      if (!profile) {
-        return null;
-      }
+const renderLayout = jsxRenderer(async ({ children }) => {
+  const c = useRequestContext();
+  const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+  let profile: ProfileViewDetailed | null = null;
 
-      return profile;
-    },
-  );
-
-  if (!profile) {
-    return { profile: null, profileAvatar: null };
+  if (agent) {
+    profile = await getProfile(agent, c.get("ctx"));
   }
 
-  const profileAvatar = await readThroughCache(
-    ctx,
-    "profile:" + agent.assertDid + ":avatar",
-    async () => {
-      if (profile.avatar) {
-        const resp = await agent.com.atproto.sync.getBlob({
-          cid: profile.avatar?.ref.toString()!,
-          did: agent.assertDid,
-        });
-        return (
-          "data:" +
-          profile.avatar.mimeType +
-          ";base64, " +
-          Buffer.from(resp.data.buffer).toString("base64")
-        );
-      }
-      return null;
-    },
-  );
+  console.log(profile?.avatar);
 
-  return { profile, profileAvatar };
-}
+  return (
+    <Layout title="Book Hive | Profile">
+      <Navbar profile={profile} />
+      {children}
+    </Layout>
+  );
+});
 
 async function refetchBooks({
   agent,
@@ -146,6 +122,8 @@ async function refetchBooks({
         title: book.title,
         hiveId: book.hiveId,
         status: book.status,
+        startedAt: book.startedAt,
+        finishedAt: book.finishedAt,
       })
       .onConflict((oc) =>
         oc.column("uri").doUpdateSet({
@@ -176,72 +154,53 @@ export function createRouter(app: HonoServer) {
   });
 
   // Homepage
-  app.get(
-    "/",
-    jsxRenderer(async ({ children }) => {
-      const c = useRequestContext();
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-      let profile: Profile.Record | null = null;
-      let profileAvatar: string | null = null;
+  app.get("/", renderLayout, async (c) => {
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
 
-      if (agent) {
-        ({ profile, profileAvatar } = await getProfile(agent, c.get("ctx")));
-      }
+    const buzzes = await c
+      .get("ctx")
+      .db.selectFrom("buzz")
+      .selectAll()
+      .orderBy("indexedAt", "desc")
+      .limit(10)
+      .execute();
 
-      return (
-        <Layout title="Book Hive | Profile">
-          <Navbar
-            profileAvatar={profileAvatar ?? undefined}
-            hasProfile={Boolean(profile)}
-          />
-          {children}
-        </Layout>
-      );
-    }),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const myBooks = agent
+      ? await c
+          .get("ctx")
+          .db.selectFrom("book")
+          .selectAll()
+          .where("authorDid", "=", agent.assertDid)
+          .orderBy("indexedAt", "desc")
+          .limit(10)
+          .execute()
+      : undefined;
 
-      const buzzes = await c
-        .get("ctx")
-        .db.selectFrom("buzz")
-        .selectAll()
-        .orderBy("indexedAt", "desc")
-        .limit(10)
-        .execute();
+    const didHandleMap = await c
+      .get("ctx")
+      .resolver.resolveDidsToHandles(buzzes.map((s) => s.authorDid));
 
-      const myBooks = agent
-        ? await c
-            .get("ctx")
-            .db.selectFrom("book")
-            .selectAll()
-            .where("authorDid", "=", agent.assertDid)
-            .orderBy("indexedAt", "desc")
-            .limit(10)
-            .execute()
-        : undefined;
-
-      const didHandleMap = await c
-        .get("ctx")
-        .resolver.resolveDidsToHandles(buzzes.map((s) => s.authorDid));
-
-      if (!agent) {
-        return c.render(
-          <Home latestBuzzes={buzzes} didHandleMap={didHandleMap} />,
-        );
-      }
-
-      const { profile } = await getProfile(agent, c.get("ctx"));
-
+    if (!agent) {
       return c.render(
-        <Home
-          latestBuzzes={buzzes}
-          didHandleMap={didHandleMap}
-          profile={profile ?? undefined}
-          myBooks={myBooks}
-        />,
+        <Home latestBuzzes={buzzes} didHandleMap={didHandleMap} />,
       );
-    },
-  );
+    }
+
+    let profile: ProfileViewDetailed | null = null;
+
+    if (agent) {
+      profile = await getProfile(agent, c.get("ctx"));
+    }
+
+    return c.render(
+      <Home
+        latestBuzzes={buzzes}
+        didHandleMap={didHandleMap}
+        profile={profile ?? undefined}
+        myBooks={myBooks}
+      />,
+    );
+  });
 
   app.get("/refresh-books", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
@@ -298,150 +257,124 @@ export function createRouter(app: HonoServer) {
     return c.redirect(`/profile/${handle}`);
   });
 
-  app.get(
-    "/profile/:handle",
-    jsxRenderer(async ({ children }) => {
-      const c = useRequestContext();
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-      let profile: Profile.Record | null = null;
-      let profileAvatar: string | null = null;
+  app.get("/profile/:handle", renderLayout, async (c) => {
+    const handle = c.req.param("handle");
 
-      if (agent) {
-        ({ profile, profileAvatar } = await getProfile(agent, c.get("ctx")));
-      }
+    const did = isDid(handle)
+      ? handle
+      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
 
-      return (
-        <Layout title="Book Hive | Profile">
-          <Navbar
-            profileAvatar={profileAvatar ?? undefined}
-            hasProfile={Boolean(profile)}
-          />
-          {children}
-        </Layout>
-      );
-    }),
-    async (c) => {
-      const handle = c.req.param("handle");
-
-      const did = isDid(handle)
-        ? handle
-        : await c.get("ctx").baseIdResolver.handle.resolve(handle);
-
-      if (!did) {
-        return c.render(
-          <Fragment>
-            <h1>Profile {handle} not found</h1>
-            <p>
-              This profile may not exist or has not logged any books on bookhive
-            </p>
-          </Fragment>,
-        );
-      }
-
-      const profileRecord = await c
-        .get("ctx")
-        .db.selectFrom("book")
-        .selectAll()
-        .where("authorDid", "=", did)
-        .executeTakeFirst();
-
-      if (!profileRecord) {
-        return c.render(
-          <Fragment>
-            <h1>Profile {handle} not found</h1>
-            <p>
-              This profile may not exist or has not logged any books on bookhive
-            </p>
-          </Fragment>,
-        );
-      }
-
-      const profile = await c
-        .get("ctx")
-        .kv.get<Profile.Record>(`profile:${did}`);
-      const profileAvatar = await c
-        .get("ctx")
-        .kv.get<string>(`profile:${did}:avatar`);
-
-      const books = await c
-        .get("ctx")
-        .db.selectFrom("book")
-        .selectAll()
-        .where("authorDid", "=", did)
-        .orderBy("indexedAt", "desc")
-        .limit(100)
-        .execute();
-
-      const buzzes = await c
-        .get("ctx")
-        .db.selectFrom("buzz")
-        .selectAll()
-        .where("authorDid", "=", did)
-        .orderBy("indexedAt", "desc")
-        .limit(100)
-        .execute();
-
+    if (!did) {
       return c.render(
         <Fragment>
-          <ProfilePage
-            handle={handle}
-            books={books}
-            buzzes={buzzes}
-            profile={profile}
-            profileAvatar={profileAvatar}
-          />
+          <h1>Profile {handle} not found</h1>
+          <p>
+            This profile may not exist or has not logged any books on bookhive
+          </p>
         </Fragment>,
       );
-    },
-  );
+    }
 
-  app.get(
-    "/books/:id",
-    jsxRenderer(({ children }) => {
-      return <Layout title="Book Hive | Home">{children}</Layout>;
-    }),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-      if (!agent) {
-        return c.html(
-          <Layout>
-            <Error
-              message="Invalid Session"
-              description="Login to view a book"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
-        );
-      }
+    const isBuzzer = Boolean(
+      await c
+        .get("ctx")
+        .db.selectFrom("book")
+        .select("authorDid")
+        .where("authorDid", "=", did)
+        .union(
+          c
+            .get("ctx")
+            .db.selectFrom("buzz")
+            .select("authorDid")
+            .where("authorDid", "=", did),
+        )
+        .limit(1)
+        .executeTakeFirst(),
+    );
 
-      const [{ profile, profileAvatar }, book] = await Promise.all([
-        getProfile(agent, c.get("ctx")),
-        c.get("ctx").kv.get<BookResult>(`book:${c.req.param("id")}`),
-      ]);
+    // if (!profileRecord) {
+    //   return c.render(
+    //     <Fragment>
+    //       <h1>Profile {handle} not found</h1>
+    //       <p>
+    //         This profile may not exist or has not logged any books on bookhive
+    //       </p>
+    //     </Fragment>,
+    //   );
+    // }
 
-      if (!book) {
-        return c.html(
-          <Layout>
-            <Error
-              message="Book not found"
-              description="The book you are looking for does not exist"
-              statusCode={404}
-            />
-          </Layout>,
-          404,
-        );
-      }
+    const agent =
+      (await c.get("ctx").getSessionAgent(c.req.raw, c.res)) ||
+      new Agent("https://public.api.bsky.app/xrpc");
+    const profile = await getProfile(agent, c.get("ctx"), did);
 
-      return c.render(
-        <BookInfo
-          profile={profile ?? undefined}
-          profileAvatar={profileAvatar ?? undefined}
-          book={book}
-        />,
+    const books = isBuzzer
+      ? await c
+          .get("ctx")
+          .db.selectFrom("book")
+          .selectAll()
+          .where("authorDid", "=", did)
+          .orderBy("indexedAt", "desc")
+          .limit(100)
+          .execute()
+      : [];
+
+    const buzzes = isBuzzer
+      ? await c
+          .get("ctx")
+          .db.selectFrom("buzz")
+          .selectAll()
+          .where("authorDid", "=", did)
+          .orderBy("indexedAt", "desc")
+          .limit(100)
+          .execute()
+      : [];
+
+    return c.render(
+      <ProfilePage
+        isBuzzer={isBuzzer}
+        handle={handle}
+        books={books}
+        buzzes={buzzes}
+        profile={profile}
+      />,
+    );
+  });
+
+  app.get("/books/:id", renderLayout, async (c) => {
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid Session"
+            description="Login to view a book"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
       );
-    },
-  );
+    }
+
+    const book = await c
+      .get("ctx")
+      .kv.get<BookResult>(`book:${c.req.param("id")}`);
+
+    if (!book) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Book not found"
+            description="The book you are looking for does not exist"
+            statusCode={404}
+          />
+        </Layout>,
+        404,
+      );
+    }
+
+    return c.render(<BookInfo book={book} />);
+  });
 
   app.delete("/books/:id", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
@@ -489,126 +422,120 @@ export function createRouter(app: HonoServer) {
     return c.json({ success: true, bookId, book: book[0] });
   });
 
-  app.post(
-    "/books",
-    jsxRenderer(({ children }) => {
-      return <Layout title="Book Hive | Home">{children}</Layout>;
-    }),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-      if (!agent) {
-        return c.html(
-          <Layout>
-            <Error
-              message="Invalid Session"
-              description="Login to add a book"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
-        );
+  app.post("/books", renderLayout, async (c) => {
+    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid Session"
+            description="Login to add a book"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    const { author, title, year, status, hiveId, coverImage } =
+      await c.req.parseBody();
+
+    console.log({ author, title, year, status, hiveId, coverImage });
+
+    let coverImageBlobRef: BlobRef | undefined = undefined;
+    if (coverImage) {
+      const data = await fetch(coverImage as string).then((res) =>
+        res.arrayBuffer(),
+      );
+
+      const resizedImage = await sharp(data)
+        .resize({ width: 800, withoutEnlargement: true })
+        .jpeg()
+        .toBuffer();
+      const uploadResponse = await agent.com.atproto.repo.uploadBlob(
+        resizedImage,
+        {
+          encoding: "image/jpeg",
+        },
+      );
+      if (uploadResponse.success) {
+        coverImageBlobRef = uploadResponse.data.blob;
       }
+    }
+    const rkey = TID.nextStr();
+    const record = {
+      $type: ids.BuzzBookhiveBook,
+      createdAt: new Date().toISOString(),
+      author: author as string,
+      title: title as string,
+      cover: coverImageBlobRef,
+      year: year !== undefined ? parseInt(year as string, 10) : undefined,
+      status: status as string,
+      hiveId: hiveId as string,
+    } satisfies Book.Record;
 
-      const { author, title, year, status, hiveId, coverImage } =
-        await c.req.parseBody();
-
-      console.log({ author, title, year, status, hiveId, coverImage });
-
-      let coverImageBlobRef: BlobRef | undefined = undefined;
-      if (coverImage) {
-        const data = await fetch(coverImage as string).then((res) =>
-          res.arrayBuffer(),
-        );
-
-        const resizedImage = await sharp(data)
-          .resize({ width: 800, withoutEnlargement: true })
-          .jpeg()
-          .toBuffer();
-        const uploadResponse = await agent.com.atproto.repo.uploadBlob(
-          resizedImage,
-          {
-            encoding: "image/jpeg",
-          },
-        );
-        if (uploadResponse.success) {
-          coverImageBlobRef = uploadResponse.data.blob;
-        }
-      }
-      const rkey = TID.nextStr();
-      const record = {
-        $type: ids.BuzzBookhiveBook,
-        createdAt: new Date().toISOString(),
-        author: author as string,
-        title: title as string,
-        cover: coverImageBlobRef,
-        year: year !== undefined ? parseInt(year as string, 10) : undefined,
-        status: status as string,
-        hiveId: hiveId as string,
-      } satisfies Book.Record;
-
-      const validation = Book.validateRecord(record);
-      if (!validation.success) {
-        if (c.req.header()["accept"] === "application/json") {
-          return c.json(
-            { error: "Invalid book", message: validation.error.message },
-            400,
-          );
-        }
-        return c.html(
-          <Layout>
-            <Error
-              message="Invalid book"
-              description="When validating the book you inputted, it was invalid"
-              statusCode={400}
-            />
-          </Layout>,
+    const validation = Book.validateRecord(record);
+    if (!validation.success) {
+      if (c.req.header()["accept"] === "application/json") {
+        return c.json(
+          { error: "Invalid book", message: validation.error.message },
           400,
         );
       }
+      return c.html(
+        <Layout>
+          <Error
+            message="Invalid book"
+            description="When validating the book you inputted, it was invalid"
+            statusCode={400}
+          />
+        </Layout>,
+        400,
+      );
+    }
 
-      try {
-        const res = await agent.com.atproto.repo.putRecord({
-          repo: agent.assertDid,
-          collection: ids.BuzzBookhiveBook,
-          rkey,
-          record,
-          validate: false,
-        });
-        console.log(record.cover?.ref.toString());
+    try {
+      const res = await agent.com.atproto.repo.putRecord({
+        repo: agent.assertDid,
+        collection: ids.BuzzBookhiveBook,
+        rkey,
+        record,
+        validate: false,
+      });
+      console.log(record.cover?.ref.toString());
 
-        await c
-          .get("ctx")
-          .db.insertInto("book")
-          .values({
-            uri: res.data.uri,
-            cid: res.data.cid,
-            authorDid: agent.assertDid,
-            createdAt: record.createdAt,
-            indexedAt: new Date().toISOString(),
-            author: record.author,
-            title: record.title,
-            hiveId: record.hiveId,
-            year: record.year,
-            status: record.status,
-          })
-          .execute();
+      await c
+        .get("ctx")
+        .db.insertInto("book")
+        .values({
+          uri: res.data.uri,
+          cid: res.data.cid,
+          authorDid: agent.assertDid,
+          createdAt: record.createdAt,
+          indexedAt: new Date().toISOString(),
+          author: record.author,
+          title: record.title,
+          hiveId: record.hiveId,
+          year: record.year,
+          status: record.status,
+        })
+        .execute();
 
-        return c.redirect("/books/" + record.hiveId);
-      } catch (err) {
-        c.get("ctx").logger.warn({ err }, "failed to write book");
-        return c.html(
-          <Layout>
-            <Error
-              message="Failed to record book"
-              description={"Error: " + (err as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
-        );
-      }
-    },
-  );
+      return c.redirect("/books/" + record.hiveId);
+    } catch (err) {
+      c.get("ctx").logger.warn({ err }, "failed to write book");
+      return c.html(
+        <Layout>
+          <Error
+            message="Failed to record book"
+            description={"Error: " + (err as Error).message}
+            statusCode={500}
+          />
+        </Layout>,
+        500,
+      );
+    }
+  });
 
   app.post("/buzz", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);

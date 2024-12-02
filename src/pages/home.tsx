@@ -2,9 +2,9 @@
 // @ts-expect-error
 import { type FC, createElement, Fragment } from "hono/jsx";
 import { type Buzz, type Book } from "../db";
-import * as Profile from "../bsky/lexicon/types/app/bsky/actor/profile";
 // import { Chat } from "./chat";
 import { Script } from "./utils/script";
+import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 
 function ts(status: Buzz) {
   const createdAt = new Date(status.createdAt);
@@ -16,7 +16,7 @@ function ts(status: Buzz) {
 type Props = {
   latestBuzzes: Buzz[];
   didHandleMap: Record<string, string>;
-  profile?: Profile.Record;
+  profile?: ProfileViewDetailed;
   myBooks?: Book[];
 };
 

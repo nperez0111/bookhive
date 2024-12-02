@@ -26,13 +26,11 @@ export function createServer(options?: XrpcOptions): Server {
 export class Server {
   xrpc: XrpcServer;
   buzz: BuzzNS;
-  app: AppNS;
   com: ComNS;
 
   constructor(options?: XrpcOptions) {
     this.xrpc = createXrpcServer(schemas, options);
     this.buzz = new BuzzNS(this);
-    this.app = new AppNS(this);
     this.com = new ComNS(this);
   }
 }
@@ -63,34 +61,6 @@ export class BuzzBookhiveNS {
   ) {
     const nsid = "buzz.bookhive.searchBooks"; // @ts-ignore
     return this._server.xrpc.method(nsid, cfg);
-  }
-}
-
-export class AppNS {
-  _server: Server;
-  bsky: AppBskyNS;
-
-  constructor(server: Server) {
-    this._server = server;
-    this.bsky = new AppBskyNS(server);
-  }
-}
-
-export class AppBskyNS {
-  _server: Server;
-  actor: AppBskyActorNS;
-
-  constructor(server: Server) {
-    this._server = server;
-    this.actor = new AppBskyActorNS(server);
-  }
-}
-
-export class AppBskyActorNS {
-  _server: Server;
-
-  constructor(server: Server) {
-    this._server = server;
   }
 }
 

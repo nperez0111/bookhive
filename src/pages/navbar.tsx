@@ -2,12 +2,12 @@
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
 import { Script } from "./utils/script";
+import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 
 export const Navbar: FC<{
   tab?: "home";
-  profileAvatar?: string;
-  hasProfile: boolean;
-}> = ({ tab, profileAvatar, hasProfile }) => {
+  profile?: ProfileViewDetailed | null;
+}> = ({ tab, profile }) => {
   return (
     <nav class="bg-slate-800">
       <div class="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
@@ -90,9 +90,9 @@ export const Navbar: FC<{
             </div>
           </div>
           <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
-            {hasProfile && <div id="mount-search-box" />}
+            {Boolean(profile) && <div id="mount-search-box" />}
             {/* Profile dropdown */}
-            {!hasProfile && (
+            {!profile && (
               <a
                 href="/login"
                 class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
@@ -111,10 +111,10 @@ export const Navbar: FC<{
                 >
                   <span class="absolute -inset-1.5"></span>
                   <span class="sr-only">Open user menu</span>
-                  {profileAvatar ? (
+                  {profile?.avatar ? (
                     <img
                       class="size-8 rounded-full"
-                      src={profileAvatar}
+                      src={profile.avatar}
                       alt=""
                     />
                   ) : (

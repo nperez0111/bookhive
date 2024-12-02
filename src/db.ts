@@ -21,6 +21,8 @@ export type Book = {
   createdAt: string;
   indexedAt: string;
   status: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
   author: string;
   title: string;
   year: number | null;
@@ -63,6 +65,8 @@ migrations["001"] = {
       .addColumn("title", "varchar", (col) => col.notNull())
       .addColumn("hiveId", "varchar", (col) => col.notNull())
       .addColumn("status", "varchar")
+      .addColumn("startedAt", "varchar")
+      .addColumn("finishedAt", "varchar")
       .addColumn("year", "integer")
       .execute();
     await db.schema
