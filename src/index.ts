@@ -27,7 +27,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { createRouter } from "./routes.tsx";
-import sqliteKv, { type KvDb } from "./sqlite-kv.ts";
+import sqliteKv from "./sqlite-kv.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -103,18 +103,20 @@ export class Server {
       // Not sure that we should store the search cache, so LRU is fine
       kv.mount("search:", lruCacheDriver({ max: 1000 }));
     }
-    kv.mount(
-      "book:",
-      sqliteKv({ table: "hive_book", getDb: () => db as unknown as KvDb }),
-    );
     kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
     kv.mount(
       "auth_session:",
-      sqliteKv({ location: KV_DB_PATH, table: "auth_sessions" }),
+      sqliteKv({
+        location: env.isDevelopment ? "./auth.sqlite" : KV_DB_PATH,
+        table: "auth_sessions",
+      }),
     );
     kv.mount(
       "auth_state:",
-      sqliteKv({ location: KV_DB_PATH, table: "auth_state" }),
+      sqliteKv({
+        location: env.isDevelopment ? "./auth.sqlite" : KV_DB_PATH,
+        table: "auth_state",
+      }),
     );
 
     // Create the atproto utilities
@@ -201,7 +203,6 @@ export class Server {
 
   async close() {
     this.ctx.logger.info("sigint received, shutting down");
-    await this.ctx.ingester.destroy();
     return new Promise<void>((resolve) => {
       this.server.close(() => {
         this.ctx.logger.info("server closed");

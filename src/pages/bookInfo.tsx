@@ -7,9 +7,9 @@ import {
 } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { formatDate, formatDistanceToNow } from "date-fns";
-import type { BookResult } from "../scrapers";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
+import type { HiveBook } from "../db";
 
 const BOOK_STATUS_MAP = {
   [BookStatus.ABANDONED]: "abandoned",
@@ -23,15 +23,15 @@ async function Recommendations({
   book,
   // did,
 }: {
-  book: BookResult;
+  book: HiveBook;
   did: string | null;
 }) {
   const c = useRequestContext();
   const relatedBooks = await c
     .get("ctx")
-    .db.selectFrom("book")
+    .db.selectFrom("user_book")
     .selectAll()
-    .where("book.hiveId", "==", book.id)
+    .where("hiveId", "==", book.id)
     // .where("authorDid", "!=", did)
     .limit(10)
     .execute();
@@ -90,7 +90,7 @@ async function Recommendations({
 }
 
 const BookStatusButton: FC<{
-  book: BookResult;
+  book: HiveBook;
   did: string | null;
 }> = async ({ did, book }) => {
   const c = useRequestContext();
@@ -98,10 +98,10 @@ const BookStatusButton: FC<{
   const usersBook = did
     ? await c
         .get("ctx")
-        .db.selectFrom("book")
+        .db.selectFrom("user_book")
         .selectAll()
         .where("authorDid", "==", did)
-        .where("book.hiveId", "==", book.id)
+        .where("hiveId", "==", book.id)
         .executeTakeFirst()
     : undefined;
 
@@ -234,23 +234,18 @@ const BookStatusButton: FC<{
         }}
       />
 
-      <input type="hidden" name="author" value={book.authors.join(", ")} />
+      <input type="hidden" name="author" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
-      {book.publishedDate && (
-        <input
-          type="hidden"
-          name="year"
-          value={new Date(book.publishedDate).getFullYear()}
-        />
-      )}
       <input type="hidden" name="hiveId" value={book.id} />
-      <input type="hidden" name="coverImage" value={book.cover} />
+      {book.cover && (
+        <input type="hidden" name="coverImage" value={book.cover} />
+      )}
     </form>
   );
 };
 
 export const BookInfo: FC<{
-  book: BookResult;
+  book: HiveBook;
 }> = async ({ book }) => {
   const c = useRequestContext();
   const did =
@@ -293,7 +288,7 @@ export const BookInfo: FC<{
                 {book.title}
               </h1>
               <p className="mb-4 text-xl dark:text-gray-400">
-                by {book.authors.join(", ")}
+                by {JSON.parse(book.authors).join(", ")}
               </p>
 
               <div className="mb-8 flex items-center gap-1">
@@ -333,28 +328,30 @@ export const BookInfo: FC<{
               <p className="mb-6 leading-relaxed text-gray-700 dark:text-gray-300">
                 {book.description || "No description available"}
               </p>
-              <div className="mt-4 flex items-center">
-                <a
-                  href={book.url}
-                  className="flex items-center justify-between gap-3 rounded-md border border-slate-600 p-2 hover:bg-slate-800"
-                >
-                  Goodreads
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+              {book.sourceUrl && (
+                <div className="mt-4 flex items-center">
+                  <a
+                    href={book.sourceUrl}
+                    className="flex items-center justify-between gap-3 rounded-md border border-slate-600 p-2 hover:bg-slate-800"
                   >
-                    <path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
-                    <path d="m21 3-9 9" />
-                    <path d="M15 3h6v6" />
-                  </svg>
-                </a>
-              </div>
+                    {book.source}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
+                      <path d="m21 3-9 9" />
+                      <path d="M15 3h6v6" />
+                    </svg>
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>

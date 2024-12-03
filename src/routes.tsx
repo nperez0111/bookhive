@@ -10,12 +10,12 @@ import { Layout } from "./pages/layout";
 import * as Book from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import { Home } from "./pages/home";
-import { Error } from "./pages/error";
+import { Error as ErrorPage } from "./pages/error";
 import { ids } from "./bsky/lexicon/lexicons";
 import { loginRouter } from "./auth/router";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { findBookDetails, type BookResult } from "./scrapers";
+import { findBookDetails } from "./scrapers";
 import type { BlobRef } from "@atproto/lexicon";
 import { BookInfo } from "./pages/bookInfo";
 import { Agent, isDid } from "@atproto/api";
@@ -24,11 +24,13 @@ import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { HiveId } from "./db";
 
 function readThroughCache<T extends StorageValue>(
   ctx: AppContext,
   key: string,
   fetch: () => Promise<T>,
+  defaultValue?: T,
 ): Promise<T> {
   ctx.logger.trace({ key }, "readThroughCache");
   return ctx.kv.get<T>(key).then((cached) => {
@@ -38,11 +40,16 @@ function readThroughCache<T extends StorageValue>(
     }
 
     ctx.logger.trace({ key }, "readThroughCache miss");
-    return fetch().then((fresh) => {
-      ctx.logger.trace({ key, fresh }, "readThroughCache set");
-      ctx.kv.set(key, fresh);
-      return fresh;
-    });
+    return fetch()
+      .then((fresh) => {
+        ctx.logger.trace({ key, fresh }, "readThroughCache set");
+        ctx.kv.set(key, fresh);
+        return fresh;
+      })
+      .catch((err) => {
+        ctx.logger.error({ err }, "readThroughCache error");
+        return defaultValue as T;
+      });
   });
 }
 
@@ -101,7 +108,7 @@ async function refetchBooks({
   if (!cursor) {
     // Clear existing books
     await ctx.db
-      .deleteFrom("book")
+      .deleteFrom("user_book")
       .where("authorDid", "=", agent.assertDid)
       .execute();
   }
@@ -111,16 +118,14 @@ async function refetchBooks({
     const book = record.value as Book.Record;
 
     await ctx.db
-      .insertInto("book")
+      .insertInto("user_book")
       .values({
         uri: record.uri,
         cid: record.cid,
         authorDid: agent.assertDid,
         createdAt: book.createdAt,
         indexedAt: new Date().toISOString(),
-        author: book.author,
-        title: book.title,
-        hiveId: book.hiveId,
+        hiveId: book.hiveId as HiveId,
         status: book.status,
         startedAt: book.startedAt,
         finishedAt: book.finishedAt,
@@ -165,17 +170,6 @@ export function createRouter(app: HonoServer) {
       .limit(25)
       .execute();
 
-    const myBooks = agent
-      ? await c
-          .get("ctx")
-          .db.selectFrom("book")
-          .selectAll()
-          .where("authorDid", "=", agent.assertDid)
-          .orderBy("indexedAt", "desc")
-          .limit(10)
-          .execute()
-      : undefined;
-
     const didHandleMap = await c
       .get("ctx")
       .resolver.resolveDidsToHandles(buzzes.map((s) => s.authorDid));
@@ -186,17 +180,23 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    let profile: ProfileViewDetailed | null = null;
+    const myBooks = await c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .selectAll()
+      .where("user_book.authorDid", "=", agent.assertDid)
+      .orderBy("user_book.indexedAt", "desc")
+      .limit(10)
+      .execute();
 
-    if (agent) {
-      profile = await getProfile(agent, c.get("ctx"));
-    }
+    const profile = await getProfile(agent, c.get("ctx"));
 
     return c.render(
       <Home
         latestBuzzes={buzzes}
         didHandleMap={didHandleMap}
-        profile={profile ?? undefined}
+        profile={profile}
         myBooks={myBooks}
       />,
     );
@@ -207,7 +207,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to refresh books"
             statusCode={401}
@@ -224,7 +224,7 @@ export function createRouter(app: HonoServer) {
 
     const books = await c
       .get("ctx")
-      .db.selectFrom("book")
+      .db.selectFrom("user_book")
       .selectAll()
       .where("authorDid", "=", agent.assertDid)
       .orderBy("indexedAt", "desc")
@@ -240,7 +240,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to view your profile"
             statusCode={401}
@@ -278,7 +278,7 @@ export function createRouter(app: HonoServer) {
     const isBuzzer = Boolean(
       await c
         .get("ctx")
-        .db.selectFrom("book")
+        .db.selectFrom("user_book")
         .select("authorDid")
         .where("authorDid", "=", did)
         .union(
@@ -311,10 +311,11 @@ export function createRouter(app: HonoServer) {
     const books = isBuzzer
       ? await c
           .get("ctx")
-          .db.selectFrom("book")
+          .db.selectFrom("user_book")
+          .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
           .selectAll()
-          .where("authorDid", "=", did)
-          .orderBy("indexedAt", "desc")
+          .where("user_book.authorDid", "=", agent.assertDid)
+          .orderBy("user_book.indexedAt", "desc")
           .limit(100)
           .execute()
       : [];
@@ -346,7 +347,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to view a book"
             statusCode={401}
@@ -358,12 +359,16 @@ export function createRouter(app: HonoServer) {
 
     const book = await c
       .get("ctx")
-      .kv.get<BookResult>(`book:${c.req.param("id")}`);
+      .db.selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", c.req.param("id") as HiveId)
+      .limit(1)
+      .executeTakeFirst();
 
     if (!book) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Book not found"
             description="The book you are looking for does not exist"
             statusCode={404}
@@ -381,7 +386,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to delete a book"
             statusCode={401}
@@ -396,10 +401,10 @@ export function createRouter(app: HonoServer) {
 
     const book = await c
       .get("ctx")
-      .db.selectFrom("book")
+      .db.selectFrom("user_book")
       .selectAll()
       .where("authorDid", "=", agent.assertDid)
-      .where("book.uri", "=", bookUri)
+      .where("uri", "=", bookUri)
       .execute();
 
     if (book.length === 0) {
@@ -414,9 +419,9 @@ export function createRouter(app: HonoServer) {
 
     await c
       .get("ctx")
-      .db.deleteFrom("book")
+      .db.deleteFrom("user_book")
       .where("authorDid", "=", agent.assertDid)
-      .where("book.uri", "=", bookUri)
+      .where("uri", "=", bookUri)
       .execute();
 
     return c.json({ success: true, bookId, book: book[0] });
@@ -427,7 +432,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to add a book"
             statusCode={401}
@@ -484,7 +489,7 @@ export function createRouter(app: HonoServer) {
       }
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid book"
             description="When validating the book you inputted, it was invalid"
             statusCode={400}
@@ -506,17 +511,14 @@ export function createRouter(app: HonoServer) {
 
       await c
         .get("ctx")
-        .db.insertInto("book")
+        .db.insertInto("user_book")
         .values({
           uri: res.data.uri,
           cid: res.data.cid,
           authorDid: agent.assertDid,
           createdAt: record.createdAt,
           indexedAt: new Date().toISOString(),
-          author: record.author,
-          title: record.title,
-          hiveId: record.hiveId,
-          year: record.year,
+          hiveId: record.hiveId as HiveId,
           status: record.status,
         })
         .execute();
@@ -526,7 +528,7 @@ export function createRouter(app: HonoServer) {
       c.get("ctx").logger.warn({ err }, "failed to write book");
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Failed to record book"
             description={"Error: " + (err as Error).message}
             statusCode={500}
@@ -542,7 +544,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid Session"
             description="Login to post a review"
             statusCode={401}
@@ -578,7 +580,7 @@ export function createRouter(app: HonoServer) {
     if (!Buzz.validateRecord(record).success) {
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Invalid review"
             description="When validating the review you inputted, it was invalid"
             statusCode={400}
@@ -608,7 +610,7 @@ export function createRouter(app: HonoServer) {
           bookCid: record.book.cid,
           commentUri: record.comment?.uri,
           commentCid: record.comment?.cid,
-          hiveId: record.hiveId,
+          hiveId: record.hiveId as HiveId,
           stars: record.stars,
           createdAt: record.createdAt,
           indexedAt: new Date().toISOString(),
@@ -620,7 +622,7 @@ export function createRouter(app: HonoServer) {
       c.get("ctx").logger.warn({ err }, "failed to write record");
       return c.html(
         <Layout>
-          <Error
+          <ErrorPage
             message="Failed to record review"
             description={"Error: " + (err as Error).message}
             statusCode={500}
@@ -647,7 +649,7 @@ export function createRouter(app: HonoServer) {
       if (!agent) {
         return c.html(
           <Layout>
-            <Error
+            <ErrorPage
               message="Invalid Session"
               description="Login to post a review"
               statusCode={401}
@@ -660,29 +662,59 @@ export function createRouter(app: HonoServer) {
 
       if (id) {
         // short-circuit if we have an ID to look up
-        const book = await c.get("ctx").kv.get<BookResult>(`book:${id}`);
+        const book = await c
+          .get("ctx")
+          .db.selectFrom("hive_book")
+          .selectAll()
+          .where("hive_book.id", "=", id as HiveId)
+          .limit(1)
+          .executeTakeFirst();
 
         return c.json([book].filter(Boolean));
       }
 
-      const bookSearch = await readThroughCache(
+      const bookIds = await readThroughCache<HiveId[]>(
         c.get("ctx"),
         `search:${q}`,
-        () => findBookDetails(q),
+        () =>
+          findBookDetails(q).then((res) => {
+            if (!res.success) {
+              throw new Error(res.message);
+            }
+            console.log(res.data);
+
+            return c
+              .get("ctx")
+              .db.insertInto("hive_book")
+              .values(res.data)
+              .onConflict((oc) =>
+                oc.column("id").doUpdateSet((c) => ({
+                  rating: c.ref("rating"),
+                  ratingsCount: c.ref("ratingsCount"),
+                  updatedAt: c.ref("updatedAt"),
+                })),
+              )
+              .execute()
+              .then(() => {
+                return res.data.map((book) => book.id);
+              });
+          }),
+        [] as HiveId[],
       );
 
-      if (!bookSearch.success) {
+      if (!bookIds.length) {
         return c.json([]);
       }
 
-      c.get("ctx").kv.setItems(
-        bookSearch.data.map((book) => ({
-          key: `book:${book.id}`,
-          value: book,
-        })),
-      );
+      const books = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("id", "in", bookIds)
+        .limit(limit * offset + limit)
+        .execute();
 
-      return c.json(bookSearch.data.slice(offset, offset + limit));
+      return c.json(books.slice(offset, offset + limit));
     },
   );
 }

@@ -1,7 +1,7 @@
 /** @jsx createElement */
 // @ts-expect-error
 import { type FC, createElement, Fragment } from "hono/jsx";
-import { type Buzz, type Book } from "../db";
+import { type Buzz, type HiveBook, type UserBook } from "../db";
 // import { Chat } from "./chat";
 import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
@@ -17,7 +17,7 @@ type Props = {
   latestBuzzes: Buzz[];
   didHandleMap: Record<string, string>;
   profile?: ProfileViewDetailed;
-  myBooks?: Book[];
+  myBooks?: (UserBook & HiveBook)[];
 };
 
 export const Home: FC<Props> = ({
@@ -149,7 +149,7 @@ export const Home: FC<Props> = ({
                   {book.title}
                 </span>
                 <span class="text-sm text-slate-600 dark:text-slate-400">
-                  by {book.author}
+                  by {JSON.parse(book.authors).join(", ")}
                 </span>
               </a>
 

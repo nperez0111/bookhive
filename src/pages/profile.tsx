@@ -1,12 +1,12 @@
 /** @jsx createElement */
 // @ts-expect-error
 import { type FC, createElement } from "hono/jsx";
-import { type Buzz, type Book } from "../db";
+import { type Buzz, type HiveBook, type UserBook } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 
 export const ProfilePage: FC<{
   handle: string;
-  books: Book[];
+  books: (UserBook & HiveBook)[];
   buzzes: Buzz[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
@@ -45,7 +45,7 @@ export const ProfilePage: FC<{
                       {book.title}
                     </span>
                     <span class="text-sm text-slate-600 dark:text-slate-400">
-                      by {book.author}
+                      by {JSON.parse(book.authors).join(", ")}
                     </span>
                   </a>
                 </li>

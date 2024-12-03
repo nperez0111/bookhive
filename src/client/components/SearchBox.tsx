@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
-import type { BookResult } from "../../scrapers";
 import { useQuery } from "@tanstack/react-query";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
+import type { HiveBook } from "../../db";
 
 export const SearchBox: FC = () => {
   const [isOpened, setIsOpened] = useState(false);
@@ -12,7 +12,7 @@ export const SearchBox: FC = () => {
   const searchRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(query, 300);
 
-  const bookResults = useQuery<BookResult[]>({
+  const bookResults = useQuery<HiveBook[]>({
     staleTime: 10000,
     enabled: query.length > 2,
     refetchOnMount: false,
@@ -134,7 +134,7 @@ export const SearchBox: FC = () => {
                   <div className="flex items-center justify-between space-x-4">
                     <img
                       className="h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
-                      src={book.thumbnail || book.cover}
+                      src={book.thumbnail || book.cover || undefined}
                       style={{ aspectRatio: "2/3" }}
                       alt={`Cover of ${book.title}`}
                       loading="lazy"
@@ -142,7 +142,7 @@ export const SearchBox: FC = () => {
                     <div>
                       <p className="text-sm font-semibold">{book.title}</p>
                       <p className="text-xs text-gray-700 dark:text-gray-200">
-                        by {book.authors.join(", ")}
+                        by {JSON.parse(book.authors).join(", ")}
                       </p>
                     </div>
                   </div>

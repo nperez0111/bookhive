@@ -1,13 +1,7 @@
 import axios from "axios";
 import type { Logger } from "pino";
-import { objectHash, sha256base64 } from "ohash";
-
-// Type definitions
-export interface MetaSourceInfo {
-  id: string;
-  description: string;
-  link: string;
-}
+import type { HiveBook } from "../db";
+import { getHiveId } from "./getHiveId";
 
 interface GoodreadsAuthor {
   id: number;
@@ -37,31 +31,8 @@ interface GoodreadsBook {
   description: GoodreadsDescription;
 }
 
-export interface BookResult {
-  id: string;
-  title: string;
-  authors: string[];
-  url: string;
-  source: MetaSourceInfo;
-  cover?: string;
-  thumbnail?: string;
-  description?: string;
-  publisher?: string;
-  publishedDate?: string;
-  rating?: number;
-  ratingsCount?: number;
-  series?: string;
-  series_index?: number;
-  identifiers: {
-    goodreads: string;
-  };
-}
-
 class Goodreads {
   public static readonly NAME = "Goodreads";
-  private static readonly ID = "goodreads";
-  private static readonly DESCRIPTION = "Goodreads Books";
-  private static readonly META_URL = "https://www.goodreads.com/";
   private static readonly BOOK_URL = "https://www.goodreads.com/book/show/";
   private static readonly SEARCH_URL =
     "https://www.goodreads.com/book/auto_complete";
@@ -78,7 +49,7 @@ class Goodreads {
     query: string,
     genericCover: string = "",
     _locale: string = "en",
-  ): Promise<BookResult[]> {
+  ): Promise<HiveBook[]> {
     if (!this.active) {
       return [];
     }
@@ -115,38 +86,29 @@ class Goodreads {
   private parseSearchResult(
     result: GoodreadsBook,
     genericCover: string,
-  ): BookResult {
-    // Extract series info from title if present
-    const seriesMatch = result.title.match(/\((.*?),\s*#(\d+)\)/);
+  ): HiveBook {
+    const now = new Date().toISOString();
+    // Unfortunately, the Goodreads API does not provide a list of authors
+    const authors = JSON.stringify([result.author.name]);
 
-    const match: BookResult = {
-      id: `bk_${sha256base64(
-        objectHash({
-          title: result.bookTitleBare.toLocaleLowerCase(),
-          author: result.author.name.toLocaleLowerCase(),
-        }),
-      ).slice(0, 20)}`,
+    return {
+      id: getHiveId({
+        title: result.bookTitleBare,
+        authors,
+      }),
       title: result.bookTitleBare,
-      authors: [result.author.name],
-      url: `${Goodreads.BOOK_URL}${result.bookId}`,
-      source: {
-        id: Goodreads.ID,
-        description: Goodreads.DESCRIPTION,
-        link: Goodreads.META_URL,
-      },
-      identifiers: {
-        goodreads: result.bookId,
-      },
+      authors,
+      source: Goodreads.NAME,
+      sourceUrl: `${Goodreads.BOOK_URL}${result.bookId}`,
+      sourceId: result.bookId,
       cover: this.parseCover(result, genericCover),
       thumbnail: result.imageUrl,
       description: this.parseDescription(result.description),
-      rating: parseFloat(result.avgRating) || 0,
-      ratingsCount: result.ratingsCount,
-      series: seriesMatch ? seriesMatch[1] : undefined,
-      series_index: seriesMatch ? parseInt(seriesMatch[2]) : undefined,
+      rating: parseFloat(result.avgRating) || null,
+      ratingsCount: result.ratingsCount || null,
+      createdAt: now,
+      updatedAt: now,
     };
-
-    return match;
   }
 
   private parseCover(result: GoodreadsBook, genericCover: string): string {

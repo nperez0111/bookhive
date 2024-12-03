@@ -1,7 +1,7 @@
 import pino from "pino";
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
-import type { Database } from "../db";
+import type { Database, HiveId } from "../db";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";
@@ -25,28 +25,25 @@ export function createIngester(db: Database, idResolver: IdResolver) {
         ) {
           // Store the book in our SQLite
           await db
-            .insertInto("book")
+            .insertInto("user_book")
             .values({
               uri: evt.uri.toString(),
               cid: evt.cid.toString(),
               authorDid: evt.did,
-              hiveId: record.hiveId,
+              hiveId: record.hiveId as HiveId,
               createdAt: record.createdAt,
               indexedAt: now.toISOString(),
               startedAt: record.startedAt,
               finishedAt: record.finishedAt,
               status: record.status,
-              author: record.author,
-              title: record.title,
-              year: record.year,
             })
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet({
                 indexedAt: now.toISOString(),
+                hiveId: record.hiveId as HiveId,
                 status: record.status,
-                author: record.author,
-                title: record.title,
-                year: record.year,
+                startedAt: record.startedAt,
+                finishedAt: record.finishedAt,
               }),
             )
             .execute();
@@ -86,7 +83,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
         if (evt.collection === ids.BuzzBookhiveBook) {
           // Remove the status from our SQLite
           await db
-            .deleteFrom("book")
+            .deleteFrom("user_book")
             .where("uri", "=", evt.uri.toString())
             .execute();
           return;

@@ -9,24 +9,27 @@ import {
 
 // Types
 export type DatabaseSchema = {
-  book: Book;
-  buzz: Buzz;
   hive_book: HiveBook;
+  user_book: UserBook;
+  buzz: Buzz;
 };
 
-export type Book = {
+/**
+ * Hive ID is a hash of the book's title & author
+ * Used to uniquely identify a book within the hive
+ */
+export type HiveId = `bk_${string}`;
+
+export type UserBook = {
   uri: string;
   cid: string;
-  hiveId: string;
+  hiveId: HiveId;
   authorDid: string;
   createdAt: string;
   indexedAt: string;
   status: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  author: string;
-  title: string;
-  year: number | null;
 };
 
 export type Buzz = {
@@ -37,26 +40,29 @@ export type Buzz = {
   indexedAt: string;
   bookUri: string;
   bookCid: string;
-  hiveId: string | null;
+  hiveId: HiveId | null;
   commentUri: string | null;
   commentCid: string | null;
   stars: number | null;
 };
 
-/**
- * TODO should probably transition to a more structured schema
- */
 export type HiveBook = {
+  id: HiveId;
+  title: string;
   /**
-   * Hive ID
+   * Authors are stored as a JSON array string
    */
-  id: string;
-  /**
-   * JSON stringified object of the book data
-   */
-  value: string;
-  created_at: string;
-  updated_at: string;
+  authors: string;
+  source: string;
+  sourceUrl: string | null;
+  sourceId: string | null;
+  cover: string | null;
+  thumbnail: string;
+  description: string | null;
+  rating: number | null;
+  ratingsCount: number | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 // Migrations
@@ -72,45 +78,51 @@ const migrationProvider: MigrationProvider = {
 migrations["001"] = {
   async up(db: Kysely<unknown>) {
     await db.schema
-      .createTable("book")
-      .addColumn("uri", "varchar", (col) => col.primaryKey())
-      .addColumn("cid", "varchar", (col) => col.notNull())
-      .addColumn("authorDid", "varchar", (col) => col.notNull())
-      .addColumn("createdAt", "varchar", (col) => col.notNull())
-      .addColumn("indexedAt", "varchar", (col) => col.notNull())
-      .addColumn("author", "varchar", (col) => col.notNull())
-      .addColumn("title", "varchar", (col) => col.notNull())
-      .addColumn("hiveId", "varchar", (col) => col.notNull())
-      .addColumn("status", "varchar")
-      .addColumn("startedAt", "varchar")
-      .addColumn("finishedAt", "varchar")
-      .addColumn("year", "integer")
+      .createTable("user_book")
+      .addColumn("uri", "text", (col) => col.primaryKey())
+      .addColumn("cid", "text", (col) => col.notNull())
+      .addColumn("authorDid", "text", (col) => col.notNull())
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("indexedAt", "text", (col) => col.notNull())
+      .addColumn("hiveId", "text", (col) => col.notNull())
+      .addColumn("status", "text")
+      .addColumn("startedAt", "text")
+      .addColumn("finishedAt", "text")
       .execute();
     await db.schema
       .createTable("buzz")
-      .addColumn("uri", "varchar", (col) => col.primaryKey())
-      .addColumn("cid", "varchar", (col) => col.notNull())
-      .addColumn("authorDid", "varchar", (col) => col.notNull())
-      .addColumn("createdAt", "varchar", (col) => col.notNull())
-      .addColumn("indexedAt", "varchar", (col) => col.notNull())
-      .addColumn("bookUri", "varchar", (col) => col.notNull())
-      .addColumn("bookCid", "varchar", (col) => col.notNull())
-      .addColumn("hiveId", "varchar")
-      .addColumn("commentUri", "varchar")
-      .addColumn("commentCid", "varchar")
+      .addColumn("uri", "text", (col) => col.primaryKey())
+      .addColumn("cid", "text", (col) => col.notNull())
+      .addColumn("authorDid", "text", (col) => col.notNull())
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("indexedAt", "text", (col) => col.notNull())
+      .addColumn("bookUri", "text", (col) => col.notNull())
+      .addColumn("bookCid", "text", (col) => col.notNull())
+      .addColumn("hiveId", "text")
+      .addColumn("commentUri", "text")
+      .addColumn("commentCid", "text")
       .addColumn("stars", "int8")
       .execute();
     await db.schema
       .createTable("hive_book")
       .addColumn("id", "text", (col) => col.primaryKey())
-      .addColumn("value", "text", (col) => col.notNull())
-      .addColumn("created_at", "text", (col) => col.notNull())
-      .addColumn("updated_at", "text", (col) => col.notNull())
+      .addColumn("title", "text", (col) => col.notNull())
+      .addColumn("authors", "text", (col) => col.notNull()) // JSON array
+      .addColumn("source", "text", (col) => col.notNull())
+      .addColumn("sourceUrl", "text")
+      .addColumn("sourceId", "text")
+      .addColumn("cover", "text")
+      .addColumn("thumbnail", "text", (col) => col.notNull())
+      .addColumn("description", "text")
+      .addColumn("rating", "real")
+      .addColumn("ratingsCount", "integer")
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("updatedAt", "text", (col) => col.notNull())
       .execute();
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("buzz").execute();
-    await db.schema.dropTable("book").execute();
+    await db.schema.dropTable("user_book").execute();
     await db.schema.dropTable("hive_book").execute();
   },
 };
