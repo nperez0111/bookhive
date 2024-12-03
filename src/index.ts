@@ -1,16 +1,18 @@
+import { Agent } from "@atproto/api";
 import type { OAuthClient } from "@atproto/oauth-client-node";
 import { Firehose } from "@atproto/sync";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { pinoLogger } from "hono-pino";
+import { compress } from "hono/compress";
+import { etag } from "hono/etag";
+import { jsxRenderer } from "hono/jsx-renderer";
 import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
-import { compress } from "hono/compress";
-import { jsxRenderer } from "hono/jsx-renderer";
-import { etag } from "hono/etag";
 import { secureHeaders } from "hono/secure-headers";
+import { getIronSession } from "iron-session";
 import { pino } from "pino";
-import { pinoLogger } from "hono-pino";
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
 
@@ -25,9 +27,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { createRouter } from "./routes.tsx";
-import sqliteKv from "./sqlite-kv.ts";
-import { getIronSession } from "iron-session";
-import { Agent } from "@atproto/api";
+import sqliteKv, { type KvDb } from "./sqlite-kv.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -96,14 +96,17 @@ export class Server {
     await migrateToLatest(db);
 
     const kv = createStorage({
-      driver: sqliteKv({ location: KV_DB_PATH }),
+      driver: sqliteKv({ location: KV_DB_PATH, table: "kv" }),
     });
 
     if (env.isProd) {
       // Not sure that we should store the search cache, so LRU is fine
       kv.mount("search:", lruCacheDriver({ max: 1000 }));
     }
-    kv.mount("book:", sqliteKv({ location: DB_PATH, table: "book_hive" }));
+    kv.mount(
+      "book:",
+      sqliteKv({ table: "hive_book", getDb: () => db as unknown as KvDb }),
+    );
     kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
     kv.mount(
       "auth_session:",

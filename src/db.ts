@@ -11,6 +11,7 @@ import {
 export type DatabaseSchema = {
   book: Book;
   buzz: Buzz;
+  hive_book: HiveBook;
 };
 
 export type Book = {
@@ -40,6 +41,22 @@ export type Buzz = {
   commentUri: string | null;
   commentCid: string | null;
   stars: number | null;
+};
+
+/**
+ * TODO should probably transition to a more structured schema
+ */
+export type HiveBook = {
+  /**
+   * Hive ID
+   */
+  id: string;
+  /**
+   * JSON stringified object of the book data
+   */
+  value: string;
+  created_at: string;
+  updated_at: string;
 };
 
 // Migrations
@@ -83,10 +100,18 @@ migrations["001"] = {
       .addColumn("commentCid", "varchar")
       .addColumn("stars", "int8")
       .execute();
+    await db.schema
+      .createTable("hive_book")
+      .addColumn("id", "text", (col) => col.primaryKey())
+      .addColumn("value", "text", (col) => col.notNull())
+      .addColumn("created_at", "text", (col) => col.notNull())
+      .addColumn("updated_at", "text", (col) => col.notNull())
+      .execute();
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("buzz").execute();
     await db.schema.dropTable("book").execute();
+    await db.schema.dropTable("hive_book").execute();
   },
 };
 

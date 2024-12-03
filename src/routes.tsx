@@ -162,7 +162,7 @@ export function createRouter(app: HonoServer) {
       .db.selectFrom("buzz")
       .selectAll()
       .orderBy("indexedAt", "desc")
-      .limit(10)
+      .limit(25)
       .execute();
 
     const myBooks = agent
