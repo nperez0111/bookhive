@@ -45,7 +45,7 @@ export const ProfilePage: FC<{
                       {book.title}
                     </span>
                     <span class="text-sm text-slate-600 dark:text-slate-400">
-                      by {JSON.parse(book.authors).join(", ")}
+                      by {book.authors.split("\t").join(", ")}
                     </span>
                   </a>
                 </li>

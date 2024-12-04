@@ -125,7 +125,7 @@ export const Home: FC<Props> = ({
                 class="flex cursor-pointer items-center justify-between rounded-md bg-gray-100 px-3 py-1 hover:bg-gray-700 dark:bg-gray-800"
               >
                 <div>
-                  {book.title} by {book.author}
+                  {book.title} by {book.authors.split("\t").join(", ")}
                 </div>
                 <button
                   data-type="delete-book"
@@ -149,7 +149,7 @@ export const Home: FC<Props> = ({
                   {book.title}
                 </span>
                 <span class="text-sm text-slate-600 dark:text-slate-400">
-                  by {JSON.parse(book.authors).join(", ")}
+                  by {book.authors.split("\t").join(", ")}
                 </span>
               </a>
 

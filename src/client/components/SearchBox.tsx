@@ -142,7 +142,7 @@ export const SearchBox: FC = () => {
                     <div>
                       <p className="text-sm font-semibold">{book.title}</p>
                       <p className="text-xs text-gray-700 dark:text-gray-200">
-                        by {JSON.parse(book.authors).join(", ")}
+                        by {book.authors.split("\t").join(", ")}
                       </p>
                     </div>
                   </div>

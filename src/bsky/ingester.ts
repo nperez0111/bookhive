@@ -36,6 +36,8 @@ export function createIngester(db: Database, idResolver: IdResolver) {
               startedAt: record.startedAt,
               finishedAt: record.finishedAt,
               status: record.status,
+              title: record.title,
+              authors: record.authors,
             })
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet({

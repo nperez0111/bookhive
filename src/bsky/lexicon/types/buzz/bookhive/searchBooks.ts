@@ -10,7 +10,7 @@ import { HandlerAuth, HandlerPipeThrough } from "@atproto/xrpc-server";
 import * as BuzzBookhiveHiveBook from "./hiveBook";
 
 export interface QueryParams {
-  /** Search query string. Will be matched against title and author fields. */
+  /** Search query string. Will be matched against title and authors fields. */
   q: string;
   limit: number;
   /** Offset for pagination into the result set */

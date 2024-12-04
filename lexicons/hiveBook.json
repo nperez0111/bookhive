@@ -8,7 +8,14 @@
       "description": "A book within the hive",
       "record": {
         "type": "object",
-        "required": ["title", "author", "createdAt", "hiveId", "cover", "year"],
+        "required": [
+          "title",
+          "authors",
+          "createdAt",
+          "hiveId",
+          "cover",
+          "year"
+        ],
         "properties": {
           "title": {
             "type": "string",
@@ -16,9 +23,9 @@
             "minLength": 1,
             "maxLength": 512
           },
-          "author": {
+          "authors": {
             "type": "string",
-            "description": "The author of the book",
+            "description": "The authors of the book (tab separated)",
             "minLength": 1,
             "maxLength": 512
           },

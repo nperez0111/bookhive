@@ -234,7 +234,7 @@ const BookStatusButton: FC<{
         }}
       />
 
-      <input type="hidden" name="author" value={book.authors} />
+      <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
       <input type="hidden" name="hiveId" value={book.id} />
       {book.cover && (
@@ -288,7 +288,7 @@ export const BookInfo: FC<{
                 {book.title}
               </h1>
               <p className="mb-4 text-xl dark:text-gray-400">
-                by {JSON.parse(book.authors).join(", ")}
+                by {book.authors.split("\t").join(", ")}
               </p>
 
               <div className="mb-8 flex items-center gap-1">

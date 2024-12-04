@@ -113,30 +113,34 @@ async function refetchBooks({
       .execute();
   }
 
-  await books.data.records.reduce(async (acc, record) => {
-    await acc;
-    const book = record.value as Book.Record;
+  await books.data.records
+    .filter((record) => Book.validateRecord(record).success)
+    .reduce(async (acc, record) => {
+      await acc;
+      const book = record.value as Book.Record;
 
-    await ctx.db
-      .insertInto("user_book")
-      .values({
-        uri: record.uri,
-        cid: record.cid,
-        authorDid: agent.assertDid,
-        createdAt: book.createdAt,
-        indexedAt: new Date().toISOString(),
-        hiveId: book.hiveId as HiveId,
-        status: book.status,
-        startedAt: book.startedAt,
-        finishedAt: book.finishedAt,
-      })
-      .onConflict((oc) =>
-        oc.column("uri").doUpdateSet({
+      await ctx.db
+        .insertInto("user_book")
+        .values({
+          uri: record.uri,
+          cid: record.cid,
+          authorDid: agent.assertDid,
+          createdAt: book.createdAt,
+          title: book.title,
+          authors: book.authors,
           indexedAt: new Date().toISOString(),
-        }),
-      )
-      .execute();
-  }, Promise.resolve());
+          hiveId: book.hiveId as HiveId,
+          status: book.status,
+          startedAt: book.startedAt,
+          finishedAt: book.finishedAt,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet({
+            indexedAt: new Date().toISOString(),
+          }),
+        )
+        .execute();
+    }, Promise.resolve());
 
   // TODO optimize this
   if (books.data.records.length === 100) {
@@ -442,10 +446,10 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    const { author, title, year, status, hiveId, coverImage } =
+    const { authors, title, year, status, hiveId, coverImage } =
       await c.req.parseBody();
 
-    console.log({ author, title, year, status, hiveId, coverImage });
+    console.log({ authors, title, year, status, hiveId, coverImage });
 
     let coverImageBlobRef: BlobRef | undefined = undefined;
     if (coverImage) {
@@ -471,10 +475,9 @@ export function createRouter(app: HonoServer) {
     const record = {
       $type: ids.BuzzBookhiveBook,
       createdAt: new Date().toISOString(),
-      author: author as string,
+      authors: authors as string,
       title: title as string,
       cover: coverImageBlobRef,
-      year: year !== undefined ? parseInt(year as string, 10) : undefined,
       status: status as string,
       hiveId: hiveId as string,
     } satisfies Book.Record;
@@ -517,6 +520,8 @@ export function createRouter(app: HonoServer) {
           cid: res.data.cid,
           authorDid: agent.assertDid,
           createdAt: record.createdAt,
+          title: record.title,
+          authors: record.authors,
           indexedAt: new Date().toISOString(),
           hiveId: record.hiveId as HiveId,
           status: record.status,

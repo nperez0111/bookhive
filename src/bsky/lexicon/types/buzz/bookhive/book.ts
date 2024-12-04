@@ -9,17 +9,17 @@ import { CID } from "multiformats/cid";
 export interface Record {
   /** The title of the book */
   title: string;
-  /** The author of the book */
-  author: string;
+  /** The authors of the book (tab separated) */
+  authors: string;
   /** The book's hive id, used to correlate user's books with the hive */
   hiveId: string;
   createdAt: string;
+  /** The date the user started reading the book */
   startedAt?: string;
+  /** The date the user finished reading the book */
   finishedAt?: string;
   /** Cover image of the book */
   cover?: BlobRef;
-  /** Year of publication */
-  year?: number;
   status?:
     | "buzz.bookhive.defs#finished"
     | "buzz.bookhive.defs#reading"

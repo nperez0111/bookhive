@@ -14,7 +14,7 @@ export const schemaDict = {
         description: "A book in the user's library",
         record: {
           type: "object",
-          required: ["title", "author", "hiveId", "createdAt"],
+          required: ["title", "authors", "hiveId", "createdAt"],
           properties: {
             title: {
               type: "string",
@@ -22,11 +22,11 @@ export const schemaDict = {
               minLength: 1,
               maxLength: 512,
             },
-            author: {
+            authors: {
               type: "string",
-              description: "The author of the book",
+              description: "The authors of the book (tab separated)",
               minLength: 1,
-              maxLength: 512,
+              maxLength: 2048,
             },
             hiveId: {
               type: "string",
@@ -40,20 +40,18 @@ export const schemaDict = {
             startedAt: {
               type: "string",
               format: "datetime",
+              description: "The date the user started reading the book",
             },
             finishedAt: {
               type: "string",
               format: "datetime",
+              description: "The date the user finished reading the book",
             },
             cover: {
               type: "blob",
               description: "Cover image of the book",
               accept: ["image/png", "image/jpeg"],
               maxSize: 1000000,
-            },
-            year: {
-              type: "integer",
-              description: "Year of publication",
             },
             status: {
               type: "string",
@@ -150,7 +148,14 @@ export const schemaDict = {
         description: "A book within the hive",
         record: {
           type: "object",
-          required: ["title", "author", "createdAt", "hiveId", "cover", "year"],
+          required: [
+            "title",
+            "authors",
+            "createdAt",
+            "hiveId",
+            "cover",
+            "year",
+          ],
           properties: {
             title: {
               type: "string",
@@ -158,9 +163,9 @@ export const schemaDict = {
               minLength: 1,
               maxLength: 512,
             },
-            author: {
+            authors: {
               type: "string",
-              description: "The author of the book",
+              description: "The authors of the book (tab separated)",
               minLength: 1,
               maxLength: 512,
             },
@@ -204,7 +209,7 @@ export const schemaDict = {
             q: {
               type: "string",
               description:
-                "Search query string. Will be matched against title and author fields.",
+                "Search query string. Will be matched against title and authors fields.",
             },
             limit: {
               type: "integer",

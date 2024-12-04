@@ -30,6 +30,14 @@ export type UserBook = {
   status: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  /**
+   * Book title
+   */
+  title: string;
+  /**
+   * Authors are stored as a tab-separated string
+   */
+  authors: string;
 };
 
 export type Buzz = {
@@ -50,7 +58,7 @@ export type HiveBook = {
   id: HiveId;
   title: string;
   /**
-   * Authors are stored as a JSON array string
+   * Authors are stored as a tab-separated string
    */
   authors: string;
   source: string;
@@ -85,6 +93,8 @@ migrations["001"] = {
       .addColumn("createdAt", "text", (col) => col.notNull())
       .addColumn("indexedAt", "text", (col) => col.notNull())
       .addColumn("hiveId", "text", (col) => col.notNull())
+      .addColumn("title", "text", (col) => col.notNull())
+      .addColumn("authors", "text", (col) => col.notNull())
       .addColumn("status", "text")
       .addColumn("startedAt", "text")
       .addColumn("finishedAt", "text")

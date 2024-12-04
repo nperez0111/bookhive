@@ -11,7 +11,7 @@
         "properties": {
           "q": {
             "type": "string",
-            "description": "Search query string. Will be matched against title and author fields."
+            "description": "Search query string. Will be matched against title and authors fields."
           },
           "limit": {
             "type": "integer",

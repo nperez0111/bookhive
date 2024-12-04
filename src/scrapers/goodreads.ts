@@ -89,7 +89,7 @@ class Goodreads {
   ): HiveBook {
     const now = new Date().toISOString();
     // Unfortunately, the Goodreads API does not provide a list of authors
-    const authors = JSON.stringify([result.author.name]);
+    const authors = result.author.name;
 
     return {
       id: getHiveId({

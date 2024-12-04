@@ -8,7 +8,7 @@
       "description": "A book in the user's library",
       "record": {
         "type": "object",
-        "required": ["title", "author", "hiveId", "createdAt"],
+        "required": ["title", "authors", "hiveId", "createdAt"],
         "properties": {
           "title": {
             "type": "string",
@@ -16,11 +16,11 @@
             "minLength": 1,
             "maxLength": 512
           },
-          "author": {
+          "authors": {
             "type": "string",
-            "description": "The author of the book",
+            "description": "The authors of the book (tab separated)",
             "minLength": 1,
-            "maxLength": 512
+            "maxLength": 2048
           },
           "hiveId": {
             "type": "string",
@@ -32,21 +32,19 @@
           },
           "startedAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "The date the user started reading the book"
           },
           "finishedAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "The date the user finished reading the book"
           },
           "cover": {
             "type": "blob",
             "description": "Cover image of the book",
             "accept": ["image/png", "image/jpeg"],
             "maxSize": 1000000
-          },
-          "year": {
-            "type": "integer",
-            "description": "Year of publication"
           },
           "status": {
             "type": "string",
