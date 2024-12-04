@@ -8,6 +8,7 @@ import { pinoLogger } from "hono-pino";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
+import { timing } from "hono/timing";
 import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
@@ -145,6 +146,7 @@ export class Server {
     const app = new Hono() as HonoServer;
 
     app.use(requestId());
+    app.use(timing());
     if (env.isDevelopment) {
       app.use(prettyJSON());
     }
