@@ -719,6 +719,10 @@ export function createRouter(app: HonoServer) {
         .limit(limit * offset + limit)
         .execute();
 
+      books.sort((a, b) => {
+        return bookIds.indexOf(a.id) - bookIds.indexOf(b.id);
+      });
+
       return c.json(books.slice(offset, offset + limit));
     },
   );
