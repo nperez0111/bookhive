@@ -3,15 +3,16 @@ import type { OAuthClient } from "@atproto/oauth-client-node";
 import { Firehose } from "@atproto/sync";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
 import { pinoLogger } from "hono-pino";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
-import { timing } from "hono/timing";
 import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
+import { timing } from "hono/timing";
 import { getIronSession } from "iron-session";
 import { pino } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -172,6 +173,10 @@ export class Server {
     });
 
     app.get("/healthcheck", (c) => c.text(time));
+
+    const { printMetrics, registerMetrics } = prometheus();
+    app.use("*", registerMetrics);
+    app.get("/metrics", printMetrics);
 
     // Routes
     createRouter(app);
