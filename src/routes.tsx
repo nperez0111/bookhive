@@ -1,30 +1,29 @@
 /** @jsx createElement */
+import { TID } from "@atproto/common";
+import { Agent, isDid } from "@atproto/api";
+import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { BlobRef } from "@atproto/lexicon";
+import { zValidator } from "@hono/zod-validator";
 // @ts-expect-error
 import { createElement, Fragment } from "hono/jsx";
-import { TID } from "@atproto/common";
+import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import sharp from "sharp";
+import type { StorageValue } from "unstorage";
+import { z } from "zod";
 
 import type { AppContext, HonoServer } from ".";
-import { Layout } from "./pages/layout";
-
+import { loginRouter } from "./auth/router";
+import { ids } from "./bsky/lexicon/lexicons";
 import * as Book from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./bsky/lexicon/types/buzz/bookhive/buzz";
-import { Home } from "./pages/home";
-import { Error as ErrorPage } from "./pages/error";
-import { ids } from "./bsky/lexicon/lexicons";
-import { loginRouter } from "./auth/router";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
-import { findBookDetails } from "./scrapers";
-import type { BlobRef } from "@atproto/lexicon";
+import type { HiveId } from "./db";
 import { BookInfo } from "./pages/bookInfo";
-import { Agent, isDid } from "@atproto/api";
-import type { StorageValue } from "unstorage";
-import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
+import { Error as ErrorPage } from "./pages/error";
+import { Home } from "./pages/home";
+import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
-import type { HiveId } from "./db";
+import { findBookDetails } from "./scrapers";
 
 function readThroughCache<T extends StorageValue>(
   ctx: AppContext,
@@ -72,26 +71,6 @@ declare module "hono" {
     (content: string | Promise<string>, props: { title: string }): Response;
   }
 }
-
-const renderLayout = jsxRenderer(async ({ children, title = "Book Hive" }) => {
-  const c = useRequestContext();
-  const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-  let profile: ProfileViewDetailed | null = null;
-
-  if (agent) {
-    profile = await getProfile(agent, c.get("ctx"));
-  }
-
-  console.log(profile?.avatar);
-
-  return (
-    <Layout title={title}>
-      <Navbar profile={profile} />
-      {children}
-    </Layout>
-  );
-});
-
 async function refetchBooks({
   agent,
   ctx,
@@ -168,8 +147,27 @@ export function createRouter(app: HonoServer) {
     },
   });
 
+  app.use(
+    jsxRenderer(async ({ children, title = "Book Hive" }) => {
+      const c = useRequestContext();
+      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+      let profile: ProfileViewDetailed | null = null;
+
+      if (agent) {
+        profile = await getProfile(agent, c.get("ctx"));
+      }
+
+      return (
+        <Layout title={title}>
+          <Navbar profile={profile} />
+          {children}
+        </Layout>
+      );
+    }),
+  );
+
   // Homepage
-  app.get("/", renderLayout, async (c) => {
+  app.get("/", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
 
     const buzzes = await c
@@ -269,7 +267,7 @@ export function createRouter(app: HonoServer) {
     return c.redirect(`/profile/${handle}`);
   });
 
-  app.get("/profile/:handle", renderLayout, async (c) => {
+  app.get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
 
     const did = isDid(handle)
@@ -356,7 +354,7 @@ export function createRouter(app: HonoServer) {
     );
   });
 
-  app.get("/books/:id", renderLayout, async (c) => {
+  app.get("/books/:id", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
     if (!agent) {
       return c.html(
@@ -370,7 +368,6 @@ export function createRouter(app: HonoServer) {
         401,
       );
     }
-
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")
@@ -443,7 +440,7 @@ export function createRouter(app: HonoServer) {
     return c.json({ success: true, bookId, book: book[0] });
   });
 
-  app.post("/books", renderLayout, async (c) => {
+  app.post("/books", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
     if (!agent) {
       return c.html(
