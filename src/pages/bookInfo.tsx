@@ -6,7 +6,7 @@ import {
   Fragment,
 } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
-import { formatDate, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
 import type { HiveBook } from "../db";
@@ -80,7 +80,7 @@ async function Recommendations({
                     related.status as keyof typeof BOOK_STATUS_MAP
                   ]
                 : related.status || BOOK_STATUS_MAP[BookStatus.READING]}{" "}
-              {formatDistanceToNow(related.createdAt)} ago
+              {formatDistanceToNow(related.createdAt, { addSuffix: true })}
             </a>
           );
         })}
@@ -108,7 +108,12 @@ const BookStatusButton: FC<{
   return (
     <form action="/books" method="post" class="mt-4">
       {usersBook && (
-        <h3 class="leading-10">{`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDate(usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt, `MMM d, yyyy`)}`}</h3>
+        <h3 class="leading-10">{`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
+          usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
+          {
+            addSuffix: true,
+          },
+        )}`}</h3>
       )}
       <div className="relative">
         <button
