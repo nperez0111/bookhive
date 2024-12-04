@@ -67,7 +67,13 @@ async function getProfile(
   });
 }
 
-const renderLayout = jsxRenderer(async ({ children }) => {
+declare module "hono" {
+  interface ContextRenderer {
+    (content: string | Promise<string>, props: { title: string }): Response;
+  }
+}
+
+const renderLayout = jsxRenderer(async ({ children, title = "Book Hive" }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
   let profile: ProfileViewDetailed | null = null;
@@ -79,7 +85,7 @@ const renderLayout = jsxRenderer(async ({ children }) => {
   console.log(profile?.avatar);
 
   return (
-    <Layout title="Book Hive | Profile">
+    <Layout title={title}>
       <Navbar profile={profile} />
       {children}
     </Layout>
@@ -181,6 +187,7 @@ export function createRouter(app: HonoServer) {
     if (!agent) {
       return c.render(
         <Home latestBuzzes={buzzes} didHandleMap={didHandleMap} />,
+        { title: "Book Hive | Home" },
       );
     }
 
@@ -203,6 +210,7 @@ export function createRouter(app: HonoServer) {
         profile={profile}
         myBooks={myBooks}
       />,
+      { title: "Book Hive | Home" },
     );
   });
 
@@ -276,6 +284,7 @@ export function createRouter(app: HonoServer) {
             This profile may not exist or has not logged any books on bookhive
           </p>
         </Fragment>,
+        { title: "Profile Not Found" },
       );
     }
 
@@ -343,6 +352,7 @@ export function createRouter(app: HonoServer) {
         buzzes={buzzes}
         profile={profile}
       />,
+      { title: "Book Hive | @" + handle },
     );
   });
 
@@ -382,7 +392,9 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    return c.render(<BookInfo book={book} />);
+    return c.render(<BookInfo book={book} />, {
+      title: "Book Hive | " + book.title,
+    });
   });
 
   app.delete("/books/:id", async (c) => {
