@@ -78,7 +78,12 @@ class Goodreads {
         this.parseSearchResult(result, genericCover),
       );
     } catch (error) {
-      this.logger.warn({ message: "Error searching Goodreads", error });
+      this.logger.warn(
+        {
+          error,
+        },
+        "Error searching Goodreads",
+      );
       return [];
     }
   }
@@ -104,8 +109,8 @@ class Goodreads {
       cover: this.parseCover(result, genericCover),
       thumbnail: result.imageUrl,
       description: this.parseDescription(result.description),
-      rating: parseFloat(result.avgRating) || null,
-      ratingsCount: result.ratingsCount || null,
+      rating: parseInt((parseFloat(result.avgRating) * 1000).toString()),
+      ratingsCount: parseInt(result.ratingsCount.toString()),
       createdAt: now,
       updatedAt: now,
     };

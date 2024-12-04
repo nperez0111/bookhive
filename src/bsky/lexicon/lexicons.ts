@@ -149,12 +149,12 @@ export const schemaDict = {
         record: {
           type: "object",
           required: [
+            "id",
             "title",
             "authors",
             "createdAt",
-            "hiveId",
-            "cover",
-            "year",
+            "updatedAt",
+            "thumbnail",
           ],
           properties: {
             title: {
@@ -169,25 +169,51 @@ export const schemaDict = {
               minLength: 1,
               maxLength: 512,
             },
-            hiveId: {
+            id: {
               type: "string",
-              format: "at-uri",
               description:
                 "The book's hive id, used to correlate user's books with the hive",
+            },
+            source: {
+              type: "string",
+              description: "The source service name (e.g. Goodreads)",
+            },
+            sourceUrl: {
+              type: "string",
+              description: "URL to the book on the source service",
+            },
+            sourceId: {
+              type: "string",
+              description: "ID of the book in the source service",
+            },
+            cover: {
+              type: "string",
+              description: "URL to full-size cover image",
+            },
+            thumbnail: {
+              type: "string",
+              description: "URL to thumbnail image",
+            },
+            description: {
+              type: "string",
+              description: "Book description/summary",
+              maxLength: 5000,
+            },
+            rating: {
+              type: "integer",
+              description: "Average rating (0-1000)",
+            },
+            ratingsCount: {
+              type: "integer",
+              description: "Number of ratings",
             },
             createdAt: {
               type: "string",
               format: "datetime",
             },
-            cover: {
-              type: "blob",
-              description: "Cover image of the book",
-              accept: ["image/png", "image/jpeg"],
-              maxSize: 1000000,
-            },
-            year: {
-              type: "integer",
-              description: "Year of publication",
+            updatedAt: {
+              type: "string",
+              format: "datetime",
             },
           },
         },

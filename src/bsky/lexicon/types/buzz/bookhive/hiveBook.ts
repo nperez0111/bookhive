@@ -12,12 +12,25 @@ export interface Record {
   /** The authors of the book (tab separated) */
   authors: string;
   /** The book's hive id, used to correlate user's books with the hive */
-  hiveId: string;
+  id: string;
+  /** The source service name (e.g. Goodreads) */
+  source?: string;
+  /** URL to the book on the source service */
+  sourceUrl?: string;
+  /** ID of the book in the source service */
+  sourceId?: string;
+  /** URL to full-size cover image */
+  cover?: string;
+  /** URL to thumbnail image */
+  thumbnail: string;
+  /** Book description/summary */
+  description?: string;
+  /** Average rating (0-1000) */
+  rating?: number;
+  /** Number of ratings */
+  ratingsCount?: number;
   createdAt: string;
-  /** Cover image of the book */
-  cover: BlobRef;
-  /** Year of publication */
-  year: number;
+  updatedAt: string;
   [k: string]: unknown;
 }
 
