@@ -11,7 +11,6 @@ import {
 export type DatabaseSchema = {
   hive_book: HiveBook;
   user_book: UserBook;
-  buzz: Buzz;
 };
 
 /**
@@ -21,14 +20,41 @@ export type DatabaseSchema = {
 export type HiveId = `bk_${string}`;
 
 export type UserBook = {
-  uri: string;
-  cid: string;
-  hiveId: HiveId;
-  authorDid: string;
-  createdAt: string;
+  /**
+   * Most recent time the book was indexed
+   */
   indexedAt: string;
+  /**
+   * URI of the book
+   */
+  uri: string;
+  /**
+   * CID of the book
+   */
+  cid: string;
+  /**
+   * Hive ID of the book
+   */
+  hiveId: HiveId;
+  /**
+   * DID of the user who added the book
+   */
+  userDid: string;
+  /**
+   * Time the book was added
+   */
+  createdAt: string;
+  /**
+   * Status of the book
+   */
   status: string | null;
+  /**
+   * Started reading at
+   */
   startedAt: string | null;
+  /**
+   * Finished reading at
+   */
   finishedAt: string | null;
   /**
    * Book title
@@ -38,20 +64,14 @@ export type UserBook = {
    * Authors are stored as a tab-separated string
    */
   authors: string;
-};
-
-export type Buzz = {
-  uri: string;
-  cid: string;
-  authorDid: string;
-  createdAt: string;
-  indexedAt: string;
-  bookUri: string;
-  bookCid: string;
-  hiveId: HiveId | null;
-  commentUri: string | null;
-  commentCid: string | null;
+  /**
+   * Rating out of 10
+   */
   stars: number | null;
+  /**
+   * Review of the book
+   */
+  review: string | null;
 };
 
 export type HiveBook = {
@@ -89,7 +109,7 @@ migrations["001"] = {
       .createTable("user_book")
       .addColumn("uri", "text", (col) => col.primaryKey())
       .addColumn("cid", "text", (col) => col.notNull())
-      .addColumn("authorDid", "text", (col) => col.notNull())
+      .addColumn("userDid", "text", (col) => col.notNull())
       .addColumn("createdAt", "text", (col) => col.notNull())
       .addColumn("indexedAt", "text", (col) => col.notNull())
       .addColumn("hiveId", "text", (col) => col.notNull())
@@ -98,20 +118,8 @@ migrations["001"] = {
       .addColumn("status", "text")
       .addColumn("startedAt", "text")
       .addColumn("finishedAt", "text")
-      .execute();
-    await db.schema
-      .createTable("buzz")
-      .addColumn("uri", "text", (col) => col.primaryKey())
-      .addColumn("cid", "text", (col) => col.notNull())
-      .addColumn("authorDid", "text", (col) => col.notNull())
-      .addColumn("createdAt", "text", (col) => col.notNull())
-      .addColumn("indexedAt", "text", (col) => col.notNull())
-      .addColumn("bookUri", "text", (col) => col.notNull())
-      .addColumn("bookCid", "text", (col) => col.notNull())
-      .addColumn("hiveId", "text")
-      .addColumn("commentUri", "text")
-      .addColumn("commentCid", "text")
       .addColumn("stars", "int8")
+      .addColumn("review", "text")
       .execute();
     await db.schema
       .createTable("hive_book")
@@ -131,7 +139,6 @@ migrations["001"] = {
       .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("buzz").execute();
     await db.schema.dropTable("user_book").execute();
     await db.schema.dropTable("hive_book").execute();
   },

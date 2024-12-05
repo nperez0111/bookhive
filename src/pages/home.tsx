@@ -1,31 +1,24 @@
 /** @jsx createElement */
 // @ts-expect-error
 import { type FC, createElement, Fragment } from "hono/jsx";
-import { type Buzz, type HiveBook, type UserBook } from "../db";
-// import { Chat } from "./chat";
-import { Script } from "./utils/script";
+import { type HiveBook, type UserBook } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import { BookList } from "./components/book";
 
-function ts(status: Buzz) {
-  const createdAt = new Date(status.createdAt);
-  const indexedAt = new Date(status.indexedAt);
-  if (createdAt < indexedAt) return createdAt.toDateString();
-  return indexedAt.toDateString();
-}
+// function ts(status: Buzz) {
+//   const createdAt = new Date(status.createdAt);
+//   const indexedAt = new Date(status.indexedAt);
+//   if (createdAt < indexedAt) return createdAt.toDateString();
+//   return indexedAt.toDateString();
+// }
 
 type Props = {
-  latestBuzzes: Buzz[];
-  didHandleMap: Record<string, string>;
+  didHandleMap?: Record<string, string>;
   profile?: ProfileViewDetailed;
   myBooks?: (UserBook & HiveBook)[];
 };
 
-export const Home: FC<Props> = ({
-  latestBuzzes,
-  didHandleMap,
-  profile,
-  myBooks,
-}) => (
+export const Home: FC<Props> = ({ profile, myBooks }) => (
   <div class="container mx-auto h-[calc(100vh-64px)] max-w-7xl bg-slate-50 px-3 dark:bg-slate-900 dark:text-white">
     <div class="flex justify-center">
       {profile ? (
@@ -117,77 +110,11 @@ export const Home: FC<Props> = ({
         <h2 class="text-md mt-3 mb-6 border-b text-2xl leading-12">
           Your books
         </h2>
-        {/* <div class="flex flex-col gap-2">
-          {myBooks.map((book) => {
-            return (
-              <a
-                href={`/books/${book.hiveId}`}
-                class="flex cursor-pointer items-center justify-between rounded-md bg-gray-100 px-3 py-1 hover:bg-gray-700 dark:bg-gray-800"
-              >
-                <div>
-                  {book.title} by {book.authors.split("\t").join(", ")}
-                </div>
-                <button
-                  data-type="delete-book"
-                  data-id={book.uri.split("/").pop()}
-                  class="cursor-pointer rounded-md border border-red-500 px-3 py-1 text-xs text-red-500"
-                >
-                  Delete
-                </button>
-              </a>
-            );
-          })}
-        </div> */}
-        <ul class="space-y-4">
-          {myBooks.map((book) => (
-            <li class="group flex justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
-              <a
-                href={`/books/${book.hiveId}`}
-                class="flex cursor-pointer flex-col gap-1"
-              >
-                <span class="text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400">
-                  {book.title}
-                </span>
-                <span class="text-sm text-slate-600 dark:text-slate-400">
-                  by {book.authors.split("\t").join(", ")}
-                </span>
-              </a>
-
-              <button
-                data-type="delete-book"
-                data-id={book.uri.split("/").pop()}
-                class="cursor-pointer rounded-md border border-red-500 px-3 py-1 text-xs text-red-500"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-        </ul>
-        <Script
-          script={(document) => {
-            document
-              .querySelectorAll("[data-type=delete-book]")
-              .forEach((el) => {
-                el.addEventListener("click", async (e) => {
-                  e.preventDefault();
-                  const id = el.getAttribute("data-id");
-                  const res = await fetch(`/books/${id}`, {
-                    method: "DELETE",
-                  });
-                  if (res.ok) {
-                    const { success } = await res.json();
-                    if (success) {
-                      window.location.reload();
-                    }
-                  }
-                });
-              });
-          }}
-        ></Script>
+        <BookList books={myBooks} />
       </div>
     )}
-    {latestBuzzes.map((review) => {
-      const handle = didHandleMap[review.authorDid] || review.authorDid;
+    {/* {latestBuzzes.map((review) => {
+      const handle = didHandleMap[review.userDid] || review.userDid;
       const date = ts(review);
       return (
         <div>
@@ -197,6 +124,6 @@ export const Home: FC<Props> = ({
           {JSON.stringify(review)} on {date}
         </div>
       );
-    })}
+    })} */}
   </div>
 );

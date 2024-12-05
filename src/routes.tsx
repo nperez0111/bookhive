@@ -1,5 +1,6 @@
 /** @jsx createElement */
 import { TID } from "@atproto/common";
+import { methodOverride } from "hono/method-override";
 import { Agent, isDid } from "@atproto/api";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import type { BlobRef } from "@atproto/lexicon";
@@ -15,7 +16,6 @@ import type { AppContext, HonoServer } from ".";
 import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as Book from "./bsky/lexicon/types/buzz/bookhive/book";
-import * as Buzz from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import type { HiveId } from "./db";
 import { BookInfo } from "./pages/bookInfo";
 import { Error as ErrorPage } from "./pages/error";
@@ -94,7 +94,7 @@ async function refetchBooks({
     // Clear existing books
     await ctx.db
       .deleteFrom("user_book")
-      .where("authorDid", "=", agent.assertDid)
+      .where("userDid", "=", agent.assertDid)
       .execute();
   }
 
@@ -109,7 +109,7 @@ async function refetchBooks({
         .values({
           uri: record.uri,
           cid: record.cid,
-          authorDid: agent.assertDid,
+          userDid: agent.assertDid,
           createdAt: book.createdAt,
           title: book.title,
           authors: book.authors,
@@ -170,23 +170,14 @@ export function createRouter(app: HonoServer) {
   app.get("/", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
 
-    const buzzes = await c
-      .get("ctx")
-      .db.selectFrom("buzz")
-      .selectAll()
-      .orderBy("indexedAt", "desc")
-      .limit(25)
-      .execute();
-
-    const didHandleMap = await c
-      .get("ctx")
-      .resolver.resolveDidsToHandles(buzzes.map((s) => s.authorDid));
+    // const didHandleMap = await c
+    //   .get("ctx")
+    //   .resolver.resolveDidsToHandles([]);
 
     if (!agent) {
-      return c.render(
-        <Home latestBuzzes={buzzes} didHandleMap={didHandleMap} />,
-        { title: "Book Hive | Home" },
-      );
+      return c.render(<Home />, {
+        title: "Book Hive | Home",
+      });
     }
 
     const myBooks = await c
@@ -194,22 +185,16 @@ export function createRouter(app: HonoServer) {
       .db.selectFrom("user_book")
       .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
       .selectAll()
-      .where("user_book.authorDid", "=", agent.assertDid)
+      .where("user_book.userDid", "=", agent.assertDid)
       .orderBy("user_book.indexedAt", "desc")
       .limit(10)
       .execute();
 
     const profile = await getProfile(agent, c.get("ctx"));
 
-    return c.render(
-      <Home
-        latestBuzzes={buzzes}
-        didHandleMap={didHandleMap}
-        profile={profile}
-        myBooks={myBooks}
-      />,
-      { title: "Book Hive | Home" },
-    );
+    return c.render(<Home profile={profile} myBooks={myBooks} />, {
+      title: "Book Hive | Home",
+    });
   });
 
   app.get("/refresh-books", async (c) => {
@@ -236,7 +221,7 @@ export function createRouter(app: HonoServer) {
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
-      .where("authorDid", "=", agent.assertDid)
+      .where("userDid", "=", agent.assertDid)
       .orderBy("indexedAt", "desc")
       .limit(10)
       .execute();
@@ -290,15 +275,8 @@ export function createRouter(app: HonoServer) {
       await c
         .get("ctx")
         .db.selectFrom("user_book")
-        .select("authorDid")
-        .where("authorDid", "=", did)
-        .union(
-          c
-            .get("ctx")
-            .db.selectFrom("buzz")
-            .select("authorDid")
-            .where("authorDid", "=", did),
-        )
+        .select("userDid")
+        .where("userDid", "=", did)
         .limit(1)
         .executeTakeFirst(),
     );
@@ -325,19 +303,8 @@ export function createRouter(app: HonoServer) {
           .db.selectFrom("user_book")
           .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
           .selectAll()
-          .where("user_book.authorDid", "=", agent.assertDid)
+          .where("user_book.userDid", "=", agent.assertDid)
           .orderBy("user_book.indexedAt", "desc")
-          .limit(100)
-          .execute()
-      : [];
-
-    const buzzes = isBuzzer
-      ? await c
-          .get("ctx")
-          .db.selectFrom("buzz")
-          .selectAll()
-          .where("authorDid", "=", did)
-          .orderBy("indexedAt", "desc")
           .limit(100)
           .execute()
       : [];
@@ -347,7 +314,6 @@ export function createRouter(app: HonoServer) {
         isBuzzer={isBuzzer}
         handle={handle}
         books={books}
-        buzzes={buzzes}
         profile={profile}
       />,
       { title: "Book Hive | @" + handle },
@@ -394,6 +360,8 @@ export function createRouter(app: HonoServer) {
     });
   });
 
+  app.use("/books/:id", methodOverride({ app }));
+
   app.delete("/books/:id", async (c) => {
     const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
     if (!agent) {
@@ -416,7 +384,7 @@ export function createRouter(app: HonoServer) {
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
-      .where("authorDid", "=", agent.assertDid)
+      .where("userDid", "=", agent.assertDid)
       .where("uri", "=", bookUri)
       .execute();
 
@@ -433,11 +401,15 @@ export function createRouter(app: HonoServer) {
     await c
       .get("ctx")
       .db.deleteFrom("user_book")
-      .where("authorDid", "=", agent.assertDid)
+      .where("userDid", "=", agent.assertDid)
       .where("uri", "=", bookUri)
       .execute();
 
-    return c.json({ success: true, bookId, book: book[0] });
+    if (c.req.header()["accept"] === "application/json") {
+      return c.json({ success: true, bookId, book: book[0] });
+    }
+
+    return c.redirect("/books/" + book[0].hiveId);
   });
 
   app.post("/books", async (c) => {
@@ -527,7 +499,7 @@ export function createRouter(app: HonoServer) {
         .values({
           uri: res.data.uri,
           cid: res.data.cid,
-          authorDid: agent.assertDid,
+          userDid: agent.assertDid,
           createdAt: record.createdAt,
           title: record.title,
           authors: record.authors,
@@ -544,100 +516,6 @@ export function createRouter(app: HonoServer) {
         <Layout>
           <ErrorPage
             message="Failed to record book"
-            description={"Error: " + (err as Error).message}
-            statusCode={500}
-          />
-        </Layout>,
-        500,
-      );
-    }
-  });
-
-  app.post("/buzz", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-    if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to post a review"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
-      );
-    }
-
-    const { bookUri, bookCid, hiveId, commentUri, commentCid, stars } =
-      await c.req.parseBody();
-    const rkey = TID.nextStr();
-    const record = {
-      $type: ids.BuzzBookhiveBuzz,
-      createdAt: new Date().toISOString(),
-      book: {
-        $type: ids.ComAtprotoRepoStrongRef,
-        uri: bookUri as string,
-        cid: bookCid as string,
-      },
-      comment:
-        commentUri && commentCid
-          ? {
-              $type: ids.ComAtprotoRepoStrongRef,
-              uri: commentUri as string,
-              cid: commentCid as string,
-            }
-          : undefined,
-      stars: stars ? parseInt(stars as string, 10) : undefined,
-      hiveId: hiveId as string,
-    } satisfies Buzz.Record;
-
-    if (!Buzz.validateRecord(record).success) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid review"
-            description="When validating the review you inputted, it was invalid"
-            statusCode={400}
-          />
-        </Layout>,
-        400,
-      );
-    }
-
-    try {
-      const res = await agent.com.atproto.repo.putRecord({
-        repo: agent.assertDid,
-        collection: ids.BuzzBookhiveBuzz,
-        rkey,
-        record,
-        validate: false,
-      });
-
-      await c
-        .get("ctx")
-        .db.insertInto("buzz")
-        .values({
-          uri: res.data.uri,
-          cid: res.data.cid,
-          authorDid: agent.assertDid,
-          bookUri: record.book.uri,
-          bookCid: record.book.cid,
-          commentUri: record.comment?.uri,
-          commentCid: record.comment?.cid,
-          hiveId: record.hiveId as HiveId,
-          stars: record.stars,
-          createdAt: record.createdAt,
-          indexedAt: new Date().toISOString(),
-        })
-        .execute();
-
-      return c.redirect("/");
-    } catch (err) {
-      c.get("ctx").logger.warn({ err }, "failed to write record");
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Failed to record review"
             description={"Error: " + (err as Error).message}
             statusCode={500}
           />

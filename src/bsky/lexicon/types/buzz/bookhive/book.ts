@@ -27,6 +27,10 @@ export interface Record {
     | "buzz.bookhive.defs#abandoned"
     | "buzz.bookhive.defs#owned"
     | (string & {});
+  /** Number of stars given to the book (1-10) which will be mapped to 1-5 stars */
+  stars?: number;
+  /** The book's review */
+  review?: string;
   [k: string]: unknown;
 }
 
