@@ -2,14 +2,12 @@
 import { TID } from "@atproto/common";
 import { methodOverride } from "hono/method-override";
 import { Agent, isDid } from "@atproto/api";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import type { BlobRef } from "@atproto/lexicon";
 import { zValidator } from "@hono/zod-validator";
 // @ts-expect-error
 import { createElement, Fragment } from "hono/jsx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import sharp from "sharp";
-import type { StorageValue } from "unstorage";
 import { z } from "zod";
 
 import type { AppContext, HonoServer } from ".";
@@ -24,47 +22,7 @@ import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { findBookDetails } from "./scrapers";
-
-function readThroughCache<T extends StorageValue>(
-  ctx: AppContext,
-  key: string,
-  fetch: () => Promise<T>,
-  defaultValue?: T,
-): Promise<T> {
-  ctx.logger.trace({ key }, "readThroughCache");
-  return ctx.kv.get<T>(key).then((cached) => {
-    if (cached) {
-      ctx.logger.trace({ key, cached }, "readThroughCache hit");
-      return cached;
-    }
-
-    ctx.logger.trace({ key }, "readThroughCache miss");
-    return fetch()
-      .then((fresh) => {
-        ctx.logger.trace({ key, fresh }, "readThroughCache set");
-        ctx.kv.set(key, fresh);
-        return fresh;
-      })
-      .catch((err) => {
-        ctx.logger.error({ err }, "readThroughCache error");
-        return defaultValue as T;
-      });
-  });
-}
-
-async function getProfile(
-  agent: Agent,
-  ctx: AppContext,
-  did: string = agent.assertDid,
-): Promise<ProfileViewDetailed> {
-  return readThroughCache(ctx, "profile:" + did, async () => {
-    return agent
-      .getProfile({
-        actor: did,
-      })
-      .then((res) => res.data);
-  });
-}
+import { readThroughCache } from "./utils/readThroughCache";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -160,12 +118,7 @@ export function createRouter(app: HonoServer) {
   app.use(
     jsxRenderer(async ({ children, title = "Book Hive" }) => {
       const c = useRequestContext();
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-      let profile: ProfileViewDetailed | null = null;
-
-      if (agent) {
-        profile = await getProfile(agent, c.get("ctx"));
-      }
+      const profile = await c.get("ctx").getProfile();
 
       return (
         <Layout title={title}>
@@ -178,37 +131,17 @@ export function createRouter(app: HonoServer) {
 
   // Homepage
   app.get("/", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
-
     // const didHandleMap = await c
     //   .get("ctx")
     //   .resolver.resolveDidsToHandles([]);
 
-    if (!agent) {
-      return c.render(<Home />, {
-        title: "Book Hive | Home",
-      });
-    }
-
-    const myBooks = await c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .selectAll()
-      .where("user_book.userDid", "=", agent.assertDid)
-      .orderBy("user_book.indexedAt", "desc")
-      .limit(10)
-      .execute();
-
-    const profile = await getProfile(agent, c.get("ctx"));
-
-    return c.render(<Home profile={profile} myBooks={myBooks} />, {
+    return c.render(<Home />, {
       title: "Book Hive | Home",
     });
   });
 
   app.get("/refresh-books", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
         <Layout>
@@ -241,7 +174,7 @@ export function createRouter(app: HonoServer) {
 
   // Redirect to profile/:handle
   app.get("/profile", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
         <Layout>
@@ -303,10 +236,19 @@ export function createRouter(app: HonoServer) {
     // }
 
     const agent =
-      (await c.get("ctx").getSessionAgent(c.req.raw, c.res)) ||
+      (await c.get("ctx").getSessionAgent()) ||
       new Agent("https://public.api.bsky.app/xrpc");
-    const profile = await getProfile(agent, c.get("ctx"), did);
-
+    const profile = await readThroughCache(
+      c.get("ctx"),
+      "profile:" + did,
+      async () => {
+        return agent
+          .getProfile({
+            actor: did,
+          })
+          .then((res) => res.data);
+      },
+    );
     const books = isBuzzer
       ? await c
           .get("ctx")
@@ -331,7 +273,7 @@ export function createRouter(app: HonoServer) {
   });
 
   app.get("/books/:id", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
         <Layout>
@@ -373,7 +315,7 @@ export function createRouter(app: HonoServer) {
   app.use("/books/:id", methodOverride({ app }));
 
   app.delete("/books/:id", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
         <Layout>
@@ -423,7 +365,7 @@ export function createRouter(app: HonoServer) {
   });
 
   app.post("/books", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+    const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
         <Layout>
@@ -547,7 +489,7 @@ export function createRouter(app: HonoServer) {
       }),
     ),
     async (c) => {
-      const agent = await c.get("ctx").getSessionAgent(c.req.raw, c.res);
+      const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
         return c.html(
           <Layout>

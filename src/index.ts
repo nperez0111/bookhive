@@ -30,6 +30,9 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { createRouter } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
+import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import { readThroughCache } from "./utils/readThroughCache.ts";
+import { lazy } from "./utils/lazy.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -40,7 +43,8 @@ export type AppContext = {
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
   baseIdResolver: ReturnType<typeof createIdResolver>;
-  getSessionAgent: (req: Request, res: Response) => Promise<Agent | null>;
+  getSessionAgent: () => Promise<Agent | null>;
+  getProfile: () => Promise<ProfileViewDetailed | null>;
 };
 
 declare module "hono" {
@@ -86,7 +90,7 @@ export class Server {
   constructor(
     public app: HonoServer,
     public server: ServerType,
-    public ctx: AppContext,
+    public logger: pino.Logger,
   ) {}
 
   static async create() {
@@ -128,17 +132,6 @@ export class Server {
     const resolver = createBidirectionalResolver(baseIdResolver);
 
     const time = new Date().toISOString();
-    const ctx = {
-      db,
-      ingester,
-      logger,
-      oauthClient,
-      resolver,
-      baseIdResolver,
-      kv,
-      getSessionAgent: (req: Request, res: Response): Promise<Agent | null> =>
-        getSessionAgent(req, res, ctx),
-    } satisfies AppContext;
 
     // Subscribe to events on the firehose
     ingester.start();
@@ -168,7 +161,33 @@ export class Server {
 
     // Add context to Hono app
     app.use("*", async (c, next) => {
-      c.set("ctx", ctx);
+      c.set("ctx", {
+        db,
+        ingester,
+        logger,
+        oauthClient,
+        resolver,
+        baseIdResolver,
+        kv,
+        getSessionAgent(): Promise<Agent | null> {
+          return lazy(() => getSessionAgent(c.req.raw, c.res, this)).value;
+        },
+        async getProfile(): Promise<ProfileViewDetailed | null> {
+          return lazy(async () => {
+            const agent = await getSessionAgent(c.req.raw, c.res, this);
+            if (!agent || !agent.did) {
+              return Promise.resolve(null);
+            }
+            return readThroughCache(this, "profile:" + agent.did, async () => {
+              return agent
+                .getProfile({
+                  actor: agent.assertDid,
+                })
+                .then((res) => res.data);
+            });
+          }).value;
+        },
+      });
       await next();
     });
 
@@ -205,14 +224,14 @@ export class Server {
       },
     );
 
-    return new Server(app, server, ctx);
+    return new Server(app, server, logger);
   }
 
   async close() {
-    this.ctx.logger.info("sigint received, shutting down");
+    this.logger.info("sigint received, shutting down");
     return new Promise<void>((resolve) => {
       this.server.close(() => {
-        this.ctx.logger.info("server closed");
+        this.logger.info("server closed");
         resolve();
       });
     });

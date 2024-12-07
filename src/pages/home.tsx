@@ -1,9 +1,9 @@
 /** @jsx createElement */
 // @ts-expect-error
 import { type FC, createElement, Fragment } from "hono/jsx";
-import { type HiveBook, type UserBook } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
+import { useRequestContext } from "hono/jsx-renderer";
 
 // function ts(status: Buzz) {
 //   const createdAt = new Date(status.createdAt);
@@ -15,23 +15,40 @@ import { BookList } from "./components/book";
 type Props = {
   didHandleMap?: Record<string, string>;
   profile?: ProfileViewDetailed;
-  myBooks?: (UserBook & HiveBook)[];
 };
 
-export const Home: FC<Props> = ({ profile, myBooks }) => (
-  <div class="container mx-auto h-[calc(100vh-64px)] max-w-7xl bg-slate-50 px-3 dark:bg-slate-900 dark:text-white">
-    <div class="flex justify-center">
-      {profile ? (
-        <h1 class="mt-3 mb-2 text-3xl">
-          👋, <span class="font-bold">{profile.displayName || "friend"}</span>,
-          welcome back to Book Hive 🐝!
-        </h1>
-      ) : (
-        <h1 class="mt-3 mb-2 text-3xl">👋, Welcome to the Book Hive 🐝!</h1>
-      )}
-    </div>
-    {/* <Chat /> */}
-    {/* {profile && (
+export const Home: FC<Props> = async () => {
+  const c = useRequestContext();
+
+  const agent = await c.get("ctx").getSessionAgent();
+  const profile = await c.get("ctx").getProfile();
+
+  const myBooks = agent
+    ? await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .selectAll()
+        .where("user_book.userDid", "=", agent.assertDid)
+        .orderBy("user_book.indexedAt", "desc")
+        .limit(10)
+        .execute()
+    : [];
+
+  return (
+    <div class="container mx-auto h-[calc(100vh-64px)] max-w-7xl bg-slate-50 px-3 dark:bg-slate-900 dark:text-white">
+      <div class="flex justify-center">
+        {profile ? (
+          <h1 class="mt-3 mb-2 text-3xl">
+            👋, <span class="font-bold">{profile.displayName || "friend"}</span>
+            , welcome back to Book Hive 🐝!
+          </h1>
+        ) : (
+          <h1 class="mt-3 mb-2 text-3xl">👋, Welcome to the Book Hive 🐝!</h1>
+        )}
+      </div>
+      {/* <Chat /> */}
+      {/* {profile && (
       <form action="/books" method="post">
         <div class="space-y-12">
           <div class="border-b border-gray-900/10 pb-12">
@@ -105,15 +122,15 @@ export const Home: FC<Props> = ({ profile, myBooks }) => (
         </div>
       </form>
     )} */}
-    {myBooks && (
-      <div>
-        <h2 class="text-md mt-3 mb-6 border-b text-2xl leading-12">
-          Your books
-        </h2>
-        <BookList books={myBooks} />
-      </div>
-    )}
-    {/* {latestBuzzes.map((review) => {
+      {myBooks && (
+        <div>
+          <h2 class="text-md mt-3 mb-6 border-b text-2xl leading-12">
+            Your books
+          </h2>
+          <BookList books={myBooks} />
+        </div>
+      )}
+      {/* {latestBuzzes.map((review) => {
       const handle = didHandleMap[review.userDid] || review.userDid;
       const date = ts(review);
       return (
@@ -125,5 +142,6 @@ export const Home: FC<Props> = ({ profile, myBooks }) => (
         </div>
       );
     })} */}
-  </div>
-);
+    </div>
+  );
+};
