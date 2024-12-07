@@ -9,7 +9,7 @@ import { useRequestContext } from "hono/jsx-renderer";
 import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
-import type { HiveBook } from "../db";
+import type { HiveBook, UserBook } from "../db";
 
 const BOOK_STATUS_MAP = {
   [BookStatus.ABANDONED]: "abandoned",
@@ -91,20 +91,8 @@ async function Recommendations({
 
 const BookStatusButton: FC<{
   book: HiveBook;
-  did: string | null;
-}> = async ({ did, book }) => {
-  const c = useRequestContext();
-
-  const usersBook = did
-    ? await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("userDid", "==", did)
-        .where("hiveId", "==", book.id)
-        .executeTakeFirst()
-    : undefined;
-
+  usersBook: UserBook | undefined;
+}> = async ({ usersBook, book }) => {
   return (
     <Fragment>
       <form action="/books" method="post" class="mt-4">
@@ -268,8 +256,17 @@ export const BookInfo: FC<{
   book: HiveBook;
 }> = async ({ book }) => {
   const c = useRequestContext();
-  const did =
-    (await c.get("ctx").getSessionAgent(c.req.raw, c.res))?.did ?? null;
+  const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
+
+  const usersBook = did
+    ? await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("userDid", "==", did)
+        .where("hiveId", "==", book.id)
+        .executeTakeFirst()
+    : undefined;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -300,7 +297,7 @@ export const BookInfo: FC<{
                   </div>
                 </div>
               </div>
-              <BookStatusButton did={did} book={book} />
+              <BookStatusButton usersBook={usersBook} book={book} />
             </div>
 
             <div className="flex-1">
@@ -374,6 +371,46 @@ export const BookInfo: FC<{
                   </a>
                 </div>
               )}
+            </div>
+          </div>
+          <div className="flex gap-3 rounded-xl bg-gray-900 p-6 shadow-md">
+            <div class="md:w-1/3 lg:w-1/4">
+              <h2 className="text-xl leading-2 font-bold">
+                {usersBook?.stars
+                  ? `You Rated: ${usersBook?.stars / 2}`
+                  : "Rating"}
+              </h2>
+              <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
+                Click to rate this book
+              </div>
+              <div className="mt-6">
+                <form action="/books/rate" method="post" className="relative">
+                  <input type="hidden" name="bookId" value={book.id} />
+                  <input
+                    type="hidden"
+                    name="rating"
+                    value={usersBook?.stars || 0}
+                    id="rating-value"
+                  />
+
+                  <div id="star-rating" data-rating={usersBook?.stars}></div>
+                </form>
+              </div>
+            </div>
+            <div class="flex-1">
+              <h2 className="text-xl leading-2 font-bold">
+                {usersBook?.review ? "Your Review" : "Review"}
+              </h2>
+              <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
+                Leave your review of this book
+              </div>
+              <div className="mt-6">
+                <textarea
+                  className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                  placeholder="Write your review here..."
+                  value={usersBook?.review || ""}
+                />
+              </div>
             </div>
           </div>
         </div>
