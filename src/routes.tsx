@@ -99,7 +99,7 @@ async function refetchBooks({
   }
 
   await books.data.records
-    .filter((record) => Book.validateRecord(record).success)
+    .filter((record) => Book.validateRecord(record.value).success)
     .reduce(async (acc, record) => {
       await acc;
       const book = record.value as Book.Record;
@@ -118,10 +118,20 @@ async function refetchBooks({
           status: book.status,
           startedAt: book.startedAt,
           finishedAt: book.finishedAt,
+          review: book.review,
+          stars: book.stars,
         })
         .onConflict((oc) =>
           oc.column("uri").doUpdateSet({
             indexedAt: new Date().toISOString(),
+            title: book.title,
+            authors: book.authors,
+            status: book.status,
+            startedAt: book.startedAt,
+            finishedAt: book.finishedAt,
+            hiveId: book.hiveId as HiveId,
+            review: book.review,
+            stars: book.stars,
           }),
         )
         .execute();
