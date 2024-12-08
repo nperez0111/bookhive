@@ -8,7 +8,7 @@
     "dev:backend": "JITI_JSX=true nodemon --exec 'jiti ./src/index.ts' --watch src -e ts,tsx | pino-pretty",
     "dev:css": "pnpm run build:css --watch",
     "dev:js": "pnpm run build:js --watch",
-    "build:js": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --alias:react=hono/jsx/dom --sourcemap --watch",
+    "build:js": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --alias:react=hono/jsx/dom --sourcemap",
     "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
     "build": "concurrently \"pnpm run build:css\" \"pnpm run build:js\" \"pnpm run lexgen --yes\"",
     "test": "echo \"Error: no test specified\"",
