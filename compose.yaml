@@ -9,6 +9,7 @@
 # https://github.com/docker/awesome-compose
 services:
   server:
+    restart: unless-stopped
     build:
       context: .
     environment:
@@ -16,12 +17,11 @@ services:
       COOKIE_SECRET: "secret_password_do_not_use_this_please"
       DB_PATH: "/data/db.sqlite"
       KV_DB_PATH: "/data/kv.sqlite"
-      HOST: "localhost"
       PUBLIC_URL: "https://bookhive.buzz"
     ports:
       - 8080:8080
     volumes:
-      - data:/usr/src/app/data
+      - data:/data
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
 # start the database before your application. The `db-data` volume persists the
