@@ -27,7 +27,7 @@ export const Home: FC<Props> = async () => {
         .selectAll()
         .where("user_book.userDid", "=", agent.assertDid)
         .orderBy("user_book.indexedAt", "desc")
-        .limit(10)
+        .limit(50)
         .execute()
     : [];
 
