@@ -159,16 +159,20 @@ export function createRouter(app: HonoServer) {
       ctx: c.get("ctx"),
     });
 
-    const books = await c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .selectAll()
-      .where("userDid", "=", agent.assertDid)
-      .orderBy("indexedAt", "desc")
-      .limit(10)
-      .execute();
+    if (c.req.header()["accept"] === "application/json") {
+      const books = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("userDid", "=", agent.assertDid)
+        .orderBy("indexedAt", "desc")
+        .limit(10)
+        .execute();
 
-    return c.json(books);
+      return c.json(books);
+    }
+
+    return c.redirect("/");
   });
 
   // Redirect to profile/:handle
