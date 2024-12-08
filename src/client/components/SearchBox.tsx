@@ -101,7 +101,7 @@ export const SearchBox: FC = () => {
           autocomplete="off"
           placeholder="Search books..."
           id="search-books"
-          className="block w-64 rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm/6 dark:placeholder:text-gray-800"
+          className="block w-64 rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-600 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm/6 dark:placeholder:text-gray-800"
           value={query}
           onFocus={handleFocus}
           onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
@@ -129,7 +129,7 @@ export const SearchBox: FC = () => {
               >
                 <a
                   href={`/books/${book.id}`}
-                  class="group flex w-full items-center justify-between gap-x-6 space-x-4 rounded-md px-2 py-3 text-left hover:bg-slate-800"
+                  class="group flex w-full items-center justify-between gap-x-6 space-x-4 rounded-md px-2 py-3 text-left hover:bg-slate-200 dark:hover:bg-slate-800"
                 >
                   <div className="flex items-center justify-between space-x-4">
                     <img

@@ -28,6 +28,12 @@ document.addEventListener("DOMContentLoaded", () => {
             "rating-value",
           ) as HTMLInputElement;
           ratingInput.value = rating.toString();
+
+          const ratingForm = document.getElementById(
+            "rating-form",
+          ) as HTMLFormElement;
+
+          ratingForm.submit();
         }}
       />,
       starRating,

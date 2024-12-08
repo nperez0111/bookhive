@@ -1,6 +1,7 @@
 /** @jsx createElement */
 import {
   type FC,
+  type PropsWithChildren,
   // @ts-ignore
   createElement,
   Fragment,
@@ -10,55 +11,44 @@ import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
 import type { HiveBook, UserBook } from "../db";
-
-const BOOK_STATUS_MAP = {
-  [BookStatus.ABANDONED]: "abandoned",
-  [BookStatus.READING]: "currently reading",
-  [BookStatus.WANTTOREAD]: "want to read",
-  [BookStatus.OWNED]: "owned",
-  [BookStatus.FINISHED]: "have read",
-};
+import { BOOK_STATUS_MAP } from "../constants";
 
 async function Recommendations({
   book,
-  // did,
+  did,
 }: {
   book: HiveBook;
   did: string | null;
 }) {
   const c = useRequestContext();
-  const relatedBooks = await c
+  const peerBooks = await c
     .get("ctx")
     .db.selectFrom("user_book")
     .selectAll()
     .where("hiveId", "==", book.id)
-    // .where("userDid", "!=", did)
+    .orderBy("indexedAt", "desc")
     .limit(10)
     .execute();
 
   const didHandleMap = await c
     .get("ctx")
-    .resolver.resolveDidsToHandles(relatedBooks.map((s) => s.userDid));
+    .resolver.resolveDidsToHandles(peerBooks.map((s) => s.userDid));
 
-  // const nonAuthorRelatedBooks = relatedBooks.filter(
-  //   (related) => related.userDid !== did,
-  // );
-
-  if (!relatedBooks.length) {
+  if (!peerBooks.length) {
     return (
-      <div class="rounded-xl bg-gray-900 px-2 py-5 text-center">
+      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
         Be the first to read this on bookhive!
       </div>
     );
   }
 
-  // if (nonAuthorRelatedBooks.length === 0) {
-  //   return (
-  //     <div class="rounded-xl bg-gray-900 px-2 py-5 text-center">
-  //       First to read this book on bookhive!
-  //     </div>
-  //   );
-  // }
+  if (peerBooks.every((related) => related.userDid === did)) {
+    return (
+      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
+        You are the only one to have read this on bookhive, so far!
+      </div>
+    );
+  }
 
   return (
     <Fragment>
@@ -66,13 +56,13 @@ async function Recommendations({
         Who else is reading this book?
       </h3>
       <div class="flex flex-col gap-2">
-        {relatedBooks.map((related) => {
+        {peerBooks.map((related) => {
           const handle = didHandleMap[related.userDid] || related.userDid;
           return (
             <a
               key={related.userDid}
               href={`/profile/${handle}`}
-              class="block cursor-pointer rounded-sm border border-slate-400 px-2 py-2 hover:bg-slate-700"
+              class="block cursor-pointer rounded-xl border border-slate-400 px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
             >
               <span class="text-blue-600">@{handle}</span> - marked as{" "}
               {related.status && related.status in BOOK_STATUS_MAP
@@ -80,7 +70,9 @@ async function Recommendations({
                     related.status as keyof typeof BOOK_STATUS_MAP
                   ]
                 : related.status || BOOK_STATUS_MAP[BookStatus.READING]}{" "}
-              {formatDistanceToNow(related.createdAt, { addSuffix: true })}
+              {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
+              {related.stars && <span> - rated {related.stars / 2}</span>}
+              {related.review && <span> - reviewed</span>}
             </a>
           );
         })}
@@ -89,13 +81,49 @@ async function Recommendations({
   );
 }
 
+const UpdateBookForm: FC<
+  PropsWithChildren<{
+    book: HiveBook;
+    userBook: UserBook | undefined;
+    editing?: "stars" | "review" | "status" | "startedAt" | "finishedAt";
+    formId?: string;
+  }>
+> = ({ book, userBook, editing, formId, children }) => {
+  return (
+    <form action="/books" method="post" id={formId}>
+      <input type="hidden" name="authors" value={book.authors} />
+      <input type="hidden" name="title" value={book.title} />
+      <input type="hidden" name="hiveId" value={book.id} />
+      {book.cover && (
+        <input type="hidden" name="coverImage" value={book.cover} />
+      )}
+      {userBook?.startedAt && editing !== "startedAt" && (
+        <input type="hidden" name="startedAt" value={userBook.startedAt} />
+      )}
+      {userBook?.finishedAt && editing !== "finishedAt" && (
+        <input type="hidden" name="finishedAt" value={userBook.finishedAt} />
+      )}
+      {userBook?.stars && editing !== "stars" && (
+        <input type="hidden" name="stars" value={String(userBook.stars)} />
+      )}
+      {userBook?.review && editing !== "review" && (
+        <input type="hidden" name="review" value={userBook.review} />
+      )}
+      {userBook?.status && editing !== "status" && (
+        <input type="hidden" name="status" value={userBook.status} />
+      )}
+      {children}
+    </form>
+  );
+};
+
 const BookStatusButton: FC<{
   book: HiveBook;
   usersBook: UserBook | undefined;
 }> = async ({ usersBook, book }) => {
   return (
-    <Fragment>
-      <form action="/books" method="post" class="mt-4">
+    <div class="mt-4">
+      <UpdateBookForm book={book} userBook={usersBook}>
         {usersBook && (
           <h3 class="my-3 leading-6">{`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
             usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
@@ -229,14 +257,7 @@ const BookStatusButton: FC<{
             });
           }}
         />
-
-        <input type="hidden" name="authors" value={book.authors} />
-        <input type="hidden" name="title" value={book.title} />
-        <input type="hidden" name="hiveId" value={book.id} />
-        {book.cover && (
-          <input type="hidden" name="coverImage" value={book.cover} />
-        )}
-      </form>
+      </UpdateBookForm>
       {usersBook && (
         <form action={`/books/${usersBook.uri.split("/").pop()}`} method="post">
           <button
@@ -248,7 +269,7 @@ const BookStatusButton: FC<{
           <input type="hidden" name="_method" value="DELETE" />
         </form>
       )}
-    </Fragment>
+    </div>
   );
 };
 
@@ -273,8 +294,8 @@ export const BookInfo: FC<{
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">
-          <div className="mb-8 flex flex-col gap-8 rounded-xl bg-gray-900 p-6 shadow-md md:flex-row">
-            <div className="w-full p-1 md:w-1/3 lg:w-1/4">
+          <div className="mb-8 flex flex-col gap-8 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+            <div className="w-2/3 p-1 sm:w-1/2 md:w-1/3 lg:w-1/4">
               <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
                 {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
                 <div className="relative">
@@ -309,25 +330,25 @@ export const BookInfo: FC<{
               </p>
 
               <div className="mb-8 flex items-center gap-1">
-                <div className="-ml-2 flex -space-x-3">
+                <div className="flex">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <svg
-                      class="relative inline-flex w-8"
+                      class="relative inline-flex h-6 w-6 space-x-1"
                       viewBox="0 0 24 24"
                       key={star}
                     >
                       {/* Background star (gray) */}
                       <path
                         class="fill-current text-gray-300"
-                        d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z"
+                        d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
                       {/* Filled star (yellow) with clip */}
                       <path
                         style={{
                           clipPath: `inset(0 ${100 - Math.min(100, Math.max(0, ((book.rating || 0) / 1000 - (star - 1)) * 100))}% 0 0)`,
                         }}
-                        class="fill-current text-yellow-300"
-                        d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z"
+                        class="fill-current text-yellow-400"
+                        d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
                     </svg>
                   ))}
@@ -373,7 +394,7 @@ export const BookInfo: FC<{
               )}
             </div>
           </div>
-          <div className="flex gap-3 rounded-xl bg-gray-900 p-6 shadow-md">
+          <div className="flex flex-col gap-3 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
             <div class="md:w-1/3 lg:w-1/4">
               <h2 className="text-xl leading-2 font-bold">
                 {usersBook?.stars
@@ -383,33 +404,52 @@ export const BookInfo: FC<{
               <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                 Click to rate this book
               </div>
-              <div className="mt-6">
-                <form action="/books/rate" method="post" className="relative">
-                  <input type="hidden" name="bookId" value={book.id} />
+              <div className="my-8 mb-2">
+                <UpdateBookForm
+                  book={book}
+                  userBook={usersBook}
+                  editing="stars"
+                  formId="rating-form"
+                >
                   <input
                     type="hidden"
-                    name="rating"
+                    name="stars"
                     value={usersBook?.stars || 0}
                     id="rating-value"
                   />
 
                   <div id="star-rating" data-rating={usersBook?.stars}></div>
-                </form>
+                </UpdateBookForm>
               </div>
             </div>
-            <div class="flex-1">
+            <div class="md:flex-1">
               <h2 className="text-xl leading-2 font-bold">
                 {usersBook?.review ? "Your Review" : "Review"}
               </h2>
               <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                 Leave your review of this book
               </div>
-              <div className="mt-6">
-                <textarea
-                  className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
-                  placeholder="Write your review here..."
-                  value={usersBook?.review || ""}
-                />
+              <div className="my-8 mb-2">
+                <UpdateBookForm
+                  book={book}
+                  userBook={usersBook}
+                  editing="review"
+                  formId="rating-form"
+                >
+                  <textarea
+                    className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                    placeholder="Write your review here..."
+                    name="review"
+                  >
+                    {usersBook?.review || ""}
+                  </textarea>
+                  <button
+                    type="submit"
+                    class="mt-2 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    Save
+                  </button>
+                </UpdateBookForm>
               </div>
             </div>
           </div>

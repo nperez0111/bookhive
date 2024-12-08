@@ -1,6 +1,6 @@
 /** @jsx createElement */
 // @ts-expect-error
-import { type FC, createElement } from "hono/jsx";
+import { type FC, Fragment, createElement } from "hono/jsx";
 import { type HiveBook, type UserBook } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
@@ -34,10 +34,39 @@ export const ProfilePage: FC<{
       </div>
 
       {isBuzzer ? (
-        <section>
-          <h2 class="mb-6 text-2xl font-semibold">Books</h2>
-          <BookList books={books} />
-        </section>
+        <div class="flex flex-col gap-10">
+          <section>
+            <h2 class="mb-6 text-2xl font-semibold">Books</h2>
+            <BookList books={books} />
+          </section>
+          <section>
+            <h2 class="mb-6 text-2xl font-semibold">Reviews</h2>
+            {books
+              .filter((book) => book.review)
+              .map((book) => {
+                return (
+                  <div class="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
+                    <a href={`/books/${book.hiveId}`} class="flex gap-4">
+                      <img
+                        src={book.cover || book.thumbnail}
+                        alt=""
+                        class="h-36 rounded-lg object-cover shadow-sm"
+                      />
+                      <span class="flex flex-col gap-1">
+                        <span class="text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                          {book.title}
+                        </span>
+                        <span class="text-sm text-slate-600 dark:text-slate-400">
+                          by {book.authors.split("\t").join(", ")}
+                        </span>
+                        <p class="py-2">{book.review}</p>
+                      </span>
+                    </a>
+                  </div>
+                );
+              })}
+          </section>
+        </div>
       ) : (
         <div class="text-center">😔 This user has no books on bookhive</div>
       )}

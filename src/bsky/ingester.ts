@@ -41,8 +41,11 @@ export function createIngester(db: Database, idResolver: IdResolver) {
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet({
                 indexedAt: now.toISOString(),
+                cid: evt.cid.toString(),
                 hiveId: record.hiveId as HiveId,
                 status: record.status,
+                review: record.review,
+                stars: record.stars,
                 startedAt: record.startedAt,
                 finishedAt: record.finishedAt,
               }),

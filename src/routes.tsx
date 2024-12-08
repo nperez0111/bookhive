@@ -2,12 +2,10 @@
 import { TID } from "@atproto/common";
 import { methodOverride } from "hono/method-override";
 import { Agent, isDid } from "@atproto/api";
-import type { BlobRef } from "@atproto/lexicon";
 import { zValidator } from "@hono/zod-validator";
 // @ts-expect-error
 import { createElement, Fragment } from "hono/jsx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
-import sharp from "sharp";
 import { z } from "zod";
 
 import type { AppContext, HonoServer } from ".";
@@ -23,6 +21,7 @@ import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { findBookDetails } from "./scrapers";
 import { readThroughCache } from "./utils/readThroughCache";
+import { uploadImageBlob } from "./utils/uploadImageBlob";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -255,7 +254,7 @@ export function createRouter(app: HonoServer) {
           .db.selectFrom("user_book")
           .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
           .selectAll()
-          .where("user_book.userDid", "=", agent.assertDid)
+          .where("user_book.userDid", "=", did)
           .orderBy("user_book.indexedAt", "desc")
           .limit(100)
           .execute()
@@ -364,118 +363,184 @@ export function createRouter(app: HonoServer) {
     return c.redirect("/books/" + book[0].hiveId);
   });
 
-  app.post("/books", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to add a book"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
-      );
-    }
-
-    const { authors, title, year, status, hiveId, coverImage } =
-      await c.req.parseBody();
-
-    console.log({ authors, title, year, status, hiveId, coverImage });
-
-    let coverImageBlobRef: BlobRef | undefined = undefined;
-    if (coverImage) {
-      const data = await fetch(coverImage as string).then((res) =>
-        res.arrayBuffer(),
-      );
-
-      const resizedImage = await sharp(data)
-        .resize({ width: 800, withoutEnlargement: true })
-        .jpeg()
-        .toBuffer();
-      const uploadResponse = await agent.com.atproto.repo.uploadBlob(
-        resizedImage,
-        {
-          encoding: "image/jpeg",
-        },
-      );
-      if (uploadResponse.success) {
-        coverImageBlobRef = uploadResponse.data.blob;
-      }
-    }
-    const rkey = TID.nextStr();
-    const record = {
-      $type: ids.BuzzBookhiveBook,
-      createdAt: new Date().toISOString(),
-      authors: authors as string,
-      title: title as string,
-      cover: coverImageBlobRef,
-      status: status as string,
-      hiveId: hiveId as string,
-    } satisfies Book.Record;
-
-    const validation = Book.validateRecord(record);
-    if (!validation.success) {
-      if (c.req.header()["accept"] === "application/json") {
-        return c.json(
-          { error: "Invalid book", message: validation.error.message },
-          400,
+  app.post(
+    "/books",
+    zValidator(
+      "form",
+      z.object({
+        authors: z.string(),
+        title: z.string(),
+        hiveId: z.string(),
+        status: z.string().optional(),
+        coverImage: z.string().optional(),
+        startedAt: z.string().optional(),
+        finishedAt: z.string().optional(),
+        stars: z.coerce.number().optional(),
+        review: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.html(
+          <Layout>
+            <ErrorPage
+              message="Invalid Session"
+              description="Login to add a book"
+              statusCode={401}
+            />
+          </Layout>,
+          401,
         );
       }
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid book"
-            description="When validating the book you inputted, it was invalid"
-            statusCode={400}
-          />
-        </Layout>,
-        400,
-      );
-    }
+      try {
+        const {
+          authors,
+          title,
+          status,
+          hiveId,
+          coverImage,
+          startedAt,
+          finishedAt,
+          stars,
+          review,
+        } = await c.req.valid("form");
 
-    try {
-      const res = await agent.com.atproto.repo.putRecord({
-        repo: agent.assertDid,
-        collection: ids.BuzzBookhiveBook,
-        rkey,
-        record,
-        validate: false,
-      });
-      console.log(record.cover?.ref.toString());
+        const userBook = await c
+          .get("ctx")
+          .db.selectFrom("user_book")
+          .selectAll()
+          .where("userDid", "=", agent.assertDid)
+          .where("hiveId", "=", hiveId as HiveId)
+          .executeTakeFirst();
 
-      await c
-        .get("ctx")
-        .db.insertInto("user_book")
-        .values({
-          uri: res.data.uri,
-          cid: res.data.cid,
-          userDid: agent.assertDid,
-          createdAt: record.createdAt,
-          title: record.title,
-          authors: record.authors,
-          indexedAt: new Date().toISOString(),
-          hiveId: record.hiveId as HiveId,
-          status: record.status,
-        })
-        .execute();
+        let originalBook: Book.Record | undefined = undefined;
+        if (userBook) {
+          const {
+            data: { value: originalBookValue },
+          } = await agent.com.atproto.repo.getRecord({
+            repo: agent.assertDid,
+            collection: ids.BuzzBookhiveBook,
+            rkey: userBook.uri.split("/").at(-1)!,
+            cid: userBook.cid,
+          });
+          originalBook = originalBookValue as Book.Record;
+        }
 
-      return c.redirect("/books/" + record.hiveId);
-    } catch (err) {
-      c.get("ctx").logger.warn({ err }, "failed to write book");
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Failed to record book"
-            description={"Error: " + (err as Error).message}
-            statusCode={500}
-          />
-        </Layout>,
-        500,
-      );
-    }
-  });
+        const input = {
+          title: originalBook?.title || title,
+          authors: originalBook?.authors || authors,
+          hiveId: originalBook?.hiveId || hiveId,
+          cover:
+            originalBook?.cover || (await uploadImageBlob(coverImage, agent)),
+          status: status || originalBook?.status || undefined,
+          createdAt: originalBook?.createdAt || new Date().toISOString(),
+          startedAt: startedAt || originalBook?.startedAt || undefined,
+          finishedAt: finishedAt || originalBook?.finishedAt || undefined,
+          review: review || originalBook?.review || undefined,
+          stars: stars || originalBook?.stars || undefined,
+        };
+        const book = Book.validateRecord(input);
+
+        if (!book.success) {
+          return c.html(
+            <Layout>
+              <ErrorPage
+                message="Invalid book"
+                description={
+                  "When validating the book you inputted, it was invalid because: " +
+                  book.error.message
+                }
+                statusCode={400}
+              />
+            </Layout>,
+            400,
+          );
+        }
+
+        const record = book.value as Book.Record;
+
+        const response = await agent.com.atproto.repo.applyWrites({
+          repo: agent.assertDid,
+          writes: [
+            {
+              $type: originalBook
+                ? "com.atproto.repo.applyWrites#update"
+                : "com.atproto.repo.applyWrites#create",
+              collection: ids.BuzzBookhiveBook,
+              rkey: userBook ? userBook.uri.split("/").at(-1) : TID.nextStr(),
+              value: record as Book.Record,
+            },
+          ],
+        });
+
+        if (
+          !response.success ||
+          !response.data.results ||
+          response.data.results.length === 0
+        ) {
+          return c.html(
+            <Layout>
+              <ErrorPage
+                message="Failed to record book"
+                description="Failed to write book to the database"
+                statusCode={500}
+              />
+            </Layout>,
+            500,
+          );
+        }
+
+        await c
+          .get("ctx")
+          .db.insertInto("user_book")
+          .values({
+            uri: response.data.results[0].uri as string,
+            cid: response.data.results[0].cid as string,
+            userDid: agent.assertDid,
+            createdAt: record.createdAt,
+            authors: record.authors,
+            title: record.title,
+            indexedAt: new Date().toISOString(),
+            hiveId: record.hiveId as HiveId,
+            status: record.status,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            review: record.review,
+            stars: record.stars,
+          })
+          .onConflict((oc) =>
+            oc.column("uri").doUpdateSet({
+              indexedAt: new Date().toISOString(),
+              cid: response.data.results?.[0].cid as string,
+              authors: record.authors,
+              title: record.title,
+              hiveId: record.hiveId as HiveId,
+              status: record.status,
+              startedAt: record.startedAt,
+              finishedAt: record.finishedAt,
+              review: record.review,
+              stars: record.stars,
+            }),
+          )
+          .execute();
+
+        return c.redirect("/books/" + hiveId);
+      } catch (err) {
+        c.get("ctx").logger.warn({ err }, "failed to write book");
+        return c.html(
+          <Layout>
+            <ErrorPage
+              message="Failed to record book"
+              description={"Error: " + (err as Error).message}
+              statusCode={500}
+            />
+          </Layout>,
+          500,
+        );
+      }
+    },
+  );
 
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
