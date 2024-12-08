@@ -8,6 +8,8 @@ import { env } from "../env";
 
 const cssFileContent = readFileSync("./public/output.css", "utf-8");
 
+const now = Date.now();
+
 export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
   html`<!doctype html>
     <html lang="en" class="h-full bg-white dark:bg-slate-950 dark:text-white">
@@ -61,7 +63,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
               checkTime();
             </script>`
           : ""}
-        <script type="module" src="/public/js/client.js"></script>
+        <script type="module" src="/public/js/client.js?v=${now}"></script>
       </head>
       <body>
         ${props["children"]}
