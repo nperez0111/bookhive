@@ -27,7 +27,7 @@ export const Home: FC<Props> = async () => {
         .selectAll()
         .where("user_book.userDid", "=", agent.assertDid)
         .orderBy("user_book.indexedAt", "desc")
-        .limit(50)
+        .limit(100)
         .execute()
     : [];
 
@@ -36,7 +36,7 @@ export const Home: FC<Props> = async () => {
     .db.selectFrom("user_book")
     .selectAll()
     .orderBy("indexedAt", "desc")
-    .limit(25)
+    .limit(100)
     .execute();
 
   const didHandleMap = await c

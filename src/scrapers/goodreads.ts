@@ -116,6 +116,7 @@ class Goodreads {
     };
   }
 
+  // TODO look into this book: https://bookhive.buzz/books/bk_RqXDuG9xDvdiMDVd3osP
   private parseCover(result: GoodreadsBook, genericCover: string): string {
     if (result.imageUrl) {
       // Convert thumbnail URL to full-size image URL
