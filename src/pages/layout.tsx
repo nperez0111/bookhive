@@ -22,8 +22,8 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
           property="og:description"
           content="Goodreads but better. Built on top of Blue Sky."
         />
-        <meta property="og:image" content="/public/bee.svg" />
-        <meta name="twitter:card" content="/public/bee.svg" />
+        <meta property="og:image" content="/public/bee.png" />
+        <meta name="twitter:card" content="/public/bee.png" />
         <meta property="twitter:domain" content="bookhive.buzz" />
         <meta property="twitter:url" content="https://bookhive.buzz" />
         <meta name="twitter:title" content="${props.title ?? "Book Hive"}" />
@@ -31,7 +31,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
           name="twitter:description"
           content="Goodreads but better. Built on top of Blue Sky."
         />
-        <meta name="twitter:image" content="/public/bee.svg" />
+        <meta name="twitter:image" content="/public/bee.png" />
         <link rel="icon" type="image/svg+xml" href="/public/icon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>${props.title ?? "Book Hive"}</title>
