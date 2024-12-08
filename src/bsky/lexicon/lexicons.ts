@@ -170,6 +170,8 @@ export const schemaDict = {
             rating: {
               type: "integer",
               description: "Average rating (0-1000)",
+              minimum: 0,
+              maximum: 1000,
             },
             ratingsCount: {
               type: "integer",
