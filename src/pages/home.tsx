@@ -120,6 +120,19 @@ export const Home: FC<Props> = async () => {
           );
         })}
       </div>
+      <div class="mt-16 text-center text-gray-500">
+        See this project&nbsp;
+        <a
+          href="https://github.com/nperez0111/book-hive"
+          class="text-blue-600 hover:underline"
+        >
+          on GitHub
+        </a>
+        , built by{" "}
+        <a href="https://nickthesick.com" class="text-blue-600 hover:underline">
+          Nick The Sick
+        </a>
+      </div>
     </div>
   );
 };
