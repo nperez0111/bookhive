@@ -437,13 +437,22 @@ export const BookInfo: FC<{
                     editing="review"
                     formId="rating-form"
                   >
-                    <textarea
-                      className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
-                      placeholder="Write your review here..."
-                      name="review"
-                    >
-                      {usersBook?.review || ""}
-                    </textarea>
+                    <div className="grid">
+                      <textarea
+                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                        style={{ resize: "none", gridArea: "1 / 1 / 2 / 2" }}
+                        placeholder="Write your review here..."
+                        name="review"
+                      >
+                        {usersBook?.review || ""}
+                      </textarea>
+                      <div
+                        className="invisible col-start-1 row-start-1 overflow-hidden px-3 py-2 break-words whitespace-pre-wrap"
+                        aria-hidden="true"
+                      >
+                        {usersBook?.review || " "}
+                      </div>
+                    </div>
                     <button
                       type="submit"
                       class="mt-2 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
