@@ -276,19 +276,6 @@ export function createRouter(app: HonoServer) {
   });
 
   app.get("/books/:id", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to view a book"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
-      );
-    }
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")

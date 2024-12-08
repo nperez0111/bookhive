@@ -394,65 +394,67 @@ export const BookInfo: FC<{
               )}
             </div>
           </div>
-          <div className="flex flex-col gap-3 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
-            <div class="md:w-1/3 lg:w-1/4">
-              <h2 className="text-xl leading-2 font-bold">
-                {usersBook?.stars
-                  ? `You Rated: ${usersBook?.stars / 2}`
-                  : "Rating"}
-              </h2>
-              <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
-                Click to rate this book
-              </div>
-              <div className="my-8 mb-2">
-                <UpdateBookForm
-                  book={book}
-                  userBook={usersBook}
-                  editing="stars"
-                  formId="rating-form"
-                >
-                  <input
-                    type="hidden"
-                    name="stars"
-                    value={usersBook?.stars || 0}
-                    id="rating-value"
-                  />
+          {did && (
+            <div className="flex flex-col gap-3 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+              <div class="md:w-1/3 lg:w-1/4">
+                <h2 className="text-xl leading-2 font-bold">
+                  {usersBook?.stars
+                    ? `You Rated: ${usersBook?.stars / 2}`
+                    : "Rating"}
+                </h2>
+                <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
+                  Click to rate this book
+                </div>
+                <div className="my-8 mb-2">
+                  <UpdateBookForm
+                    book={book}
+                    userBook={usersBook}
+                    editing="stars"
+                    formId="rating-form"
+                  >
+                    <input
+                      type="hidden"
+                      name="stars"
+                      value={usersBook?.stars || 0}
+                      id="rating-value"
+                    />
 
-                  <div id="star-rating" data-rating={usersBook?.stars}></div>
-                </UpdateBookForm>
+                    <div id="star-rating" data-rating={usersBook?.stars}></div>
+                  </UpdateBookForm>
+                </div>
+              </div>
+              <div class="md:flex-1">
+                <h2 className="text-xl leading-2 font-bold">
+                  {usersBook?.review ? "Your Review" : "Review"}
+                </h2>
+                <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
+                  Leave your review of this book
+                </div>
+                <div className="my-8 mb-2">
+                  <UpdateBookForm
+                    book={book}
+                    userBook={usersBook}
+                    editing="review"
+                    formId="rating-form"
+                  >
+                    <textarea
+                      className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                      placeholder="Write your review here..."
+                      name="review"
+                    >
+                      {usersBook?.review || ""}
+                    </textarea>
+                    <button
+                      type="submit"
+                      class="mt-2 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                    >
+                      Save
+                    </button>
+                  </UpdateBookForm>
+                </div>
               </div>
             </div>
-            <div class="md:flex-1">
-              <h2 className="text-xl leading-2 font-bold">
-                {usersBook?.review ? "Your Review" : "Review"}
-              </h2>
-              <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
-                Leave your review of this book
-              </div>
-              <div className="my-8 mb-2">
-                <UpdateBookForm
-                  book={book}
-                  userBook={usersBook}
-                  editing="review"
-                  formId="rating-form"
-                >
-                  <textarea
-                    className="w-full rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
-                    placeholder="Write your review here..."
-                    name="review"
-                  >
-                    {usersBook?.review || ""}
-                  </textarea>
-                  <button
-                    type="submit"
-                    class="mt-2 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                  >
-                    Save
-                  </button>
-                </UpdateBookForm>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Right Column - Recommendations */}

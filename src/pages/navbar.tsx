@@ -19,6 +19,7 @@ export const Navbar: FC<{
               class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:ring-2 focus:ring-white focus:outline-hidden focus:ring-inset"
               aria-controls="mobile-menu"
               aria-expanded="false"
+              id="mobile-menu-button"
             >
               <span class="absolute -inset-0.5"></span>
               <span class="sr-only">Open main menu</span>
@@ -252,6 +253,21 @@ export const Navbar: FC<{
           </a>
         </div>
       </div>
+      <Script
+        script={(document) => {
+          const btn = document.getElementById("mobile-menu-button")!;
+          const menu = document.getElementById("mobile-menu")!;
+
+          // Default to closed
+          menu.style.display = "none";
+
+          btn.addEventListener("click", () => {
+            const shouldExpand = btn.getAttribute("aria-expanded") !== "true";
+            btn.setAttribute("aria-expanded", String(shouldExpand));
+            menu.style.display = shouldExpand ? "block" : "none";
+          });
+        }}
+      ></Script>
     </nav>
   );
 };
