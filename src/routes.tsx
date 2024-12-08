@@ -581,7 +581,6 @@ export function createRouter(app: HonoServer) {
             if (!res.success) {
               throw new Error(res.message);
             }
-            console.log(res.data);
 
             return c
               .get("ctx")

@@ -35,7 +35,6 @@ export async function findBookDetails(
       data: results,
     } as const;
   } catch (error) {
-    console.log({ error });
     logger.error("Error finding book details:", error);
     return {
       success: false,
