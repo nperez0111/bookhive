@@ -114,7 +114,7 @@ export function createRouter(app: HonoServer) {
   });
 
   app.use(
-    jsxRenderer(async ({ children, title = "Book Hive" }) => {
+    jsxRenderer(async ({ children, title = "BookHive" }) => {
       const c = useRequestContext();
       const profile = await c.get("ctx").getProfile();
 
@@ -134,7 +134,7 @@ export function createRouter(app: HonoServer) {
     //   .resolver.resolveDidsToHandles([]);
 
     return c.render(<Home />, {
-      title: "Book Hive | Home",
+      title: "BookHive | Home",
     });
   });
 
@@ -270,7 +270,7 @@ export function createRouter(app: HonoServer) {
         books={books}
         profile={profile}
       />,
-      { title: "Book Hive | @" + handle },
+      { title: "BookHive | @" + handle },
     );
   });
 
@@ -297,7 +297,7 @@ export function createRouter(app: HonoServer) {
     }
 
     return c.render(<BookInfo book={book} />, {
-      title: "Book Hive | " + book.title,
+      title: "BookHive | " + book.title,
     });
   });
 

@@ -128,7 +128,7 @@ function Features() {
     {
       title: "Own your data",
       description:
-        "Book Hive is built on top of the AT protocol, which means you own your data.",
+        "BookHive is built on top of the AT protocol, which means you own your data.",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -155,7 +155,7 @@ function Features() {
           Everything you need to manage your books
         </h2>
         <p class="mt-4 text-lg text-slate-600 dark:text-slate-400">
-          Book Hive stores all of your books in your own personal library.
+          BookHive stores all of your books in your own personal library.
         </p>
       </div>
 

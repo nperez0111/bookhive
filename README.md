@@ -1,5 +1,5 @@
 
-# 🐝 Book Hive
+# 🐝 BookHive
 
 <p align="center">
     <a href="LICENSE" target="_blank">

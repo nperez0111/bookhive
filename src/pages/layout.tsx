@@ -16,7 +16,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
         <meta charset="UTF-8" />
         <meta property="og:url" content="https://bookhive.buzz" />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="Book Hive" />
+        <meta property="og:title" content="BookHive" />
         <meta
           property="og:description"
           content="Goodreads but better. Built on top of Blue Sky."
@@ -25,7 +25,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
         <meta name="twitter:card" content="/public/bee.png" />
         <meta property="twitter:domain" content="bookhive.buzz" />
         <meta property="twitter:url" content="https://bookhive.buzz" />
-        <meta name="twitter:title" content="${props.title ?? "Book Hive"}" />
+        <meta name="twitter:title" content="${props.title ?? "BookHive"}" />
         <meta
           name="twitter:description"
           content="Goodreads but better. Built on top of Blue Sky."
@@ -33,7 +33,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = (props) =>
         <meta name="twitter:image" content="/public/bee.png" />
         <link rel="icon" type="image/svg+xml" href="/public/icon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>${props.title ?? "Book Hive"}</title>
+        <title>${props.title ?? "BookHive"}</title>
         <style>
           ${
             // Inlining the CSS saves a network request
