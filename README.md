@@ -1,4 +1,21 @@
-# Book Hive 🐝
+
+# 🐝 Book Hive
+
+<p align="center">
+    <a href="LICENSE" target="_blank">
+        <img src="https://img.shields.io/github/license/nperez0111/bookhive.svg" alt="GitHub license">
+    </a>
+    <a href="https://github.com/nperez0111/bookhive/actions" target="_blank">
+        <img src="https://img.shields.io/github/actions/workflow/status/nperez0111/bookhive/docker-build.yml" alt="Build workflow status">
+    </a>
+    <a href="https://github.com/nperez0111/bookhive/commits" target="_blank">
+        <img src="https://img.shields.io/github/commit-activity/y/nperez0111/bookhive.svg" alt="GitHub commit activity">
+    </a>
+    <a href="https://github.com/nperez0111/bookhive/graphs/contributors" target="_blank">
+        <img src="https://img.shields.io/github/contributors-anon/nperez0111/bookhive.svg" alt="GitHub contributors">
+    </a>
+</p>
+<br/>
 
 Goodreads, but better, built on Bluesky.
 
@@ -12,7 +29,7 @@ Goodreads, but better, built on Bluesky.
 
 I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u) to share my progress, but this is usable right now on <https://bookhive.buzz>.
 
-## Vision
+## 📚 Vision
 
 Goodreads has held the market for a long time, without improving their user experience, and with actively hampering their API access. I wanted to make a decentralized, Bluesky-based alternative to Goodreads.
 
@@ -25,7 +42,7 @@ The goal is to:
 
 Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/issues/new)!
 
-## Development
+## 🧑‍💻 Development
 
 To install dependencies:
 
@@ -41,7 +58,7 @@ To run:
 pnpm run dev
 ```
 
-## Architecture
+## 🏗️ Architecture
 
 - **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
 - **Frontend**: Mostly static HTML, with some Hono JSX for dynamic content (Fast as possible)
