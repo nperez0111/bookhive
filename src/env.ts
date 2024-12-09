@@ -17,4 +17,7 @@ export const env = cleanEnv(process.env, {
   }),
   LOG_LEVEL: str({ default: "info", desc: "Log level for the app" }),
   COOKIE_SECRET: str({ devDefault: "00000000000000000000000000000000" }),
+  OPEN_OBSERVE_URL: str({ devDefault: "" }),
+  OPEN_OBSERVE_USER: str({ devDefault: "" }),
+  OPEN_OBSERVE_PASSWORD: str({ devDefault: "" }),
 });

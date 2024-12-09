@@ -15,7 +15,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*",
     "postlexgen": "prettier --write ./src/bsky/lexicon/*",
-    "start": "node ./dist/server.js"
+    "start": "node --require ./dist/instrumentation.cjs ./dist/index.js"
   },
   "dependencies": {
     "@atproto/api": "^0.13.18",
@@ -29,6 +29,13 @@
     "@hono/node-server": "1.13.7",
     "@hono/prometheus": "1.0.1",
     "@hono/zod-validator": "0.4.1",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "0.54.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.56.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.56.0",
+    "@opentelemetry/sdk-metrics": "1.29.0",
+    "@opentelemetry/sdk-trace-node": "1.29.0",
+    "@opentelemetry/sdk-node": "0.56.0",
     "@tailwindcss/cli": "4.0.0-beta.2",
     "@tanstack/react-query": "5.61.0",
     "@types/better-sqlite3": "^7.6.12",
@@ -46,6 +53,7 @@
     "multiformats": "^13.3.1",
     "ohash": "1.1.4",
     "pino": "^9.5.0",
+    "pino-abstract-transport": "2.0.0",
     "prom-client": "15.1.3",
     "sharp": "0.33.5",
     "unstorage": "1.13.1",

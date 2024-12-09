@@ -8,6 +8,16 @@
 # database or a cache. For examples, see the Awesome Compose repository:
 # https://github.com/docker/awesome-compose
 services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: "user@bookhive.buzz"
+      ZO_ROOT_USER_PASSWORD: "password"
+    ports:
+      - "5080:5080"
+    volumes:
+      - telem_data:/data
   server:
     restart: unless-stopped
     build:
@@ -18,6 +28,9 @@ services:
       DB_PATH: "/data/db.sqlite"
       KV_DB_PATH: "/data/kv.sqlite"
       PUBLIC_URL: "https://bookhive.buzz"
+      OPEN_OBSERVE_USER: "user@bookhive.buzz"
+      OPEN_OBSERVE_PASSWORD: "password"
+      OPEN_OBSERVE_URL: "http://localhost:5080"
     ports:
       - 8080:8080
     volumes:
@@ -51,6 +64,7 @@ services:
 #       retries: 5
 volumes:
   data:
+  telem_data:
 # secrets:
 #   db-password:
 #     file: db/password.txt

@@ -94,8 +94,40 @@ export class Server {
   ) {}
 
   static async create() {
-    const { NODE_ENV, PORT, DB_PATH, LOG_LEVEL, KV_DB_PATH } = env;
-    const logger = pino({ name: "server", level: LOG_LEVEL });
+    const {
+      NODE_ENV,
+      PORT,
+      DB_PATH,
+      LOG_LEVEL,
+      KV_DB_PATH,
+      OPEN_OBSERVE_PASSWORD,
+      OPEN_OBSERVE_USER,
+      OPEN_OBSERVE_URL,
+    } = env;
+
+    const logger = pino({
+      name: "server",
+      level: LOG_LEVEL,
+      transport:
+        env.isDev ||
+        // Or if not enabled
+        !OPEN_OBSERVE_URL ||
+        !OPEN_OBSERVE_USER ||
+        !OPEN_OBSERVE_PASSWORD
+          ? undefined
+          : {
+              target: "./logger/open-observe.js",
+              options: {
+                url: OPEN_OBSERVE_URL,
+                organization: "bookhive",
+                streamName: "server-logs",
+                auth: {
+                  username: OPEN_OBSERVE_USER,
+                  password: OPEN_OBSERVE_PASSWORD,
+                },
+              },
+            },
+    });
 
     // Set up the SQLite database
     const db = createDb(DB_PATH);
