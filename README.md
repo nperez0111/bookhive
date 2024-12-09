@@ -2,21 +2,25 @@
 
 Goodreads, but better.
 
+<img align="right" src="./public/bee.svg?raw=true" height="280" />
+
 - OAuth with Bluesky with session storage, and persistence
-- Defined Lexicons for books & reviews
-- Reading new books & reviews from the firehose
+- Defined Lexicons for books (with reviews, ratings, etc)
+- Displaying a feed of new books & reviews from the firehose
+- Works without JavaScript, but has some dynamic features
+- All data is stored in your PDS, and can be used by other apps
 
 I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u).
 
 ## Vision
 
-Goodreads has held the market for a long time, without improving their experience. I want to make a decentralized, Bluesky-based alternative to Goodreads.
+Goodreads has held the market for a long time, without improving their experience. I wanted to make a decentralized, Bluesky-based alternative to Goodreads.
 
 The goal is to:
 
 - Manage your read & want to read books
+- Have a much nicer UI/UX than Goodreads
 - "Buzz" about the books with friends with Bluesky comments
-- Have a much nicer UI/UX
 - Be decentralized, take your books to other apps if you want to!
 
 Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/issues/new)!
