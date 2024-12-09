@@ -287,7 +287,7 @@ export const Home: FC<Props> = async () => {
       <div class="my-16 text-center text-gray-500">
         See this project&nbsp;
         <a
-          href="https://github.com/nperez0111/book-hive"
+          href="https://github.com/nperez0111/bookhive"
           class="text-blue-600 hover:underline"
         >
           on GitHub
