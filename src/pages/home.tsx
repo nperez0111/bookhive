@@ -32,26 +32,7 @@ function Hero() {
           <wbr /> Powered by the AT protocol, which means you own your data.
         </p>
         <div class="mt-6 flex flex-col gap-3 sm:flex-row">
-          <a
-            href="#"
-            target="_blank"
-            class="flex items-center justify-center gap-1"
-            rel="noopener"
-          >
-            {/* <Icon class="h-5 w-5 text-white" name="bx:bxs-cloud-download" /> */}
-            Download for Free
-          </a>
-          <a
-            size="lg"
-            style="outline"
-            rel="noopener"
-            href="#"
-            class="flex items-center justify-center gap-1"
-            target="_blank"
-          >
-            {/* <Icon class="h-4 w-4 text-black" name="bx:bxl-github" /> */}
-            GitHub Repo
-          </a>
+          {/* Something here */}
         </div>
       </div>
     </main>
