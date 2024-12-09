@@ -323,7 +323,7 @@ export const BookInfo: FC<{
                   </div>
                 </div>
               </div>
-              <BookStatusButton usersBook={usersBook} book={book} />
+              {did && <BookStatusButton usersBook={usersBook} book={book} />}
             </div>
 
             <div className="flex-1">
