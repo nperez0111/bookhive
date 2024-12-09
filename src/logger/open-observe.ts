@@ -66,6 +66,7 @@ export default function (options: Options) {
 
     // Generate the API URL for logging
     const apiUrl = createApiUrl(opts);
+    console.log({ apiUrl });
 
     // Create a writable stream to handle the log data
     const destination = new Writable({
@@ -106,11 +107,7 @@ export default function (options: Options) {
 
     // Function to construct API URL
     function createApiUrl({ url, organization, streamName }: Options): string {
-      const parsedUrl = urlModule.parse(url);
-      const path = parsedUrl.pathname?.endsWith("/")
-        ? parsedUrl.pathname.slice(0, -1)
-        : parsedUrl.pathname;
-      return `${parsedUrl.protocol}//${parsedUrl.host}${path}/api/${organization}/${streamName}/_multi`;
+      return `${url}/api/${organization}/${streamName}/_multi`;
     }
 
     // Schedule log sending based on batch size and time threshold
