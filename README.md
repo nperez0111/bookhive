@@ -2,7 +2,7 @@
 
 Goodreads, but better.
 
-<img align="right" src="./public/bee.svg?raw=true" height="200" />
+<img align="left" src="./public/bee.svg?raw=true" height="200" style="margin-right: 3em;" />
 
 - OAuth with Bluesky with session storage, and persistence
 - Defined Lexicons for books (with reviews, ratings, etc)
