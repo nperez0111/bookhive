@@ -17,9 +17,9 @@
 </p>
 <br/>
 
-Goodreads, but better, built on Bluesky.
+<img align="right" src="./public/bee.svg?raw=true" height="240" />
 
-<img align="right" src="./public/bee.svg?raw=true" height="200" />
+Goodreads, but better, built on Bluesky.
 
 - OAuth with Bluesky with session storage, and persistence
 - Defined Lexicons for books (with reviews, ratings, etc)
