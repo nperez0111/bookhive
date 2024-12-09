@@ -1,18 +1,35 @@
-/** @jsx createElement */
-// @ts-expect-error
-import { type FC, createElement } from "hono/jsx";
+import { type FC } from "hono/jsx";
 import type { HiveBook, UserBook } from "../../db";
 import { BOOK_STATUS_MAP } from "../../constants";
+import { useRequestContext } from "hono/jsx-renderer";
 
 export const BookList: FC<{
-  books: (UserBook & HiveBook)[];
-}> = ({ books }) => (
-  <ul class="flex flex-wrap space-y-4 space-x-4">
-    {books.map((book) => (
-      <BookListItem book={book} />
-    ))}
-  </ul>
-);
+  books?: (UserBook & HiveBook)[];
+}> = async ({ books: booksFromProps }) => {
+  const c = useRequestContext();
+  const agent = await c.get("ctx").getSessionAgent();
+  const books =
+    booksFromProps ||
+    (agent
+      ? await c
+          .get("ctx")
+          .db.selectFrom("user_book")
+          .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
+          .selectAll()
+          .where("user_book.userDid", "=", agent.assertDid)
+          .orderBy("user_book.createdAt", "desc")
+          .limit(100)
+          .execute()
+      : []);
+
+  return (
+    <ul class="flex flex-wrap space-y-4 space-x-4">
+      {books.map((book) => (
+        <BookListItem book={book} />
+      ))}
+    </ul>
+  );
+};
 
 export const BookListItem: FC<{
   book: UserBook & HiveBook;
