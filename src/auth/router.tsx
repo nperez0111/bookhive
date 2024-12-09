@@ -1,7 +1,3 @@
-/** @jsx createElement */
-
-// @ts-expect-error
-import { createElement } from "hono/jsx";
 import { isValidHandle } from "@atproto/syntax";
 import { getIronSession } from "iron-session";
 

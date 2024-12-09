@@ -1,10 +1,9 @@
-/** @jsx createElement */
 import { TID } from "@atproto/common";
 import { methodOverride } from "hono/method-override";
 import { Agent, isDid } from "@atproto/api";
 import { zValidator } from "@hono/zod-validator";
-// @ts-expect-error
-import { createElement, Fragment } from "hono/jsx";
+
+import { Fragment } from "hono/jsx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { z } from "zod";
 

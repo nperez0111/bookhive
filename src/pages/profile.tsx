@@ -1,9 +1,8 @@
-/** @jsx createElement */
-// @ts-expect-error
-import { type FC, Fragment, createElement } from "hono/jsx";
+import { type FC } from "hono/jsx";
 import { type HiveBook, type UserBook } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
+import { formatDistanceToNow } from "date-fns";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -22,11 +21,22 @@ export const ProfilePage: FC<{
           />
         )}
         <div class="flex flex-col gap-4">
-          <h1 class="text-3xl font-bold md:text-4xl">
+          <h1 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
             {profile?.displayName || handle}
           </h1>
+          <p class="text-lg text-slate-600 dark:text-slate-400">
+            <a
+              href={`https://bsky.app/profile/${handle}`}
+              class="inline text-blue-600 hover:underline"
+            >
+              @{handle} 🦋
+            </a>
+            {books.length
+              ? ` • Joined ${formatDistanceToNow(books.map((book) => book.createdAt).sort()[0], { addSuffix: true })}`
+              : null}
+          </p>
           {profile?.description && (
-            <p class="max-w-2xl text-slate-600 dark:text-slate-300">
+            <p class="max-w-2xl leading-relaxed text-slate-600 dark:text-slate-300">
               {profile.description}
             </p>
           )}
@@ -45,7 +55,7 @@ export const ProfilePage: FC<{
               .filter((book) => book.review)
               .map((book) => {
                 return (
-                  <div class="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
+                  <div class="group mb-2 cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
                     <a href={`/books/${book.hiveId}`} class="flex gap-4">
                       <img
                         src={book.cover || book.thumbnail}

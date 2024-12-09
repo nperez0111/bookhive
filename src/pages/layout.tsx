@@ -1,7 +1,6 @@
-/** @jsx createElement */
 import { html, raw } from "hono/html";
-// @ts-expect-error
-import { type FC, createElement, PropsWithChildren } from "hono/jsx";
+
+import { type FC, type PropsWithChildren } from "hono/jsx";
 import { readFileSync } from "node:fs";
 
 import { env } from "../env";

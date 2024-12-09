@@ -1,11 +1,4 @@
-/** @jsx createElement */
-import {
-  type FC,
-  type PropsWithChildren,
-  // @ts-ignore
-  createElement,
-  Fragment,
-} from "hono/jsx";
+import { type FC, type PropsWithChildren, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";

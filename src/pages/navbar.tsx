@@ -1,6 +1,4 @@
-/** @jsx createElement */
-// @ts-expect-error
-import { type FC, createElement } from "hono/jsx";
+import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 

@@ -1,6 +1,4 @@
-/** @jsx createElement */
-// @ts-expect-error
-import { type FC, createElement } from "hono/jsx";
+import { type FC } from "hono/jsx";
 
 export const Login: FC<{ error?: string }> = ({ error }) => (
   <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
