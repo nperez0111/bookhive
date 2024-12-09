@@ -1,6 +1,6 @@
-# Book Hive
+# Book Hive 🐝
 
-Goodreads, but better.
+Goodreads, but better, built on Bluesky.
 
 <img align="right" src="./public/bee.svg?raw=true" height="200" />
 
