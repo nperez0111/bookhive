@@ -1,6 +1,5 @@
 import build from "pino-abstract-transport";
 import { Transform, Writable } from "stream";
-import urlModule from "url";
 
 interface Options {
   url: string;
