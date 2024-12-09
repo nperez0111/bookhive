@@ -2,7 +2,7 @@
 
 Goodreads, but better.
 
-<img align="right" src="./public/bee.svg?raw=true" height="280" />
+<img align="right" src="./public/bee.svg?raw=true" height="200" />
 
 - OAuth with Bluesky with session storage, and persistence
 - Defined Lexicons for books (with reviews, ratings, etc)
@@ -10,11 +10,11 @@ Goodreads, but better.
 - Works without JavaScript, but has some dynamic features
 - All data is stored in your PDS, and can be used by other apps
 
-I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u).
+I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u) to share my progress, but this is usable right now on <https://bookhive.buzz>.
 
 ## Vision
 
-Goodreads has held the market for a long time, without improving their experience. I wanted to make a decentralized, Bluesky-based alternative to Goodreads.
+Goodreads has held the market for a long time, without improving their user experience, and with actively hampering their API access. I wanted to make a decentralized, Bluesky-based alternative to Goodreads.
 
 The goal is to:
 
