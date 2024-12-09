@@ -111,6 +111,10 @@ export class Server {
     }
     kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
     kv.mount(
+      "didToHandle:",
+      sqliteKv({ location: KV_DB_PATH, table: "didToHandle" }),
+    );
+    kv.mount(
       "auth_session:",
       sqliteKv({
         location: env.isDevelopment ? "./auth.sqlite" : KV_DB_PATH,
@@ -129,7 +133,6 @@ export class Server {
     const oauthClient = await createClient(kv);
     const baseIdResolver = createIdResolver();
     const ingester = createIngester(db, baseIdResolver);
-    const resolver = createBidirectionalResolver(baseIdResolver);
 
     const time = new Date().toISOString();
 
@@ -166,7 +169,9 @@ export class Server {
         ingester,
         logger,
         oauthClient,
-        resolver,
+        get resolver() {
+          return createBidirectionalResolver(baseIdResolver, this);
+        },
         baseIdResolver,
         kv,
         getSessionAgent(): Promise<Agent | null> {

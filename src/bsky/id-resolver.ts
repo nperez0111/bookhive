@@ -1,4 +1,6 @@
 import { IdResolver, MemoryCache } from "@atproto/identity";
+import { readThroughCache } from "../utils/readThroughCache";
+import type { AppContext } from "..";
 
 const HOUR = 60e3 * 60;
 const DAY = HOUR * 24;
@@ -14,15 +16,20 @@ export interface BidirectionalResolver {
   resolveDidsToHandles(dids: string[]): Promise<Record<string, string>>;
 }
 
-export function createBidirectionalResolver(resolver: IdResolver) {
+export function createBidirectionalResolver(
+  resolver: IdResolver,
+  ctx: AppContext,
+) {
   return {
-    async resolveDidToHandle(did: string): Promise<string> {
-      const didDoc = await resolver.did.resolveAtprotoData(did);
-      const resolvedHandle = await resolver.handle.resolve(didDoc.handle);
-      if (resolvedHandle === did) {
-        return didDoc.handle;
-      }
-      return did;
+    resolveDidToHandle(did: string): Promise<string> {
+      return readThroughCache(ctx, `didToHandle:${did}`, async () => {
+        const didDoc = await resolver.did.resolveAtprotoData(did);
+        const resolvedHandle = await resolver.handle.resolve(didDoc.handle);
+        if (resolvedHandle === did) {
+          return didDoc.handle;
+        }
+        return did;
+      });
     },
 
     async resolveDidsToHandles(
