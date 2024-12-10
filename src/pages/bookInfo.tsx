@@ -282,17 +282,20 @@ export const BookInfo: FC<{
         .executeTakeFirst()
     : undefined;
 
-  const involvingThisBook = await c
+  const reviewsOfThisBook = await c
     .get("ctx")
     .db.selectFrom("user_book")
     .selectAll()
     .where("hiveId", "==", book.id)
+    .where("review", "!=", "")
     .limit(100)
     .execute();
 
+  console.log(reviewsOfThisBook);
+
   const didHandleMap = await c
     .get("ctx")
-    .resolver.resolveDidsToHandles(involvingThisBook.map((s) => s.userDid));
+    .resolver.resolveDidsToHandles(reviewsOfThisBook.map((s) => s.userDid));
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -476,30 +479,37 @@ export const BookInfo: FC<{
           <Recommendations book={book} did={did} />
         </aside>
       </div>
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold">Reviews</h2>
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          {involvingThisBook.map((userBook) => (
-            <div
-              key={userBook.uri}
-              className="rounded-xl bg-slate-200 p-6 dark:bg-gray-900"
-            >
-              <h3 className="text-xl font-bold">
-                <a
-                  key={userBook.userDid}
-                  href={`/profile/${didHandleMap[userBook.userDid]}`}
-                  class="cursor-pointer text-blue-600 hover:underline"
-                >
-                  @{didHandleMap[userBook.userDid] || userBook.userDid}
-                </a>
-              </h3>
-              <p className="mt-2 text-gray-700 dark:text-gray-200">
-                {userBook.review}
-              </p>
-            </div>
-          ))}
+      {Boolean(reviewsOfThisBook.length) && (
+        <div className="mt-8">
+          <h2 className="text-2xl font-bold">Reviews</h2>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            {reviewsOfThisBook.map((userBook) => (
+              <div
+                key={userBook.uri}
+                className="rounded-xl bg-slate-200 p-6 dark:bg-gray-900"
+              >
+                <h3 className="text-xl font-bold">
+                  <a
+                    key={userBook.userDid}
+                    href={`/profile/${didHandleMap[userBook.userDid]}`}
+                    class="cursor-pointer text-blue-600 hover:underline"
+                  >
+                    @{didHandleMap[userBook.userDid] || userBook.userDid}
+                    {userBook.stars ? (
+                      <span class="text-md mx-1 text-slate-800 dark:text-slate-200">
+                        ({userBook.stars / 2} ⭐)
+                      </span>
+                    ) : null}
+                  </a>
+                </h3>
+                <p className="mt-2 text-gray-700 dark:text-gray-200">
+                  {userBook.review}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
