@@ -116,7 +116,7 @@ const BookStatusButton: FC<{
 }> = async ({ usersBook, book }) => {
   return (
     <div class="mt-4">
-      <UpdateBookForm book={book} userBook={usersBook}>
+      <UpdateBookForm book={book} userBook={usersBook} editing="status">
         {usersBook && (
           <h3 class="my-3 leading-6">{`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
             usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
