@@ -204,18 +204,9 @@ export const Navbar: FC<{
                     tabindex={-1}
                     id="user-menu-item-1"
                   >
-                    Refresh all data
+                    Refresh my books
                   </button>
                 </form>
-                <a
-                  href="#"
-                  class="block px-4 py-2 text-sm text-gray-700"
-                  role="menuitem"
-                  tabindex={-1}
-                  id="user-menu-item-2"
-                >
-                  Settings
-                </a>
                 <form action="/logout" method="post">
                   <button
                     type="submit"
