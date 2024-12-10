@@ -5,6 +5,7 @@ import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
 import type { HiveBook, UserBook } from "../db";
 import { BOOK_STATUS_MAP } from "../constants";
+import { decode } from "html-entities";
 
 async function Recommendations({
   book,
@@ -374,7 +375,7 @@ export const BookInfo: FC<{
               </div>
 
               <p className="mb-6 leading-relaxed text-gray-700 dark:text-gray-300">
-                {book.description || "No description available"}
+                {decode(book.description || "No description available")}
               </p>
               {book.sourceUrl && (
                 <div className="mt-4 flex items-center">

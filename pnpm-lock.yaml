@@ -95,6 +95,9 @@ importers:
       hono-pino:
         specifier: 0.7.0
         version: 0.7.0(hono@4.6.12)(pino@9.5.0)
+      html-entities:
+        specifier: 2.5.2
+        version: 2.5.2
       iron-session:
         specifier: ^8.0.4
         version: 8.0.4
@@ -2008,6 +2011,9 @@ packages:
   hono@4.6.12:
     resolution: {integrity: sha512-eHtf4kSDNw6VVrdbd5IQi16r22m3s7mWPLd7xOMhg1a/Yyb1A0qpUFq8xYMX4FMuDe1nTKeMX5rTx7Nmw+a+Ag==}
     engines: {node: '>=16.9.0'}
+
+  html-entities@2.5.2:
+    resolution: {integrity: sha512-K//PSRMQk4FZ78Kyau+mZurHn3FH0Vwr+H36eE0rPbeYkRRi9YxceYPhuN60UwWorxyKHhqoAJl2OFKa4BVtaA==}
 
   http-errors@2.0.0:
     resolution: {integrity: sha512-FtwrG/euBzaEjYeRqOgly7G0qviiXoJWnvEH2Z1plBdXgbyjv34pHTSb9zoeHMyDy33+DWy5Wt9Wo+TURtOYSQ==}
@@ -5229,6 +5235,8 @@ snapshots:
       pino: 9.5.0
 
   hono@4.6.12: {}
+
+  html-entities@2.5.2: {}
 
   http-errors@2.0.0:
     dependencies:
