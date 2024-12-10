@@ -34,6 +34,7 @@ import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsk
 import { readThroughCache } from "./utils/readThroughCache.ts";
 import { lazy } from "./utils/lazy.ts";
 import { opentelemetryMiddleware } from "./middleware/otel.ts";
+import { getLogger } from "./logger/index.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -95,55 +96,26 @@ export class Server {
   ) {}
 
   static async create() {
-    const {
-      NODE_ENV,
-      PORT,
-      DB_PATH,
-      LOG_LEVEL,
-      KV_DB_PATH,
-      OPEN_OBSERVE_PASSWORD,
-      OPEN_OBSERVE_USER,
-      OPEN_OBSERVE_URL,
-    } = env;
-
-    const logger = pino({
+    const logger = getLogger({
       name: "server",
-      level: LOG_LEVEL,
-      transport:
-        env.isDev ||
-        // Or if not enabled
-        !OPEN_OBSERVE_URL ||
-        !OPEN_OBSERVE_USER ||
-        !OPEN_OBSERVE_PASSWORD
-          ? undefined
-          : {
-              target: "./logger/open-observe.js",
-              options: {
-                url: OPEN_OBSERVE_URL,
-                organization: "bookhive",
-                streamName: "server-logs",
-                auth: {
-                  username: OPEN_OBSERVE_USER,
-                  password: OPEN_OBSERVE_PASSWORD,
-                },
-                writeToConsole: true,
-              },
-            },
     });
 
     // Set up the SQLite database
-    const db = createDb(DB_PATH);
+    const db = createDb(env.DB_PATH);
     await migrateToLatest(db);
 
     const kv = createStorage({
-      driver: sqliteKv({ location: KV_DB_PATH, table: "kv" }),
+      driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv" }),
     });
 
     if (env.isProd) {
       // Not sure that we should store the search cache, so LRU is fine
       kv.mount("search:", lruCacheDriver({ max: 1000 }));
     }
-    kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
+    kv.mount(
+      "profile:",
+      sqliteKv({ location: env.KV_DB_PATH, table: "profile" }),
+    );
     kv.mount(
       "didCache:",
       sqliteKv({ location: env.KV_DB_PATH, table: "didCache" }),
@@ -151,14 +123,14 @@ export class Server {
     kv.mount(
       "auth_session:",
       sqliteKv({
-        location: env.isDevelopment ? "./auth.sqlite" : KV_DB_PATH,
+        location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
         table: "auth_sessions",
       }),
     );
     kv.mount(
       "auth_state:",
       sqliteKv({
-        location: env.isDevelopment ? "./auth.sqlite" : KV_DB_PATH,
+        location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
         table: "auth_state",
       }),
     );
@@ -261,11 +233,11 @@ export class Server {
     const server = serve(
       {
         fetch: app.fetch,
-        port: PORT,
+        port: env.PORT,
       },
       ({ port }) => {
         logger.info(
-          `Server (${NODE_ENV}) running on port http://localhost:${port}`,
+          `Server (${env.NODE_ENV}) running on port http://localhost:${port}`,
         );
       },
     );

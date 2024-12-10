@@ -1,12 +1,15 @@
-import pino from "pino";
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
 import type { Database, HiveId } from "../db";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
 import { ids } from "./lexicon/lexicons";
+import { getLogger } from "../logger";
+import { createBidirectionalResolver } from "./id-resolver";
+
+const logger = getLogger({ name: "firehose-ingestion" });
 
 export function createIngester(db: Database, idResolver: IdResolver) {
-  const logger = pino({ name: "firehose ingestion" });
+  const bidirectionalResolver = createBidirectionalResolver(idResolver);
   return new Firehose({
     idResolver,
     handleEvent: async (evt) => {
@@ -14,7 +17,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
       if (evt.event === "create" || evt.event === "update") {
         const now = new Date();
         const record = evt.record;
-        logger.info({ evt }, "ingesting event");
+        logger.trace("ingesting event", { evt });
 
         // If the write is a valid status update
         if (
@@ -22,6 +25,9 @@ export function createIngester(db: Database, idResolver: IdResolver) {
           Book.isRecord(record) &&
           Book.validateRecord(record).success
         ) {
+          logger.info("valid book", { record });
+          // Asynchronously fetch the user's handle
+          bidirectionalResolver.resolveDidToHandle(evt.did);
           // Store the book in our SQLite
           await db
             .insertInto("user_book")
@@ -55,6 +61,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
         }
       } else if (evt.event === "delete") {
         if (evt.collection === ids.BuzzBookhiveBook) {
+          logger.info("delete book", { evt });
           // Remove the status from our SQLite
           await db
             .deleteFrom("user_book")
@@ -65,7 +72,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
       }
     },
     onError: (err) => {
-      logger.trace({ err }, "error on firehose ingestion");
+      logger.trace("error on firehose ingestion", { err });
     },
     filterCollections: [ids.BuzzBookhiveBook],
     excludeIdentity: true,

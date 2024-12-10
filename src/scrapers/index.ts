@@ -1,10 +1,10 @@
-import pino from "pino";
 import Goodreads from "./goodreads.ts";
+import { getLogger } from "../logger/index.ts";
 // import IsbnDb from "./isbndb.ts";
 // import Google from "./google.ts";
 // import { env } from "../env.ts";
 
-const logger = pino({ name: "scraper" });
+const logger = getLogger({ name: "scraper" });
 
 export async function findBookDetails(
   query: string,
@@ -19,7 +19,9 @@ export async function findBookDetails(
   const searchService = new Goodreads(logger);
 
   try {
+    logger.trace("searching for results", { query });
     const results = await searchService.search(query, fallbackCover, locale);
+    logger.trace("found results", { query, numResults: results.length });
 
     if (results.length === 0) {
       return {

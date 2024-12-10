@@ -241,7 +241,7 @@ export function createRouter(app: HonoServer) {
       (await c.get("ctx").getSessionAgent()) ||
       new Agent("https://public.api.bsky.app/xrpc");
     const profile = await readThroughCache(
-      c.get("ctx"),
+      c.get("ctx").kv,
       "profile:" + did,
       async () => {
         return agent
@@ -573,7 +573,7 @@ export function createRouter(app: HonoServer) {
       }
 
       const bookIds = await readThroughCache<HiveId[]>(
-        c.get("ctx"),
+        c.get("ctx").kv,
         `search:${q}`,
         () =>
           findBookDetails(q).then((res) => {

@@ -1,31 +1,32 @@
-import type { StorageValue } from "unstorage";
-import type { AppContext } from "..";
+import type { StorageValue, Storage } from "unstorage";
+import { getLogger } from "../logger";
 
+const logger = getLogger({ name: "kv-cache" });
 /**
  * Read a value from the cache, or fetch it if it's not present.
  */
 export function readThroughCache<T extends StorageValue>(
-  ctx: AppContext,
+  kv: Storage,
   key: string,
   fetch: () => Promise<T>,
   defaultValue?: T,
 ): Promise<T> {
-  ctx.logger.trace({ key }, "readThroughCache");
-  return ctx.kv.get<T>(key).then((cached) => {
+  logger.trace({ key }, "readThroughCache");
+  return kv.get<T>(key).then((cached) => {
     if (cached) {
-      ctx.logger.trace({ key, cached }, "readThroughCache hit");
+      logger.trace({ key, cached }, "readThroughCache hit");
       return cached;
     }
 
-    ctx.logger.trace({ key }, "readThroughCache miss");
+    logger.trace({ key }, "readThroughCache miss");
     return fetch()
       .then((fresh) => {
-        ctx.logger.trace({ key, fresh }, "readThroughCache set");
-        ctx.kv.set(key, fresh);
+        logger.trace({ key, fresh }, "readThroughCache set");
+        kv.set(key, fresh);
         return fresh;
       })
       .catch((err) => {
-        ctx.logger.error({ err }, "readThroughCache error");
+        logger.error({ err }, "readThroughCache error");
         return defaultValue as T;
       });
   });
