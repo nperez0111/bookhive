@@ -15,11 +15,11 @@ type Props = {
 function Hero() {
   return (
     <main class="grid place-items-center pt-16 pb-8 md:pt-12 md:pb-24 lg:grid-cols-2">
-      <div class="hidden py-6 md:order-1 md:block">
+      <div class="flex justify-center py-6 sm:block lg:order-1">
         <img
           src={`/public/bee.svg`}
           alt="Bee sitting on a stack of books"
-          className="w-full max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
+          className="max-h-[200px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
         />
       </div>
       <div>
@@ -150,7 +150,7 @@ function Features() {
 
   return (
     <Fragment>
-      <div class="mt-16 md:mt-0">
+      <div class="mt-16 text-center text-balance md:mt-0 lg:mx-0">
         <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
           Everything you need to manage your books
         </h2>
@@ -250,7 +250,7 @@ export const Home: FC<Props> = async () => {
   endTime(c, "profile");
 
   return (
-    <div class="container mx-auto max-w-7xl bg-slate-50 px-3 lg:px-8 dark:bg-slate-900 dark:text-white">
+    <div class="container mx-auto max-w-7xl bg-slate-50 px-4 lg:px-8 dark:bg-slate-900 dark:text-white">
       {profile ? (
         <div>
           <h2 class="text-md mt-3 mb-6 text-2xl leading-12 font-bold">
