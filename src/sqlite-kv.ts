@@ -30,32 +30,35 @@ export default defineDriver<
       let _db: KvDb | null = null;
 
       return (() => {
-        if (!_db) {
-          if (!location) {
-            throw new Error("SQLite location is required");
-          }
-
-          const sqlite = new Database(location, { fileMustExist: false });
-
-          // Enable WAL mode
-          sqlite.pragma("journal_mode = WAL");
-
-          _db = new Kysely<TableSchema>({
-            dialect: new SqliteDialect({
-              database: sqlite,
-            }),
-          });
-
-          // Create table if not exists
-          _db.schema
-            .createTable(table)
-            .ifNotExists()
-            .addColumn("id", "text", (col) => col.primaryKey())
-            .addColumn("value", "text", (col) => col.notNull())
-            .addColumn("created_at", "text", (col) => col.notNull())
-            .addColumn("updated_at", "text", (col) => col.notNull())
-            .execute();
+        if (_db) {
+          return _db;
         }
+
+        if (!location) {
+          throw new Error("SQLite location is required");
+        }
+
+        const sqlite = new Database(location, { fileMustExist: false });
+
+        // Enable WAL mode
+        sqlite.pragma("journal_mode = WAL");
+
+        _db = new Kysely<TableSchema>({
+          dialect: new SqliteDialect({
+            database: sqlite,
+          }),
+        });
+
+        // Create table if not exists
+        _db.schema
+          .createTable(table)
+          .ifNotExists()
+          .addColumn("id", "text", (col) => col.primaryKey())
+          .addColumn("value", "text", (col) => col.notNull())
+          .addColumn("created_at", "text", (col) => col.notNull())
+          .addColumn("updated_at", "text", (col) => col.notNull())
+          .execute();
+
         return _db;
       })();
     },
