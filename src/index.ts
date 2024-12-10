@@ -5,7 +5,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
-import { pinoLogger } from "hono-pino";
+import { pinoLogger, type Env } from "hono-pino";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
@@ -57,7 +57,7 @@ declare module "hono" {
 export type HonoServer = Hono<{
   Variables: {
     ctx: AppContext;
-  };
+  } & Env["Variables"];
 }>;
 
 export type Session = { did: string };
@@ -209,7 +209,14 @@ export class Server {
         baseIdResolver,
         kv,
         getSessionAgent(): Promise<Agent | null> {
-          return lazy(() => getSessionAgent(c.req.raw, c.res, this)).value;
+          return lazy(() =>
+            getSessionAgent(c.req.raw, c.res, this).then((agent) => {
+              if (agent) {
+                c.var.logger.assign({ userDid: agent.did });
+              }
+              return agent;
+            }),
+          ).value;
         },
         async getProfile(): Promise<ProfileViewDetailed | null> {
           return lazy(async () => {
