@@ -145,8 +145,8 @@ export class Server {
     }
     kv.mount("profile:", sqliteKv({ location: KV_DB_PATH, table: "profile" }));
     kv.mount(
-      "didToHandle:",
-      sqliteKv({ location: KV_DB_PATH, table: "didToHandle" }),
+      "didCache:",
+      sqliteKv({ location: env.KV_DB_PATH, table: "didCache" }),
     );
     kv.mount(
       "auth_session:",
@@ -165,8 +165,9 @@ export class Server {
 
     // Create the atproto utilities
     const oauthClient = await createClient(kv);
-    const baseIdResolver = createIdResolver();
+    const baseIdResolver = createIdResolver(kv);
     const ingester = createIngester(db, baseIdResolver);
+    const resolver = createBidirectionalResolver(baseIdResolver);
 
     const time = new Date().toISOString();
 
@@ -203,9 +204,7 @@ export class Server {
         ingester,
         logger,
         oauthClient,
-        get resolver() {
-          return createBidirectionalResolver(baseIdResolver, this);
-        },
+        resolver,
         baseIdResolver,
         kv,
         getSessionAgent(): Promise<Agent | null> {
@@ -224,7 +223,7 @@ export class Server {
             if (!agent || !agent.did) {
               return Promise.resolve(null);
             }
-            return readThroughCache(this, "profile:" + agent.did, async () => {
+            return readThroughCache(kv, "profile:" + agent.did, async () => {
               return agent
                 .getProfile({
                   actor: agent.assertDid,

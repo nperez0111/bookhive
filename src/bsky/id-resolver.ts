@@ -1,13 +1,19 @@
-import { IdResolver, MemoryCache } from "@atproto/identity";
-import { readThroughCache } from "../utils/readThroughCache";
-import type { AppContext } from "..";
+import { IdResolver } from "@atproto/identity";
+import type { Storage } from "unstorage";
+import { StorageCache } from "../utils/didUnstorageCache";
 
 const HOUR = 60e3 * 60;
 const DAY = HOUR * 24;
+const WEEK = HOUR * 7;
 
-export function createIdResolver() {
+export function createIdResolver(kv: Storage) {
   return new IdResolver({
-    didCache: new MemoryCache(HOUR, DAY),
+    didCache: new StorageCache({
+      store: kv,
+      prefix: "didCache:",
+      staleTTL: DAY,
+      maxTTL: WEEK,
+    }),
   });
 }
 
@@ -16,20 +22,15 @@ export interface BidirectionalResolver {
   resolveDidsToHandles(dids: string[]): Promise<Record<string, string>>;
 }
 
-export function createBidirectionalResolver(
-  resolver: IdResolver,
-  ctx: AppContext,
-) {
+export function createBidirectionalResolver(resolver: IdResolver) {
   return {
-    resolveDidToHandle(did: string): Promise<string> {
-      return readThroughCache(ctx, `didToHandle:${did}`, async () => {
-        const didDoc = await resolver.did.resolveAtprotoData(did);
-        const resolvedHandle = await resolver.handle.resolve(didDoc.handle);
-        if (resolvedHandle === did) {
-          return didDoc.handle;
-        }
-        return did;
-      });
+    async resolveDidToHandle(did: string): Promise<string> {
+      const didDoc = await resolver.did.resolveAtprotoData(did);
+      const resolvedHandle = await resolver.handle.resolve(didDoc.handle);
+      if (resolvedHandle === did) {
+        return didDoc.handle;
+      }
+      return did;
     },
 
     async resolveDidsToHandles(
