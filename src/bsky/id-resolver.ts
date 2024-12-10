@@ -26,11 +26,14 @@ export function createBidirectionalResolver(resolver: IdResolver) {
   return {
     async resolveDidToHandle(did: string): Promise<string> {
       const didDoc = await resolver.did.resolveAtprotoData(did);
-      const resolvedHandle = await resolver.handle.resolve(didDoc.handle);
-      if (resolvedHandle === did) {
-        return didDoc.handle;
-      }
-      return did;
+
+      // asynchronously double check that the handle resolves back
+      resolver.handle.resolve(didDoc.handle).then((resolvedHandle) => {
+        if (resolvedHandle !== did) {
+          resolver.did.ensureResolve(did, true);
+        }
+      });
+      return didDoc?.handle ?? did;
     },
 
     async resolveDidsToHandles(
