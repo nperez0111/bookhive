@@ -33,6 +33,7 @@ import sqliteKv from "./sqlite-kv.ts";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { readThroughCache } from "./utils/readThroughCache.ts";
 import { lazy } from "./utils/lazy.ts";
+import { opentelemetryMiddleware } from "./middleware/otel.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -125,6 +126,7 @@ export class Server {
                   username: OPEN_OBSERVE_USER,
                   password: OPEN_OBSERVE_PASSWORD,
                 },
+                writeToConsole: true,
               },
             },
     });
@@ -227,6 +229,7 @@ export class Server {
       });
       await next();
     });
+    app.use(opentelemetryMiddleware());
 
     app.get("/healthcheck", (c) => c.text(time));
 

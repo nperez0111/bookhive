@@ -11,6 +11,11 @@ interface Options {
   };
   batchSize?: number;
   timeThresholdMs?: number;
+  /**
+   * If false, logs will not be written to the console
+   * @default true
+   */
+  writeToConsole?: boolean;
 }
 
 interface DefaultOptions {
@@ -76,6 +81,10 @@ export default function (options: Options) {
           return;
         }
         debugLog("OpenObserve Pino: Log received:", log);
+
+        if (opts.writeToConsole !== false) {
+          console.log(JSON.stringify(log));
+        }
         logs.push(log);
         scheduleSendLogs(callback);
       },
