@@ -6,6 +6,8 @@ import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../constants";
 import { endTime, startTime } from "hono/timing";
+import { BookFields } from "../db";
+// import { FallbackCover } from "./components/fallbackCover";
 
 type Props = {
   didHandleMap?: Record<string, string>;
@@ -14,17 +16,18 @@ type Props = {
 
 function Hero() {
   return (
-    <main class="grid place-items-center pt-16 pb-8 md:pt-12 md:pb-24 lg:grid-cols-2">
-      <div class="flex justify-center py-6 sm:block lg:order-1">
+    <main class="relative grid place-items-center px-4 pt-16 pb-8 md:pt-12 md:pb-24 lg:grid-cols-2 lg:px-8">
+      <div class="relative z-10 flex justify-center py-6 sm:block lg:order-1">
         <img
           src={`/public/bee.svg`}
           alt="Bee sitting on a stack of books"
           className="max-h-[200px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
         />
       </div>
-      <div>
+      <div class="relative z-10">
         <h1 class="text-5xl font-bold lg:text-6xl lg:tracking-tight xl:text-7xl xl:tracking-tighter">
-          The social platform for book lovers
+          The social platform for{" "}
+          <span class="text-blue-600 dark:text-blue-500">book lovers</span>
         </h1>
         <p class="mt-4 max-w-xl text-lg text-slate-600 dark:text-slate-400">
           You can follow your friends and see what they are reading, and you can
@@ -35,6 +38,7 @@ function Hero() {
           {/* Something here */}
         </div>
       </div>
+      <div class="absolute top-0 left-0 z-0 h-full w-full bg-gradient-to-b from-blue-50 to-transparent dark:from-blue-900"></div>
     </main>
   );
 }
@@ -149,10 +153,13 @@ function Features() {
   ];
 
   return (
-    <Fragment>
+    <div class="px-4 lg:px-8">
       <div class="mt-16 text-center text-balance md:mt-0 lg:mx-0">
         <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
-          Everything you need to manage your books
+          Everything you need to{" "}
+          <span class="underline decoration-yellow-400 decoration-4 underline-offset-4 dark:decoration-yellow-600">
+            manage your books
+          </span>
         </h2>
         <p class="mt-4 text-lg text-slate-600 dark:text-slate-400">
           BookHive stores all of your books in your own personal library.
@@ -162,7 +169,7 @@ function Features() {
       <div class="mt-16 grid gap-16 sm:grid-cols-2 md:grid-cols-3">
         {features.map((item) => (
           <div class="flex items-start gap-4">
-            <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-black p-2">
+            <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-yellow-500 p-2 text-black">
               {item.icon}
             </div>
             <div>
@@ -174,7 +181,7 @@ function Features() {
           </div>
         ))}
       </div>
-    </Fragment>
+    </div>
   );
 }
 
@@ -185,8 +192,9 @@ async function LatestActivity() {
   const latestBuzzes = await c
     .get("ctx")
     .db.selectFrom("user_book")
-    .selectAll()
-    .orderBy("createdAt", "desc")
+    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+    .select(BookFields)
+    .orderBy("user_book.createdAt", "desc")
     .limit(100)
     .execute();
   endTime(c, "latestBuzzes");
@@ -197,8 +205,10 @@ async function LatestActivity() {
     .resolver.resolveDidsToHandles(latestBuzzes.map((s) => s.userDid));
   endTime(c, "didHandleMap");
 
+  // const book = latestBuzzes[24];
+
   return (
-    <div class="mt-16 flex flex-col gap-2">
+    <div class="mt-16 flex flex-col gap-2 px-4 lg:px-8">
       <div class="mb-6">
         <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
           Recent buzzes
@@ -207,6 +217,42 @@ async function LatestActivity() {
           See what others are reading and what they think about it.
         </p>
       </div>
+      {/* <ol class="relative border-s border-gray-200 dark:border-gray-700">
+        {latestBuzzes.map((book) => {
+          return (
+            <li class="ms-4 mb-10">
+              <div class="absolute -start-1.5 mt-1.5 h-3 w-3 rounded-full border border-white bg-gray-200 dark:border-gray-900 dark:bg-gray-700"></div>
+              <time class="mb-1 text-sm leading-none font-normal text-gray-400 dark:text-gray-500">
+                {formatDistanceToNow(book.indexedAt, { addSuffix: true })}
+              </time>
+              <div class="mt-3 flex gap-3">
+                {book.cover || book.thumbnail ? (
+                  <img
+                    src={book.cover || book.thumbnail || ""}
+                    alt={book.title}
+                    class="h-36 w-24 rounded-lg object-cover shadow-sm"
+                  />
+                ) : (
+                  <FallbackCover className="h-36 w-24 rounded-lg object-cover shadow-sm" />
+                )}
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    {book.title}
+                  </h3>
+                  <span class="text-sm text-slate-600 dark:text-slate-400">
+                    by {book.authors.split("\t").join(", ")}
+                    {book.stars ? (
+                      <span class="text-md mx-1 text-slate-800 dark:text-slate-200">
+                        ({book.stars / 2} ⭐)
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol> */}
       {latestBuzzes.map((book) => {
         const handle = didHandleMap[book.userDid] || book.userDid;
         return (
@@ -250,7 +296,7 @@ export const Home: FC<Props> = async () => {
   endTime(c, "profile");
 
   return (
-    <div class="container mx-auto max-w-7xl bg-slate-50 px-4 lg:px-8 dark:bg-slate-900 dark:text-white">
+    <div class="container mx-auto max-w-7xl bg-slate-50 dark:bg-slate-900 dark:text-white">
       {profile ? (
         <div>
           <h2 class="text-md mt-3 mb-6 text-2xl leading-12 font-bold">

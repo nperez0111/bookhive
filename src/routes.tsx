@@ -10,8 +10,8 @@ import { z } from "zod";
 import type { AppContext, HonoServer } from ".";
 import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
-import * as Book from "./bsky/lexicon/types/buzz/bookhive/book";
-import type { HiveId } from "./db";
+import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
+import { type HiveId, BookFields } from "./db";
 import { BookInfo } from "./pages/bookInfo";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
@@ -55,10 +55,10 @@ async function refetchBooks({
   }
 
   await books.data.records
-    .filter((record) => Book.validateRecord(record.value).success)
+    .filter((record) => BookRecord.validateRecord(record.value).success)
     .reduce(async (acc, record) => {
       await acc;
-      const book = record.value as Book.Record;
+      const book = record.value as BookRecord.Record;
 
       await ctx.db
         .insertInto("user_book")
@@ -121,7 +121,7 @@ export function createRouter(app: HonoServer) {
       return (
         <Layout title={title}>
           <Navbar profile={profile} />
-          {children}
+          <div class="relative">{children}</div>
         </Layout>
       );
     }),
@@ -255,8 +255,8 @@ export function createRouter(app: HonoServer) {
       ? await c
           .get("ctx")
           .db.selectFrom("user_book")
-          .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .selectAll()
+          .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+          .select(BookFields)
           .where("user_book.userDid", "=", did)
           .orderBy("user_book.indexedAt", "desc")
           .limit(100)
@@ -404,7 +404,7 @@ export function createRouter(app: HonoServer) {
           .where("hiveId", "=", hiveId as HiveId)
           .executeTakeFirst();
 
-        let originalBook: Book.Record | undefined = undefined;
+        let originalBook: BookRecord.Record | undefined = undefined;
         if (userBook) {
           const {
             data: { value: originalBookValue },
@@ -414,7 +414,7 @@ export function createRouter(app: HonoServer) {
             rkey: userBook.uri.split("/").at(-1)!,
             cid: userBook.cid,
           });
-          originalBook = originalBookValue as Book.Record;
+          originalBook = originalBookValue as BookRecord.Record;
         }
 
         const input = {
@@ -430,7 +430,7 @@ export function createRouter(app: HonoServer) {
           review: review || originalBook?.review || undefined,
           stars: stars || originalBook?.stars || undefined,
         };
-        const book = Book.validateRecord(input);
+        const book = BookRecord.validateRecord(input);
 
         if (!book.success) {
           return c.html(
@@ -448,7 +448,7 @@ export function createRouter(app: HonoServer) {
           );
         }
 
-        const record = book.value as Book.Record;
+        const record = book.value as BookRecord.Record;
 
         const response = await agent.com.atproto.repo.applyWrites({
           repo: agent.assertDid,
@@ -459,7 +459,7 @@ export function createRouter(app: HonoServer) {
                 : "com.atproto.repo.applyWrites#create",
               collection: ids.BuzzBookhiveBook,
               rkey: userBook ? userBook.uri.split("/").at(-1) : TID.nextStr(),
-              value: record as Book.Record,
+              value: record as BookRecord.Record,
             },
           ],
         });

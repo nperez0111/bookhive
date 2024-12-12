@@ -93,6 +93,41 @@ export type HiveBook = {
   updatedAt: string;
 };
 
+type Simplify<T> = { [K in keyof T]: T[K] };
+
+type HiveFields = Pick<
+  HiveBook,
+  "cover" | "thumbnail" | "description" | "rating"
+>;
+/**
+ * This is the result of a user's actual PDS data which may or may not include Hive data
+ */
+export type Book = Simplify<
+  UserBook & {
+    [K in keyof HiveFields]: HiveFields[K] | null;
+  }
+>;
+
+export const BookFields = [
+  "user_book.authors",
+  "user_book.cid",
+  "user_book.createdAt",
+  "user_book.finishedAt",
+  "user_book.hiveId",
+  "user_book.indexedAt",
+  "user_book.review",
+  "user_book.stars",
+  "user_book.startedAt",
+  "user_book.status",
+  "user_book.title",
+  "user_book.uri",
+  "user_book.userDid",
+  "hive_book.cover",
+  "hive_book.thumbnail",
+  "hive_book.description",
+  "hive_book.rating",
+] as const;
+
 // Migrations
 
 const migrations: Record<string, Migration> = {};

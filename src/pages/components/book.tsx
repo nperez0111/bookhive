@@ -1,10 +1,11 @@
 import { type FC } from "hono/jsx";
-import type { HiveBook, UserBook } from "../../db";
+import type { Book } from "../../db";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
+import { FallbackCover } from "./fallbackCover";
 
 export const BookList: FC<{
-  books?: (UserBook & HiveBook)[];
+  books?: Book[];
 }> = async ({ books: booksFromProps }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
@@ -32,18 +33,22 @@ export const BookList: FC<{
 };
 
 export const BookListItem: FC<{
-  book: UserBook & HiveBook;
+  book: Book;
 }> = ({ book }) => (
   <li className="group relative">
     <a
       href={`/books/${book.hiveId}`}
       className="relative mb-12 block h-72 w-48 transform cursor-pointer transition-transform duration-300 group-hover:-translate-y-2"
     >
-      <img
-        src={book.cover || book.thumbnail}
-        alt={book.title}
-        className="h-full w-full rounded-lg object-cover shadow-lg"
-      />
+      {book.cover || book.thumbnail ? (
+        <img
+          src={book.cover || book.thumbnail || ""}
+          alt={book.title}
+          className="h-full w-full rounded-lg object-cover shadow-lg"
+        />
+      ) : (
+        <FallbackCover className="h-full w-full" />
+      )}
       <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <div className="absolute bottom-0 p-4 text-white">
           <p className="text-md font-bold">

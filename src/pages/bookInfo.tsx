@@ -292,8 +292,6 @@ export const BookInfo: FC<{
     .limit(100)
     .execute();
 
-  console.log(reviewsOfThisBook);
-
   const didHandleMap = await c
     .get("ctx")
     .resolver.resolveDidsToHandles(reviewsOfThisBook.map((s) => s.userDid));

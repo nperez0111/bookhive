@@ -1,12 +1,13 @@
 import { type FC } from "hono/jsx";
-import { type HiveBook, type UserBook } from "../db";
+import { type Book } from "../db";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
 import { formatDistanceToNow } from "date-fns";
+import { FallbackCover } from "./components/fallbackCover";
 
 export const ProfilePage: FC<{
   handle: string;
-  books: (UserBook & HiveBook)[];
+  books: Book[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
 }> = ({ handle, profile, books, isBuzzer }) => {
@@ -58,11 +59,15 @@ export const ProfilePage: FC<{
                   return (
                     <div class="group mb-2 cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
                       <a href={`/books/${book.hiveId}`} class="flex gap-4">
-                        <img
-                          src={book.cover || book.thumbnail}
-                          alt=""
-                          class="h-36 rounded-lg object-cover shadow-sm"
-                        />
+                        {book.cover || book.thumbnail ? (
+                          <img
+                            src={book.cover || book.thumbnail || ""}
+                            alt=""
+                            class="h-36 w-24 rounded-lg object-cover shadow-sm"
+                          />
+                        ) : (
+                          <FallbackCover className="h-36 w-24" />
+                        )}
                         <span class="flex flex-col gap-1">
                           <span class="text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400">
                             {book.title}
