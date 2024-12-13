@@ -98,6 +98,11 @@ export class Server {
   static async create() {
     const logger = getLogger({
       name: "server",
+
+      redact: {
+        paths: ["req.headers.cookie"],
+        censor: "***REDACTED***",
+      },
     });
 
     // Set up the SQLite database
