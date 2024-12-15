@@ -22,7 +22,7 @@ export const ProfilePage: FC<{
           />
         )}
         <div class="flex flex-col gap-4">
-          <h1 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
+          <h1 class="text-5xl leading-12 font-bold lg:text-6xl lg:tracking-tight">
             {profile?.displayName || handle}
           </h1>
           <p class="text-lg text-slate-600 dark:text-slate-400">
@@ -46,13 +46,21 @@ export const ProfilePage: FC<{
 
       {isBuzzer ? (
         <div class="flex flex-col gap-10">
-          <section>
-            <h2 class="mb-6 text-2xl font-semibold">Books</h2>
+          <section class="mt-8 flex flex-col gap-2 px-4 lg:px-8">
+            <div class="mb-6">
+              <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
+                All Books
+              </h2>
+            </div>
             <BookList books={books} />
           </section>
           {books.some((book) => book.review) && (
-            <section>
-              <h2 class="mb-6 text-2xl font-semibold">Reviews</h2>
+            <section class="mt-16 flex flex-col gap-2 px-4 lg:px-8">
+              <div class="mb-6">
+                <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
+                  Reviews
+                </h2>
+              </div>
               {books
                 .filter((book) => book.review)
                 .map((book) => {

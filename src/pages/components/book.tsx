@@ -24,7 +24,7 @@ export const BookList: FC<{
       : []);
 
   return (
-    <ul class="flex flex-wrap space-y-4 space-x-4">
+    <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {books.map((book) => (
         <BookListItem book={book} />
       ))}
@@ -89,6 +89,9 @@ export const BookListItem: FC<{
                 </svg>
               ))}
             </div>
+            <span class="ms-3 rounded bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-200 dark:text-blue-800">
+              {book.stars ? book.stars / 2 : "N/A"}
+            </span>
           </div>
           {book.status && book.status in BOOK_STATUS_MAP && (
             <span className="mt-1 mr-1 inline-block rounded-full bg-white/20 px-2 py-1 text-xs capitalize">
