@@ -39,7 +39,7 @@ async function Recommendations({
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
       <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
-        You are the only one to have read this on bookhive, so far!
+        You are the only one to have added this on bookhive, so far!
       </div>
     );
   }

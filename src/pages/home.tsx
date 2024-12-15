@@ -280,8 +280,8 @@ async function LatestActivity() {
                     </span>
                   )}
                 </div>
-                <span class="font-semibold">
-                  @{didHandleMap[book.userDid]}{" "}
+                <span class="line-clamp-1 block font-semibold text-ellipsis">
+                  @{didHandleMap[book.userDid]}
                 </span>
                 {book.status && book.status in BOOK_STATUS_PAST_TENSE_MAP
                   ? BOOK_STATUS_PAST_TENSE_MAP[
