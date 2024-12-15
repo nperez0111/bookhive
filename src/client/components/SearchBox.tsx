@@ -101,7 +101,7 @@ export const SearchBox: FC = () => {
           autocomplete="off"
           placeholder="Search books..."
           id="search-books"
-          className="block w-64 rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-600 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm/6 dark:placeholder:text-gray-800"
+          className="block w-[calc(100vw-136px)] rounded-md border-0 py-1.5 pl-8 text-gray-900 ring-1 ring-gray-300 ring-inset placeholder:text-gray-600 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:w-64 sm:text-sm/6 md:w-64 dark:placeholder:text-gray-800"
           value={query}
           onFocus={handleFocus}
           onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
@@ -112,7 +112,7 @@ export const SearchBox: FC = () => {
         <ul
           id="search-results"
           role="listbox"
-          className="absolute left-0 z-10 mt-2 w-[calc(100%+64px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden dark:divide-gray-700 dark:bg-slate-700"
+          className="absolute -left-12 z-10 mt-2 w-[calc(100vw-40px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden sm:left-0 sm:w-[calc(100%+64px)] dark:divide-gray-700 dark:bg-slate-700"
         >
           <ProgressBar isActive={bookResults.isFetching} />
           {bookResults.isError && (

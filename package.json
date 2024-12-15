@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "seed:db": "node ./src/initialize.js",
-    "dev": "concurrently --kill-others \"pnpm:dev:backend\" \"pnpm:dev:css\" -r -p none",
+    "dev": "concurrently --kill-others \"pnpm:dev:backend\" \"pnpm:dev:css\" \"pnpm:dev:frontend\" -r -p none",
     "dev:backend": "nodemon --exec 'pnpm run build:js:backend && pnpm start' --watch src -e ts,tsx | pino-pretty",
+    "dev:frontend": "pnpm run build:js:frontend --watch",
     "dev:css": "pnpm run build:css --watch",
     "build:js:frontend": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --alias:react=hono/jsx/dom --sourcemap",
     "build:js:backend": "rm -rf dist && node ./esbuild.cjs",

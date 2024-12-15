@@ -35,7 +35,7 @@ export const BookList: FC<{
 export const BookListItem: FC<{
   book: Book;
 }> = ({ book }) => (
-  <li className="group relative">
+  <li className="group relative flex justify-center">
     <a
       href={`/books/${book.hiveId}`}
       className="relative mb-12 block h-72 w-48 transform cursor-pointer transition-transform duration-300 group-hover:-translate-y-2"

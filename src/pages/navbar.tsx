@@ -64,7 +64,7 @@ export const Navbar: FC<{
             </button>
           </div>
           <div class="flex flex-1 items-center justify-center sm:items-stretch sm:justify-start">
-            <div class="flex shrink-0 items-center">
+            <div class="hidden shrink-0 items-center sm:flex">
               <svg
                 class="h-12 w-12 rounded-md bg-yellow-300 text-slate-900"
                 preserveAspectRatio="xMidYMid meet"
@@ -101,7 +101,7 @@ export const Navbar: FC<{
               </a>
             </div>
           </div>
-          <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
+          <div class="absolute inset-y-0 right-0 left-12 flex items-center pr-2 sm:static sm:inset-auto sm:left-auto sm:ml-6 sm:pr-0">
             {Boolean(profile) && <div id="mount-search-box" />}
             {/* Profile dropdown */}
             {!profile && (
