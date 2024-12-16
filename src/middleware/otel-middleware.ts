@@ -7,17 +7,23 @@ import {
   trace,
 } from "@opentelemetry/api";
 import type { MiddlewareHandler } from "hono";
+import {
+  ATTR_URL_FULL,
+  ATTR_URL_PATH,
+  ATTR_HTTP_REQUEST_METHOD,
+} from "@opentelemetry/semantic-conventions";
 
 let tracer: Tracer | undefined = trace.getTracer("hono", "0.0.1");
 
 export const opentelemetryMiddleware =
   (): MiddlewareHandler => async (ctx, next) => {
     const span = tracer.startSpan(
-      "opentelemetry.infrastructure.middleware",
+      "hono-middleware",
       {
         attributes: {
-          "http.method": ctx.req.method,
-          "http.url": ctx.req.url,
+          [ATTR_HTTP_REQUEST_METHOD]: ctx.req.method,
+          [ATTR_URL_PATH]: ctx.req.path,
+          [ATTR_URL_FULL]: ctx.req.url,
         },
         kind: SpanKind.SERVER,
       },

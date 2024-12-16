@@ -33,7 +33,7 @@ import sqliteKv from "./sqlite-kv.ts";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { readThroughCache } from "./utils/readThroughCache.ts";
 import { lazy } from "./utils/lazy.ts";
-import { opentelemetryMiddleware } from "./middleware/otel.ts";
+import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { getLogger } from "./logger/index.ts";
 
 // Application state passed to the router and elsewhere
@@ -237,7 +237,7 @@ export class Server {
     // Bind our server to the port
     const server = serve(
       {
-        fetch: app.fetch,
+        fetch: instrument(app).fetch,
         port: env.PORT,
       },
       ({ port }) => {
