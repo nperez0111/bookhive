@@ -300,37 +300,6 @@ async function LatestActivity() {
           </div>
         ))}
       </div>
-      {latestBuzzes.map((book) => {
-        const handle = didHandleMap[book.userDid] || book.userDid;
-        return (
-          <div
-            key={book.userDid}
-            class="rounded-xl border border-slate-400 px-2 py-2"
-          >
-            <a
-              href={`/profile/${handle}`}
-              class="inline text-blue-600 hover:underline"
-            >
-              @{handle}
-            </a>{" "}
-            - marked{" "}
-            <a
-              href={`/books/${book.hiveId}`}
-              class="inline text-blue-600 hover:underline"
-            >
-              "{book.title.slice(0, 40) + (book.title.length > 40 ? "..." : "")}
-              " by {book.authors.split("\t").join(", ")}
-            </a>{" "}
-            as{" "}
-            {book.status && book.status in BOOK_STATUS_MAP
-              ? BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
-              : book.status || BOOK_STATUS_MAP[BookStatus.READING]}{" "}
-            {formatDistanceToNow(book.indexedAt, { addSuffix: true })}
-            {book.stars && <span> - rated {book.stars / 2}</span>}
-            {book.review && <span> - reviewed</span>}
-          </div>
-        );
-      })}
     </div>
   );
 }
