@@ -18,13 +18,17 @@ export const Layout: FC<
   image = "/public/bee.png",
   description = "Goodreads but better. Built on top of Blue Sky.",
 }) => {
-  console.log({ image, description });
-  const c = useRequestContext();
+  let url: string;
+  try {
+    url = useRequestContext().req.url;
+  } catch (e) {
+    url = "https://bookhive.buzz";
+  }
   return html`<!doctype html>
     <html lang="en" class="h-full bg-white dark:bg-slate-950 dark:text-white">
       <head>
         <meta charset="UTF-8" />
-        <meta property="og:url" content="${c.req.url}" />
+        <meta property="og:url" content="${url}" />
         <meta property="og:type" content="website" />
         <meta property="og:title" content="BookHive" />
         <meta property="og:description" content="${description}" />
@@ -32,7 +36,7 @@ export const Layout: FC<
         <meta property="og:logo" content="/public/icon.svg" />
         <meta name="twitter:card" content="${image}" />
         <meta property="twitter:domain" content="bookhive.buzz" />
-        <meta property="twitter:url" content="${c.req.url}" />
+        <meta property="twitter:url" content="${url}" />
         <meta name="twitter:title" content="${title}" />
         <meta name="twitter:description" content="${description}" />
         <meta name="twitter:image" content="${image}" />
