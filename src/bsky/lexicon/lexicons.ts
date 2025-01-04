@@ -80,6 +80,43 @@ export const schemaDict = {
       },
     },
   },
+  BuzzBookhiveBuzz: {
+    lexicon: 1,
+    id: "buzz.bookhive.buzz",
+    defs: {
+      main: {
+        type: "record",
+        key: "tid",
+        description: "Record containing a Bookhive comment.",
+        record: {
+          type: "object",
+          required: ["comment", "createdAt", "book", "parent"],
+          properties: {
+            comment: {
+              type: "string",
+              maxLength: 100000,
+              maxGraphemes: 10000,
+              description: "The content of the comment.",
+            },
+            createdAt: {
+              type: "string",
+              format: "datetime",
+              description:
+                "Client-declared timestamp when this comment was originally created.",
+            },
+            parent: {
+              type: "ref",
+              ref: "lex:com.atproto.repo.strongRef",
+            },
+            book: {
+              type: "ref",
+              ref: "lex:com.atproto.repo.strongRef",
+            },
+          },
+        },
+      },
+    },
+  },
   BuzzBookhiveDefs: {
     lexicon: 1,
     id: "buzz.bookhive.defs",
@@ -274,6 +311,7 @@ export const schemas = Object.values(schemaDict);
 export const lexicons: Lexicons = new Lexicons(schemas);
 export const ids = {
   BuzzBookhiveBook: "buzz.bookhive.book",
+  BuzzBookhiveBuzz: "buzz.bookhive.buzz",
   BuzzBookhiveDefs: "buzz.bookhive.defs",
   BuzzBookhiveHiveBook: "buzz.bookhive.hiveBook",
   BuzzBookhiveSearchBooks: "buzz.bookhive.searchBooks",

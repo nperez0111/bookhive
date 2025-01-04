@@ -504,6 +504,29 @@ export const BookInfo: FC<{
                 <p className="mt-2 text-gray-700 dark:text-gray-200">
                   {userBook.review}
                 </p>
+                {did && (
+                  <form action={`/comments`} method="post">
+                    <input type="hidden" name="comment" value="Nice review!" />
+                    <input type="hidden" name="hiveId" value={book.id} />
+                    <input
+                      type="hidden"
+                      name="parentUri"
+                      value={userBook.uri}
+                    />
+                    <input
+                      type="hidden"
+                      name="parentCid"
+                      value={userBook.cid}
+                    />
+
+                    <button
+                      type="submit"
+                      class="mt-2 cursor-pointer text-gray-500 hover:underline dark:text-gray-400"
+                    >
+                      Comment
+                    </button>
+                  </form>
+                )}
               </div>
             ))}
           </div>

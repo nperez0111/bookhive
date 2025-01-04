@@ -4,7 +4,7 @@ import { BookList } from "./components/book";
 import { useRequestContext } from "hono/jsx-renderer";
 import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
-import { BOOK_STATUS_MAP, BOOK_STATUS_PAST_TENSE_MAP } from "../constants";
+import { BOOK_STATUS_PAST_TENSE_MAP } from "../constants";
 import { endTime, startTime } from "hono/timing";
 import { BookFields } from "../db";
 import { FallbackCover } from "./components/fallbackCover";

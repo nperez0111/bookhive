@@ -27,6 +27,7 @@ import {
   ipxHttpStorage,
   createIPXWebServer,
 } from "ipx";
+import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -594,6 +595,114 @@ export function createRouter(app: HonoServer) {
           500,
         );
       }
+    },
+  );
+
+  app.post(
+    "/comments",
+    zValidator(
+      "form",
+      z.object({
+        uri: z
+          .string()
+          .describe(
+            "The URI of the comment to update. If this is not provided, a new comment will be created.",
+          )
+          .optional(),
+        hiveId: z.string(),
+        comment: z.string(),
+        parentUri: z.string(),
+        parentCid: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.html(
+          <Layout>
+            <ErrorPage
+              message="Invalid Session"
+              description="Login to post a comment"
+              statusCode={401}
+            />
+          </Layout>,
+          401,
+        );
+      }
+
+      const { hiveId, comment, parentUri, parentCid, uri } =
+        await c.req.valid("form");
+
+      const originalBuzz = uri
+        ? await c
+            .get("ctx")
+            .db.selectFrom("buzz")
+            .selectAll()
+            .where("uri", "=", uri)
+            .limit(1)
+            .executeTakeFirst()
+        : null;
+      const book = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select(["cid", "uri"])
+        .where("hiveId", "=", hiveId as HiveId)
+        .executeTakeFirst();
+
+      const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
+      const parentRef = validateMain({ uri: parentUri, cid: parentCid });
+      if (!bookRef.success || !parentRef.success) {
+        return c.html(
+          <Layout>
+            <ErrorPage
+              message="Invalid Hive ID"
+              description="The book you are looking for does not exist"
+              statusCode={404}
+            />
+          </Layout>,
+          404,
+        );
+      }
+
+      const response = await agent.com.atproto.repo.applyWrites({
+        repo: agent.assertDid,
+        writes: [
+          {
+            $type: originalBuzz
+              ? "com.atproto.repo.applyWrites#update"
+              : "com.atproto.repo.applyWrites#create",
+            collection: ids.BuzzBookhiveBuzz,
+            rkey: originalBuzz
+              ? originalBuzz.uri.split("/").at(-1)
+              : TID.nextStr(),
+            value: {
+              book: bookRef.value,
+              comment,
+              parent: parentRef.value,
+              createdAt: originalBuzz?.createdAt || new Date().toISOString(),
+            },
+          },
+        ],
+      });
+
+      if (
+        !response.success ||
+        !response.data.results ||
+        response.data.results.length === 0
+      ) {
+        return c.html(
+          <Layout>
+            <ErrorPage
+              message="Failed to post comment"
+              description="Failed to write comment to the database"
+              statusCode={500}
+            />
+          </Layout>,
+          500,
+        );
+      }
+
+      return c.redirect("/books/" + hiveId);
     },
   );
 
