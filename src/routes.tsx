@@ -46,6 +46,35 @@ const ipx = createIPXWebServer(
   }),
 );
 
+async function searchBooks({ query, ctx }: { query: string; ctx: AppContext }) {
+  return await readThroughCache<HiveId[]>(
+    ctx.kv,
+    `search:${query}`,
+    () =>
+      findBookDetails(query).then((res) => {
+        if (!res.success) {
+          throw new Error(res.message);
+        }
+
+        return ctx.db
+          .insertInto("hive_book")
+          .values(res.data)
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet((c) => ({
+              rating: c.ref("rating"),
+              ratingsCount: c.ref("ratingsCount"),
+              updatedAt: c.ref("updatedAt"),
+            })),
+          )
+          .execute()
+          .then(() => {
+            return res.data.map((book) => book.id);
+          });
+      }),
+    [] as HiveId[],
+  );
+}
+
 async function refetchBooks({
   agent,
   ctx,
@@ -72,12 +101,15 @@ async function refetchBooks({
       .where("userDid", "=", agent.assertDid)
       .execute();
   }
+  const promises = [] as Promise<any>[];
 
   await books.data.records
     .filter((record) => BookRecord.validateRecord(record.value).success)
     .reduce(async (acc, record) => {
       await acc;
       const book = record.value as BookRecord.Record;
+
+      promises.push(searchBooks({ query: book.title, ctx }));
 
       await ctx.db
         .insertInto("user_book")
@@ -112,6 +144,10 @@ async function refetchBooks({
         .execute();
     }, Promise.resolve());
 
+  await Promise.race([
+    Promise.all(promises),
+    new Promise((resolve) => setTimeout(resolve, 1000)),
+  ]);
   // TODO optimize this
   if (books.data.records.length === 100) {
     // Fetch next page, after a short delay
@@ -601,33 +637,7 @@ export function createRouter(app: HonoServer) {
         return c.json([book].filter(Boolean));
       }
 
-      const bookIds = await readThroughCache<HiveId[]>(
-        c.get("ctx").kv,
-        `search:${q}`,
-        () =>
-          findBookDetails(q).then((res) => {
-            if (!res.success) {
-              throw new Error(res.message);
-            }
-
-            return c
-              .get("ctx")
-              .db.insertInto("hive_book")
-              .values(res.data)
-              .onConflict((oc) =>
-                oc.column("id").doUpdateSet((c) => ({
-                  rating: c.ref("rating"),
-                  ratingsCount: c.ref("ratingsCount"),
-                  updatedAt: c.ref("updatedAt"),
-                })),
-              )
-              .execute()
-              .then(() => {
-                return res.data.map((book) => book.id);
-              });
-          }),
-        [] as HiveId[],
-      );
+      const bookIds = await searchBooks({ query: q, ctx: c.get("ctx") });
 
       if (!bookIds.length) {
         return c.json([]);
