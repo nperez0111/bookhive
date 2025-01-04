@@ -293,7 +293,11 @@ export function createRouter(app: HonoServer) {
         books={books}
         profile={profile}
       />,
-      { title: "BookHive | @" + handle },
+      {
+        title: "BookHive | @" + handle,
+        description: `@${handle}'s BookHive Profile page with ${books.length} books`,
+        image: profile?.avatar,
+      },
     );
   });
 
