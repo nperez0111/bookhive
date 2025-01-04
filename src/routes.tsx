@@ -21,12 +21,31 @@ import { ProfilePage } from "./pages/profile";
 import { findBookDetails } from "./scrapers";
 import { readThroughCache } from "./utils/readThroughCache";
 import { uploadImageBlob } from "./utils/uploadImageBlob";
+import {
+  createIPX,
+  ipxFSStorage,
+  ipxHttpStorage,
+  createIPXWebServer,
+} from "ipx";
 
 declare module "hono" {
   interface ContextRenderer {
-    (content: string | Promise<string>, props: { title: string }): Response;
+    (
+      content: string | Promise<string>,
+      props: { title?: string; image?: string; description?: string },
+    ): Response;
   }
 }
+
+const ipx = createIPXWebServer(
+  createIPX({
+    storage: ipxFSStorage({ dir: "./public" }),
+    httpStorage: ipxHttpStorage({
+      domains: ["i.gr-assets.com"],
+    }),
+  }),
+);
+
 async function refetchBooks({
   agent,
   ctx,
@@ -114,18 +133,22 @@ export function createRouter(app: HonoServer) {
   });
 
   app.use(
-    jsxRenderer(async ({ children, title = "BookHive" }) => {
+    jsxRenderer(async ({ children, Layout: _Layout, ...props }) => {
       const c = useRequestContext();
       const profile = await c.get("ctx").getProfile();
 
       return (
-        <Layout title={title}>
+        <Layout {...props}>
           <Navbar profile={profile} />
           <div class="relative">{children}</div>
         </Layout>
       );
     }),
   );
+
+  app.use("/images/*", (c) => {
+    return ipx(new Request(c.req.raw.url.replace(/\/images/, "")));
+  });
 
   // Homepage
   app.get("/", async (c) => {
@@ -298,6 +321,8 @@ export function createRouter(app: HonoServer) {
 
     return c.render(<BookInfo book={book} />, {
       title: "BookHive | " + book.title,
+      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      description: `See ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
     });
   });
 
