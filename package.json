@@ -81,10 +81,5 @@
     "tailwindcss": "4.0.0-beta.2",
     "tailwindcss-animated": "^1.1.2",
     "typescript": "^5.7.2"
-  },
-  "patchedDependencies": {
-    "@atproto/jwk-jose@0.1.2": "patches/@atproto%2Fjwk-jose@0.1.2.patch",
-    "@atproto/jwk-webcrypto@0.1.2": "patches/@atproto%2Fjwk-webcrypto@0.1.2.patch",
-    "@atproto/jwk@0.1.1": "patches/@atproto%2Fjwk@0.1.1.patch"
   }
 }

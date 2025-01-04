@@ -96,7 +96,7 @@ importers:
         specifier: 1.15.0
         version: 1.15.0(esbuild@0.24.0)
       hono:
-        specifier: 4.6.12
+        specifier: ^4.6.12
         version: 4.6.12
       hono-pino:
         specifier: 0.7.0
