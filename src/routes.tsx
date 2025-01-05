@@ -11,6 +11,7 @@ import type { AppContext, HonoServer } from ".";
 import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
+import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import { type HiveId, BookFields } from "./db";
 import { BookInfo } from "./pages/bookInfo";
 import { Error as ErrorPage } from "./pages/error";
@@ -28,6 +29,8 @@ import {
   createIPXWebServer,
 } from "ipx";
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
+import { CommentsPage } from "./pages/comments";
+import { getProfile } from "./utils/getProfile";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -76,14 +79,106 @@ async function searchBooks({ query, ctx }: { query: string; ctx: AppContext }) {
   );
 }
 
-async function refetchBooks({
+async function refetchBuzzes({
   agent,
   ctx,
   cursor,
+  uris = [],
 }: {
   agent: Agent;
   ctx: AppContext;
   cursor?: string;
+  uris?: string[];
+}) {
+  if (!agent) {
+    return;
+  }
+  const buzzes = await agent.com.atproto.repo.listRecords({
+    repo: agent.assertDid,
+    collection: ids.BuzzBookhiveBuzz,
+    limit: 100,
+    cursor,
+  });
+
+  await buzzes.data.records
+    .filter((record) => BuzzRecord.validateRecord(record.value).success)
+    .reduce(async (acc, record) => {
+      await acc;
+      const book = record.value as BuzzRecord.Record;
+
+      const hiveId = (
+        await ctx.db
+          .selectFrom("user_book")
+          .select("hiveId")
+          .where("uri", "=", book.book.uri)
+          .executeTakeFirst()
+      )?.hiveId;
+
+      if (!hiveId) {
+        ctx.logger.error("hiveId not found for book", { record });
+        return;
+      }
+
+      uris.push(record.uri);
+
+      await ctx.db
+        .insertInto("buzz")
+        .values({
+          uri: record.uri,
+          cid: record.cid,
+          userDid: agent.assertDid,
+          createdAt: book.createdAt,
+          indexedAt: new Date().toISOString(),
+          hiveId: hiveId,
+          comment: book.comment,
+          parentUri: book.parent.uri,
+          parentCid: book.parent.cid,
+          bookCid: book.book.cid,
+          bookUri: book.book.uri,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet({
+            uri: record.uri,
+            cid: record.cid,
+            userDid: agent.assertDid,
+            createdAt: book.createdAt,
+            indexedAt: new Date().toISOString(),
+            hiveId: hiveId,
+            comment: book.comment,
+            parentUri: book.parent.uri,
+            parentCid: book.parent.cid,
+            bookCid: book.book.cid,
+            bookUri: book.book.uri,
+          }),
+        )
+        .execute();
+    }, Promise.resolve());
+
+  // TODO optimize this
+  if (buzzes.data.records.length === 100) {
+    // Fetch next page, after a short delay
+    await setTimeout(() => {}, 100);
+    return refetchBuzzes({ agent, ctx, cursor: buzzes.data.cursor, uris });
+  } else {
+    // Clear buzzes which no longer exist
+    await ctx.db
+      .deleteFrom("buzz")
+      .where("userDid", "=", agent.assertDid)
+      .where("uri", "not in", uris)
+      .execute();
+  }
+}
+
+async function refetchBooks({
+  agent,
+  ctx,
+  cursor,
+  uris = [],
+}: {
+  agent: Agent;
+  ctx: AppContext;
+  cursor?: string;
+  uris?: string[];
 }) {
   if (!agent) {
     return;
@@ -95,13 +190,6 @@ async function refetchBooks({
     cursor,
   });
 
-  if (!cursor) {
-    // Clear existing books
-    await ctx.db
-      .deleteFrom("user_book")
-      .where("userDid", "=", agent.assertDid)
-      .execute();
-  }
   const promises = [] as Promise<any>[];
 
   await books.data.records
@@ -111,6 +199,8 @@ async function refetchBooks({
       const book = record.value as BookRecord.Record;
 
       promises.push(searchBooks({ query: book.title, ctx }));
+
+      uris.push(record.uri);
 
       await ctx.db
         .insertInto("user_book")
@@ -145,15 +235,19 @@ async function refetchBooks({
         .execute();
     }, Promise.resolve());
 
-  await Promise.race([
-    Promise.all(promises),
-    new Promise((resolve) => setTimeout(resolve, 1000)),
-  ]);
+  await Promise.all(promises);
   // TODO optimize this
   if (books.data.records.length === 100) {
     // Fetch next page, after a short delay
     await setTimeout(() => {}, 100);
     return refetchBooks({ agent, ctx, cursor: books.data.cursor });
+  } else {
+    // Clear books which no longer exist
+    await ctx.db
+      .deleteFrom("user_book")
+      .where("userDid", "=", agent.assertDid)
+      .where("uri", "not in", uris)
+      .execute();
   }
 }
 
@@ -164,8 +258,11 @@ export function createRouter(app: HonoServer) {
         return;
       }
 
-      // Fetch books on login
-      await refetchBooks({ agent, ctx });
+      // Fetch books/buzzes on login, but don't wait for it
+      await Promise.race([
+        refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]);
     },
   });
 
@@ -297,20 +394,7 @@ export function createRouter(app: HonoServer) {
     //   );
     // }
 
-    const agent =
-      (await c.get("ctx").getSessionAgent()) ||
-      new Agent("https://public.api.bsky.app/xrpc");
-    const profile = await readThroughCache(
-      c.get("ctx").kv,
-      "profile:" + did,
-      async () => {
-        return agent
-          .getProfile({
-            actor: did,
-          })
-          .then((res) => res.data);
-      },
-    );
+    const profile = await getProfile({ ctx: c.get("ctx"), did });
     const books = isBuzzer
       ? await c
           .get("ctx")
@@ -338,12 +422,12 @@ export function createRouter(app: HonoServer) {
     );
   });
 
-  app.get("/books/:id", async (c) => {
+  app.get("/books/:hiveId", async (c) => {
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")
       .selectAll()
-      .where("id", "=", c.req.param("id") as HiveId)
+      .where("id", "=", c.req.param("hiveId") as HiveId)
       .limit(1)
       .executeTakeFirst();
 
@@ -367,9 +451,9 @@ export function createRouter(app: HonoServer) {
     });
   });
 
-  app.use("/books/:id", methodOverride({ app }));
+  app.use("/books/:hiveId", methodOverride({ app }));
 
-  app.delete("/books/:id", async (c) => {
+  app.delete("/books/:hiveId", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
       return c.html(
@@ -384,7 +468,7 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    const bookId = c.req.param("id");
+    const bookId = c.req.param("hiveId") as HiveId;
     const bookUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBook}/${bookId}`;
 
     const book = await c
@@ -648,10 +732,11 @@ export function createRouter(app: HonoServer) {
         .select(["cid", "uri"])
         .where("hiveId", "=", hiveId as HiveId)
         .executeTakeFirst();
+      const createdAt = originalBuzz?.createdAt || new Date().toISOString();
 
       const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
       const parentRef = validateMain({ uri: parentUri, cid: parentCid });
-      if (!bookRef.success || !parentRef.success) {
+      if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
         return c.html(
           <Layout>
             <ErrorPage
@@ -679,7 +764,7 @@ export function createRouter(app: HonoServer) {
               book: bookRef.value,
               comment,
               parent: parentRef.value,
-              createdAt: originalBuzz?.createdAt || new Date().toISOString(),
+              createdAt,
             },
           },
         ],
@@ -702,9 +787,70 @@ export function createRouter(app: HonoServer) {
         );
       }
 
+      await c
+        .get("ctx")
+        .db.insertInto("buzz")
+        .values({
+          uri: response.data.results[0].uri as string,
+          cid: response.data.results[0].cid as string,
+          userDid: agent.assertDid,
+          createdAt: createdAt,
+          indexedAt: new Date().toISOString(),
+          hiveId: hiveId as HiveId,
+          comment,
+          parentUri,
+          parentCid,
+          bookCid: book.cid,
+          bookUri: book.uri,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet({
+            indexedAt: new Date().toISOString(),
+            cid: response.data.results?.[0].cid as string,
+            userDid: agent.assertDid,
+            createdAt: createdAt,
+            hiveId: hiveId as HiveId,
+            comment,
+            parentUri,
+            parentCid,
+            bookCid: book.cid,
+            bookUri: book.uri,
+          }),
+        )
+        .execute();
+
       return c.redirect("/books/" + hiveId);
     },
   );
+
+  app.get("/books/:hiveId/comments", async (c) => {
+    const book = await c
+      .get("ctx")
+      .db.selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", c.req.param("hiveId") as HiveId)
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!book) {
+      return c.html(
+        <Layout>
+          <ErrorPage
+            message="Book not found"
+            description="The book you are looking for does not exist"
+            statusCode={404}
+          />
+        </Layout>,
+        404,
+      );
+    }
+
+    return c.render(<CommentsPage book={book} />, {
+      title: "BookHive | Comments " + book.title,
+      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
+    });
+  });
 
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,

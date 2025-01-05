@@ -6,6 +6,8 @@ import { Script } from "./utils/script";
 import type { HiveBook, UserBook } from "../db";
 import { BOOK_STATUS_MAP } from "../constants";
 import { decode } from "html-entities";
+import { Modal } from "./components/modal";
+import { sql } from "kysely";
 
 async function Recommendations({
   book,
@@ -286,9 +288,24 @@ export const BookInfo: FC<{
   const reviewsOfThisBook = await c
     .get("ctx")
     .db.selectFrom("user_book")
-    .selectAll()
-    .where("hiveId", "==", book.id)
-    .where("review", "!=", "")
+    .select([
+      "user_book.hiveId",
+      "user_book.createdAt",
+      "user_book.uri",
+      "user_book.cid",
+      "user_book.userDid",
+      "user_book.review",
+      "user_book.stars",
+      (eb) =>
+        eb
+          .selectFrom("buzz")
+          .select(sql<number>`count(*)`.as("commentCount"))
+          .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
+          .as("commentCount"),
+    ])
+    .where("user_book.hiveId", "=", book.id)
+    .where("user_book.review", "!=", "")
+    .orderBy("user_book.createdAt", "desc")
     .limit(100)
     .execute();
 
@@ -501,31 +518,68 @@ export const BookInfo: FC<{
                     ) : null}
                   </a>
                 </h3>
+                <a
+                  href={`/books/${book.id}/comments?focused-id=${userBook.userDid}`}
+                  class="mt-4 text-gray-500 hover:underline dark:text-gray-400"
+                >
+                  {formatDistanceToNow(userBook.createdAt, { addSuffix: true })}
+                  {userBook.commentCount ? (
+                    <span>
+                      {" "}
+                      - {userBook.commentCount} comment
+                      {userBook.commentCount > 1 ? "s" : ""}
+                    </span>
+                  ) : null}
+                </a>
                 <p className="mt-2 text-gray-700 dark:text-gray-200">
                   {userBook.review}
                 </p>
-                {did && (
-                  <form action={`/comments`} method="post">
-                    <input type="hidden" name="comment" value="Nice review!" />
-                    <input type="hidden" name="hiveId" value={book.id} />
-                    <input
-                      type="hidden"
-                      name="parentUri"
-                      value={userBook.uri}
-                    />
-                    <input
-                      type="hidden"
-                      name="parentCid"
-                      value={userBook.cid}
-                    />
 
-                    <button
-                      type="submit"
-                      class="mt-2 cursor-pointer text-gray-500 hover:underline dark:text-gray-400"
-                    >
-                      Comment
-                    </button>
-                  </form>
+                {did && (
+                  <Modal
+                    id={userBook.uri}
+                    className="mt-2 cursor-pointer text-sm text-gray-500 hover:underline dark:text-gray-400"
+                    button="Add a comment"
+                  >
+                    <h3 className="mb-8 text-xl font-semibold">Add Comment</h3>
+                    <div className="mb-6 rounded-xl bg-slate-200 p-4 dark:bg-gray-900">
+                      <h4 className="text-lg font-semibold">
+                        {userBook.userDid === did ? "Your" : "Their"} Review
+                      </h4>
+                      <p className="mt-2 text-gray-700 dark:text-gray-200">
+                        {userBook.review}
+                      </p>
+                    </div>
+                    <div className="space-y-4">
+                      <form action={`/comments`} method="post">
+                        <textarea
+                          name="comment"
+                          rows={4}
+                          class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 dark:bg-slate-600 dark:text-gray-50 dark:outline-gray-700 dark:placeholder:text-gray-200 dark:focus:outline-2 dark:focus:-outline-offset-2 dark:focus:outline-indigo-600"
+                          placeholder="Type your comment here, be kind..."
+                        />
+                        <input type="hidden" name="hiveId" value={book.id} />
+                        <input
+                          type="hidden"
+                          name="parentUri"
+                          value={userBook.uri}
+                        />
+                        <input
+                          type="hidden"
+                          name="parentCid"
+                          value={userBook.cid}
+                        />
+
+                        <button
+                          type="submit"
+                          class="float-right mt-4 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                        >
+                          Post Comment
+                        </button>
+                        <div class="clear-both" />
+                      </form>
+                    </div>
+                  </Modal>
                 )}
               </div>
             ))}
