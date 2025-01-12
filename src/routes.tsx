@@ -29,7 +29,7 @@ import {
   createIPXWebServer,
 } from "ipx";
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
-import { CommentsPage } from "./pages/comments";
+import { CommentsSection } from "./pages/comments";
 import { getProfile } from "./utils/getProfile";
 
 declare module "hono" {
@@ -845,7 +845,7 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    return c.render(<CommentsPage book={book} />, {
+    return c.render(<CommentsSection book={book} />, {
       title: "BookHive | Comments " + book.title,
       image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
       description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,

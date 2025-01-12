@@ -1,37 +1,76 @@
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { useRequestContext } from "hono/jsx-renderer";
 import type { NotNull } from "kysely";
-import type { HiveBook } from "../db";
+import type { HiveBook, HiveId } from "../db";
 import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
+import { endTime, startTime } from "hono/timing";
+import type { PropsWithChildren } from "hono/jsx";
+
+type CommentShape = {
+  parentUri?: string;
+  comment: string;
+  cid: string;
+  uri: string;
+  userDid: string;
+  createdAt: string;
+};
+
+function CommentForm({
+  parentUri,
+  parentCid,
+  bookId,
+}: {
+  parentUri: string;
+  parentCid: string;
+  bookId: string;
+}) {
+  return (
+    <form action="/comments" method="post" class="mt-4 space-y-4">
+      <input type="hidden" name="parentUri" value={parentUri} />
+      <input type="hidden" name="parentCid" value={parentCid} />
+      <input type="hidden" name="hiveId" value={bookId} />
+
+      <div>
+        <textarea
+          name="comment"
+          rows={3}
+          class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          placeholder="Write a reply..."
+          required
+        ></textarea>
+      </div>
+
+      <div class="flex justify-end">
+        <button
+          type="submit"
+          class="cursor-pointer rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
+        >
+          Reply
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function Comment({
   comment,
   profiles,
   comments,
+  bookId,
 }: {
-  comment: {
-    comment: string;
-    uri: string;
-    userDid: string;
-    createdAt: string;
-  };
+  comment: CommentShape;
   profiles: ProfileViewDetailed[];
-  comments: {
-    parentUri: string;
-    comment: string;
-    uri: string;
-    userDid: string;
-    createdAt: string;
-  }[];
+  comments: CommentShape[];
+  bookId: HiveId;
 }) {
   const profile = profiles.find((p) => p.did === comment.userDid);
 
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
 
   return (
-    <div class="mb-5">
-      <footer class="mb-2 flex items-center justify-between">
+    <div class="mb-3">
+      <div class="mb-2 flex items-center justify-between">
         <div class="flex items-center">
           <p class="mr-3 inline-flex items-center text-sm font-semibold text-gray-900 dark:text-white">
             <img
@@ -47,51 +86,100 @@ function Comment({
             </time>
           </p>
         </div>
-      </footer>
-      <p class="mb-2 text-gray-900 dark:text-white">{comment.comment}</p>
-      <a
-        href="#"
-        class="text-primary-700 dark:text-primary-500 inline-flex items-center text-xs font-medium sm:text-sm"
-      >
-        {subComments.length} replies
-        <svg
-          class="ml-1 h-5 w-5"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
+      </div>
+      <input
+        type="checkbox"
+        id={`comments-${comment.uri}`}
+        class="peer hidden"
+      />
+      <p class="mb-2 text-gray-900 peer-checked:invisible peer-checked:h-0 peer-checked:opacity-0 dark:text-white">
+        {comment.comment}
+      </p>
+
+      <div class="relative inline">
+        <input
+          type="checkbox"
+          id={`reply-${comment.uri}`}
+          class="peer hidden"
+        />
+        <label
+          htmlFor={`reply-${comment.uri}`}
+          class="inline cursor-pointer text-sm font-medium hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+          tabindex={0}
+          role="button"
+          aria-controls={`form-${comment.uri}`}
         >
-          <path
-            clip-rule="evenodd"
-            fill-rule="evenodd"
-            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-          ></path>
-        </svg>
-      </a>
-      {subComments.length === 0 ? null : (
-        <article class="my-5 pl-12">
-          {subComments.map((comment) => {
-            return (
-              <Comment
-                comment={comment}
-                profiles={profiles}
-                comments={comments}
-              ></Comment>
-            );
-          })}
-        </article>
-      )}
+          Reply
+        </label>
+
+        <label
+          htmlFor={`comments-${comment.uri}`}
+          class="inline-flex cursor-pointer items-center pl-2 text-xs font-medium text-gray-600 sm:text-sm dark:text-gray-400"
+        >
+          {subComments.length} replies
+          <svg
+            class="ml-1 h-5 w-5"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              clip-rule="evenodd"
+              fill-rule="evenodd"
+              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            ></path>
+          </svg>
+        </label>
+
+        <div class="invisible mt-4 h-0 pl-3 opacity-0 transition-all duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
+          <CommentForm
+            parentUri={comment.uri}
+            parentCid={comment.cid}
+            bookId={bookId}
+          />
+        </div>
+      </div>
+      <div
+        id={"comments-" + comment.uri}
+        class="visible mt-4 h-auto pl-3 opacity-100 transition-all duration-200 peer-checked:invisible peer-checked:h-0 peer-checked:opacity-0"
+      >
+        {subComments.length === 0 ? null : (
+          <article class="my-5 pl-12">
+            {subComments.map((comment) => {
+              return (
+                <Comment
+                  comment={comment}
+                  profiles={profiles}
+                  comments={comments}
+                  bookId={bookId}
+                ></Comment>
+              );
+            })}
+          </article>
+        )}
+      </div>
     </div>
   );
 }
 
-export async function CommentsPage({ book }: { book: HiveBook }) {
+export async function CommentsSection({
+  book,
+  children,
+}: PropsWithChildren<{ book: HiveBook }>) {
   const c = useRequestContext();
+  startTime(c, "fetch_comments");
 
   const topLevelReviews = await c
     .get("ctx")
     .db.selectFrom("user_book")
-    .select(["review as comment", "createdAt", "userDid", "uri"])
+    .select([
+      "review as comment",
+      "createdAt",
+      "userDid",
+      "uri",
+      "user_book.cid",
+    ])
     .where("user_book.hiveId", "=", book.id)
     .where("user_book.review", "is not", null)
     .$narrowType<{ comment: NotNull }>()
@@ -107,6 +195,7 @@ export async function CommentsPage({ book }: { book: HiveBook }) {
       "buzz.createdAt",
       "buzz.userDid",
       "buzz.parentUri",
+      "buzz.cid",
       "buzz.uri",
       "user_book.review as originalReview",
       "user_book.userDid as originalUserDid",
@@ -117,20 +206,26 @@ export async function CommentsPage({ book }: { book: HiveBook }) {
     .limit(3000)
     .execute();
 
+  endTime(c, "fetch_comments");
+
+  startTime(c, "fetch_profiles");
   const profiles = await getProfiles({
     ctx: c.get("ctx"),
     dids: comments
       .map((c) => c.userDid)
       .concat(topLevelReviews.map((r) => r.userDid)),
   });
+  endTime(c, "fetch_profiles");
 
   return (
     <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-800">
+      {children}
       {topLevelReviews.map((review) => (
         <Comment
           comment={review}
           profiles={profiles}
           comments={comments}
+          bookId={book.id}
         ></Comment>
       ))}
     </div>
