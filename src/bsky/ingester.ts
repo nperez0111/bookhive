@@ -2,6 +2,7 @@ import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
 import type { Database, HiveId } from "../db";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
+import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";
 import { getLogger } from "../logger";
 import { createBidirectionalResolver } from "./id-resolver";
@@ -25,7 +26,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
           Book.isRecord(record) &&
           Book.validateRecord(record).success
         ) {
-          logger.info("valid book", { record });
+          logger.debug("valid book", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
           // Store the book in our SQLite
@@ -58,13 +59,74 @@ export function createIngester(db: Database, idResolver: IdResolver) {
             )
             .execute();
           return;
+        } else if (
+          evt.collection === ids.BuzzBookhiveBuzz &&
+          Buzz.isRecord(record) &&
+          Buzz.validateRecord(record).success
+        ) {
+          logger.debug("valid buzz", { record });
+          // Asynchronously fetch the user's handle
+          bidirectionalResolver.resolveDidToHandle(evt.did);
+
+          const hiveId = (
+            await db
+              .selectFrom("user_book")
+              .select("hiveId")
+              .where("uri", "=", record.book.uri)
+              .executeTakeFirst()
+          )?.hiveId;
+
+          if (!hiveId) {
+            logger.error("hiveId not found for book", { record });
+            return;
+          }
+
+          // Store the book in our SQLite
+          await db
+            .insertInto("buzz")
+            .values({
+              uri: evt.uri.toString(),
+              cid: evt.cid.toString(),
+              userDid: evt.did,
+              hiveId,
+              createdAt: record.createdAt,
+              indexedAt: now.toISOString(),
+              bookCid: record.book.cid,
+              bookUri: record.book.uri,
+              comment: record.comment,
+              parentCid: record.parent.cid,
+              parentUri: record.parent.uri,
+            })
+            .onConflict((oc) =>
+              oc.column("uri").doUpdateSet({
+                uri: evt.uri.toString(),
+                cid: evt.cid.toString(),
+                userDid: evt.did,
+                hiveId,
+                indexedAt: now.toISOString(),
+                bookCid: record.book.cid,
+                bookUri: record.book.uri,
+                comment: record.comment,
+                parentCid: record.parent.cid,
+                parentUri: record.parent.uri,
+              }),
+            )
+            .execute();
+          return;
         }
       } else if (evt.event === "delete") {
         if (evt.collection === ids.BuzzBookhiveBook) {
-          logger.info("delete book", { evt });
+          logger.debug("delete book", { evt });
           // Remove the status from our SQLite
           await db
             .deleteFrom("user_book")
+            .where("uri", "=", evt.uri.toString())
+            .execute();
+          return;
+        } else if (evt.collection === ids.BuzzBookhiveBuzz) {
+          logger.debug("delete buzz", { evt });
+          await db
+            .deleteFrom("buzz")
             .where("uri", "=", evt.uri.toString())
             .execute();
           return;
@@ -74,7 +136,7 @@ export function createIngester(db: Database, idResolver: IdResolver) {
     onError: (err) => {
       logger.trace("error on firehose ingestion", { err });
     },
-    filterCollections: [ids.BuzzBookhiveBook],
+    filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz],
     excludeIdentity: true,
     excludeAccount: true,
   });

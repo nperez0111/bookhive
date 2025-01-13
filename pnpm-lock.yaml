@@ -156,6 +156,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: 4.0.0-beta.2
         version: 4.0.0-beta.2
+      '@types/ws':
+        specifier: 8.5.13
+        version: 8.5.13
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.18.2
         version: 8.18.2(@typescript-eslint/parser@8.18.2(eslint@9.17.0(jiti@2.4.0))(typescript@5.7.2))(eslint@9.17.0(jiti@2.4.0))(typescript@5.7.2)
@@ -1389,6 +1392,9 @@ packages:
 
   '@types/tedious@4.0.14':
     resolution: {integrity: sha512-KHPsfX/FoVbUGbyYvk1q9MMQHLPeRZhRJZdO45Q4YjvFkv4hMNghCWTvy7rdKessBsmtz4euWCWAB6/tVpI1Iw==}
+
+  '@types/ws@8.5.13':
+    resolution: {integrity: sha512-osM/gWBTPKgHV8XkTunnegTRIsvF6owmf5w+JtAfOw472dptdm0dlGv4xCt6GwQRcC2XVOvvRE/0bAoQcL2QkA==}
 
   '@typescript-eslint/eslint-plugin@8.18.2':
     resolution: {integrity: sha512-adig4SzPLjeQ0Tm+jvsozSGiCliI2ajeURDGHjZ2llnA+A67HihCQ+a3amtPhUakd1GlwHxSRvzOZktbEvhPPg==}
@@ -4615,6 +4621,10 @@ snapshots:
   '@types/shimmer@1.2.0': {}
 
   '@types/tedious@4.0.14':
+    dependencies:
+      '@types/node': 22.10.2
+
+  '@types/ws@8.5.13':
     dependencies:
       '@types/node': 22.10.2
 

@@ -6,6 +6,8 @@ import { Script } from "./utils/script";
 import type { HiveBook, UserBook } from "../db";
 import { BOOK_STATUS_MAP } from "../constants";
 import { decode } from "html-entities";
+import { sql } from "kysely";
+import { CommentsSection } from "./comments";
 
 async function Recommendations({
   book,
@@ -30,7 +32,7 @@ async function Recommendations({
 
   if (!peerBooks.length) {
     return (
-      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
         Be the first to read this on bookhive!
       </div>
     );
@@ -38,7 +40,7 @@ async function Recommendations({
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
         You are the only one to have added this on bookhive, so far!
       </div>
     );
@@ -286,22 +288,33 @@ export const BookInfo: FC<{
   const reviewsOfThisBook = await c
     .get("ctx")
     .db.selectFrom("user_book")
-    .selectAll()
-    .where("hiveId", "==", book.id)
-    .where("review", "!=", "")
+    .select([
+      "user_book.hiveId",
+      "user_book.createdAt",
+      "user_book.uri",
+      "user_book.cid",
+      "user_book.userDid",
+      "user_book.review",
+      "user_book.stars",
+      (eb) =>
+        eb
+          .selectFrom("buzz")
+          .select(sql<number>`count(*)`.as("commentCount"))
+          .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
+          .as("commentCount"),
+    ])
+    .where("user_book.hiveId", "=", book.id)
+    .where("user_book.review", "!=", "")
+    .orderBy("user_book.createdAt", "desc")
     .limit(100)
     .execute();
-
-  const didHandleMap = await c
-    .get("ctx")
-    .resolver.resolveDidsToHandles(reviewsOfThisBook.map((s) => s.userDid));
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">
-          <div className="mb-8 flex flex-col gap-8 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
             <div className="w-2/3 p-1 sm:w-1/2 md:w-1/3 lg:w-1/4">
               <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
                 {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
@@ -402,7 +415,7 @@ export const BookInfo: FC<{
             </div>
           </div>
           {did && (
-            <div className="flex flex-col gap-3 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
               <div class="md:w-1/3 lg:w-1/4">
                 <h2 className="text-xl leading-2 font-bold">
                   {usersBook?.stars
@@ -480,33 +493,9 @@ export const BookInfo: FC<{
       </div>
       {Boolean(reviewsOfThisBook.length) && (
         <div className="mt-8">
-          <h2 className="text-2xl font-bold">Reviews</h2>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            {reviewsOfThisBook.map((userBook) => (
-              <div
-                key={userBook.uri}
-                className="rounded-xl bg-slate-200 p-6 dark:bg-gray-900"
-              >
-                <h3 className="text-xl font-bold">
-                  <a
-                    key={userBook.userDid}
-                    href={`/profile/${didHandleMap[userBook.userDid]}`}
-                    class="cursor-pointer text-blue-600 hover:underline"
-                  >
-                    @{didHandleMap[userBook.userDid] || userBook.userDid}
-                    {userBook.stars ? (
-                      <span class="text-md mx-1 text-slate-800 dark:text-slate-200">
-                        ({userBook.stars / 2} ⭐)
-                      </span>
-                    ) : null}
-                  </a>
-                </h3>
-                <p className="mt-2 text-gray-700 dark:text-gray-200">
-                  {userBook.review}
-                </p>
-              </div>
-            ))}
-          </div>
+          <CommentsSection book={book} did={did}>
+            <h2 className="mb-5 text-2xl font-bold">Reviews</h2>
+          </CommentsSection>
         </div>
       )}
     </div>
