@@ -823,6 +823,58 @@ export function createRouter(app: HonoServer) {
     },
   );
 
+  app.use("/comments/:commentId", methodOverride({ app }));
+
+  app.delete("/comments/:commentId", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <ErrorPage
+            message="Invalid Session"
+            description="Login to delete a comment"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    const commentId = c.req.param("commentId") as string;
+    const commentUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBuzz}/${commentId}`;
+
+    const comment = await c
+      .get("ctx")
+      .db.selectFrom("buzz")
+      .selectAll()
+      .where("userDid", "=", agent.assertDid)
+      .where("uri", "=", commentUri)
+      .execute();
+
+    if (comment.length === 0) {
+      return c.json({ success: false, commentId, book: null });
+    }
+
+    await agent.com.atproto.repo.deleteRecord({
+      repo: agent.assertDid,
+      collection: ids.BuzzBookhiveBuzz,
+      rkey: commentId,
+    });
+
+    await c
+      .get("ctx")
+      .db.deleteFrom("buzz")
+      .where("userDid", "=", agent.assertDid)
+      .where("uri", "=", commentUri)
+      .execute();
+
+    if (c.req.header()["accept"] === "application/json") {
+      return c.json({ success: true, commentId, comment: comment[0] });
+    }
+
+    return c.redirect("/books/" + comment[0].hiveId);
+  });
+
   app.get("/books/:hiveId/comments", async (c) => {
     const book = await c
       .get("ctx")

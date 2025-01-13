@@ -4,14 +4,16 @@ export const Modal = ({
   id = Math.random().toString(36).substring(7),
   button,
   className,
+  containerClass,
   children,
 }: PropsWithChildren<{
   id?: string;
   button: Child;
   className: string;
+  containerClass?: string;
 }>) => {
   return (
-    <div className="relative">
+    <div className={"relative " + containerClass}>
       <input type="checkbox" id={`modal-${id}`} className="peer hidden" />
       <label htmlFor={`modal-${id}`} class={className}>
         {button}

@@ -32,7 +32,7 @@ async function Recommendations({
 
   if (!peerBooks.length) {
     return (
-      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
         Be the first to read this on bookhive!
       </div>
     );
@@ -40,7 +40,7 @@ async function Recommendations({
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div class="rounded-xl bg-slate-200 px-2 py-5 text-center dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
         You are the only one to have added this on bookhive, so far!
       </div>
     );
@@ -314,7 +314,7 @@ export const BookInfo: FC<{
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">
-          <div className="mb-8 flex flex-col gap-8 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
             <div className="w-2/3 p-1 sm:w-1/2 md:w-1/3 lg:w-1/4">
               <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
                 {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
@@ -415,7 +415,7 @@ export const BookInfo: FC<{
             </div>
           </div>
           {did && (
-            <div className="flex flex-col gap-3 rounded-xl bg-slate-200 p-6 shadow-md md:flex-row dark:bg-gray-900">
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
               <div class="md:w-1/3 lg:w-1/4">
                 <h2 className="text-xl leading-2 font-bold">
                   {usersBook?.stars
@@ -493,45 +493,7 @@ export const BookInfo: FC<{
       </div>
       {Boolean(reviewsOfThisBook.length) && (
         <div className="mt-8">
-          {/* {did && (
-            <Modal
-              id={book.uri}
-              className="mt-2 cursor-pointer text-sm text-gray-500 hover:underline dark:text-gray-400"
-              button="Add a comment"
-            >
-              <h3 className="mb-8 text-xl font-semibold">Add Comment</h3>
-              <div className="mb-6 rounded-xl bg-slate-200 p-4 dark:bg-gray-900">
-                <h4 className="text-lg font-semibold">
-                  {userBook.userDid === did ? "Your" : "Their"} Review
-                </h4>
-                <p className="mt-2 text-gray-700 dark:text-gray-200">
-                  {userBook.review}
-                </p>
-              </div>
-              <div className="space-y-4">
-                <form action={`/comments`} method="post">
-                  <textarea
-                    name="comment"
-                    rows={4}
-                    class="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 dark:bg-slate-600 dark:text-gray-50 dark:outline-gray-700 dark:placeholder:text-gray-200 dark:focus:outline-2 dark:focus:-outline-offset-2 dark:focus:outline-indigo-600"
-                    placeholder="Type your comment here, be kind..."
-                  />
-                  <input type="hidden" name="hiveId" value={book.id} />
-                  <input type="hidden" name="parentUri" value={userBook.uri} />
-                  <input type="hidden" name="parentCid" value={userBook.cid} />
-
-                  <button
-                    type="submit"
-                    class="float-right mt-4 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                  >
-                    Post Comment
-                  </button>
-                  <div class="clear-both" />
-                </form>
-              </div>
-            </Modal>
-          )} */}
-          <CommentsSection book={book}>
+          <CommentsSection book={book} did={did}>
             <h2 className="mb-5 text-2xl font-bold">Reviews</h2>
           </CommentsSection>
         </div>

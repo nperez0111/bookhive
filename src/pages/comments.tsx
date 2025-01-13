@@ -6,6 +6,7 @@ import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
+import { Modal } from "./components/modal";
 
 type CommentShape = {
   parentUri?: string;
@@ -58,11 +59,13 @@ function Comment({
   profiles,
   comments,
   bookId,
+  did,
 }: {
   comment: CommentShape;
   profiles: ProfileViewDetailed[];
   comments: CommentShape[];
   bookId: HiveId;
+  did?: string | null;
 }) {
   const profile = profiles.find((p) => p.did === comment.userDid);
 
@@ -102,19 +105,21 @@ function Comment({
           id={`reply-${comment.uri}`}
           class="peer hidden"
         />
-        <label
-          htmlFor={`reply-${comment.uri}`}
-          class="inline cursor-pointer text-sm font-medium hover:text-blue-600 hover:underline dark:hover:text-blue-400"
-          tabindex={0}
-          role="button"
-          aria-controls={`form-${comment.uri}`}
-        >
-          Reply
-        </label>
+        {Boolean(did) && (
+          <label
+            htmlFor={`reply-${comment.uri}`}
+            class="inline cursor-pointer pr-2 text-sm font-medium hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+            tabindex={0}
+            role="button"
+            aria-controls={`form-${comment.uri}`}
+          >
+            Reply
+          </label>
+        )}
 
         <label
           htmlFor={`comments-${comment.uri}`}
-          class="inline-flex cursor-pointer items-center pl-2 text-xs font-medium text-gray-600 sm:text-sm dark:text-gray-400"
+          class="inline-flex cursor-pointer items-center text-xs font-medium text-gray-600 sm:text-sm dark:text-gray-400"
         >
           {subComments.length} replies
           <svg
@@ -131,6 +136,33 @@ function Comment({
             ></path>
           </svg>
         </label>
+        {did === comment.userDid && (
+          <Modal
+            id={`delete-${comment.uri}`}
+            className="mt-2 inline cursor-pointer rounded border border-red-500 px-2 py-1 text-sm text-red-500 hover:bg-red-600 hover:text-white dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white"
+            button="Delete"
+            containerClass="inline"
+          >
+            Are you sure you want to delete this comment?
+            <form
+              action={`/comments/${comment.uri.split("/").pop()}`}
+              method="post"
+              class="mt-4 space-y-4"
+            >
+              <input type="hidden" name="_method" value="DELETE" />
+              <input type="hidden" name="commentId" value={comment.uri} />
+              <input type="hidden" name="hiveId" value={bookId} />
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  class="cursor-pointer rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
+                >
+                  Delete
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
 
         <div class="invisible mt-4 h-0 pl-3 opacity-0 transition-all duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
           <CommentForm
@@ -153,6 +185,7 @@ function Comment({
                   profiles={profiles}
                   comments={comments}
                   bookId={bookId}
+                  did={did}
                 ></Comment>
               );
             })}
@@ -166,7 +199,8 @@ function Comment({
 export async function CommentsSection({
   book,
   children,
-}: PropsWithChildren<{ book: HiveBook }>) {
+  did,
+}: PropsWithChildren<{ book: HiveBook; did?: string | null }>) {
   const c = useRequestContext();
   startTime(c, "fetch_comments");
 
@@ -218,7 +252,7 @@ export async function CommentsSection({
   endTime(c, "fetch_profiles");
 
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-800">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-slate-200 p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
       {children}
       {topLevelReviews.map((review) => (
         <Comment
@@ -226,6 +260,7 @@ export async function CommentsSection({
           profiles={profiles}
           comments={comments}
           bookId={book.id}
+          did={did}
         ></Comment>
       ))}
     </div>
