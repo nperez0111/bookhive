@@ -1,6 +1,9 @@
 import { type FC } from "hono/jsx";
 
-export const Login: FC<{ error?: string }> = ({ error }) => (
+export const Login: FC<{
+  error?: string;
+  handle?: string;
+}> = ({ error, handle }) => (
   <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-sm">
       <div class="flex justify-center">
@@ -57,6 +60,7 @@ export const Login: FC<{ error?: string }> = ({ error }) => (
               id="handle"
               type="text"
               name="handle"
+              value={handle}
               placeholder="Enter your handle (eg buzzer.bsky.social)"
               required
               class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm/6 dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"

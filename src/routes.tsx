@@ -922,7 +922,7 @@ export function createRouter(app: HonoServer) {
           <Layout>
             <ErrorPage
               message="Invalid Session"
-              description="Login to post a review"
+              description="Login to search books"
               statusCode={401}
             />
           </Layout>,
