@@ -3,8 +3,10 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { FetchOptions, MappedResponseType, ofetch, ResponseType } from "ofetch";
+import { Platform } from "react-native";
 
-type AuthState = {
+export type AuthState = {
   /**
    * User's did
    */
@@ -17,6 +19,12 @@ type AuthState = {
    * User's session id
    */
   sid: string;
+};
+
+export const getBaseUrl = () => {
+  return process.env.NODE_ENV === "development"
+    ? "http://localhost:8080"
+    : "https://bookhive.buzz";
 };
 
 const AuthContext = createContext<
@@ -41,18 +49,57 @@ const AuthContext = createContext<
 });
 
 let currentAuthState: AuthState | null = null;
+
+export const getAuthState = (): AuthState | null => {
+  return currentAuthState;
+};
+
+export const authFetch = ofetch.create({
+  headers: {
+    accept: "application/json",
+    ["x-bookhive-version"]: "1.0.0",
+    ["x-bookhive-platform"]: Platform.OS,
+    ["x-bookhive-platform-version"]: String(Platform.Version),
+  },
+  baseURL: getBaseUrl(),
+  onRequest({ options }) {
+    // Add the most recent session id to the headers
+    options.headers.append("cookie", `sid=${getAuthState()?.sid}`);
+  },
+});
+
 const initialAuthPromise = (async () => {
   const authState = await AsyncStorage.getItem("authState");
   try {
     currentAuthState = authState ? JSON.parse(authState) : null;
+
+    // Try to refresh the token
+    if (authState) {
+      const response = await authFetch<{
+        success: true;
+        payload: { sid: string; did: string };
+      }>("/mobile/refresh-token");
+
+      if (response.success) {
+        const nextAuthState = {
+          sid: String(response.payload.sid),
+          did: String(response.payload.did),
+          handle: String(currentAuthState?.handle),
+        };
+        if (nextAuthState.did && nextAuthState.handle && nextAuthState.sid) {
+          currentAuthState = nextAuthState;
+        }
+        await AsyncStorage.setItem(
+          "authState",
+          JSON.stringify(currentAuthState),
+        );
+      }
+    }
   } catch (error) {
-    // ignore
-    return;
+    await AsyncStorage.removeItem("authState");
+    currentAuthState = null;
   }
 })();
-export const getAuthState = (): AuthState | null => {
-  return currentAuthState;
-};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState | null>(() =>
@@ -71,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async ({ handle }: { handle: string }) => {
     // Start auth flow
     const deepLink = Linking.createURL("/oauth-callback");
-    const authUrl = `http://localhost:8080/mobile/login?&handle=${handle}&redirect_uri=${deepLink}`;
+    const authUrl = `${getBaseUrl()}/mobile/login?&handle=${handle}&redirect_uri=${deepLink}`;
     const result = await WebBrowser.openAuthSessionAsync(authUrl, deepLink);
     if (result.type === "success") {
       // Handle successful auth
