@@ -1,5 +1,6 @@
 import { isValidHandle } from "@atproto/syntax";
 import { getIronSession, sealData } from "iron-session";
+import { differenceInSeconds } from "date-fns";
 
 import { OAuthResolverError } from "@atproto/oauth-client-node";
 import { env } from "../env";
@@ -32,10 +33,17 @@ export function loginRouter(
       const { session, state } = await c
         .get("ctx")
         .oauthClient.callback(params);
+      const tokenInfo = await session.getTokenInfo(false);
+
       const clientSession = await getIronSession<Session>(c.req.raw, c.res, {
         cookieName: "sid",
         password: env.COOKIE_SECRET,
+        // TODO need to set TTL for session refresh?
+        ttl: tokenInfo.expiresAt
+          ? differenceInSeconds(tokenInfo.expiresAt, new Date())
+          : undefined,
       });
+
       // assert(!clientSession.did, "session already exists");
       clientSession.did = session.did;
       await clientSession.save();
@@ -92,7 +100,11 @@ export function loginRouter(
   });
 
   // Login page
-  app.get("/login", (c) => {
+  app.get("/login", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (agent) {
+      return c.redirect("/");
+    }
     return c.html(
       <Layout>
         <Login handle={c.req.query("handle")} />

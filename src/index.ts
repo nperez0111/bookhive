@@ -35,6 +35,7 @@ import { readThroughCache } from "./utils/readThroughCache.ts";
 import { lazy } from "./utils/lazy.ts";
 import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { getLogger } from "./logger/index.ts";
+import { differenceInSeconds } from "date-fns";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -79,7 +80,16 @@ export async function getSessionAgent(
   }
 
   try {
-    const oauthSession = await ctx.oauthClient.restore(session.did);
+    const oauthSession = await ctx.oauthClient.restore(session.did, false);
+    const tokenInfo = await oauthSession.getTokenInfo("auto");
+    if (tokenInfo && tokenInfo.expiresAt) {
+      session.updateConfig({
+        cookieName: "sid",
+        password: env.COOKIE_SECRET,
+        ttl: differenceInSeconds(tokenInfo.expiresAt, new Date()),
+      });
+      await session.save();
+    }
     return oauthSession ? new Agent(oauthSession) : null;
   } catch (err) {
     ctx.logger.warn({ err }, "oauth restore failed");
