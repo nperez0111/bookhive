@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 import { useQuery } from "@tanstack/react-query";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
-import type { HiveBook } from "../../db";
+import type { HiveBook } from "../../types";
 
 export const SearchBox: FC = () => {
   const [isOpened, setIsOpened] = useState(false);

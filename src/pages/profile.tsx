@@ -1,6 +1,5 @@
 import { type FC } from "hono/jsx";
-import { type Book } from "../db";
-
+import { type Book } from "../types";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
 import { formatDistanceToNow } from "date-fns";

@@ -1,5 +1,5 @@
 import { type FC } from "hono/jsx";
-import type { Book } from "../../db";
+import type { Book } from "../../types";
 import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";

@@ -1,7 +1,8 @@
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { useRequestContext } from "hono/jsx-renderer";
 import type { NotNull } from "kysely";
-import type { HiveBook, HiveId } from "../db";
+import type { HiveBook } from "../types";
+import type { HiveId } from "../types";
 import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
@@ -223,7 +224,6 @@ export async function CommentsSection({
   const comments = await c
     .get("ctx")
     .db.selectFrom("buzz")
-    .leftJoin("user_book", "buzz.parentUri", "user_book.uri")
     .select([
       "buzz.comment",
       "buzz.createdAt",
@@ -231,9 +231,6 @@ export async function CommentsSection({
       "buzz.parentUri",
       "buzz.cid",
       "buzz.uri",
-      "user_book.review as originalReview",
-      "user_book.userDid as originalUserDid",
-      "user_book.createdAt as originalCreatedAt",
     ])
     .where("buzz.hiveId", "=", book.id)
     .orderBy("buzz.createdAt", "desc")

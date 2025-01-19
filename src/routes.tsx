@@ -12,7 +12,9 @@ import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
-import { type HiveId, BookFields } from "./db";
+import * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+import { BookFields } from "./db";
+import { type HiveId } from "./types";
 import { BookInfo } from "./pages/bookInfo";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
@@ -918,16 +920,7 @@ export function createRouter(app: HonoServer) {
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Invalid Session"
-              description="Login to search books"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
-        );
+        return c.json({ success: false, message: "Invalid Session" }, 401);
       }
       const { q, limit, offset, id } = c.req.valid("query");
 
@@ -963,6 +956,48 @@ export function createRouter(app: HonoServer) {
       });
 
       return c.json(books.slice(offset, offset + limit));
+    },
+  );
+
+  app.get(
+    "/xrpc/" + ids.BuzzBookhiveGetBook,
+    zValidator(
+      "query",
+      z.object({
+        id: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { id } = c.req.valid("query");
+
+      if (!id) {
+        return c.json({ success: false, message: "Invalid ID" }, 400);
+      }
+
+      // short-circuit if we have an ID to look up
+      const book = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("hive_book.id", "=", id as HiveId)
+        .limit(1)
+        .executeTakeFirst();
+
+      if (!book) {
+        return c.json({ success: false, message: "Book not found" }, 404);
+      }
+
+      // const comments = await c.get("ctx").db.selectFrom("buzz").where("hiveId");
+
+      // const response: GetBook.OutputSchema = {
+      //   book,
+      // };
+
+      return c.json([book].filter(Boolean));
     },
   );
 }
