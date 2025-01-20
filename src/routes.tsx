@@ -12,7 +12,7 @@ import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
-import * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
 import { BookFields } from "./db";
 import { type HiveId } from "./types";
 import { BookInfo } from "./pages/bookInfo";
@@ -991,11 +991,26 @@ export function createRouter(app: HonoServer) {
         return c.json({ success: false, message: "Book not found" }, 404);
       }
 
-      // const comments = await c.get("ctx").db.selectFrom("buzz").where("hiveId");
+      const comments = await c
+        .get("ctx")
+        .db.selectFrom("buzz")
+        .select([
+          "buzz.comment",
+          "buzz.createdAt",
+          "buzz.userDid",
+          "buzz.parentUri",
+          "buzz.cid",
+          "buzz.uri",
+        ])
+        .where("buzz.hiveId", "=", book.id)
+        .orderBy("buzz.createdAt", "desc")
+        .limit(3000)
+        .execute();
 
-      // const response: GetBook.OutputSchema = {
-      //   book,
-      // };
+      const response = {
+        book,
+        comments: [{}],
+      } satisfies GetBook.OutputSchema;
 
       return c.json([book].filter(Boolean));
     },

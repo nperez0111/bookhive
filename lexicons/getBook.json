@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getBook",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get a book's info. Requires authentication.",
+      "parameters": {
+        "type": "params",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The book's hive ID"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["book", "reviews", "comments"],
+          "properties": {
+            "book": {
+              "description": "The hive book's info",
+              "type": "ref",
+              "ref": "buzz.bookhive.hiveBook#record"
+            },
+            "reviews": {
+              "description": "Reviews of the book",
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "buzz.bookhive.defs#review"
+              }
+            },
+            "comments": {
+              "description": "Comments on the book",
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "buzz.bookhive.defs#comment"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
