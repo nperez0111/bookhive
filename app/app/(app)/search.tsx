@@ -55,7 +55,7 @@ export default function HomeScreen() {
         <ThemedView style={{ padding: 8, flexDirection: "row", gap: 8 }}>
           <Image
             source={{
-              uri: `http://localhost:8080/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+              uri: `http://localhost:8080/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
             }}
             style={styles.cover}
           />
