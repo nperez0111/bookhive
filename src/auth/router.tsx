@@ -149,6 +149,39 @@ export function loginRouter(
     }
   });
 
+  app.get("/mobile/refresh-token", async (c) => {
+    try {
+      const session = await getIronSession<Session>(c.req.raw, c.res, {
+        cookieName: "sid",
+        password: env.COOKIE_SECRET,
+      });
+
+      const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
+      const tokenInfo = await oauthSession.getTokenInfo("auto");
+      if (tokenInfo && tokenInfo.expiresAt) {
+        session.updateConfig({
+          cookieName: "sid",
+          password: env.COOKIE_SECRET,
+          ttl: differenceInSeconds(tokenInfo.expiresAt, new Date()),
+        });
+        await session.save();
+      }
+
+      return c.json({
+        success: true,
+        payload: {
+          did: session.did,
+          sid: await sealData(
+            { did: session.did },
+            { password: env.COOKIE_SECRET },
+          ),
+        },
+      });
+    } catch (err) {
+      return c.json({ success: false }, 400);
+    }
+  });
+
   // Login handler
   app.post("/login", async (c) => {
     let { handle } = await c.req.parseBody();
