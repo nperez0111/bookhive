@@ -209,10 +209,10 @@ export async function CommentsSection({
     .get("ctx")
     .db.selectFrom("user_book")
     .select([
-      "review as comment",
-      "createdAt",
-      "userDid",
-      "uri",
+      "user_book.review as comment",
+      "user_book.createdAt",
+      "user_book.userDid",
+      "user_book.uri",
       "user_book.cid",
     ])
     .where("user_book.hiveId", "=", book.id)
