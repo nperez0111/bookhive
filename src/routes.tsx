@@ -13,6 +13,7 @@ import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+import type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
 import { BookFields } from "./db";
 import { type HiveId } from "./types";
 import { BookInfo } from "./pages/bookInfo";
@@ -33,6 +34,7 @@ import {
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
 import { CommentsSection } from "./pages/comments";
 import { getProfile } from "./utils/getProfile";
+import type { NotNull } from "kysely";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -995,10 +997,13 @@ export function createRouter(app: HonoServer) {
         .get("ctx")
         .db.selectFrom("buzz")
         .select([
+          "buzz.bookUri",
+          "buzz.bookCid",
           "buzz.comment",
           "buzz.createdAt",
           "buzz.userDid",
           "buzz.parentUri",
+          "buzz.parentCid",
           "buzz.cid",
           "buzz.uri",
         ])
@@ -1007,12 +1012,138 @@ export function createRouter(app: HonoServer) {
         .limit(3000)
         .execute();
 
+      const topLevelReviews = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select([
+          "user_book.review as comment",
+          "user_book.createdAt",
+          "user_book.stars",
+          "user_book.userDid",
+          "user_book.uri",
+          "user_book.cid",
+        ])
+        .where("user_book.hiveId", "=", book.id)
+        .where("user_book.review", "is not", null)
+        .$narrowType<{ comment: NotNull }>()
+        .orderBy("user_book.createdAt", "desc")
+        .limit(1000)
+        .execute();
+
       const response = {
-        book,
-        comments: [{}],
+        book: {
+          title: book.title,
+          authors: book.authors,
+          cover: book.cover ?? undefined,
+          hiveId: book.id,
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt,
+          rating: book.rating ?? undefined,
+          ratingsCount: book.ratingsCount ?? undefined,
+          id: book.id,
+          thumbnail: book.thumbnail ?? undefined,
+          description: book.description ?? undefined,
+          source: book.source ?? undefined,
+          sourceId: book.sourceId ?? undefined,
+          sourceUrl: book.sourceUrl ?? undefined,
+        },
+        comments: comments.map((c) => ({
+          book: {
+            cid: c.bookCid,
+            uri: c.bookUri,
+          },
+          comment: c.comment,
+          createdAt: c.createdAt,
+          did: c.userDid,
+          // map this id to a handle
+          handle: c.userDid,
+          parent: {
+            uri: c.parentUri,
+            cid: c.parentCid,
+          },
+        })),
+        reviews: topLevelReviews.map((r) => ({
+          createdAt: r.createdAt,
+          did: r.userDid,
+          // map this id to a handle
+          handle: r.userDid,
+          review: r.comment,
+          stars: r.stars ?? undefined,
+        })),
       } satisfies GetBook.OutputSchema;
 
-      return c.json([book].filter(Boolean));
+      return c.json(response);
+    },
+  );
+
+  app.get(
+    "/xrpc/" + ids.BuzzBookhiveGetProfile,
+    zValidator(
+      "query",
+      z.object({
+        did: z.string().optional(),
+        handle: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+
+      let { did, handle } = c.req.valid("query");
+
+      if (!did && !handle) {
+        if (!agent) {
+          return c.json(
+            {
+              success: false,
+              message: "No did or handle specified, and no session",
+            },
+            401,
+          );
+        }
+        did = agent.assertDid;
+      }
+
+      if (handle && !did) {
+        did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
+      }
+      did = did as string;
+
+      const books = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .where("user_book.userDid", "=", did)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(1000)
+        .execute();
+      const profile = await getProfile({ ctx: c.get("ctx"), did });
+
+      const response = {
+        profile: {
+          displayName: profile?.displayName ?? profile?.handle ?? did,
+          avatar: profile?.avatar,
+          handle: profile?.handle ?? did,
+          description: profile?.description,
+        },
+        books: books.map((b) => ({
+          authors: b.authors,
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          thumbnail: b.thumbnail || "",
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          finishedAt: b.finishedAt ?? undefined,
+          review: b.review ?? undefined,
+          stars: b.stars ?? undefined,
+          status: b.status ?? undefined,
+          description: b.description ?? undefined,
+          rating: b.rating ?? undefined,
+          startedAt: b.startedAt ?? undefined,
+        })),
+      } satisfies GetProfile.OutputSchema;
+
+      return c.json(response);
     },
   );
 }

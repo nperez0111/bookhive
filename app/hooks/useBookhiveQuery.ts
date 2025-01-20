@@ -1,6 +1,6 @@
 import { authFetch } from "@/context/auth";
 import { useQuery } from "@tanstack/react-query";
-import { HiveBook } from "../../src/types";
+import { HiveBook, HiveId, GetBook, GetProfile } from "../../src/types";
 import { useEffect, useState } from "react";
 
 const useDebounce = (value: string, delay: number) => {
@@ -30,5 +30,38 @@ export const useSearchBooks = (query: string) => {
       );
     },
     enabled: Boolean(debouncedQuery),
+  });
+};
+
+/**
+ * Get a book by its ID
+ * @param id If undefined, the query will not be enabled
+ * @returns
+ */
+export const useBookInfo = (id: HiveId | undefined | null) => {
+  return useQuery({
+    queryKey: ["getBook", id] as const,
+    queryFn: async ({ queryKey: [, hiveId] }) => {
+      return await authFetch<GetBook.OutputSchema>(
+        `/xrpc/buzz.bookhive.getBook?id=${hiveId}`,
+      );
+    },
+    enabled: Boolean(id),
+  });
+};
+
+/**
+ * Get a user's profile by their DID or handle
+ * @param didOrHandle If undefined, the auth'd user's profile will be fetched
+ * @returns
+ */
+export const useProfile = (didOrHandle?: string) => {
+  return useQuery({
+    queryKey: ["profile", didOrHandle] as const,
+    queryFn: async ({ queryKey: [, id] }) => {
+      return await authFetch<GetProfile.OutputSchema>(
+        `/xrpc/buzz.bookhive.getProfile?id=${id}`,
+      );
+    },
   });
 };

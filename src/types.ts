@@ -1,8 +1,10 @@
+export type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+export type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
+
 /**
  * Hive ID is a hash of the book's title & author
  * Used to uniquely identify a book within the hive
  */
-
 export type HiveId = `bk_${string}`;
 
 export type UserBook = {

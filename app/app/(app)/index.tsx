@@ -12,41 +12,38 @@ import { HelloWave } from "@/components/HelloWave";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useAuth } from "@/context/auth";
-import { useSearchBooks } from "@/hooks/useBookhiveQuery";
-import { useState } from "react";
+import { useProfile } from "@/hooks/useBookhiveQuery";
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
-  const [query, setQuery] = useState("");
-  const { data, isLoading, error } = useSearchBooks(query);
+  const profile = useProfile();
+
+  if (!profile.data) {
+    return <ActivityIndicator size="large" color="#0000ff" />;
+  }
+  console.log(profile.data);
 
   return (
     <FlatList
       ListHeaderComponent={
         <View>
           <View style={styles.titleContainer}>
-            <ThemedText type="title">Welcome!</ThemedText>
+            <ThemedText type="title">
+              Welcome {profile.data.profile.displayName}!
+            </ThemedText>
             <HelloWave />
           </View>
           <Button title="Sign Out" onPress={signOut} />
-          <TextInput
-            style={{
-              height: 40,
-              borderColor: "gray",
-              borderWidth: 1,
-              marginBottom: 16,
-              padding: 8,
-            }}
-            placeholder="Search books..."
-            value={query}
-            onChangeText={setQuery}
-          />
-          {isLoading && <ActivityIndicator size="large" color="#0000ff" />}
-          {error && <ThemedText>Error: {error.message}</ThemedText>}
+          {profile.isLoading && (
+            <ActivityIndicator size="large" color="#0000ff" />
+          )}
+          {profile.error && (
+            <ThemedText>Error: {profile.error.message}</ThemedText>
+          )}
         </View>
       }
-      data={data || []}
-      keyExtractor={(item) => item.id}
+      data={profile.data.books}
+      keyExtractor={(item) => item.hiveId}
       renderItem={({ item: book }) => (
         <ThemedView style={{ padding: 8, flexDirection: "row", gap: 8 }}>
           <Image
@@ -76,13 +73,6 @@ const styles = StyleSheet.create({
   stepContainer: {
     gap: 8,
     marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
   },
   cover: {
     width: 75,
