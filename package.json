@@ -16,7 +16,9 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*",
     "postlexgen": "prettier --write ./src/bsky/lexicon/*",
-    "start": "node --require ./dist/instrumentation.cjs ./dist/index.js"
+    "start": "node --require ./dist/instrumentation.cjs ./dist/index.js",
+    "ios": "pnpm run --prefix=app ios",
+    "android": "pnpm run --prefix=app android"
   },
   "dependencies": {
     "@atproto/api": "^0.13.23",
