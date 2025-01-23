@@ -104,7 +104,116 @@ export const Navbar: FC<{
           <div class="absolute inset-y-0 right-0 left-12 flex items-center pr-2 sm:static sm:inset-auto sm:left-auto sm:ml-6 sm:pr-0">
             {Boolean(profile) && <div id="mount-search-box" />}
             {/* Profile dropdown */}
-            {!profile && (
+            {profile ? (
+              <div class="relative ml-3">
+                <div>
+                  <button
+                    type="button"
+                    class="relative flex rounded-full bg-gray-800 text-sm text-gray-400 hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 focus:outline-hidden"
+                    id="user-menu-button"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                  >
+                    <span class="absolute -inset-1.5"></span>
+                    <span class="sr-only">Open user menu</span>
+                    {profile?.avatar ? (
+                      <img
+                        class="size-8 rounded-full"
+                        src={profile.avatar}
+                        alt=""
+                      />
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <circle cx="12" cy="10" r="3" />
+                        <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                <Script
+                  script={(document) => {
+                    const btn = document.getElementById("user-menu-button")!;
+                    const menu = document.getElementById("user-menu")!;
+
+                    // close the dropdown when clicking outside of it
+                    document.addEventListener("click", (e) => {
+                      if (e.target !== btn) {
+                        if (btn.getAttribute("aria-expanded") === "true") {
+                          btn.setAttribute("aria-expanded", "false");
+                          menu.style.display = "none";
+                        }
+                      }
+                    });
+
+                    btn.addEventListener("click", (e) => {
+                      // prevent the click event from bubbling up to the document
+                      e.stopPropagation();
+
+                      const shouldExpand =
+                        btn.getAttribute("aria-expanded") !== "true";
+
+                      btn.setAttribute("aria-expanded", String(shouldExpand));
+                      menu.style.display = shouldExpand ? "block" : "none";
+                    });
+                  }}
+                />
+
+                <div
+                  id="user-menu"
+                  class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden"
+                  role="menu"
+                  aria-orientation="vertical"
+                  aria-labelledby="user-menu-button"
+                  tabindex={-1}
+                  style="display: none;"
+                >
+                  {/* Active: "bg-gray-100 outline-hidden", Not Active: "" */}
+                  <a
+                    href="/profile"
+                    class="block px-4 py-2 text-sm text-gray-700"
+                    role="menuitem"
+                    tabindex={-1}
+                    id="user-menu-item-0"
+                  >
+                    Your Profile
+                  </a>
+                  <form action="/refresh-books" method="get">
+                    <button
+                      class="block px-4 py-2 text-sm text-gray-700"
+                      type="submit"
+                      role="menuitem"
+                      tabindex={-1}
+                      id="user-menu-item-1"
+                    >
+                      Refresh my books
+                    </button>
+                  </form>
+                  <form action="/logout" method="post">
+                    <button
+                      type="submit"
+                      class="block px-4 py-2 text-sm text-gray-700"
+                      role="menuitem"
+                      tabindex={-1}
+                      id="user-menu-item-3"
+                    >
+                      Sign out
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : (
               <a
                 href="/login"
                 class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
@@ -112,114 +221,6 @@ export const Navbar: FC<{
                 Buzz in
               </a>
             )}
-            <div class="relative ml-3">
-              <div>
-                <button
-                  type="button"
-                  class="relative flex rounded-full bg-gray-800 text-sm text-gray-400 hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 focus:outline-hidden"
-                  id="user-menu-button"
-                  aria-expanded="false"
-                  aria-haspopup="true"
-                >
-                  <span class="absolute -inset-1.5"></span>
-                  <span class="sr-only">Open user menu</span>
-                  {profile?.avatar ? (
-                    <img
-                      class="size-8 rounded-full"
-                      src={profile.avatar}
-                      alt=""
-                    />
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <circle cx="12" cy="10" r="3" />
-                      <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-
-              <Script
-                script={(document) => {
-                  const btn = document.getElementById("user-menu-button")!;
-                  const menu = document.getElementById("user-menu")!;
-
-                  // close the dropdown when clicking outside of it
-                  document.addEventListener("click", (e) => {
-                    if (e.target !== btn) {
-                      if (btn.getAttribute("aria-expanded") === "true") {
-                        btn.setAttribute("aria-expanded", "false");
-                        menu.style.display = "none";
-                      }
-                    }
-                  });
-
-                  btn.addEventListener("click", (e) => {
-                    // prevent the click event from bubbling up to the document
-                    e.stopPropagation();
-
-                    const shouldExpand =
-                      btn.getAttribute("aria-expanded") !== "true";
-
-                    btn.setAttribute("aria-expanded", String(shouldExpand));
-                    menu.style.display = shouldExpand ? "block" : "none";
-                  });
-                }}
-              />
-
-              <div
-                id="user-menu"
-                class="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden"
-                role="menu"
-                aria-orientation="vertical"
-                aria-labelledby="user-menu-button"
-                tabindex={-1}
-                style="display: none;"
-              >
-                {/* Active: "bg-gray-100 outline-hidden", Not Active: "" */}
-                <a
-                  href="/profile"
-                  class="block px-4 py-2 text-sm text-gray-700"
-                  role="menuitem"
-                  tabindex={-1}
-                  id="user-menu-item-0"
-                >
-                  Your Profile
-                </a>
-                <form action="/refresh-books" method="get">
-                  <button
-                    class="block px-4 py-2 text-sm text-gray-700"
-                    type="submit"
-                    role="menuitem"
-                    tabindex={-1}
-                    id="user-menu-item-1"
-                  >
-                    Refresh my books
-                  </button>
-                </form>
-                <form action="/logout" method="post">
-                  <button
-                    type="submit"
-                    class="block px-4 py-2 text-sm text-gray-700"
-                    role="menuitem"
-                    tabindex={-1}
-                    id="user-menu-item-3"
-                  >
-                    Sign out
-                  </button>
-                </form>
-              </div>
-            </div>
           </div>
         </div>
       </div>
