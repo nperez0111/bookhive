@@ -3,6 +3,7 @@ import {
   Button,
   FlatList,
   Image,
+  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -14,36 +15,28 @@ import { ThemedView } from "@/components/ThemedView";
 import { useAuth } from "@/context/auth";
 import { useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { useState } from "react";
+import { router } from "expo-router";
+import { useThemeColor } from "@/hooks/useThemeColor";
 
 export default function HomeScreen() {
-  const { signOut } = useAuth();
   const [query, setQuery] = useState("");
   const { data, isLoading, error } = useSearchBooks(query);
+  const color = useThemeColor({}, "text");
 
   return (
     <FlatList
       ListHeaderComponent={
         <View>
-          <View style={styles.titleContainer}>
-            <ThemedText type="title">Welcome!</ThemedText>
-            <HelloWave />
-          </View>
-          <Button title="Sign Out" onPress={signOut} />
           <TextInput
-            style={{
-              height: 40,
-              borderColor: "gray",
-              borderWidth: 1,
-              marginBottom: 16,
-              padding: 8,
-              borderRadius: 4,
-            }}
+            style={[{ color }, styles.searchBox]}
             placeholder="Search books..."
             value={query}
             onChangeText={setQuery}
             autoFocus
             autoComplete="off"
             focusable
+            clearButtonMode="while-editing"
+            autoCapitalize="none"
           />
           {isLoading && <ActivityIndicator size="large" color="#0000ff" />}
           {error && <ThemedText>Error: {error.message}</ThemedText>}
@@ -52,7 +45,10 @@ export default function HomeScreen() {
       data={data || []}
       keyExtractor={(item) => item.id}
       renderItem={({ item: book }) => (
-        <ThemedView style={{ padding: 8, flexDirection: "row", gap: 8 }}>
+        <Pressable
+          onPress={() => router.push(`/book/${book.id}`)}
+          style={{ padding: 8, flexDirection: "row", gap: 8 }}
+        >
           <Image
             source={{
               uri: `http://localhost:8080/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
@@ -63,7 +59,7 @@ export default function HomeScreen() {
             <ThemedText type="subtitle">{book.title}</ThemedText>
             <ThemedText>{book.authors}</ThemedText>
           </View>
-        </ThemedView>
+        </Pressable>
       )}
       ListHeaderComponentStyle={{ padding: 16 }}
     />
@@ -71,11 +67,14 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
+  searchBox: {
+    height: 40,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginBottom: 8,
+    padding: 8,
+    borderRadius: 4,
+    marginTop: 24,
   },
   stepContainer: {
     gap: 8,

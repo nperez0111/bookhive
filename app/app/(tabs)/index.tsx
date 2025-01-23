@@ -21,19 +21,17 @@ export default function HomeScreen() {
   if (!profile.data) {
     return <ActivityIndicator size="large" color="#0000ff" />;
   }
-  console.log(profile.data);
 
   return (
     <FlatList
       ListHeaderComponent={
         <View>
           <View style={styles.titleContainer}>
-            <ThemedText type="title">
-              Welcome {profile.data.profile.displayName}!
+            <ThemedText type="subtitle">
+              Welcome, {profile.data.profile.displayName}!
             </ThemedText>
             <HelloWave />
           </View>
-          <Button title="Sign Out" onPress={signOut} />
           {profile.isLoading && (
             <ActivityIndicator size="large" color="#0000ff" />
           )}

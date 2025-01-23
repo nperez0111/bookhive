@@ -133,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (authState.did && authState.handle && authState.sid) {
         await AsyncStorage.setItem("authState", JSON.stringify(authState));
         setAuthState(authState);
-        router.replace("/(app)");
+        router.replace("/(tabs)");
       }
     }
   };

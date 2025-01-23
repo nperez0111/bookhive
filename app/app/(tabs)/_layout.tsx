@@ -9,6 +9,8 @@ import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useAuth } from "@/context/auth";
 
+// TODO consider using a drawer for navigation instead of tabs
+// Then we can use tabs for bookshelf, search, etc.
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { isAuthenticated } = useAuth();
@@ -58,6 +60,21 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="magnifyingglass" color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="gear" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="book/[id]"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

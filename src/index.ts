@@ -162,7 +162,11 @@ export class Server {
     ingester.start();
 
     // Create Hono app
-    const app = new Hono() as HonoServer;
+    const app = new Hono<{
+      Variables: {
+        ctx: AppContext;
+      } & Env["Variables"];
+    }>();
 
     app.use(requestId());
     app.use(timing());

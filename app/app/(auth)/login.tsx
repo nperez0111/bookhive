@@ -52,7 +52,7 @@ export default function LoginScreen() {
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
-        router.replace("/(app)");
+        router.replace("/(tabs)");
       });
     } catch (error) {
       console.error(error);
