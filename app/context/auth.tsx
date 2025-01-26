@@ -131,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       if (authState.did && authState.handle && authState.sid) {
+        currentAuthState = authState;
         await AsyncStorage.setItem("authState", JSON.stringify(authState));
         setAuthState(authState);
         router.replace("/(tabs)");
