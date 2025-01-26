@@ -1,5 +1,6 @@
 import { type FC } from "hono/jsx";
 import { type Book } from "../db";
+
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
 import { formatDistanceToNow } from "date-fns";
@@ -49,7 +50,7 @@ export const ProfilePage: FC<{
           <section class="mt-8 flex flex-col gap-2 px-4 lg:px-8">
             <div class="mb-6">
               <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
-                All Books
+                Library
               </h2>
             </div>
             <BookList books={books} />

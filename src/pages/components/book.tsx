@@ -1,8 +1,13 @@
 import { type FC } from "hono/jsx";
 import type { Book } from "../../db";
+import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
 import { FallbackCover } from "./fallbackCover";
+
+const NO_BOOKS_FOUND = (
+  <p className="text-center text-lg">No books in this list</p>
+);
 
 export const BookList: FC<{
   books?: Book[];
@@ -23,12 +28,118 @@ export const BookList: FC<{
           .execute()
       : []);
 
+  function orNoResults(arr: any[]) {
+    if (!arr.length) {
+      return NO_BOOKS_FOUND;
+    }
+    return arr;
+  }
+
+  if (!books.length) {
+    return NO_BOOKS_FOUND;
+  }
+
   return (
-    <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {books.map((book) => (
-        <BookListItem book={book} />
-      ))}
-    </ul>
+    <div class="relative overflow-hidden">
+      <input
+        type="radio"
+        id="tab-read"
+        name="tabs"
+        class="peer/read hidden"
+        checked
+      />
+      <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
+      <input
+        type="radio"
+        id="tab-reading"
+        name="tabs"
+        class="peer/reading hidden"
+      />
+
+      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-sky-600 peer-checked/read:[&_label[for='tab-read']]:text-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:border-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:text-sky-600 peer-checked/want:[&_label[for='tab-want']]:border-sky-600 peer-checked/want:[&_label[for='tab-want']]:text-sky-600">
+        <ul
+          class="-mb-px flex flex-wrap text-center text-sm font-medium"
+          role="tablist"
+        >
+          <li class="me-2" role="presentation">
+            <label
+              for="tab-read"
+              role="tab"
+              aria-selected="true"
+              aria-controls="tab-read-panel"
+              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              Read
+            </label>
+          </li>
+          <li class="me-2" role="presentation">
+            <label
+              for="tab-reading"
+              role="tab"
+              aria-selected="false"
+              aria-controls="tab-reading-panel"
+              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              Reading
+            </label>
+          </li>
+          <li class="me-2" role="presentation">
+            <label
+              for="tab-want"
+              role="tab"
+              aria-selected="false"
+              aria-controls="tab-want-panel"
+              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              Want to Read
+            </label>
+          </li>
+        </ul>
+      </div>
+
+      <div
+        id="tab-read-panel"
+        role="tabpanel"
+        aria-labelledby="tab-read"
+        class="mt-8 hidden peer-checked/read:block"
+      >
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {orNoResults(
+            books
+              .filter((book) => book.status === BookStatus.FINISHED)
+              .map((book) => <BookListItem book={book} />),
+          )}
+        </ul>
+      </div>
+      <div
+        id="tab-reading-panel"
+        role="tabpanel"
+        aria-labelledby="tab-reading"
+        class="mt-8 hidden peer-checked/reading:block"
+      >
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {orNoResults(
+            books
+              .filter((book) => book.status === BookStatus.READING)
+              .map((book) => <BookListItem book={book} />),
+          )}
+        </ul>
+      </div>
+      <div
+        id="tab-want-panel"
+        role="tabpanel"
+        aria-labelledby="tab-want"
+        class="mt-8 hidden peer-checked/want:block"
+      >
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {orNoResults(
+            books
+              .filter((book) => book.status === BookStatus.WANTTOREAD)
+              .map((book) => <BookListItem book={book} />),
+          )}
+        </ul>
+      </div>
+    </div>
   );
 };
 
