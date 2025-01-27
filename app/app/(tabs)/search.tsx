@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  Button,
   FlatList,
   Image,
   Pressable,
@@ -9,14 +8,11 @@ import {
   View,
 } from "react-native";
 
-import { HelloWave } from "@/components/HelloWave";
 import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { useAuth } from "@/context/auth";
 import { useSearchBooks } from "@/hooks/useBookhiveQuery";
-import { useState } from "react";
-import { router } from "expo-router";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { router } from "expo-router";
+import { useState } from "react";
 
 export default function HomeScreen() {
   const [query, setQuery] = useState("");
