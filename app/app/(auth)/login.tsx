@@ -9,6 +9,7 @@ import {
 import { useState, useRef } from "react";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { useAuth } from "@/context/auth";
 import ParallaxScrollView from "@/components/ParallaxScrollView";
 
@@ -77,7 +78,7 @@ export default function LoginScreen() {
         />
       }
     >
-      <ThemedView style={styles.formContainer}>
+      <ThemedView darkColor="#333" style={styles.formContainer}>
         <Animated.Image
           source={require("@/assets/images/bee.png")}
           style={[styles.logo, { transform: [{ rotate: spin }] }]}
@@ -87,7 +88,7 @@ export default function LoginScreen() {
           Welcome to BookHive!
         </ThemedText>
 
-        <TextInput
+        <ThemedTextInput
           style={styles.input}
           placeholder="Enter your Bluesky handle"
           value={handle}
@@ -127,10 +128,9 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     marginTop: -24,
-    backgroundColor: "#fff",
+    padding: 16,
     alignItems: "center",
     gap: 24,
   },
@@ -152,7 +152,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
-    backgroundColor: "#f8fafc",
   },
   button: {
     width: "100%",
