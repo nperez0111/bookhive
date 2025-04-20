@@ -5,15 +5,17 @@ import { SearchBox } from "./components/SearchBox";
 import { StarRating } from "./components/StarRating";
 
 const queryClient = new QueryClient();
+const ClientProvider = ({ children }: { children: any }): any =>
+  QueryClientProvider({ client: queryClient, children });
 
 document.addEventListener("DOMContentLoaded", () => {
   const mountSearchBox = document.getElementById("mount-search-box");
   if (mountSearchBox) {
     render(
       // Provide the client to your App
-      <QueryClientProvider client={queryClient}>
+      <ClientProvider>
         <SearchBox />
-      </QueryClientProvider>,
+      </ClientProvider>,
       mountSearchBox,
     );
   }

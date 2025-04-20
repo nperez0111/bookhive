@@ -84,7 +84,7 @@
     },
     "profile": {
       "type": "object",
-      "required": ["displayName", "handle"],
+      "required": ["displayName", "handle", "booksRead", "reviews"],
       "properties": {
         "displayName": {
           "type": "string"
@@ -97,6 +97,36 @@
         },
         "description": {
           "type": "string"
+        },
+        "booksRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviews": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "required": ["type", "createdAt", "hiveId", "title"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "knownValues": ["review", "rated", "started", "finished"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "hiveId": {
+          "type": "string",
+          "description": "The hive id of the book"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the book"
         }
       }
     },

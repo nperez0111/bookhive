@@ -35,6 +35,7 @@ import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
 import { CommentsSection } from "./pages/comments";
 import { getProfile } from "./utils/getProfile";
 import type { NotNull } from "kysely";
+import { BOOK_STATUS_MAP } from "./constants";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -612,16 +613,22 @@ export function createRouter(app: HonoServer) {
                 ? "com.atproto.repo.applyWrites#update"
                 : "com.atproto.repo.applyWrites#create",
               collection: ids.BuzzBookhiveBook,
-              rkey: userBook ? userBook.uri.split("/").at(-1) : TID.nextStr(),
+              rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.nextStr(),
               value: record as BookRecord.Record,
             },
           ],
         });
 
+        const firstResult = response.data.results?.[0];
         if (
           !response.success ||
           !response.data.results ||
-          response.data.results.length === 0
+          response.data.results.length === 0 ||
+          !firstResult ||
+          !(
+            firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+            firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+          )
         ) {
           return c.html(
             <Layout>
@@ -639,8 +646,8 @@ export function createRouter(app: HonoServer) {
           .get("ctx")
           .db.insertInto("user_book")
           .values({
-            uri: response.data.results[0].uri as string,
-            cid: response.data.results[0].cid as string,
+            uri: firstResult.uri,
+            cid: firstResult.cid,
             userDid: agent.assertDid,
             createdAt: record.createdAt,
             authors: record.authors,
@@ -656,7 +663,7 @@ export function createRouter(app: HonoServer) {
           .onConflict((oc) =>
             oc.column("uri").doUpdateSet({
               indexedAt: new Date().toISOString(),
-              cid: response.data.results?.[0].cid as string,
+              cid: firstResult.cid,
               authors: record.authors,
               title: record.title,
               hiveId: record.hiveId as HiveId,
@@ -762,7 +769,7 @@ export function createRouter(app: HonoServer) {
               : "com.atproto.repo.applyWrites#create",
             collection: ids.BuzzBookhiveBuzz,
             rkey: originalBuzz
-              ? originalBuzz.uri.split("/").at(-1)
+              ? originalBuzz.uri.split("/").at(-1)!
               : TID.nextStr(),
             value: {
               book: bookRef.value,
@@ -774,10 +781,16 @@ export function createRouter(app: HonoServer) {
         ],
       });
 
+      const firstResult = response.data.results?.[0];
       if (
         !response.success ||
         !response.data.results ||
-        response.data.results.length === 0
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
       ) {
         return c.html(
           <Layout>
@@ -795,8 +808,8 @@ export function createRouter(app: HonoServer) {
         .get("ctx")
         .db.insertInto("buzz")
         .values({
-          uri: response.data.results[0].uri as string,
-          cid: response.data.results[0].cid as string,
+          uri: firstResult.uri,
+          cid: firstResult.cid,
           userDid: agent.assertDid,
           createdAt: createdAt,
           indexedAt: new Date().toISOString(),
@@ -810,7 +823,7 @@ export function createRouter(app: HonoServer) {
         .onConflict((oc) =>
           oc.column("uri").doUpdateSet({
             indexedAt: new Date().toISOString(),
-            cid: response.data.results?.[0].cid as string,
+            cid: firstResult.cid,
             userDid: agent.assertDid,
             createdAt: createdAt,
             hiveId: hiveId as HiveId,
@@ -1125,6 +1138,14 @@ export function createRouter(app: HonoServer) {
           avatar: profile?.avatar,
           handle: profile?.handle ?? did,
           description: profile?.description,
+          booksRead: books.filter(
+            (b) =>
+              b.status &&
+              b.status in BOOK_STATUS_MAP &&
+              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] ===
+                "read",
+          ).length,
+          reviews: books.filter((b) => b.review).length,
         },
         books: books.map((b) => ({
           authors: b.authors,
@@ -1141,6 +1162,47 @@ export function createRouter(app: HonoServer) {
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
         })),
+        activity: books
+          .reduce(
+            (acc, b) => {
+              const existing = acc.find((a) => a.hiveId === b.hiveId);
+              if (
+                !existing ||
+                new Date(b.createdAt) > new Date(existing.createdAt)
+              ) {
+                if (existing) {
+                  acc.splice(acc.indexOf(existing), 1);
+                }
+                acc.push({
+                  type:
+                    b.status &&
+                    b.status in BOOK_STATUS_MAP &&
+                    BOOK_STATUS_MAP[
+                      b.status as keyof typeof BOOK_STATUS_MAP
+                    ] === "read"
+                      ? "finished"
+                      : b.review
+                        ? "review"
+                        : "started",
+                  createdAt: b.createdAt,
+                  hiveId: b.hiveId,
+                  title: b.title,
+                });
+              }
+              return acc;
+            },
+            [] as Array<{
+              type: string;
+              createdAt: string;
+              hiveId: string;
+              title: string;
+            }>,
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .slice(0, 15),
       } satisfies GetProfile.OutputSchema;
 
       return c.json(response);

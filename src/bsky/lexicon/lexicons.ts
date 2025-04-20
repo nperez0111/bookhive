@@ -204,7 +204,7 @@ export const schemaDict = {
       },
       profile: {
         type: "object",
-        required: ["displayName", "handle"],
+        required: ["displayName", "handle", "booksRead", "reviews"],
         properties: {
           displayName: {
             type: "string",
@@ -217,6 +217,36 @@ export const schemaDict = {
           },
           description: {
             type: "string",
+          },
+          booksRead: {
+            type: "integer",
+            minimum: 0,
+          },
+          reviews: {
+            type: "integer",
+            minimum: 0,
+          },
+        },
+      },
+      activity: {
+        type: "object",
+        required: ["type", "createdAt", "hiveId", "title"],
+        properties: {
+          type: {
+            type: "string",
+            knownValues: ["review", "rated", "started", "finished"],
+          },
+          createdAt: {
+            type: "string",
+            format: "datetime",
+          },
+          hiveId: {
+            type: "string",
+            description: "The hive id of the book",
+          },
+          title: {
+            type: "string",
+            description: "The title of the book",
           },
         },
       },
@@ -374,7 +404,7 @@ export const schemaDict = {
           encoding: "application/json",
           schema: {
             type: "object",
-            required: ["books", "profile"],
+            required: ["books", "profile", "activity"],
             properties: {
               books: {
                 description: "All books in the user's library",
@@ -388,6 +418,14 @@ export const schemaDict = {
                 description: "The user's profile",
                 type: "ref",
                 ref: "lex:buzz.bookhive.defs#profile",
+              },
+              activity: {
+                description: "The user's activity",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#activity",
+                },
               },
             },
           },

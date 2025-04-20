@@ -42,6 +42,11 @@ export function loginRouter(
         ttl: tokenInfo.expiresAt
           ? differenceInSeconds(tokenInfo.expiresAt, new Date())
           : undefined,
+        cookieOptions: {
+          httpOnly: env.isProd,
+          secure: env.isProd,
+          sameSite: env.isProd ? "strict" : "lax",
+        },
       });
 
       // assert(!clientSession.did, "session already exists");

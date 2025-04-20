@@ -71,6 +71,8 @@ export interface Profile {
   handle: string;
   avatar?: string;
   description?: string;
+  booksRead: number;
+  reviews: number;
   [k: string]: unknown;
 }
 
@@ -82,6 +84,26 @@ export function isProfile(v: unknown): v is Profile {
 
 export function validateProfile(v: unknown): ValidationResult {
   return lexicons.validate("buzz.bookhive.defs#profile", v);
+}
+
+export interface Activity {
+  type: "review" | "rated" | "started" | "finished" | (string & {});
+  createdAt: string;
+  /** The hive id of the book */
+  hiveId: string;
+  /** The title of the book */
+  title: string;
+  [k: string]: unknown;
+}
+
+export function isActivity(v: unknown): v is Activity {
+  return (
+    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#activity"
+  );
+}
+
+export function validateActivity(v: unknown): ValidationResult {
+  return lexicons.validate("buzz.bookhive.defs#activity", v);
 }
 
 export interface UserBook {
