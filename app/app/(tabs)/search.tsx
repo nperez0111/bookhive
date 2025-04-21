@@ -13,6 +13,7 @@ import { useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { router } from "expo-router";
 import { useState } from "react";
+import { getBaseUrl } from "@/context/auth";
 
 export default function HomeScreen() {
   const [query, setQuery] = useState("");
@@ -47,7 +48,7 @@ export default function HomeScreen() {
         >
           <Image
             source={{
-              uri: `http://localhost:8080/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
             }}
             style={styles.cover}
           />

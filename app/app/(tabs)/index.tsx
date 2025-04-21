@@ -3,6 +3,7 @@ import {
   Button,
   FlatList,
   Image,
+  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -10,9 +11,9 @@ import {
 
 import { HelloWave } from "@/components/HelloWave";
 import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { useAuth } from "@/context/auth";
+import { getBaseUrl, useAuth } from "@/context/auth";
 import { useProfile } from "@/hooks/useBookhiveQuery";
+import { router } from "expo-router";
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -43,10 +44,13 @@ export default function HomeScreen() {
       data={profile.data.books}
       keyExtractor={(item) => item.hiveId}
       renderItem={({ item: book }) => (
-        <ThemedView style={{ padding: 8, flexDirection: "row", gap: 8 }}>
+        <Pressable
+          onPress={() => router.push(`/book/${book.hiveId}`)}
+          style={{ padding: 8, flexDirection: "row", gap: 8 }}
+        >
           <Image
             source={{
-              uri: `http://localhost:8080/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
             }}
             style={styles.cover}
           />
@@ -54,7 +58,7 @@ export default function HomeScreen() {
             <ThemedText type="subtitle">{book.title}</ThemedText>
             <ThemedText>{book.authors}</ThemedText>
           </View>
-        </ThemedView>
+        </Pressable>
       )}
       ListHeaderComponentStyle={{ padding: 16 }}
     />

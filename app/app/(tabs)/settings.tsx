@@ -8,17 +8,20 @@ import {
   TouchableOpacity,
   ScrollView,
   View,
+  Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useProfile } from "@/hooks/useBookhiveQuery";
-
+import { useThemeColor } from "@/hooks/useThemeColor";
+import { router } from "expo-router";
 export default function ProfileScreen() {
   const { signOut } = useAuth();
   const { data: profile } = useProfile();
+  const color = useThemeColor({}, "icon");
 
   return (
     <ScrollView style={styles.container}>
-      <ThemedView style={styles.header}>
+      <View style={{ ...styles.header, borderBottomColor: color }}>
         <Image
           source={{
             uri: profile?.profile.avatar,
@@ -45,7 +48,7 @@ export default function ProfileScreen() {
             <ThemedText style={styles.statLabel}>Reviews</ThemedText>
           </ThemedView>
         </ThemedView>
-      </ThemedView>
+      </View>
 
       {/* TODO: Add reading challenge */}
       {/* <ThemedView style={styles.section}>
@@ -67,9 +70,17 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <ThemedText style={styles.sectionTitle}>Recent Activity</ThemedText>
-        <View style={styles.activityList}>
-          {profile?.activity.map((activity) => (
-            <View style={styles.activityItem} key={activity.hiveId}>
+        <ThemedView style={{ ...styles.activityList, borderColor: color }}>
+          {profile?.activity.map((activity, i, all) => (
+            <Pressable
+              style={{
+                ...styles.activityItem,
+                borderColor: color,
+                borderBottomWidth: i === all.length - 1 ? 0 : 1,
+              }}
+              key={activity.hiveId}
+              onPress={() => router.push(`/book/${activity.hiveId}`)}
+            >
               <Ionicons
                 name={
                   activity.type === "rated"
@@ -81,7 +92,7 @@ export default function ProfileScreen() {
                 size={24}
                 color="#6366f1"
               />
-              <View style={styles.activityContent}>
+              <ThemedView style={styles.activityContent}>
                 <ThemedText style={styles.activityText}>
                   {activity.type === "started"
                     ? "Started reading"
@@ -90,21 +101,24 @@ export default function ProfileScreen() {
                       : "Reviewed"}{" "}
                   <ThemedText style={styles.bold}>{activity.title}</ThemedText>
                 </ThemedText>
-              </View>
-            </View>
+              </ThemedView>
+            </Pressable>
           ))}
-        </View>
+        </ThemedView>
       </View>
 
-      <ThemedView style={styles.section}>
-        <TouchableOpacity style={styles.settingsButton} onPress={signOut}>
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={{ ...styles.settingsButton, borderColor: color }}
+          onPress={signOut}
+        >
           <Ionicons name="log-out-outline" size={24} color="#EF4444" />
-          <ThemedText style={[styles.settingsButtonText, { color: "#EF4444" }]}>
+          <ThemedText style={[styles.signoutButtonText, { color: "#EF4444" }]}>
             Sign Out
           </ThemedText>
           <Ionicons name="chevron-forward" size={24} color="#EF4444" />
         </TouchableOpacity>
-      </ThemedView>
+      </View>
     </ScrollView>
   );
 }
@@ -112,14 +126,11 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
   },
   header: {
     alignItems: "center",
-    padding: 24,
-    backgroundColor: "#ffffff",
+    padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
   },
   profileImage: {
     width: 120,
@@ -130,12 +141,10 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: "600",
-    color: "#111827",
     marginBottom: 8,
   },
   bio: {
     fontSize: 16,
-    color: "#6b7280",
     marginBottom: 16,
   },
   statsRow: {
@@ -154,7 +163,6 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 14,
-    color: "#6b7280",
     marginTop: 4,
   },
   section: {
@@ -164,17 +172,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#111827",
     marginHorizontal: 16,
     marginBottom: 16,
   },
   challengeCard: {
-    backgroundColor: "#ffffff",
     marginHorizontal: 16,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
   },
   challengeInfo: {
     flex: 1,
@@ -182,12 +187,10 @@ const styles = StyleSheet.create({
   challengeTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
     marginBottom: 8,
   },
   challengeProgress: {
     fontSize: 14,
-    color: "#6b7280",
     marginBottom: 12,
   },
   progressBarContainer: {
@@ -201,9 +204,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   activityList: {
-    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
     borderRadius: 12,
     marginHorizontal: 16,
   },
@@ -212,7 +213,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
   },
   activityContent: {
     marginLeft: 12,
@@ -220,31 +220,25 @@ const styles = StyleSheet.create({
   },
   activityText: {
     fontSize: 14,
-    color: "#4b5563",
   },
   activityTime: {
     fontSize: 12,
-    color: "#9ca3af",
     marginTop: 4,
   },
   bold: {
     fontWeight: "600",
-    color: "#111827",
   },
   settingsButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
     marginHorizontal: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
   },
-  settingsButtonText: {
+  signoutButtonText: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    color: "#4b5563",
   },
 });
