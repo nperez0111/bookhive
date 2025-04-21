@@ -112,7 +112,7 @@ export const SearchBox: FC = () => {
         <ul
           id="search-results"
           role="listbox"
-          className="absolute -left-12 z-10 mt-2 w-[calc(100vw-40px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 ring-1 shadow-lg ring-black/5 focus:outline-hidden sm:left-0 sm:w-[calc(100%+64px)] dark:divide-gray-700 dark:bg-slate-700"
+          className="absolute -left-12 z-10 mt-2 w-[calc(100vw-40px)] origin-top-right divide-y divide-gray-100 rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5 focus:outline-hidden sm:left-0 sm:w-[calc(100%+64px)] dark:divide-gray-700 dark:bg-slate-700"
         >
           <ProgressBar isActive={bookResults.isFetching} />
           {bookResults.isError && (
@@ -134,7 +134,7 @@ export const SearchBox: FC = () => {
                   <div className="flex items-center justify-between space-x-4">
                     <img
                       className="aspect-2/3 h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
-                      src={book.thumbnail || book.cover || undefined}
+                      src={`/images/w_300/${book.thumbnail || book.cover || ""}`}
                       alt={`Cover of ${book.title}`}
                       loading="lazy"
                     />

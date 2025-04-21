@@ -50,7 +50,7 @@ const ipx = createIPXWebServer(
   createIPX({
     storage: ipxFSStorage({ dir: "./public" }),
     httpStorage: ipxHttpStorage({
-      domains: ["i.gr-assets.com"],
+      domains: ["i.gr-assets.com", "cdn.bsky.app"],
     }),
   }),
 );

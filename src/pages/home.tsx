@@ -223,7 +223,7 @@ async function LatestActivity() {
             <a href={`/books/${book.hiveId}`} class="block h-72 w-full">
               {book.cover || book.thumbnail ? (
                 <img
-                  src={book.cover || book.thumbnail || ""}
+                  src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
                   alt={book.title}
                   className="h-full w-full rounded-lg object-cover"
                 />

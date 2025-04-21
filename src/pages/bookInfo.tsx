@@ -135,7 +135,7 @@ const BookStatusButton: FC<{
             aria-haspopup="listbox"
             aria-expanded="false"
             aria-labelledby="status-label"
-            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 ring-1 shadow-sm ring-gray-300 ring-inset hover:bg-gray-50 focus:ring-2 focus:ring-indigo-600 focus:outline-none dark:bg-slate-800 dark:text-white dark:hover:bg-slate-900"
+            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus:ring-2 focus:ring-indigo-600 focus:outline-none dark:bg-slate-800 dark:text-white dark:hover:bg-slate-900"
             id="status-dropdown"
           >
             <span
@@ -169,7 +169,7 @@ const BookStatusButton: FC<{
           <div
             role="listbox"
             aria-labelledby="status-label"
-            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-white opacity-0 ring-1 shadow-lg ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-slate-800"
+            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-white opacity-0 shadow-lg ring-1 ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-slate-800"
             id="status-dropdown-menu"
           >
             <div className="p-1">
@@ -326,7 +326,7 @@ export const BookInfo: FC<{
                   {/* Book cover with image */}
                   <div className="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
                     <img
-                      src={book.cover || book.thumbnail}
+                      src={`/images/w_300/${book.cover || book.thumbnail}`}
                       alt={`Cover of ${book.title}`}
                       className="col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
                     />
@@ -460,7 +460,7 @@ export const BookInfo: FC<{
                   >
                     <div className="grid">
                       <textarea
-                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
                         style={{ resize: "none", gridArea: "1 / 1 / 2 / 2" }}
                         placeholder="Write your review here..."
                         name="review"

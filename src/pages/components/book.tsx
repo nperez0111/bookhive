@@ -153,12 +153,12 @@ export const BookListItem: FC<{
     >
       {book.cover || book.thumbnail ? (
         <img
-          src={book.cover || book.thumbnail || ""}
+          src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
           alt={book.title}
-          className="h-full w-full rounded-lg object-cover shadow-lg"
+          className="h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
         />
       ) : (
-        <FallbackCover className="h-full w-full" />
+        <FallbackCover className="h-full w-full transition-all duration-300 group-hover:saturate-60" />
       )}
       <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <div className="absolute bottom-0 p-4 text-white">

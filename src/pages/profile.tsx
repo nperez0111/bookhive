@@ -17,7 +17,7 @@ export const ProfilePage: FC<{
         {profile?.avatar && (
           <img
             class="size-32 rounded-xl object-cover shadow-lg transition sm:size-40 md:size-56"
-            src={profile.avatar}
+            src={`/images/w_500/${profile.avatar}`}
             alt=""
           />
         )}
@@ -69,7 +69,7 @@ export const ProfilePage: FC<{
                       <a href={`/books/${book.hiveId}`} class="flex gap-4">
                         {book.cover || book.thumbnail ? (
                           <img
-                            src={book.cover || book.thumbnail || ""}
+                            src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
                             alt=""
                             class="h-36 w-24 rounded-lg object-cover shadow-sm"
                           />
