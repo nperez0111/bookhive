@@ -151,8 +151,8 @@ importers:
         specifier: ^4
         version: 4.1.4
       '@tailwindcss/forms':
-        specifier: 0.5.9
-        version: 0.5.9(tailwindcss@4.1.4)
+        specifier: ^0.5.10
+        version: 0.5.10(tailwindcss@4.1.4)
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.4
@@ -2458,10 +2458,10 @@ packages:
     resolution: {integrity: sha512-gP05Qihh+cZ2FqD5fa0WJXx3KEk2YWUYv/RBKAyiOg0V4vYVDr/xlLc0sacpnVEXM45BVUR9U2hsESufYs6YTA==}
     hasBin: true
 
-  '@tailwindcss/forms@0.5.9':
-    resolution: {integrity: sha512-tM4XVr2+UVTxXJzey9Twx48c1gcxFStqn1pQz0tRsX8o3DvxhN5oY5pvyAbUx7VTaZxpej4Zzvc6h+1RJBzpIg==}
+  '@tailwindcss/forms@0.5.10':
+    resolution: {integrity: sha512-utI1ONF6uf/pPNO68kmN1b8rEwNXv3czukalo8VtJH8ksIkZXr3Q3VYudZLkCsDd4Wku120uF02hYK25XGPorw==}
     peerDependencies:
-      tailwindcss: '>=3.0.0 || >= 3.0.0-alpha.1 || >= 4.0.0-alpha.20'
+      tailwindcss: '>=3.0.0 || >= 3.0.0-alpha.1 || >= 4.0.0-alpha.20 || >= 4.0.0-beta.1'
 
   '@tailwindcss/node@4.1.4':
     resolution: {integrity: sha512-MT5118zaiO6x6hNA04OWInuAiP1YISXql8Z+/Y8iisV5nuhM8VXlyhRuqc2PEviPszcXI66W44bCIk500Oolhw==}
@@ -9862,7 +9862,7 @@ snapshots:
       picocolors: 1.1.1
       tailwindcss: 4.1.4
 
-  '@tailwindcss/forms@0.5.9(tailwindcss@4.1.4)':
+  '@tailwindcss/forms@0.5.10(tailwindcss@4.1.4)':
     dependencies:
       mini-svg-data-uri: 1.4.4
       tailwindcss: 4.1.4
