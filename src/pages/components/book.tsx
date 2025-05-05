@@ -40,7 +40,7 @@ export const BookList: FC<{
   }
 
   return (
-    <div class="relative overflow-hidden">
+    <div class="relative overflow-hidden rounded-lg bg-yellow-50 pb-16 dark:bg-zinc-800">
       <input
         type="radio"
         id="tab-read"
@@ -56,7 +56,7 @@ export const BookList: FC<{
         class="peer/reading hidden"
       />
 
-      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-sky-600 peer-checked/read:[&_label[for='tab-read']]:text-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:border-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:text-sky-600 peer-checked/want:[&_label[for='tab-want']]:border-sky-600 peer-checked/want:[&_label[for='tab-want']]:text-sky-600">
+      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
         <ul
           class="-mb-px flex flex-wrap text-center text-sm font-medium"
           role="tablist"

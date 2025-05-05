@@ -921,6 +921,145 @@ export function createRouter(app: HonoServer) {
     });
   });
 
+  app.post(
+    "/api/update-book",
+    zValidator(
+      "json",
+      z.object({
+        hiveId: z.string(),
+        status: z.optional(z.string()),
+        review: z.optional(z.string()),
+        stars: z.optional(z.number()),
+        startedAt: z.optional(z.string().datetime()),
+        finishedAt: z.optional(z.string().datetime()),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        console.log("No agent");
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { hiveId, ...rest } = c.req.valid("json");
+
+      if (!hiveId) {
+        console.log("No hiveId");
+        return c.json({ success: false, message: "Invalid ID" }, 400);
+      }
+
+      const userBook = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("userDid", "=", agent.assertDid)
+        .where("hiveId", "=", hiveId as HiveId)
+        .executeTakeFirst();
+
+      if (!userBook) {
+        console.log("No userBook");
+        return c.json(
+          { success: false, message: "Book not in your library" },
+          404,
+        );
+      }
+
+      const originalBook = (
+        await agent.com.atproto.repo.getRecord({
+          repo: agent.assertDid,
+          collection: ids.BuzzBookhiveBook,
+          rkey: userBook.uri.split("/").at(-1)!,
+          cid: userBook.cid,
+        })
+      ).data.value as BookRecord.Record | undefined;
+
+      if (!originalBook) {
+        return c.json(
+          { success: false, message: "Book not found in your PDS" },
+          404,
+        );
+      }
+
+      const input = {
+        ...originalBook,
+        ...rest,
+      };
+
+      const book = BookRecord.validateRecord(input);
+
+      if (!book.success) {
+        console.log("Invalid book", book.error);
+        return c.json({ success: false, message: book.error.message }, 400);
+      }
+
+      const record = book.value as BookRecord.Record;
+
+      const response = await agent.com.atproto.repo.applyWrites({
+        repo: agent.assertDid,
+        writes: [
+          {
+            $type: "com.atproto.repo.applyWrites#update",
+            collection: ids.BuzzBookhiveBook,
+            rkey: userBook.uri.split("/").at(-1)!,
+            value: record as BookRecord.Record,
+          },
+        ],
+      });
+
+      const firstResult = response.data.results?.[0];
+      if (
+        !response.success ||
+        !response.data.results ||
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
+      ) {
+        return c.json(
+          { success: false, message: "Failed to update book" },
+          500,
+        );
+      }
+
+      await c
+        .get("ctx")
+        .db.insertInto("user_book")
+        .values({
+          uri: firstResult.uri,
+          cid: firstResult.cid,
+          userDid: agent.assertDid,
+          createdAt: record.createdAt,
+          authors: record.authors,
+          title: record.title,
+          indexedAt: new Date().toISOString(),
+          hiveId: record.hiveId as HiveId,
+          status: record.status,
+          startedAt: record.startedAt,
+          finishedAt: record.finishedAt,
+          review: record.review,
+          stars: record.stars,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet({
+            indexedAt: new Date().toISOString(),
+            cid: firstResult.cid,
+            authors: record.authors,
+            title: record.title,
+            hiveId: record.hiveId as HiveId,
+            status: record.status,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            review: record.review,
+            stars: record.stars,
+          }),
+        )
+        .execute();
+
+      return c.json({ success: true, message: "Book updated" });
+    },
+  );
+
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
@@ -1043,7 +1182,20 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
 
+      const userBook = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("user_book.hiveId", "=", book.id)
+        .executeTakeFirst();
+
       const response = {
+        createdAt: userBook?.createdAt,
+        startedAt: userBook?.startedAt ?? undefined,
+        finishedAt: userBook?.finishedAt ?? undefined,
+        status: userBook?.status ?? undefined,
+        stars: userBook?.stars ?? undefined,
+        review: userBook?.review ?? undefined,
         book: {
           title: book.title,
           authors: book.authors,

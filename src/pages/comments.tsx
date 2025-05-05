@@ -249,7 +249,7 @@ export async function CommentsSection({
   endTime(c, "fetch_profiles");
 
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-slate-200 p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
       {children}
       {topLevelReviews.map((review) => (
         <Comment

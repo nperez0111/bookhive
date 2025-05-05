@@ -353,6 +353,48 @@ export const schemaDict = {
             type: "object",
             required: ["book", "reviews", "comments"],
             properties: {
+              createdAt: {
+                type: "string",
+                format: "datetime",
+              },
+              startedAt: {
+                type: "string",
+                format: "datetime",
+                description: "The date the user started reading the book",
+              },
+              finishedAt: {
+                type: "string",
+                format: "datetime",
+                description: "The date the user finished reading the book",
+              },
+              cover: {
+                type: "blob",
+                description: "Cover image of the book",
+                accept: ["image/png", "image/jpeg"],
+                maxSize: 1000000,
+              },
+              status: {
+                type: "string",
+                knownValues: [
+                  "buzz.bookhive.defs#finished",
+                  "buzz.bookhive.defs#reading",
+                  "buzz.bookhive.defs#wantToRead",
+                  "buzz.bookhive.defs#abandoned",
+                  "buzz.bookhive.defs#owned",
+                ],
+              },
+              stars: {
+                type: "integer",
+                description:
+                  "Number of stars given to the book (1-10) which will be mapped to 1-5 stars",
+                minimum: 1,
+                maximum: 10,
+              },
+              review: {
+                type: "string",
+                description: "The book's review",
+                maxGraphemes: 15000,
+              },
               book: {
                 description: "The hive book's info",
                 type: "ref",

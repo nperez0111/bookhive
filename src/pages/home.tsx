@@ -18,16 +18,31 @@ function Hero() {
   return (
     <main class="relative grid place-items-center px-4 pt-16 pb-8 md:pt-12 md:pb-24 lg:grid-cols-2 lg:px-8">
       <div class="relative z-10 flex justify-center py-6 sm:block lg:order-1">
-        <img
-          src={`/public/bee.svg`}
+        {/* <img
+          src={`/public/reading.png`}
           alt="Bee sitting on a stack of books"
-          className="max-h-[200px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
+          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
+        />
+        <img
+          src={`/public/reading_logo.jpg`}
+          alt="Bee sitting on a stack of books"
+          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
+        />
+        <img
+          src={`/public/fav-icon.png`}
+          alt="Bee sitting on a stack of books"
+          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
+        /> */}
+        <img
+          src={`/public/hive.png`}
+          alt="Bee sitting on a stack of books"
+          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
         />
       </div>
       <div class="relative z-10">
-        <h1 class="text-5xl font-bold lg:text-6xl lg:tracking-tight xl:text-7xl xl:tracking-tighter">
+        <h1 class="text-5xl font-bold text-shadow-lg lg:text-6xl lg:tracking-tight xl:text-7xl xl:tracking-tighter">
           The social platform for{" "}
-          <span class="text-blue-600 dark:text-blue-500">book lovers</span>
+          <span class="text-yellow-800 dark:text-yellow-600">book lovers</span>
         </h1>
         <p class="mt-4 max-w-xl text-lg text-slate-600 dark:text-slate-400">
           You can follow your friends and see what they are reading, and you can
@@ -38,7 +53,7 @@ function Hero() {
           {/* Something here */}
         </div>
       </div>
-      <div class="absolute top-0 left-0 z-0 h-full w-full bg-gradient-to-b from-blue-50 to-transparent dark:from-blue-900"></div>
+      <div class="absolute top-0 left-0 z-0 h-full w-full bg-gradient-to-b from-yellow-50 to-transparent dark:from-yellow-950"></div>
     </main>
   );
 }
@@ -169,7 +184,7 @@ function Features() {
       <div class="mt-16 grid gap-16 sm:grid-cols-2 md:grid-cols-3">
         {features.map((item) => (
           <div class="flex items-start gap-4">
-            <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-yellow-500 p-2 text-black">
+            <div class="text-sand mt-1 flex shrink-0 items-center justify-center rounded-full bg-yellow-800 p-2">
               {item.icon}
             </div>
             <div>
@@ -219,8 +234,11 @@ async function LatestActivity() {
       </div>
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {latestBuzzes.map((book) => (
-          <div class="rounded-lg border border-gray-200 bg-white shadow dark:border-gray-700 dark:bg-gray-800">
-            <a href={`/books/${book.hiveId}`} class="block h-72 w-full">
+          <div class="group rounded-lg border border-gray-200 bg-yellow-50 shadow dark:border-gray-700 dark:bg-zinc-800">
+            <a
+              href={`/books/${book.hiveId}`}
+              class="block h-72 w-full rounded-md transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
+            >
               {book.cover || book.thumbnail ? (
                 <img
                   src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
@@ -312,7 +330,7 @@ export const Home: FC<Props> = async () => {
   endTime(c, "profile");
 
   return (
-    <div class="container mx-auto max-w-7xl bg-slate-50 dark:bg-slate-900 dark:text-white">
+    <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
       {profile ? (
         <div class="flex flex-col gap-2 px-4 pt-16 lg:px-8">
           <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
