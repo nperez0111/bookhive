@@ -1,9 +1,9 @@
-import { router } from "expo-router";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FetchOptions, MappedResponseType, ofetch, ResponseType } from "ofetch";
+import * as Linking from "expo-linking";
+import { router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { ofetch } from "ofetch";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 
 export type AuthState = {

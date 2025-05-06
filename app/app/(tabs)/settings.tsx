@@ -126,6 +126,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 12,
   },
   header: {
     alignItems: "center",

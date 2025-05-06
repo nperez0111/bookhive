@@ -1,6 +1,12 @@
 import { authFetch } from "@/context/auth";
-import { useQuery } from "@tanstack/react-query";
-import { HiveBook, HiveId, GetBook, GetProfile } from "../../src/types";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  HiveBook,
+  HiveId,
+  GetBook,
+  GetProfile,
+  UserBook,
+} from "../../src/types";
 import { useEffect, useState } from "react";
 
 const useDebounce = (value: string, delay: number) => {
@@ -62,6 +68,39 @@ export const useProfile = (didOrHandle?: string) => {
       return await authFetch<GetProfile.OutputSchema>(
         `/xrpc/buzz.bookhive.getProfile?id=${id}`,
       );
+    },
+  });
+};
+
+/**
+ * Update the status of a book
+ */
+export const useUpdateBook = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      hiveId,
+      ...rest
+    }: {
+      hiveId: HiveId;
+    } & Omit<
+      Partial<UserBook>,
+      "hiveId" | "uri" | "cid" | "userDid" | "indexedAt" | "createdAt"
+    >) => {
+      return await authFetch<{ success: boolean; message: string }>(
+        `/api/update-book`,
+        {
+          method: "POST",
+          body: {
+            hiveId,
+            ...rest,
+          },
+        },
+      );
+    },
+    onSuccess: (_, { hiveId }) => {
+      // Invalidate the book query to refetch latest data
+      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
     },
   });
 };
