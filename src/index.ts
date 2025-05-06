@@ -35,6 +35,7 @@ import { readThroughCache } from "./utils/readThroughCache.ts";
 import { lazy } from "./utils/lazy.ts";
 import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { getLogger } from "./logger/index.ts";
+import { differenceInSeconds } from "date-fns";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -79,7 +80,16 @@ export async function getSessionAgent(
   }
 
   try {
-    const oauthSession = await ctx.oauthClient.restore(session.did);
+    const oauthSession = await ctx.oauthClient.restore(session.did, false);
+    const tokenInfo = await oauthSession.getTokenInfo("auto");
+    if (tokenInfo && tokenInfo.expiresAt) {
+      session.updateConfig({
+        cookieName: "sid",
+        password: env.COOKIE_SECRET,
+        ttl: differenceInSeconds(tokenInfo.expiresAt, new Date()),
+      });
+      await session.save();
+    }
     return oauthSession ? new Agent(oauthSession) : null;
   } catch (err) {
     ctx.logger.warn({ err }, "oauth restore failed");
@@ -139,6 +149,8 @@ export class Server {
         table: "auth_state",
       }),
     );
+    // Don't care to store the book lock, so LRU is fine
+    kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
     // Create the atproto utilities
     const oauthClient = await createClient(kv);
@@ -152,7 +164,11 @@ export class Server {
     ingester.start();
 
     // Create Hono app
-    const app = new Hono() as HonoServer;
+    const app = new Hono<{
+      Variables: {
+        ctx: AppContext;
+      } & Env["Variables"];
+    }>();
 
     app.use(requestId());
     app.use(timing());
@@ -164,7 +180,11 @@ export class Server {
         pino: logger,
         http: {
           onResLevel(c) {
-            return c.req.path === "/healthcheck" ? "trace" : "info";
+            return c.req.path === "/healthcheck" ||
+              c.req.path.startsWith("/public") ||
+              c.req.path.startsWith("/images")
+              ? "trace"
+              : "info";
           },
         },
       }),

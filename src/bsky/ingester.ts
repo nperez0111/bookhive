@@ -1,6 +1,7 @@
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
-import type { Database, HiveId } from "../db";
+import type { Database } from "../db";
+import type { HiveId } from "../types";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";

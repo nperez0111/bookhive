@@ -12,7 +12,10 @@ import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
-import { type HiveId, BookFields } from "./db";
+import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+import type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
+import { BookFields } from "./db";
+import { type HiveId } from "./types";
 import { BookInfo } from "./pages/bookInfo";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
@@ -31,6 +34,8 @@ import {
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
 import { CommentsSection } from "./pages/comments";
 import { getProfile } from "./utils/getProfile";
+import type { NotNull } from "kysely";
+import { BOOK_STATUS_MAP } from "./constants";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -45,7 +50,7 @@ const ipx = createIPXWebServer(
   createIPX({
     storage: ipxFSStorage({ dir: "./public" }),
     httpStorage: ipxHttpStorage({
-      domains: ["i.gr-assets.com"],
+      domains: ["i.gr-assets.com", "cdn.bsky.app"],
     }),
   }),
 );
@@ -183,64 +188,108 @@ async function refetchBooks({
   if (!agent) {
     return;
   }
-  const books = await agent.com.atproto.repo.listRecords({
+  const bookRecordsRaw = await agent.com.atproto.repo.listRecords({
     repo: agent.assertDid,
     collection: ids.BuzzBookhiveBook,
     limit: 100,
     cursor,
   });
+  const bookRecords = bookRecordsRaw.data.records
+    .filter((record) => BookRecord.validateRecord(record.value).success)
+    .map((r) => ({ ...r, value: r.value as BookRecord.Record }));
+
+  // Group records by hiveId to find duplicates
+  const duplicatesByHiveId = new Map<string, typeof bookRecords>();
+  bookRecords.forEach((record) => {
+    const hiveId = record.value.hiveId;
+    if (hiveId) {
+      if (!duplicatesByHiveId.has(hiveId)) {
+        duplicatesByHiveId.set(hiveId, []);
+      }
+      duplicatesByHiveId.set(hiveId, [
+        ...duplicatesByHiveId.get(hiveId)!,
+        record,
+      ]);
+    }
+  });
 
   const promises = [] as Promise<any>[];
 
-  await books.data.records
-    .filter((record) => BookRecord.validateRecord(record.value).success)
-    .reduce(async (acc, record) => {
-      await acc;
-      const book = record.value as BookRecord.Record;
+  // Delete duplicate records
+  Array.from(duplicatesByHiveId.values()).map(async (records) => {
+    if (records.length > 1) {
+      ctx.logger.info("Duplicate book found", { records });
+      const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
+        a.value.createdAt.localeCompare(b.value.createdAt),
+      );
 
-      promises.push(searchBooks({ query: book.title, ctx }));
+      recordsToDelete.forEach(async (r) => {
+        const rkey = r.uri.split("/").pop()!;
+        promises.push(
+          agent.com.atproto.repo.deleteRecord({
+            repo: agent.assertDid,
+            collection: ids.BuzzBookhiveBook,
+            rkey,
+          }),
+        );
+        promises.push(
+          ctx.db
+            .deleteFrom("user_book")
+            .where("uri", "=", r.uri)
+            .where("userDid", "=", agent.assertDid)
+            .execute(),
+        );
+      });
+    }
+  });
 
-      uris.push(record.uri);
+  await bookRecords.reduce(async (acc, record) => {
+    await acc;
+    const book = record.value;
 
-      await ctx.db
-        .insertInto("user_book")
-        .values({
-          uri: record.uri,
-          cid: record.cid,
-          userDid: agent.assertDid,
-          createdAt: book.createdAt,
+    promises.push(searchBooks({ query: book.title, ctx }));
+
+    uris.push(record.uri);
+
+    await ctx.db
+      .insertInto("user_book")
+      .values({
+        uri: record.uri,
+        cid: record.cid,
+        userDid: agent.assertDid,
+        createdAt: book.createdAt,
+        title: book.title,
+        authors: book.authors,
+        indexedAt: new Date().toISOString(),
+        hiveId: book.hiveId as HiveId,
+        status: book.status,
+        startedAt: book.startedAt,
+        finishedAt: book.finishedAt,
+        review: book.review,
+        stars: book.stars,
+      })
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet({
+          indexedAt: new Date().toISOString(),
           title: book.title,
           authors: book.authors,
-          indexedAt: new Date().toISOString(),
-          hiveId: book.hiveId as HiveId,
           status: book.status,
           startedAt: book.startedAt,
           finishedAt: book.finishedAt,
+          hiveId: book.hiveId as HiveId,
           review: book.review,
           stars: book.stars,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet({
-            indexedAt: new Date().toISOString(),
-            title: book.title,
-            authors: book.authors,
-            status: book.status,
-            startedAt: book.startedAt,
-            finishedAt: book.finishedAt,
-            hiveId: book.hiveId as HiveId,
-            review: book.review,
-            stars: book.stars,
-          }),
-        )
-        .execute();
-    }, Promise.resolve());
+        }),
+      )
+      .execute();
+  }, Promise.resolve());
 
   await Promise.all(promises);
   // TODO optimize this
-  if (books.data.records.length === 100) {
+  if (bookRecordsRaw.data.records.length === 100) {
     // Fetch next page, after a short delay
     await setTimeout(() => {}, 100);
-    return refetchBooks({ agent, ctx, cursor: books.data.cursor });
+    return refetchBooks({ agent, ctx, cursor: bookRecordsRaw.data.cursor });
   } else {
     // Clear books which no longer exist
     await ctx.db
@@ -533,6 +582,7 @@ export function createRouter(app: HonoServer) {
           401,
         );
       }
+      const bookLockKey = "book_lock:" + agent.assertDid;
       try {
         const {
           authors,
@@ -546,6 +596,20 @@ export function createRouter(app: HonoServer) {
           review,
         } = await c.req.valid("form");
 
+        const bookLock = await c.get("ctx").kv.get(bookLockKey);
+        if (bookLock) {
+          return c.html(
+            <Layout>
+              <ErrorPage
+                message={`Book ${bookLock} already being added`}
+                statusCode={429}
+              />
+            </Layout>,
+            429,
+          );
+        }
+
+        await c.get("ctx").kv.setItem(bookLockKey, hiveId);
         const userBook = await c
           .get("ctx")
           .db.selectFrom("user_book")
@@ -583,6 +647,7 @@ export function createRouter(app: HonoServer) {
         const book = BookRecord.validateRecord(input);
 
         if (!book.success) {
+          await c.get("ctx").kv.del(bookLockKey);
           return c.html(
             <Layout>
               <ErrorPage
@@ -608,17 +673,24 @@ export function createRouter(app: HonoServer) {
                 ? "com.atproto.repo.applyWrites#update"
                 : "com.atproto.repo.applyWrites#create",
               collection: ids.BuzzBookhiveBook,
-              rkey: userBook ? userBook.uri.split("/").at(-1) : TID.nextStr(),
+              rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.nextStr(),
               value: record as BookRecord.Record,
             },
           ],
         });
 
+        const firstResult = response.data.results?.[0];
         if (
           !response.success ||
           !response.data.results ||
-          response.data.results.length === 0
+          response.data.results.length === 0 ||
+          !firstResult ||
+          !(
+            firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+            firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+          )
         ) {
+          await c.get("ctx").kv.del(bookLockKey);
           return c.html(
             <Layout>
               <ErrorPage
@@ -635,8 +707,8 @@ export function createRouter(app: HonoServer) {
           .get("ctx")
           .db.insertInto("user_book")
           .values({
-            uri: response.data.results[0].uri as string,
-            cid: response.data.results[0].cid as string,
+            uri: firstResult.uri,
+            cid: firstResult.cid,
             userDid: agent.assertDid,
             createdAt: record.createdAt,
             authors: record.authors,
@@ -652,7 +724,7 @@ export function createRouter(app: HonoServer) {
           .onConflict((oc) =>
             oc.column("uri").doUpdateSet({
               indexedAt: new Date().toISOString(),
-              cid: response.data.results?.[0].cid as string,
+              cid: firstResult.cid,
               authors: record.authors,
               title: record.title,
               hiveId: record.hiveId as HiveId,
@@ -665,9 +737,11 @@ export function createRouter(app: HonoServer) {
           )
           .execute();
 
+        await c.get("ctx").kv.del(bookLockKey);
         return c.redirect("/books/" + hiveId);
       } catch (err) {
         c.get("ctx").logger.warn({ err }, "failed to write book");
+        await c.get("ctx").kv.del(bookLockKey);
         return c.html(
           <Layout>
             <ErrorPage
@@ -758,7 +832,7 @@ export function createRouter(app: HonoServer) {
               : "com.atproto.repo.applyWrites#create",
             collection: ids.BuzzBookhiveBuzz,
             rkey: originalBuzz
-              ? originalBuzz.uri.split("/").at(-1)
+              ? originalBuzz.uri.split("/").at(-1)!
               : TID.nextStr(),
             value: {
               book: bookRef.value,
@@ -770,10 +844,16 @@ export function createRouter(app: HonoServer) {
         ],
       });
 
+      const firstResult = response.data.results?.[0];
       if (
         !response.success ||
         !response.data.results ||
-        response.data.results.length === 0
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
       ) {
         return c.html(
           <Layout>
@@ -791,8 +871,8 @@ export function createRouter(app: HonoServer) {
         .get("ctx")
         .db.insertInto("buzz")
         .values({
-          uri: response.data.results[0].uri as string,
-          cid: response.data.results[0].cid as string,
+          uri: firstResult.uri,
+          cid: firstResult.cid,
           userDid: agent.assertDid,
           createdAt: createdAt,
           indexedAt: new Date().toISOString(),
@@ -806,7 +886,7 @@ export function createRouter(app: HonoServer) {
         .onConflict((oc) =>
           oc.column("uri").doUpdateSet({
             indexedAt: new Date().toISOString(),
-            cid: response.data.results?.[0].cid as string,
+            cid: firstResult.cid,
             userDid: agent.assertDid,
             createdAt: createdAt,
             hiveId: hiveId as HiveId,
@@ -904,6 +984,145 @@ export function createRouter(app: HonoServer) {
     });
   });
 
+  app.post(
+    "/api/update-book",
+    zValidator(
+      "json",
+      z.object({
+        hiveId: z.string(),
+        status: z.optional(z.string()),
+        review: z.optional(z.string()),
+        stars: z.optional(z.number()),
+        startedAt: z.optional(z.string().datetime()),
+        finishedAt: z.optional(z.string().datetime()),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        console.log("No agent");
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { hiveId, ...rest } = c.req.valid("json");
+
+      if (!hiveId) {
+        console.log("No hiveId");
+        return c.json({ success: false, message: "Invalid ID" }, 400);
+      }
+
+      const userBook = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("userDid", "=", agent.assertDid)
+        .where("hiveId", "=", hiveId as HiveId)
+        .executeTakeFirst();
+
+      if (!userBook) {
+        console.log("No userBook");
+        return c.json(
+          { success: false, message: "Book not in your library" },
+          404,
+        );
+      }
+
+      const originalBook = (
+        await agent.com.atproto.repo.getRecord({
+          repo: agent.assertDid,
+          collection: ids.BuzzBookhiveBook,
+          rkey: userBook.uri.split("/").at(-1)!,
+          cid: userBook.cid,
+        })
+      ).data.value as BookRecord.Record | undefined;
+
+      if (!originalBook) {
+        return c.json(
+          { success: false, message: "Book not found in your PDS" },
+          404,
+        );
+      }
+
+      const input = {
+        ...originalBook,
+        ...rest,
+      };
+
+      const book = BookRecord.validateRecord(input);
+
+      if (!book.success) {
+        console.log("Invalid book", book.error);
+        return c.json({ success: false, message: book.error.message }, 400);
+      }
+
+      const record = book.value as BookRecord.Record;
+
+      const response = await agent.com.atproto.repo.applyWrites({
+        repo: agent.assertDid,
+        writes: [
+          {
+            $type: "com.atproto.repo.applyWrites#update",
+            collection: ids.BuzzBookhiveBook,
+            rkey: userBook.uri.split("/").at(-1)!,
+            value: record as BookRecord.Record,
+          },
+        ],
+      });
+
+      const firstResult = response.data.results?.[0];
+      if (
+        !response.success ||
+        !response.data.results ||
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
+      ) {
+        return c.json(
+          { success: false, message: "Failed to update book" },
+          500,
+        );
+      }
+
+      await c
+        .get("ctx")
+        .db.insertInto("user_book")
+        .values({
+          uri: firstResult.uri,
+          cid: firstResult.cid,
+          userDid: agent.assertDid,
+          createdAt: record.createdAt,
+          authors: record.authors,
+          title: record.title,
+          indexedAt: new Date().toISOString(),
+          hiveId: record.hiveId as HiveId,
+          status: record.status,
+          startedAt: record.startedAt,
+          finishedAt: record.finishedAt,
+          review: record.review,
+          stars: record.stars,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet({
+            indexedAt: new Date().toISOString(),
+            cid: firstResult.cid,
+            authors: record.authors,
+            title: record.title,
+            hiveId: record.hiveId as HiveId,
+            status: record.status,
+            startedAt: record.startedAt,
+            finishedAt: record.finishedAt,
+            review: record.review,
+            stars: record.stars,
+          }),
+        )
+        .execute();
+
+      return c.json({ success: true, message: "Book updated" });
+    },
+  );
+
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
@@ -918,16 +1137,7 @@ export function createRouter(app: HonoServer) {
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Invalid Session"
-              description="Login to post a review"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
-        );
+        return c.json({ success: false, message: "Invalid Session" }, 401);
       }
       const { q, limit, offset, id } = c.req.valid("query");
 
@@ -963,6 +1173,254 @@ export function createRouter(app: HonoServer) {
       });
 
       return c.json(books.slice(offset, offset + limit));
+    },
+  );
+
+  app.get(
+    "/xrpc/" + ids.BuzzBookhiveGetBook,
+    zValidator(
+      "query",
+      z.object({
+        id: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { id } = c.req.valid("query");
+
+      if (!id) {
+        return c.json({ success: false, message: "Invalid ID" }, 400);
+      }
+
+      // short-circuit if we have an ID to look up
+      const book = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("hive_book.id", "=", id as HiveId)
+        .limit(1)
+        .executeTakeFirst();
+
+      if (!book) {
+        return c.json({ success: false, message: "Book not found" }, 404);
+      }
+
+      const comments = await c
+        .get("ctx")
+        .db.selectFrom("buzz")
+        .select([
+          "buzz.bookUri",
+          "buzz.bookCid",
+          "buzz.comment",
+          "buzz.createdAt",
+          "buzz.userDid",
+          "buzz.parentUri",
+          "buzz.parentCid",
+          "buzz.cid",
+          "buzz.uri",
+        ])
+        .where("buzz.hiveId", "=", book.id)
+        .orderBy("buzz.createdAt", "desc")
+        .limit(3000)
+        .execute();
+
+      const topLevelReviews = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select([
+          "user_book.review as comment",
+          "user_book.createdAt",
+          "user_book.stars",
+          "user_book.userDid",
+          "user_book.uri",
+          "user_book.cid",
+        ])
+        .where("user_book.hiveId", "=", book.id)
+        .where("user_book.review", "is not", null)
+        .$narrowType<{ comment: NotNull }>()
+        .orderBy("user_book.createdAt", "desc")
+        .limit(1000)
+        .execute();
+
+      const userBook = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("user_book.hiveId", "=", book.id)
+        .executeTakeFirst();
+
+      const response = {
+        createdAt: userBook?.createdAt,
+        startedAt: userBook?.startedAt ?? undefined,
+        finishedAt: userBook?.finishedAt ?? undefined,
+        status: userBook?.status ?? undefined,
+        stars: userBook?.stars ?? undefined,
+        review: userBook?.review ?? undefined,
+        book: {
+          title: book.title,
+          authors: book.authors,
+          cover: book.cover ?? undefined,
+          hiveId: book.id,
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt,
+          rating: book.rating ?? undefined,
+          ratingsCount: book.ratingsCount ?? undefined,
+          id: book.id,
+          thumbnail: book.thumbnail ?? undefined,
+          description: book.description ?? undefined,
+          source: book.source ?? undefined,
+          sourceId: book.sourceId ?? undefined,
+          sourceUrl: book.sourceUrl ?? undefined,
+        },
+        comments: comments.map((c) => ({
+          book: {
+            cid: c.bookCid,
+            uri: c.bookUri,
+          },
+          comment: c.comment,
+          createdAt: c.createdAt,
+          did: c.userDid,
+          // map this id to a handle
+          handle: c.userDid,
+          parent: {
+            uri: c.parentUri,
+            cid: c.parentCid,
+          },
+        })),
+        reviews: topLevelReviews.map((r) => ({
+          createdAt: r.createdAt,
+          did: r.userDid,
+          // map this id to a handle
+          handle: r.userDid,
+          review: r.comment,
+          stars: r.stars ?? undefined,
+        })),
+      } satisfies GetBook.OutputSchema;
+
+      return c.json(response);
+    },
+  );
+
+  app.get(
+    "/xrpc/" + ids.BuzzBookhiveGetProfile,
+    zValidator(
+      "query",
+      z.object({
+        did: z.string().optional(),
+        handle: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+
+      let { did, handle } = c.req.valid("query");
+
+      if (!did && !handle) {
+        if (!agent) {
+          return c.json(
+            {
+              success: false,
+              message: "No did or handle specified, and no session",
+            },
+            401,
+          );
+        }
+        did = agent.assertDid;
+      }
+
+      if (handle && !did) {
+        did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
+      }
+      did = did as string;
+
+      const books = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .where("user_book.userDid", "=", did)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(1000)
+        .execute();
+      const profile = await getProfile({ ctx: c.get("ctx"), did });
+
+      const response = {
+        profile: {
+          displayName: profile?.displayName ?? profile?.handle ?? did,
+          avatar: profile?.avatar,
+          handle: profile?.handle ?? did,
+          description: profile?.description,
+          booksRead: books.filter(
+            (b) =>
+              b.status &&
+              b.status in BOOK_STATUS_MAP &&
+              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] ===
+                "read",
+          ).length,
+          reviews: books.filter((b) => b.review).length,
+        },
+        books: books.map((b) => ({
+          authors: b.authors,
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          thumbnail: b.thumbnail || "",
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          finishedAt: b.finishedAt ?? undefined,
+          review: b.review ?? undefined,
+          stars: b.stars ?? undefined,
+          status: b.status ?? undefined,
+          description: b.description ?? undefined,
+          rating: b.rating ?? undefined,
+          startedAt: b.startedAt ?? undefined,
+        })),
+        activity: books
+          .reduce(
+            (acc, b) => {
+              const existing = acc.find((a) => a.hiveId === b.hiveId);
+              if (
+                !existing ||
+                new Date(b.createdAt) > new Date(existing.createdAt)
+              ) {
+                if (existing) {
+                  acc.splice(acc.indexOf(existing), 1);
+                }
+                acc.push({
+                  type:
+                    b.status &&
+                    b.status in BOOK_STATUS_MAP &&
+                    BOOK_STATUS_MAP[
+                      b.status as keyof typeof BOOK_STATUS_MAP
+                    ] === "read"
+                      ? "finished"
+                      : b.review
+                        ? "review"
+                        : "started",
+                  createdAt: b.createdAt,
+                  hiveId: b.hiveId,
+                  title: b.title,
+                });
+              }
+              return acc;
+            },
+            [] as Array<{
+              type: string;
+              createdAt: string;
+              hiveId: string;
+              title: string;
+            }>,
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .slice(0, 15),
+      } satisfies GetProfile.OutputSchema;
+
+      return c.json(response);
     },
   );
 }

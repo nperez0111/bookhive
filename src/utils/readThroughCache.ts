@@ -13,9 +13,9 @@ const dupeRequestsCache = new Map<string, Promise<StorageValue>>();
  * Read a value from the cache, or fetch it if it's not present.
  */
 export async function readThroughCache<T extends StorageValue>(
-  kv: Storage,
+  kv: Storage<NoInfer<T>>,
   key: string,
-  fetch: () => Promise<T>,
+  fetch: (ctx: { key: string }) => Promise<T>,
   defaultValue?: T,
 ): Promise<T> {
   logger.trace({ key }, "readThroughCache");
@@ -33,7 +33,7 @@ export async function readThroughCache<T extends StorageValue>(
     }
 
     logger.trace({ key }, "readThroughCache miss");
-    return fetch()
+    return fetch({ key })
       .then((fresh) => {
         logger.trace({ key, fresh }, "readThroughCache set");
         kv.set(key, fresh);

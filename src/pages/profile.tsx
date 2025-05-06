@@ -1,6 +1,5 @@
 import { type FC } from "hono/jsx";
-import { type Book } from "../db";
-
+import { type Book } from "../types";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { BookList } from "./components/book";
 import { formatDistanceToNow } from "date-fns";
@@ -13,12 +12,12 @@ export const ProfilePage: FC<{
   profile: ProfileViewDetailed | null;
 }> = ({ handle, profile, books, isBuzzer }) => {
   return (
-    <div class="container mx-auto min-h-[calc(100vh-64px)] max-w-7xl bg-slate-50 p-8 px-3 dark:bg-slate-900 dark:text-white">
+    <div class="bg-sand container mx-auto min-h-[calc(100vh-64px)] max-w-7xl p-8 px-3 dark:bg-zinc-900 dark:text-white">
       <div class="mb-12 flex items-start gap-8 px-4">
         {profile?.avatar && (
           <img
             class="size-32 rounded-xl object-cover shadow-lg transition sm:size-40 md:size-56"
-            src={profile.avatar}
+            src={`/images/w_500/${profile.avatar}`}
             alt=""
           />
         )}
@@ -66,11 +65,11 @@ export const ProfilePage: FC<{
                 .filter((book) => book.review)
                 .map((book) => {
                   return (
-                    <div class="group mb-2 cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
+                    <div class="group mb-2 cursor-pointer rounded-lg border border-slate-200 bg-yellow-50 p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-zinc-800">
                       <a href={`/books/${book.hiveId}`} class="flex gap-4">
                         {book.cover || book.thumbnail ? (
                           <img
-                            src={book.cover || book.thumbnail || ""}
+                            src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
                             alt=""
                             class="h-36 w-24 rounded-lg object-cover shadow-sm"
                           />

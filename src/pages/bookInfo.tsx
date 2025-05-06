@@ -3,7 +3,8 @@ import { useRequestContext } from "hono/jsx-renderer";
 import { formatDistanceToNow } from "date-fns";
 import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { Script } from "./utils/script";
-import type { HiveBook, UserBook } from "../db";
+import type { HiveBook } from "../types";
+import type { UserBook } from "../types";
 import { BOOK_STATUS_MAP } from "../constants";
 import { decode } from "html-entities";
 import { sql } from "kysely";
@@ -32,7 +33,7 @@ async function Recommendations({
 
   if (!peerBooks.length) {
     return (
-      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-yellow-50 px-2 py-5 text-center dark:border-gray-700 dark:bg-zinc-900">
         Be the first to read this on bookhive!
       </div>
     );
@@ -40,7 +41,7 @@ async function Recommendations({
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div class="rounded-xl border border-gray-200 bg-slate-200 px-2 py-5 text-center dark:border-gray-700 dark:bg-gray-900">
+      <div class="rounded-xl border border-gray-200 bg-yellow-50 px-2 py-5 text-center dark:border-gray-700 dark:bg-zinc-900">
         You are the only one to have added this on bookhive, so far!
       </div>
     );
@@ -48,7 +49,7 @@ async function Recommendations({
 
   return (
     <Fragment>
-      <h3 class="my-5 px-2 text-xl leading-2">
+      <h3 class="my-5 px-2 text-xl leading-6">
         Who else is reading this book?
       </h3>
       <div class="flex flex-col gap-2">
@@ -58,7 +59,7 @@ async function Recommendations({
             <a
               key={related.userDid}
               href={`/profile/${handle}`}
-              class="block cursor-pointer rounded-xl border border-slate-400 px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+              class="block cursor-pointer rounded-xl border border-zinc-400 bg-yellow-50 px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-700"
             >
               <span class="text-blue-600">@{handle}</span> - marked as{" "}
               {related.status && related.status in BOOK_STATUS_MAP
@@ -134,7 +135,7 @@ const BookStatusButton: FC<{
             aria-haspopup="listbox"
             aria-expanded="false"
             aria-labelledby="status-label"
-            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 ring-1 shadow-sm ring-gray-300 ring-inset hover:bg-gray-50 focus:ring-2 focus:ring-indigo-600 focus:outline-none dark:bg-slate-800 dark:text-white dark:hover:bg-slate-900"
+            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
             id="status-dropdown"
           >
             <span
@@ -168,7 +169,7 @@ const BookStatusButton: FC<{
           <div
             role="listbox"
             aria-labelledby="status-label"
-            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-white opacity-0 ring-1 shadow-lg ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-slate-800"
+            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-yellow-50 opacity-0 shadow-lg ring-1 ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-zinc-800"
             id="status-dropdown-menu"
           >
             <div className="p-1">
@@ -199,8 +200,8 @@ const BookStatusButton: FC<{
                   value={status.value}
                   className={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
                     usersBook?.status === status.value
-                      ? "bg-indigo-600 text-white"
-                      : "text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-slate-700"
+                      ? "bg-yellow-900 text-white"
+                      : "text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-zinc-700"
                   }`}
                 >
                   <span className="block truncate">{status.label}</span>
@@ -314,7 +315,7 @@ export const BookInfo: FC<{
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">
-          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-zinc-900">
             <div className="w-2/3 p-1 sm:w-1/2 md:w-1/3 lg:w-1/4">
               <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
                 {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
@@ -325,7 +326,7 @@ export const BookInfo: FC<{
                   {/* Book cover with image */}
                   <div className="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
                     <img
-                      src={book.cover || book.thumbnail}
+                      src={`/images/w_300/${book.cover || book.thumbnail}`}
                       alt={`Cover of ${book.title}`}
                       className="col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
                     />
@@ -392,7 +393,7 @@ export const BookInfo: FC<{
                 <div className="mt-4 flex items-center">
                   <a
                     href={book.sourceUrl}
-                    className="flex items-center justify-between gap-3 rounded-md border border-slate-600 p-2 hover:bg-slate-800"
+                    className="flex items-center justify-between gap-3 rounded-md border border-zinc-600 p-2 hover:bg-yellow-800 hover:text-white dark:hover:bg-zinc-800"
                   >
                     {book.source}
                     <svg
@@ -415,7 +416,7 @@ export const BookInfo: FC<{
             </div>
           </div>
           {did && (
-            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-slate-200 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-zinc-900">
               <div class="md:w-1/3 lg:w-1/4">
                 <h2 className="text-xl leading-2 font-bold">
                   {usersBook?.stars
@@ -459,7 +460,7 @@ export const BookInfo: FC<{
                   >
                     <div className="grid">
                       <textarea
-                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 ring-1 shadow-xs ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-slate-800 dark:text-gray-50 dark:ring-gray-700"
+                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
                         style={{ resize: "none", gridArea: "1 / 1 / 2 / 2" }}
                         placeholder="Write your review here..."
                         name="review"
@@ -475,7 +476,7 @@ export const BookInfo: FC<{
                     </div>
                     <button
                       type="submit"
-                      class="mt-2 cursor-pointer rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                      class="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                     >
                       Save
                     </button>

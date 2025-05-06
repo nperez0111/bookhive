@@ -1,6 +1,6 @@
 import axios from "axios";
 import type { Logger } from "pino";
-import type { HiveBook } from "../db";
+import type { HiveBook } from "../types";
 import { getHiveId } from "./getHiveId";
 
 interface GoodreadsAuthor {

@@ -15,7 +15,7 @@ export const Layout: FC<
 > = ({
   children,
   title = "Bookhive",
-  image = "/public/bee.png",
+  image = "/public/full_logo.png",
   description = "Goodreads but better. Built on top of Blue Sky.",
 }) => {
   let url: string;
@@ -25,7 +25,7 @@ export const Layout: FC<
     url = "https://bookhive.buzz";
   }
   return html`<!doctype html>
-    <html lang="en" class="h-full bg-white dark:bg-slate-950 dark:text-white">
+    <html lang="en" class="bg-sand h-full dark:bg-zinc-900 dark:text-white">
       <head>
         <meta charset="UTF-8" />
         <meta property="og:url" content="${url}" />
@@ -40,7 +40,24 @@ export const Layout: FC<
         <meta name="twitter:title" content="${title}" />
         <meta name="twitter:description" content="${description}" />
         <meta name="twitter:image" content="${image}" />
-        <link rel="icon" type="image/svg+xml" href="/public/icon.svg" />
+        <link
+          rel="apple-touch-icon"
+          sizes="180x180"
+          href="/public/apple-touch-icon.png"
+        />
+        <link
+          rel="icon"
+          type="image/png"
+          sizes="32x32"
+          href="/public/favicon-32x32.png"
+        />
+        <link
+          rel="icon"
+          type="image/png"
+          sizes="16x16"
+          href="/public/favicon-16x16.png"
+        />
+        <link rel="manifest" href="/public/site.webmanifest" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>${title}</title>
         <style>
@@ -63,7 +80,11 @@ export const Layout: FC<
                     }
                     if (lastTime !== time) {
                       location.reload();
+                      lastTime = time;
                     }
+                  })
+                  .catch(() => {
+                    console.error("Failed to check time");
                   });
 
                 setTimeout(checkTime, 1000);

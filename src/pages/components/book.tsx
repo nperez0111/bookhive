@@ -1,5 +1,5 @@
 import { type FC } from "hono/jsx";
-import type { Book } from "../../db";
+import type { Book } from "../../types";
 import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
@@ -40,7 +40,7 @@ export const BookList: FC<{
   }
 
   return (
-    <div class="relative overflow-hidden">
+    <div class="relative overflow-hidden rounded-lg bg-yellow-50 pb-16 dark:bg-zinc-800">
       <input
         type="radio"
         id="tab-read"
@@ -56,7 +56,7 @@ export const BookList: FC<{
         class="peer/reading hidden"
       />
 
-      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-sky-600 peer-checked/read:[&_label[for='tab-read']]:text-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:border-sky-600 peer-checked/reading:[&_label[for='tab-reading']]:text-sky-600 peer-checked/want:[&_label[for='tab-want']]:border-sky-600 peer-checked/want:[&_label[for='tab-want']]:text-sky-600">
+      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
         <ul
           class="-mb-px flex flex-wrap text-center text-sm font-medium"
           role="tablist"
@@ -153,12 +153,12 @@ export const BookListItem: FC<{
     >
       {book.cover || book.thumbnail ? (
         <img
-          src={book.cover || book.thumbnail || ""}
+          src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
           alt={book.title}
-          className="h-full w-full rounded-lg object-cover shadow-lg"
+          className="h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
         />
       ) : (
-        <FallbackCover className="h-full w-full" />
+        <FallbackCover className="h-full w-full transition-all duration-300 group-hover:saturate-60" />
       )}
       <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <div className="absolute bottom-0 p-4 text-white">

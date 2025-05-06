@@ -1,5 +1,5 @@
 import { objectHash, sha256base64 } from "ohash";
-import type { HiveId } from "../db";
+import type { HiveId } from "../types";
 
 export function getHiveId({
   title,

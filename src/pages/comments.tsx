@@ -1,7 +1,8 @@
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { useRequestContext } from "hono/jsx-renderer";
 import type { NotNull } from "kysely";
-import type { HiveBook, HiveId } from "../db";
+import type { HiveBook } from "../types";
+import type { HiveId } from "../types";
 import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
@@ -208,10 +209,10 @@ export async function CommentsSection({
     .get("ctx")
     .db.selectFrom("user_book")
     .select([
-      "review as comment",
-      "createdAt",
-      "userDid",
-      "uri",
+      "user_book.review as comment",
+      "user_book.createdAt",
+      "user_book.userDid",
+      "user_book.uri",
       "user_book.cid",
     ])
     .where("user_book.hiveId", "=", book.id)
@@ -223,7 +224,6 @@ export async function CommentsSection({
   const comments = await c
     .get("ctx")
     .db.selectFrom("buzz")
-    .leftJoin("user_book", "buzz.parentUri", "user_book.uri")
     .select([
       "buzz.comment",
       "buzz.createdAt",
@@ -231,9 +231,6 @@ export async function CommentsSection({
       "buzz.parentUri",
       "buzz.cid",
       "buzz.uri",
-      "user_book.review as originalReview",
-      "user_book.userDid as originalUserDid",
-      "user_book.createdAt as originalCreatedAt",
     ])
     .where("buzz.hiveId", "=", book.id)
     .orderBy("buzz.createdAt", "desc")
@@ -252,7 +249,7 @@ export async function CommentsSection({
   endTime(c, "fetch_profiles");
 
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-slate-200 p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
       {children}
       {topLevelReviews.map((review) => (
         <Comment

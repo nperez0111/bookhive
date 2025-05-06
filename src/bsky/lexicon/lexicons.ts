@@ -141,6 +141,338 @@ export const schemaDict = {
         type: "token",
         description: "User owns the book",
       },
+      review: {
+        type: "object",
+        required: ["review", "createdAt", "did", "handle"],
+        properties: {
+          review: {
+            type: "string",
+            description: "The review content",
+          },
+          createdAt: {
+            type: "string",
+            format: "datetime",
+            description: "The date the review was created",
+          },
+          stars: {
+            type: "integer",
+            description: "The number of stars given to the book",
+          },
+          did: {
+            type: "string",
+            description: "The DID of the user who made the review",
+          },
+          handle: {
+            type: "string",
+            description: "The handle of the user who made the review",
+          },
+        },
+      },
+      comment: {
+        type: "object",
+        required: ["comment", "createdAt", "book", "parent", "did", "handle"],
+        properties: {
+          comment: {
+            type: "string",
+            maxLength: 100000,
+            maxGraphemes: 10000,
+            description: "The content of the comment.",
+          },
+          createdAt: {
+            type: "string",
+            format: "datetime",
+            description:
+              "Client-declared timestamp when this comment was originally created.",
+          },
+          parent: {
+            type: "ref",
+            ref: "lex:com.atproto.repo.strongRef",
+          },
+          book: {
+            type: "ref",
+            ref: "lex:com.atproto.repo.strongRef",
+          },
+          did: {
+            type: "string",
+            description: "The DID of the user who made the comment",
+          },
+          handle: {
+            type: "string",
+            description: "The handle of the user who made the comment",
+          },
+        },
+      },
+      profile: {
+        type: "object",
+        required: ["displayName", "handle", "booksRead", "reviews"],
+        properties: {
+          displayName: {
+            type: "string",
+          },
+          handle: {
+            type: "string",
+          },
+          avatar: {
+            type: "string",
+          },
+          description: {
+            type: "string",
+          },
+          booksRead: {
+            type: "integer",
+            minimum: 0,
+          },
+          reviews: {
+            type: "integer",
+            minimum: 0,
+          },
+        },
+      },
+      activity: {
+        type: "object",
+        required: ["type", "createdAt", "hiveId", "title"],
+        properties: {
+          type: {
+            type: "string",
+            knownValues: ["review", "rated", "started", "finished"],
+          },
+          createdAt: {
+            type: "string",
+            format: "datetime",
+          },
+          hiveId: {
+            type: "string",
+            description: "The hive id of the book",
+          },
+          title: {
+            type: "string",
+            description: "The title of the book",
+          },
+        },
+      },
+      userBook: {
+        type: "object",
+        required: ["title", "authors", "hiveId", "createdAt", "thumbnail"],
+        properties: {
+          title: {
+            type: "string",
+            description: "The title of the book",
+            minLength: 1,
+            maxLength: 512,
+          },
+          authors: {
+            type: "string",
+            description: "The authors of the book (tab separated)",
+            minLength: 1,
+            maxLength: 2048,
+          },
+          hiveId: {
+            type: "string",
+            description:
+              "The book's hive id, used to correlate user's books with the hive",
+          },
+          createdAt: {
+            type: "string",
+            format: "datetime",
+          },
+          startedAt: {
+            type: "string",
+            format: "datetime",
+            description: "The date the user started reading the book",
+          },
+          finishedAt: {
+            type: "string",
+            format: "datetime",
+            description: "The date the user finished reading the book",
+          },
+          cover: {
+            type: "string",
+            description: "Cover image of the book",
+          },
+          thumbnail: {
+            type: "string",
+            description: "Cover image of the book",
+          },
+          description: {
+            type: "string",
+            description: "Book description/summary",
+            maxLength: 5000,
+          },
+          rating: {
+            type: "integer",
+            description: "Average rating (0-1000)",
+            minimum: 0,
+            maximum: 1000,
+          },
+          status: {
+            type: "string",
+            knownValues: [
+              "buzz.bookhive.defs#finished",
+              "buzz.bookhive.defs#reading",
+              "buzz.bookhive.defs#wantToRead",
+              "buzz.bookhive.defs#abandoned",
+              "buzz.bookhive.defs#owned",
+            ],
+          },
+          stars: {
+            type: "integer",
+            description:
+              "Number of stars given to the book (1-10) which will be mapped to 1-5 stars",
+            minimum: 1,
+            maximum: 10,
+          },
+          review: {
+            type: "string",
+            description: "The book's review",
+            maxGraphemes: 15000,
+          },
+        },
+      },
+    },
+  },
+  BuzzBookhiveGetBook: {
+    lexicon: 1,
+    id: "buzz.bookhive.getBook",
+    defs: {
+      main: {
+        type: "query",
+        description: "Get a book's info. Requires authentication.",
+        parameters: {
+          type: "params",
+          required: ["id"],
+          properties: {
+            id: {
+              type: "string",
+              description: "The book's hive ID",
+            },
+          },
+        },
+        output: {
+          encoding: "application/json",
+          schema: {
+            type: "object",
+            required: ["book", "reviews", "comments"],
+            properties: {
+              createdAt: {
+                type: "string",
+                format: "datetime",
+              },
+              startedAt: {
+                type: "string",
+                format: "datetime",
+                description: "The date the user started reading the book",
+              },
+              finishedAt: {
+                type: "string",
+                format: "datetime",
+                description: "The date the user finished reading the book",
+              },
+              cover: {
+                type: "blob",
+                description: "Cover image of the book",
+                accept: ["image/png", "image/jpeg"],
+                maxSize: 1000000,
+              },
+              status: {
+                type: "string",
+                knownValues: [
+                  "buzz.bookhive.defs#finished",
+                  "buzz.bookhive.defs#reading",
+                  "buzz.bookhive.defs#wantToRead",
+                  "buzz.bookhive.defs#abandoned",
+                  "buzz.bookhive.defs#owned",
+                ],
+              },
+              stars: {
+                type: "integer",
+                description:
+                  "Number of stars given to the book (1-10) which will be mapped to 1-5 stars",
+                minimum: 1,
+                maximum: 10,
+              },
+              review: {
+                type: "string",
+                description: "The book's review",
+                maxGraphemes: 15000,
+              },
+              book: {
+                description: "The hive book's info",
+                type: "ref",
+                ref: "lex:buzz.bookhive.hiveBook#record",
+              },
+              reviews: {
+                description: "Reviews of the book",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#review",
+                },
+              },
+              comments: {
+                description: "Comments on the book",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#comment",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  BuzzBookhiveGetProfile: {
+    lexicon: 1,
+    id: "buzz.bookhive.getProfile",
+    defs: {
+      main: {
+        type: "query",
+        description: "Get a profile's info. Does not require authentication.",
+        parameters: {
+          type: "params",
+          properties: {
+            did: {
+              type: "string",
+              description: "The user's DID to get the profile of",
+            },
+            handle: {
+              type: "string",
+              description: "The user's handle to get the profile of",
+            },
+          },
+        },
+        output: {
+          encoding: "application/json",
+          schema: {
+            type: "object",
+            required: ["books", "profile", "activity"],
+            properties: {
+              books: {
+                description: "All books in the user's library",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#userBook",
+                },
+              },
+              profile: {
+                description: "The user's profile",
+                type: "ref",
+                ref: "lex:buzz.bookhive.defs#profile",
+              },
+              activity: {
+                description: "The user's activity",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#activity",
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
   BuzzBookhiveHiveBook: {
@@ -313,6 +645,8 @@ export const ids = {
   BuzzBookhiveBook: "buzz.bookhive.book",
   BuzzBookhiveBuzz: "buzz.bookhive.buzz",
   BuzzBookhiveDefs: "buzz.bookhive.defs",
+  BuzzBookhiveGetBook: "buzz.bookhive.getBook",
+  BuzzBookhiveGetProfile: "buzz.bookhive.getProfile",
   BuzzBookhiveHiveBook: "buzz.bookhive.hiveBook",
   BuzzBookhiveSearchBooks: "buzz.bookhive.searchBooks",
   ComAtprotoRepoStrongRef: "com.atproto.repo.strongRef",
