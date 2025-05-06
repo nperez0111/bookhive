@@ -178,7 +178,11 @@ export class Server {
         pino: logger,
         http: {
           onResLevel(c) {
-            return c.req.path === "/healthcheck" ? "trace" : "info";
+            return c.req.path === "/healthcheck" ||
+              c.req.path.startsWith("/public") ||
+              c.req.path.startsWith("/images")
+              ? "trace"
+              : "info";
           },
         },
       }),
