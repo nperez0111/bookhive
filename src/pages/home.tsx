@@ -34,7 +34,7 @@ function Hero() {
           className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
         /> */}
         <img
-          src={`/public/hive.png`}
+          src={`/public/hive.jpg`}
           alt="Bee sitting on a stack of books"
           className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
         />
