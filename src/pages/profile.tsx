@@ -69,7 +69,8 @@ export const ProfilePage: FC<{
                       <a href={`/books/${book.hiveId}`} class="flex gap-4">
                         {book.cover || book.thumbnail ? (
                           <img
-                            src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
+                            src={`${book.cover || book.thumbnail || ""}`}
+                            // src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
                             alt=""
                             class="h-36 w-24 rounded-lg object-cover shadow-sm"
                           />

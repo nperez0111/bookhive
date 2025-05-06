@@ -326,7 +326,8 @@ export const BookInfo: FC<{
                   {/* Book cover with image */}
                   <div className="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
                     <img
-                      src={`/images/w_300/${book.cover || book.thumbnail}`}
+                      src={`${book.cover || book.thumbnail}`}
+                      // src={`/images/w_300/${book.cover || book.thumbnail}`}
                       alt={`Cover of ${book.title}`}
                       className="col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
                     />

@@ -134,7 +134,8 @@ export const SearchBox: FC = () => {
                   <div className="flex items-center justify-between space-x-4">
                     <img
                       className="aspect-2/3 h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
-                      src={`/images/w_300/${book.thumbnail || book.cover || ""}`}
+                      src={`${book.thumbnail || book.cover || ""}`}
+                      // src={`/images/w_300/${book.thumbnail || book.cover || ""}`}
                       alt={`Cover of ${book.title}`}
                       loading="lazy"
                     />

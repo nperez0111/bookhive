@@ -18,21 +18,6 @@ function Hero() {
   return (
     <main class="relative grid place-items-center px-4 pt-16 pb-8 md:pt-12 md:pb-24 lg:grid-cols-2 lg:px-8">
       <div class="relative z-10 flex justify-center py-6 sm:block lg:order-1">
-        {/* <img
-          src={`/public/reading.png`}
-          alt="Bee sitting on a stack of books"
-          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
-        />
-        <img
-          src={`/public/reading_logo.jpg`}
-          alt="Bee sitting on a stack of books"
-          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
-        />
-        <img
-          src={`/public/fav-icon.png`}
-          alt="Bee sitting on a stack of books"
-          className="max-h-[300px] w-[70%] max-w-[620px] rounded-xl object-cover sm:w-auto md:max-w-[600px] lg:max-w-[620px]"
-        /> */}
         <img
           src={`/public/hive.jpg`}
           alt="Bee sitting on a stack of books"
@@ -241,7 +226,8 @@ async function LatestActivity() {
             >
               {book.cover || book.thumbnail ? (
                 <img
-                  src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
+                  src={`${book.cover || book.thumbnail || ""}`}
+                  // src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
                   alt={book.title}
                   className="h-full w-full rounded-lg object-cover"
                 />

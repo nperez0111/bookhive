@@ -153,7 +153,8 @@ export const BookListItem: FC<{
     >
       {book.cover || book.thumbnail ? (
         <img
-          src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
+          src={`${book.cover || book.thumbnail || ""}`}
+          // src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
           alt={book.title}
           className="h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
         />
