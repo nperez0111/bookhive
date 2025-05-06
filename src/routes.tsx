@@ -188,64 +188,108 @@ async function refetchBooks({
   if (!agent) {
     return;
   }
-  const books = await agent.com.atproto.repo.listRecords({
+  const bookRecordsRaw = await agent.com.atproto.repo.listRecords({
     repo: agent.assertDid,
     collection: ids.BuzzBookhiveBook,
     limit: 100,
     cursor,
   });
+  const bookRecords = bookRecordsRaw.data.records
+    .filter((record) => BookRecord.validateRecord(record.value).success)
+    .map((r) => ({ ...r, value: r.value as BookRecord.Record }));
+
+  // Group records by hiveId to find duplicates
+  const duplicatesByHiveId = new Map<string, typeof bookRecords>();
+  bookRecords.forEach((record) => {
+    const hiveId = record.value.hiveId;
+    if (hiveId) {
+      if (!duplicatesByHiveId.has(hiveId)) {
+        duplicatesByHiveId.set(hiveId, []);
+      }
+      duplicatesByHiveId.set(hiveId, [
+        ...duplicatesByHiveId.get(hiveId)!,
+        record,
+      ]);
+    }
+  });
 
   const promises = [] as Promise<any>[];
 
-  await books.data.records
-    .filter((record) => BookRecord.validateRecord(record.value).success)
-    .reduce(async (acc, record) => {
-      await acc;
-      const book = record.value as BookRecord.Record;
+  // Delete duplicate records
+  Array.from(duplicatesByHiveId.values()).map(async (records) => {
+    if (records.length > 1) {
+      ctx.logger.info("Duplicate book found", { records });
+      const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
+        a.value.createdAt.localeCompare(b.value.createdAt),
+      );
 
-      promises.push(searchBooks({ query: book.title, ctx }));
+      recordsToDelete.forEach(async (r) => {
+        const rkey = r.uri.split("/").pop()!;
+        promises.push(
+          agent.com.atproto.repo.deleteRecord({
+            repo: agent.assertDid,
+            collection: ids.BuzzBookhiveBook,
+            rkey,
+          }),
+        );
+        promises.push(
+          ctx.db
+            .deleteFrom("user_book")
+            .where("uri", "=", r.uri)
+            .where("userDid", "=", agent.assertDid)
+            .execute(),
+        );
+      });
+    }
+  });
 
-      uris.push(record.uri);
+  await bookRecords.reduce(async (acc, record) => {
+    await acc;
+    const book = record.value;
 
-      await ctx.db
-        .insertInto("user_book")
-        .values({
-          uri: record.uri,
-          cid: record.cid,
-          userDid: agent.assertDid,
-          createdAt: book.createdAt,
+    promises.push(searchBooks({ query: book.title, ctx }));
+
+    uris.push(record.uri);
+
+    await ctx.db
+      .insertInto("user_book")
+      .values({
+        uri: record.uri,
+        cid: record.cid,
+        userDid: agent.assertDid,
+        createdAt: book.createdAt,
+        title: book.title,
+        authors: book.authors,
+        indexedAt: new Date().toISOString(),
+        hiveId: book.hiveId as HiveId,
+        status: book.status,
+        startedAt: book.startedAt,
+        finishedAt: book.finishedAt,
+        review: book.review,
+        stars: book.stars,
+      })
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet({
+          indexedAt: new Date().toISOString(),
           title: book.title,
           authors: book.authors,
-          indexedAt: new Date().toISOString(),
-          hiveId: book.hiveId as HiveId,
           status: book.status,
           startedAt: book.startedAt,
           finishedAt: book.finishedAt,
+          hiveId: book.hiveId as HiveId,
           review: book.review,
           stars: book.stars,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet({
-            indexedAt: new Date().toISOString(),
-            title: book.title,
-            authors: book.authors,
-            status: book.status,
-            startedAt: book.startedAt,
-            finishedAt: book.finishedAt,
-            hiveId: book.hiveId as HiveId,
-            review: book.review,
-            stars: book.stars,
-          }),
-        )
-        .execute();
-    }, Promise.resolve());
+        }),
+      )
+      .execute();
+  }, Promise.resolve());
 
   await Promise.all(promises);
   // TODO optimize this
-  if (books.data.records.length === 100) {
+  if (bookRecordsRaw.data.records.length === 100) {
     // Fetch next page, after a short delay
     await setTimeout(() => {}, 100);
-    return refetchBooks({ agent, ctx, cursor: books.data.cursor });
+    return refetchBooks({ agent, ctx, cursor: bookRecordsRaw.data.cursor });
   } else {
     // Clear books which no longer exist
     await ctx.db
