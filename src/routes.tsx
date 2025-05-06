@@ -52,6 +52,8 @@ const ipx = createIPXWebServer(
     storage: ipxFSStorage({ dir: "./public" }),
     httpStorage: ipxHttpStorage({
       domains: ["i.gr-assets.com", "cdn.bsky.app"],
+      ignoreCacheControl: true,
+      maxAge: 60 * 60 * 24 * 30,
     }),
   }),
 );
