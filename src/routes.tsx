@@ -48,6 +48,7 @@ declare module "hono" {
 
 const ipx = createIPXWebServer(
   createIPX({
+    maxAge: 60 * 60 * 24 * 30,
     storage: ipxFSStorage({ dir: "./public" }),
     httpStorage: ipxHttpStorage({
       domains: ["i.gr-assets.com", "cdn.bsky.app"],
