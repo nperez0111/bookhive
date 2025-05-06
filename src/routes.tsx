@@ -538,6 +538,7 @@ export function createRouter(app: HonoServer) {
           401,
         );
       }
+      const bookLockKey = "book_lock:" + agent.assertDid;
       try {
         const {
           authors,
@@ -551,6 +552,20 @@ export function createRouter(app: HonoServer) {
           review,
         } = await c.req.valid("form");
 
+        const bookLock = await c.get("ctx").kv.get(bookLockKey);
+        if (bookLock) {
+          return c.html(
+            <Layout>
+              <ErrorPage
+                message={`Book ${bookLock} already being added`}
+                statusCode={429}
+              />
+            </Layout>,
+            429,
+          );
+        }
+
+        await c.get("ctx").kv.setItem(bookLockKey, hiveId);
         const userBook = await c
           .get("ctx")
           .db.selectFrom("user_book")
@@ -588,6 +603,7 @@ export function createRouter(app: HonoServer) {
         const book = BookRecord.validateRecord(input);
 
         if (!book.success) {
+          await c.get("ctx").kv.del(bookLockKey);
           return c.html(
             <Layout>
               <ErrorPage
@@ -630,6 +646,7 @@ export function createRouter(app: HonoServer) {
             firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
           )
         ) {
+          await c.get("ctx").kv.del(bookLockKey);
           return c.html(
             <Layout>
               <ErrorPage
@@ -676,9 +693,11 @@ export function createRouter(app: HonoServer) {
           )
           .execute();
 
+        await c.get("ctx").kv.del(bookLockKey);
         return c.redirect("/books/" + hiveId);
       } catch (err) {
         c.get("ctx").logger.warn({ err }, "failed to write book");
+        await c.get("ctx").kv.del(bookLockKey);
         return c.html(
           <Layout>
             <ErrorPage

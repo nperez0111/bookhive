@@ -149,6 +149,8 @@ export class Server {
         table: "auth_state",
       }),
     );
+    // Don't care to store the book lock, so LRU is fine
+    kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
     // Create the atproto utilities
     const oauthClient = await createClient(kv);
