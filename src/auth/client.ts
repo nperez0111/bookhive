@@ -11,7 +11,7 @@ export const createClient = async (kv: Storage) => {
   const enc = encodeURIComponent;
   return new NodeOAuthClient({
     clientMetadata: {
-      client_name: "AT Protocol Express App",
+      client_name: "BookHive",
       client_id: publicUrl
         ? `${url}/client-metadata.json`
         : `http://localhost?redirect_uri=${enc(`${url}/oauth/callback`)}&scope=${enc("atproto transition:generic")}`,
@@ -23,6 +23,7 @@ export const createClient = async (kv: Storage) => {
       application_type: "web",
       token_endpoint_auth_method: "none",
       dpop_bound_access_tokens: true,
+      logo_uri: `${url}/public/full_logo.jpg`,
     },
     stateStore: new StateStore(kv),
     sessionStore: new SessionStore(kv),

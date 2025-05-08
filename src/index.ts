@@ -73,6 +73,11 @@ export async function getSessionAgent(
   const session = await getIronSession<Session>(req, res, {
     cookieName: "sid",
     password: env.COOKIE_SECRET,
+    cookieOptions: {
+      httpOnly: env.isProd,
+      secure: env.isProd,
+      sameSite: env.isProd ? "strict" : "lax",
+    },
   });
 
   if (!session.did) {
