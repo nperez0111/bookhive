@@ -4,7 +4,7 @@ import { type FC, createElement } from "hono/jsx";
 
 export const Chat: FC<{}> = () => {
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-800">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-zinc-800">
       <form class="overflow-y-auto lg:max-h-[60rem] 2xl:max-h-fit">
         <article class="mb-5">
           <footer class="mb-2 flex items-center justify-between">
@@ -27,7 +27,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment1Button"
               data-dropdown-toggle="dropdownComment1"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-zinc-100 focus:ring-4 focus:ring-gray-50 focus:outline-hidden dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -43,7 +43,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment1"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-zinc-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -52,7 +52,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Edit
                   </a>
@@ -60,7 +60,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Remove
                   </a>
@@ -68,7 +68,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Report
                   </a>
@@ -132,7 +132,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment2Button"
               data-dropdown-toggle="dropdownComment2"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-zinc-100 focus:ring-4 focus:ring-gray-50 focus:outline-hidden dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -148,7 +148,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment2"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-zinc-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -157,7 +157,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Edit
                   </a>
@@ -165,7 +165,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Remove
                   </a>
@@ -173,7 +173,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Report
                   </a>
@@ -192,7 +192,7 @@ export const Chat: FC<{}> = () => {
           <div class="mb-2 flex items-center space-x-2">
             <button
               type="button"
-              class="inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              class="inline-flex items-center rounded-lg bg-zinc-100 px-3 py-1.5 hover:bg-zinc-200 dark:bg-zinc-700 dark:hover:bg-zinc-600"
             >
               <svg
                 aria-hidden="true"
@@ -216,7 +216,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <button
               type="button"
-              class="inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              class="inline-flex items-center rounded-lg bg-zinc-100 px-3 py-1.5 hover:bg-zinc-200 dark:bg-zinc-700 dark:hover:bg-zinc-600"
             >
               <svg
                 aria-hidden="true"
@@ -252,7 +252,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <button
               type="button"
-              class="inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              class="inline-flex items-center rounded-lg bg-zinc-100 px-3 py-1.5 hover:bg-zinc-200 dark:bg-zinc-700 dark:hover:bg-zinc-600"
             >
               <svg
                 aria-hidden="true"
@@ -349,7 +349,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment3Button"
               data-dropdown-toggle="dropdownComment3"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-zinc-100 focus:ring-4 focus:ring-gray-50 focus:outline-hidden dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -365,7 +365,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment3"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-zinc-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -374,7 +374,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Edit
                   </a>
@@ -382,7 +382,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Remove
                   </a>
@@ -390,7 +390,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Report
                   </a>
@@ -439,7 +439,7 @@ export const Chat: FC<{}> = () => {
                 </p>
               </div>
               <div class="ml-auto flex items-center">
-                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-zinc-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -455,7 +455,7 @@ export const Chat: FC<{}> = () => {
                   </svg>
                   <span class="sr-only">Download</span>
                 </button>
-                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-zinc-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -490,7 +490,7 @@ export const Chat: FC<{}> = () => {
                 </p>
               </div>
               <div class="ml-auto flex items-center">
-                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-zinc-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -506,7 +506,7 @@ export const Chat: FC<{}> = () => {
                   </svg>
                   <span class="sr-only">Download</span>
                 </button>
-                <button type="button" class="rounded-sm p-2 hover:bg-gray-100">
+                <button type="button" class="rounded-sm p-2 hover:bg-zinc-100">
                   <svg
                     class="h-5 w-5 text-gray-500 dark:text-gray-400"
                     fill="currentColor"
@@ -543,7 +543,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment4Button"
               data-dropdown-toggle="dropdownComment4"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-zinc-100 focus:ring-4 focus:ring-gray-50 focus:outline-hidden dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -559,7 +559,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment4"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-zinc-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -568,7 +568,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Edit
                   </a>
@@ -576,7 +576,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Remove
                   </a>
@@ -584,7 +584,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Report
                   </a>
@@ -624,7 +624,7 @@ export const Chat: FC<{}> = () => {
             <button
               id="dropdownComment5Button"
               data-dropdown-toggle="dropdownComment5"
-              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
+              class="inline-flex items-center rounded-lg bg-white p-2 text-center text-sm font-medium text-gray-500 hover:bg-zinc-100 focus:ring-4 focus:ring-gray-50 focus:outline-hidden dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-gray-300 dark:focus:ring-gray-600"
               type="button"
             >
               <svg
@@ -640,7 +640,7 @@ export const Chat: FC<{}> = () => {
             </button>
             <div
               id="dropdownComment5"
-              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-gray-700"
+              class="z-10 hidden w-36 divide-y divide-gray-100 rounded-sm bg-white shadow-sm dark:divide-gray-600 dark:bg-zinc-700"
             >
               <ul
                 class="py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -649,7 +649,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Edit
                   </a>
@@ -657,7 +657,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Remove
                   </a>
@@ -665,7 +665,7 @@ export const Chat: FC<{}> = () => {
                 <li>
                   <a
                     href="#"
-                    class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                    class="block px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
                   >
                     Report
                   </a>
@@ -691,12 +691,12 @@ export const Chat: FC<{}> = () => {
               <textarea
                 id="chat"
                 rows={1}
-                class="focus:ring-primary-500 focus:border-primary-500 dark:focus:ring-primary-500 dark:focus:border-primary-500 mr-4 block w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+                class="focus:ring-primary-500 focus:border-primary-500 dark:focus:ring-primary-500 dark:focus:border-primary-500 mr-4 block w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-zinc-800 dark:text-white dark:placeholder-gray-400"
                 placeholder="Reply in thread..."
               ></textarea>
               <button
                 type="submit"
-                class="text-primary-600 hover:bg-primary-100 dark:text-primary-500 inline-flex cursor-pointer justify-center rounded-lg p-2 dark:hover:bg-gray-600"
+                class="text-primary-600 hover:bg-primary-100 dark:text-primary-500 inline-flex cursor-pointer justify-center rounded-lg p-2 dark:hover:bg-zinc-600"
               >
                 <svg
                   aria-hidden="true"
@@ -728,15 +728,15 @@ export const Chat: FC<{}> = () => {
             </svg>
           </span>
         </article>
-        <div class="w-full rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
-          <div class="rounded-t-lg bg-white px-4 py-2 dark:bg-gray-800">
+        <div class="w-full rounded-lg border border-gray-200 bg-zinc-50 dark:border-gray-600 dark:bg-zinc-700">
+          <div class="rounded-t-lg bg-white px-4 py-2 dark:bg-zinc-800">
             <label for="comment" class="sr-only">
               Write your message
             </label>
             <textarea
               id="comment"
               rows={8}
-              class="w-full border-0 bg-white px-0 text-sm text-gray-900 focus:ring-0 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+              class="w-full border-0 bg-white px-0 text-sm text-gray-900 focus:ring-0 dark:bg-zinc-800 dark:text-white dark:placeholder-gray-400"
               placeholder="Write your message"
               required
             ></textarea>
@@ -751,7 +751,7 @@ export const Chat: FC<{}> = () => {
             <div class="flex space-x-1 pl-0 sm:pl-2">
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-zinc-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-zinc-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"
@@ -770,7 +770,7 @@ export const Chat: FC<{}> = () => {
               </button>
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-zinc-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-zinc-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"
@@ -789,7 +789,7 @@ export const Chat: FC<{}> = () => {
               </button>
               <button
                 type="button"
-                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-white"
+                class="inline-flex cursor-pointer justify-center rounded-sm p-2 text-gray-500 hover:bg-zinc-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-zinc-600 dark:hover:text-white"
               >
                 <svg
                   aria-hidden="true"

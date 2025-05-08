@@ -14,7 +14,7 @@ export const Navbar: FC<{
             {/* Mobile menu button*/}
             <button
               type="button"
-              class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:ring-2 focus:ring-white focus:outline-hidden focus:ring-inset"
+              class="relative inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-zinc-700 hover:text-white focus:ring-2 focus:ring-white focus:outline-hidden focus:ring-inset"
               aria-controls="mobile-menu"
               aria-expanded="false"
               id="mobile-menu-button"
@@ -163,8 +163,8 @@ export const Navbar: FC<{
                 class={
                   "rounded-md py-2 text-sm font-medium" +
                   (tab === "home"
-                    ? " bg-gray-900 text-white"
-                    : " text-gray-300 hover:bg-gray-700 hover:text-white")
+                    ? " bg-zinc-900 text-white"
+                    : " text-gray-300 hover:bg-zinc-700 hover:text-white")
                 }
                 aria-current="page"
               >
@@ -180,7 +180,7 @@ export const Navbar: FC<{
                 <div>
                   <button
                     type="button"
-                    class="relative flex rounded-full bg-gray-800 text-sm text-gray-400 hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 focus:outline-hidden"
+                    class="relative flex rounded-full bg-zinc-800 text-sm text-gray-400 hover:text-white focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800 focus:outline-hidden"
                     id="user-menu-button"
                     aria-expanded="false"
                     aria-haspopup="true"
@@ -250,7 +250,7 @@ export const Navbar: FC<{
                   tabindex={-1}
                   style="display: none;"
                 >
-                  {/* Active: "bg-gray-100 outline-hidden", Not Active: "" */}
+                  {/* Active: "bg-zinc-100 outline-hidden", Not Active: "" */}
                   <a
                     href="/profile"
                     class="block px-4 py-2 text-sm text-gray-700"
@@ -299,14 +299,14 @@ export const Navbar: FC<{
       {/* Mobile menu, show/hide based on menu state. */}
       <div class="sm:hidden" id="mobile-menu">
         <div class="space-y-1 px-2 pt-2 pb-3">
-          {/* Current: "bg-gray-900 text-white", Default: "text-gray-300 hover:bg-gray-700 hover:text-white" */}
+          {/* Current: "bg-zinc-900 text-white", Default: "text-gray-300 hover:bg-zinc-700 hover:text-white" */}
           <a
             href="/"
             class={
               "block rounded-md px-3 py-2 text-base font-medium" +
               (tab === "home"
-                ? " bg-gray-900 text-white"
-                : " text-gray-300 hover:bg-gray-700 hover:text-white")
+                ? " bg-zinc-900 text-white"
+                : " text-gray-300 hover:bg-zinc-700 hover:text-white")
             }
             aria-current="page"
           >

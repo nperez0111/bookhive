@@ -37,7 +37,7 @@ function CommentForm({
         <textarea
           name="comment"
           rows={3}
-          class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          class="w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 dark:border-gray-600 dark:bg-zinc-700 dark:text-white"
           placeholder="Write a reply..."
           required
         ></textarea>
@@ -46,7 +46,7 @@ function CommentForm({
       <div class="flex justify-end">
         <button
           type="submit"
-          class="cursor-pointer rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
+          class="cursor-pointer rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 focus:outline-none"
         >
           Reply
         </button>
@@ -249,7 +249,7 @@ export async function CommentsSection({
   endTime(c, "fetch_profiles");
 
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-gray-900">
+    <div class="mb-4 rounded-lg border border-gray-200 bg-yellow-50 p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-zinc-900">
       {children}
       {topLevelReviews.map((review) => (
         <Comment

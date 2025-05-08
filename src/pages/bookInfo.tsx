@@ -135,7 +135,7 @@ const BookStatusButton: FC<{
             aria-haspopup="listbox"
             aria-expanded="false"
             aria-labelledby="status-label"
-            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-gray-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
+            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-zinc-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
             id="status-dropdown"
           >
             <span
@@ -201,7 +201,7 @@ const BookStatusButton: FC<{
                   className={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
                     usersBook?.status === status.value
                       ? "bg-yellow-900 text-white"
-                      : "text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-zinc-700"
+                      : "text-gray-900 hover:bg-zinc-50 dark:text-white dark:hover:bg-zinc-700"
                   }`}
                 >
                   <span className="block truncate">{status.label}</span>
@@ -461,7 +461,7 @@ export const BookInfo: FC<{
                   >
                     <div className="grid">
                       <textarea
-                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-600 focus:ring-inset sm:text-sm dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
+                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-yellow-600 focus:ring-inset sm:text-sm dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
                         style={{ resize: "none", gridArea: "1 / 1 / 2 / 2" }}
                         placeholder="Write your review here..."
                         name="review"
@@ -477,7 +477,7 @@ export const BookInfo: FC<{
                     </div>
                     <button
                       type="submit"
-                      class="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                      class="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
                     >
                       Save
                     </button>

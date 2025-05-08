@@ -2,7 +2,7 @@ export const FallbackCover = ({ className }: { className?: string }) => {
   return (
     <div
       class={
-        "flex items-center justify-center rounded-lg bg-gray-300 dark:bg-gray-700 " +
+        "flex items-center justify-center rounded-lg bg-zinc-300 dark:bg-zinc-700 " +
         (className || "")
       }
     >
