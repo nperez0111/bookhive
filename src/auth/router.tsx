@@ -42,11 +42,6 @@ export function loginRouter(
         ttl: tokenInfo.expiresAt
           ? differenceInSeconds(tokenInfo.expiresAt, new Date())
           : undefined,
-        cookieOptions: {
-          httpOnly: env.isProd,
-          secure: env.isProd,
-          sameSite: env.isProd ? "strict" : "lax",
-        },
       });
 
       // assert(!clientSession.did, "session already exists");
@@ -159,11 +154,6 @@ export function loginRouter(
       const session = await getIronSession<Session>(c.req.raw, c.res, {
         cookieName: "sid",
         password: env.COOKIE_SECRET,
-        cookieOptions: {
-          httpOnly: env.isProd,
-          secure: env.isProd,
-          sameSite: env.isProd ? "strict" : "lax",
-        },
       });
 
       const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
@@ -240,11 +230,6 @@ export function loginRouter(
     const session = await getIronSession<Session>(c.req.raw, c.res, {
       cookieName: "sid",
       password: env.COOKIE_SECRET,
-      cookieOptions: {
-        httpOnly: env.isProd,
-        secure: env.isProd,
-        sameSite: env.isProd ? "strict" : "lax",
-      },
     });
     const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
     const agent = oauthSession ? new Agent(oauthSession) : null;
