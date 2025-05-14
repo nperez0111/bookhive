@@ -78,11 +78,14 @@ export async function searchBooks({
           .insertInto("hive_book")
           .values(res.data)
           .onConflict((oc) =>
-            oc.column("id").doUpdateSet((c) => ({
-              rating: c.ref("rating"),
-              ratingsCount: c.ref("ratingsCount"),
-              updatedAt: c.ref("updatedAt"),
-            })),
+            oc.column("id").doUpdateSet((c) => {
+              return {
+                rating: c.ref("excluded.rating"),
+                ratingsCount: c.ref("excluded.ratingsCount"),
+                updatedAt: c.ref("excluded.updatedAt"),
+                rawTitle: c.ref("excluded.rawTitle"),
+              };
+            }),
           )
           .execute()
           .then(() => {
@@ -151,19 +154,18 @@ async function refetchBuzzes({
           bookUri: book.book.uri,
         })
         .onConflict((oc) =>
-          oc.column("uri").doUpdateSet({
-            uri: record.uri,
-            cid: record.cid,
-            userDid: agent.assertDid,
-            createdAt: book.createdAt,
-            indexedAt: new Date().toISOString(),
-            hiveId: hiveId,
-            comment: book.comment,
-            parentUri: book.parent.uri,
-            parentCid: book.parent.cid,
-            bookCid: book.book.cid,
-            bookUri: book.book.uri,
-          }),
+          oc.column("uri").doUpdateSet((c) => ({
+            cid: c.ref("excluded.cid"),
+            userDid: c.ref("excluded.userDid"),
+            createdAt: c.ref("excluded.createdAt"),
+            indexedAt: c.ref("excluded.indexedAt"),
+            hiveId: c.ref("excluded.hiveId"),
+            comment: c.ref("excluded.comment"),
+            parentUri: c.ref("excluded.parentUri"),
+            parentCid: c.ref("excluded.parentCid"),
+            bookCid: c.ref("excluded.bookCid"),
+            bookUri: c.ref("excluded.bookUri"),
+          })),
         )
         .execute();
     }, Promise.resolve());
@@ -278,17 +280,17 @@ async function refetchBooks({
         stars: book.stars,
       })
       .onConflict((oc) =>
-        oc.column("uri").doUpdateSet({
-          indexedAt: new Date().toISOString(),
-          title: book.title,
-          authors: book.authors,
-          status: book.status,
-          startedAt: book.startedAt,
-          finishedAt: book.finishedAt,
-          hiveId: book.hiveId as HiveId,
-          review: book.review,
-          stars: book.stars,
-        }),
+        oc.column("uri").doUpdateSet((c) => ({
+          indexedAt: c.ref("excluded.indexedAt"),
+          title: c.ref("excluded.title"),
+          authors: c.ref("excluded.authors"),
+          status: c.ref("excluded.status"),
+          startedAt: c.ref("excluded.startedAt"),
+          finishedAt: c.ref("excluded.finishedAt"),
+          hiveId: c.ref("excluded.hiveId"),
+          review: c.ref("excluded.review"),
+          stars: c.ref("excluded.stars"),
+        })),
       )
       .execute();
   }, Promise.resolve());
@@ -796,18 +798,18 @@ export function createRouter(app: HonoServer) {
           bookUri: book.uri,
         })
         .onConflict((oc) =>
-          oc.column("uri").doUpdateSet({
-            indexedAt: new Date().toISOString(),
-            cid: firstResult.cid,
-            userDid: agent.assertDid,
-            createdAt: createdAt,
-            hiveId: hiveId as HiveId,
-            comment,
-            parentUri,
-            parentCid,
-            bookCid: book.cid,
-            bookUri: book.uri,
-          }),
+          oc.column("uri").doUpdateSet((c) => ({
+            indexedAt: c.ref("excluded.indexedAt"),
+            cid: c.ref("excluded.cid"),
+            userDid: c.ref("excluded.userDid"),
+            createdAt: c.ref("excluded.createdAt"),
+            hiveId: c.ref("excluded.hiveId"),
+            comment: c.ref("excluded.comment"),
+            parentUri: c.ref("excluded.parentUri"),
+            parentCid: c.ref("excluded.parentCid"),
+            bookCid: c.ref("excluded.bookCid"),
+            bookUri: c.ref("excluded.bookUri"),
+          })),
         )
         .execute();
 

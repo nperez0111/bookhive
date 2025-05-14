@@ -36,18 +36,18 @@ export async function updateUserBook({
     .insertInto("user_book")
     .values(userBook)
     .onConflict((oc) =>
-      oc.column("uri").doUpdateSet({
-        indexedAt: userBook.indexedAt,
-        cid: userBook.cid,
-        authors: userBook.authors,
-        title: userBook.title,
-        hiveId: userBook.hiveId,
-        status: userBook.status,
-        startedAt: userBook.startedAt,
-        finishedAt: userBook.finishedAt,
-        review: userBook.review,
-        stars: userBook.stars,
-      }),
+      oc.column("uri").doUpdateSet((c) => ({
+        indexedAt: c.ref("excluded.indexedAt"),
+        cid: c.ref("excluded.cid"),
+        authors: c.ref("excluded.authors"),
+        title: c.ref("excluded.title"),
+        hiveId: c.ref("excluded.hiveId"),
+        status: c.ref("excluded.status"),
+        startedAt: c.ref("excluded.startedAt"),
+        finishedAt: c.ref("excluded.finishedAt"),
+        review: c.ref("excluded.review"),
+        stars: c.ref("excluded.stars"),
+      })),
     )
     .execute();
 }

@@ -97,10 +97,10 @@ export default defineDriver<
             updated_at: now,
           })
           .onConflict((oc) =>
-            oc.column("id").doUpdateSet({
-              value,
-              updated_at: now,
-            }),
+            oc.column("id").doUpdateSet((c) => ({
+              value: c.ref("excluded.value"),
+              updated_at: c.ref("excluded.updated_at"),
+            })),
           )
           .execute();
       },

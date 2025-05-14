@@ -65,16 +65,16 @@ export function createIngester(
               authors: record.authors,
             })
             .onConflict((oc) =>
-              oc.column("uri").doUpdateSet({
-                indexedAt: now.toISOString(),
-                cid: evt.cid.toString(),
-                hiveId: record.hiveId as HiveId,
-                status: record.status,
-                review: record.review,
-                stars: record.stars,
-                startedAt: record.startedAt,
-                finishedAt: record.finishedAt,
-              }),
+              oc.column("uri").doUpdateSet((c) => ({
+                indexedAt: c.ref("excluded.indexedAt"),
+                cid: c.ref("excluded.cid"),
+                hiveId: c.ref("excluded.hiveId"),
+                status: c.ref("excluded.status"),
+                review: c.ref("excluded.review"),
+                stars: c.ref("excluded.stars"),
+                startedAt: c.ref("excluded.startedAt"),
+                finishedAt: c.ref("excluded.finishedAt"),
+              })),
             )
             .execute();
           return;
@@ -117,18 +117,18 @@ export function createIngester(
               parentUri: record.parent.uri,
             })
             .onConflict((oc) =>
-              oc.column("uri").doUpdateSet({
-                uri: evt.uri.toString(),
-                cid: evt.cid.toString(),
-                userDid: evt.did,
-                hiveId,
-                indexedAt: now.toISOString(),
-                bookCid: record.book.cid,
-                bookUri: record.book.uri,
-                comment: record.comment,
-                parentCid: record.parent.cid,
-                parentUri: record.parent.uri,
-              }),
+              oc.column("uri").doUpdateSet((c) => ({
+                uri: c.ref("excluded.uri"),
+                cid: c.ref("excluded.cid"),
+                userDid: c.ref("excluded.userDid"),
+                hiveId: c.ref("excluded.hiveId"),
+                indexedAt: c.ref("excluded.indexedAt"),
+                bookCid: c.ref("excluded.bookCid"),
+                bookUri: c.ref("excluded.bookUri"),
+                comment: c.ref("excluded.comment"),
+                parentCid: c.ref("excluded.parentCid"),
+                parentUri: c.ref("excluded.parentUri"),
+              })),
             )
             .execute();
           return;
