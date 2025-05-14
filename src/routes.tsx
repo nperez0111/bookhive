@@ -1,12 +1,19 @@
-import { TID } from "@atproto/common";
-import { methodOverride } from "hono/method-override";
 import { Agent, isDid } from "@atproto/api";
+import { TID } from "@atproto/common";
 import { zValidator } from "@hono/zod-validator";
+import { methodOverride } from "hono/method-override";
 
 import { Fragment } from "hono/jsx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { z } from "zod";
 
+import {
+  createIPX,
+  createIPXWebServer,
+  ipxFSStorage,
+  ipxHttpStorage,
+} from "ipx";
+import type { NotNull } from "kysely";
 import type { AppContext, HonoServer } from ".";
 import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
@@ -14,28 +21,21 @@ import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
 import type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
+import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
+import { BOOK_STATUS_MAP } from "./constants";
 import { BookFields } from "./db";
-import { type HiveId } from "./types";
 import { BookInfo } from "./pages/bookInfo";
+import { CommentsSection } from "./pages/comments";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
 import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { findBookDetails } from "./scrapers";
-import { readThroughCache } from "./utils/readThroughCache";
-import { uploadImageBlob } from "./utils/uploadImageBlob";
-import {
-  createIPX,
-  ipxFSStorage,
-  ipxHttpStorage,
-  createIPXWebServer,
-} from "ipx";
-import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
-import { CommentsSection } from "./pages/comments";
+import { type HiveId } from "./types";
+import { updateBookRecord } from "./utils/getBook";
 import { getProfile } from "./utils/getProfile";
-import type { NotNull } from "kysely";
-import { BOOK_STATUS_MAP } from "./constants";
+import { readThroughCache } from "./utils/readThroughCache";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -58,7 +58,13 @@ const ipx = createIPXWebServer(
   }),
 );
 
-async function searchBooks({ query, ctx }: { query: string; ctx: AppContext }) {
+export async function searchBooks({
+  query,
+  ctx,
+}: {
+  query: string;
+  ctx: Pick<AppContext, "db" | "kv">;
+}) {
   return await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
@@ -612,135 +618,38 @@ export function createRouter(app: HonoServer) {
           );
         }
 
-        await c.get("ctx").kv.setItem(bookLockKey, hiveId);
-        const userBook = await c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .selectAll()
-          .where("userDid", "=", agent.assertDid)
-          .where("hiveId", "=", hiveId as HiveId)
-          .executeTakeFirst();
-
-        let originalBook: BookRecord.Record | undefined = undefined;
-        if (userBook) {
-          const {
-            data: { value: originalBookValue },
-          } = await agent.com.atproto.repo.getRecord({
-            repo: agent.assertDid,
-            collection: ids.BuzzBookhiveBook,
-            rkey: userBook.uri.split("/").at(-1)!,
-            cid: userBook.cid,
-          });
-          originalBook = originalBookValue as BookRecord.Record;
-        }
-
-        const input = {
-          title: originalBook?.title || title,
-          authors: originalBook?.authors || authors,
-          hiveId: originalBook?.hiveId || hiveId,
-          cover:
-            originalBook?.cover || (await uploadImageBlob(coverImage, agent)),
-          status: status || originalBook?.status || undefined,
-          createdAt: originalBook?.createdAt || new Date().toISOString(),
-          startedAt: startedAt || originalBook?.startedAt || undefined,
-          finishedAt: finishedAt || originalBook?.finishedAt || undefined,
-          review: review || originalBook?.review || undefined,
-          stars: stars || originalBook?.stars || undefined,
-        };
-        const book = BookRecord.validateRecord(input);
-
-        if (!book.success) {
-          await c.get("ctx").kv.del(bookLockKey);
-          return c.html(
-            <Layout>
-              <ErrorPage
-                message="Invalid book"
-                description={
-                  "When validating the book you inputted, it was invalid because: " +
-                  book.error.message
-                }
-                statusCode={400}
-              />
-            </Layout>,
-            400,
-          );
-        }
-
-        const record = book.value as BookRecord.Record;
-
-        const response = await agent.com.atproto.repo.applyWrites({
-          repo: agent.assertDid,
-          writes: [
-            {
-              $type: originalBook
-                ? "com.atproto.repo.applyWrites#update"
-                : "com.atproto.repo.applyWrites#create",
-              collection: ids.BuzzBookhiveBook,
-              rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.nextStr(),
-              value: record as BookRecord.Record,
+        try {
+          await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+          await updateBookRecord({
+            ctx: c.get("ctx"),
+            agent,
+            hiveId: hiveId as HiveId,
+            updates: {
+              authors,
+              title,
+              status,
+              hiveId,
+              coverImage,
+              startedAt,
+              finishedAt,
+              stars,
+              review,
             },
-          ],
-        });
-
-        const firstResult = response.data.results?.[0];
-        if (
-          !response.success ||
-          !response.data.results ||
-          response.data.results.length === 0 ||
-          !firstResult ||
-          !(
-            firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
-            firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
-          )
-        ) {
-          await c.get("ctx").kv.del(bookLockKey);
+          });
+        } catch (e) {
           return c.html(
             <Layout>
               <ErrorPage
                 message="Failed to record book"
-                description="Failed to write book to the database"
+                description={"Error: " + (e as Error).message}
                 statusCode={500}
               />
             </Layout>,
             500,
           );
+        } finally {
+          await c.get("ctx").kv.del(bookLockKey);
         }
-
-        await c
-          .get("ctx")
-          .db.insertInto("user_book")
-          .values({
-            uri: firstResult.uri,
-            cid: firstResult.cid,
-            userDid: agent.assertDid,
-            createdAt: record.createdAt,
-            authors: record.authors,
-            title: record.title,
-            indexedAt: new Date().toISOString(),
-            hiveId: record.hiveId as HiveId,
-            status: record.status,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            review: record.review,
-            stars: record.stars,
-          })
-          .onConflict((oc) =>
-            oc.column("uri").doUpdateSet({
-              indexedAt: new Date().toISOString(),
-              cid: firstResult.cid,
-              authors: record.authors,
-              title: record.title,
-              hiveId: record.hiveId as HiveId,
-              status: record.status,
-              startedAt: record.startedAt,
-              finishedAt: record.finishedAt,
-              review: record.review,
-              stars: record.stars,
-            }),
-          )
-          .execute();
-
-        await c.get("ctx").kv.del(bookLockKey);
         return c.redirect("/books/" + hiveId);
       } catch (err) {
         c.get("ctx").logger.warn({ err }, "failed to write book");
@@ -1012,117 +921,23 @@ export function createRouter(app: HonoServer) {
         console.log("No hiveId");
         return c.json({ success: false, message: "Invalid ID" }, 400);
       }
-
-      const userBook = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("userDid", "=", agent.assertDid)
-        .where("hiveId", "=", hiveId as HiveId)
-        .executeTakeFirst();
-
-      if (!userBook) {
-        console.log("No userBook");
-        return c.json(
-          { success: false, message: "Book not in your library" },
-          404,
-        );
-      }
-
-      const originalBook = (
-        await agent.com.atproto.repo.getRecord({
-          repo: agent.assertDid,
-          collection: ids.BuzzBookhiveBook,
-          rkey: userBook.uri.split("/").at(-1)!,
-          cid: userBook.cid,
-        })
-      ).data.value as BookRecord.Record | undefined;
-
-      if (!originalBook) {
-        return c.json(
-          { success: false, message: "Book not found in your PDS" },
-          404,
-        );
-      }
-
-      const input = {
-        ...originalBook,
-        ...rest,
-      };
-
-      const book = BookRecord.validateRecord(input);
-
-      if (!book.success) {
-        console.log("Invalid book", book.error);
-        return c.json({ success: false, message: book.error.message }, 400);
-      }
-
-      const record = book.value as BookRecord.Record;
-
-      const response = await agent.com.atproto.repo.applyWrites({
-        repo: agent.assertDid,
-        writes: [
-          {
-            $type: "com.atproto.repo.applyWrites#update",
-            collection: ids.BuzzBookhiveBook,
-            rkey: userBook.uri.split("/").at(-1)!,
-            value: record as BookRecord.Record,
+      const bookLockKey = "book_lock:" + agent.assertDid;
+      try {
+        await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+        await updateBookRecord({
+          ctx: c.get("ctx"),
+          agent,
+          hiveId: hiveId as HiveId,
+          updates: {
+            ...rest,
           },
-        ],
-      });
-
-      const firstResult = response.data.results?.[0];
-      if (
-        !response.success ||
-        !response.data.results ||
-        response.data.results.length === 0 ||
-        !firstResult ||
-        !(
-          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
-          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
-        )
-      ) {
-        return c.json(
-          { success: false, message: "Failed to update book" },
-          500,
-        );
+        });
+        return c.json({ success: true, message: "Book updated" });
+      } catch (e) {
+        return c.json({ success: false, message: (e as Error).message }, 400);
+      } finally {
+        await c.get("ctx").kv.del(bookLockKey);
       }
-
-      await c
-        .get("ctx")
-        .db.insertInto("user_book")
-        .values({
-          uri: firstResult.uri,
-          cid: firstResult.cid,
-          userDid: agent.assertDid,
-          createdAt: record.createdAt,
-          authors: record.authors,
-          title: record.title,
-          indexedAt: new Date().toISOString(),
-          hiveId: record.hiveId as HiveId,
-          status: record.status,
-          startedAt: record.startedAt,
-          finishedAt: record.finishedAt,
-          review: record.review,
-          stars: record.stars,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet({
-            indexedAt: new Date().toISOString(),
-            cid: firstResult.cid,
-            authors: record.authors,
-            title: record.title,
-            hiveId: record.hiveId as HiveId,
-            status: record.status,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            review: record.review,
-            stars: record.stars,
-          }),
-        )
-        .execute();
-
-      return c.json({ success: true, message: "Book updated" });
     },
   );
 
