@@ -93,7 +93,7 @@ export default function HomeScreen() {
         books={profile.data.books.filter(
           (book) => book.status === BOOK_STATUS.READING,
         )}
-        title="Currently Reading"
+        title="Reading"
       />
       <BookSection
         books={profile.data.books.filter(

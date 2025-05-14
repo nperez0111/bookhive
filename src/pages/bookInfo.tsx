@@ -176,11 +176,11 @@ const BookStatusButton: FC<{
               {[
                 {
                   value: BookStatus.FINISHED,
-                  label: "Have Read",
+                  label: "Read",
                 },
                 {
                   value: BookStatus.READING,
-                  label: "Currently Reading",
+                  label: "Reading",
                 },
                 {
                   value: BookStatus.WANTTOREAD,

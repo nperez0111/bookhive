@@ -155,7 +155,7 @@ export class Server {
     // Create the atproto utilities
     const oauthClient = await createClient(kv);
     const baseIdResolver = createIdResolver(kv);
-    const ingester = createIngester(db, baseIdResolver);
+    const ingester = createIngester(db, baseIdResolver, kv);
     const resolver = createBidirectionalResolver(baseIdResolver);
 
     const time = new Date().toISOString();

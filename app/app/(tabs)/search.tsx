@@ -86,7 +86,7 @@ export default function SearchScreen() {
             {!searchResults?.length && profile.data && (
               <View style={styles.currentlyReadingSection}>
                 <ThemedText type="subtitle" style={styles.sectionTitle}>
-                  Currently Reading
+                  Reading
                 </ThemedText>
                 <FlatList
                   data={profile.data.books.filter(

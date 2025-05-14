@@ -21,7 +21,7 @@ export const BOOK_STATUS = {
 
 export const BOOK_STATUS_MAP = {
   [ABANDONED]: "abandoned",
-  [READING]: "currently reading",
+  [READING]: "reading",
   [WANTTOREAD]: "want to read",
   [OWNED]: "owned",
   [FINISHED]: "read",
