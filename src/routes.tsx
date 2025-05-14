@@ -36,6 +36,7 @@ import { type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
 import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
+import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -897,6 +898,115 @@ export function createRouter(app: HonoServer) {
       description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
     });
   });
+
+  app.post(
+    "/import/goodreads",
+    zValidator(
+      "form",
+      z.object({
+        export: z.instanceof(File),
+      }),
+    ),
+    async (c) => {
+      const ctx = c.get("ctx");
+      const agent = await ctx.getSessionAgent();
+      if (!agent) {
+        return c.html(
+          <Layout>
+            <ErrorPage message="Invalid Session" />
+          </Layout>,
+          401,
+        );
+      }
+
+      const { export: exportFile } = c.req.valid("form");
+
+      const parser = getGoodreadsCsvParser();
+      const books: GoodreadsBook[] = [];
+      const unmatchedBooks: GoodreadsBook[] = [];
+
+      try {
+        const hiveIds: HiveId[] = [];
+        // Create a stream pipeline
+        await exportFile
+          .stream()
+          .pipeThrough(parser)
+          .pipeTo(
+            new WritableStream({
+              async write(book) {
+                let hiveBook = await ctx.db
+                  .selectFrom("hive_book")
+                  .select("id")
+                  .select("title")
+                  .select("cover")
+                  // rawTitle is the title from the Goodreads export
+                  .where("hive_book.rawTitle", "=", book.title)
+                  // authors is the author from the Goodreads export
+                  .where("authors", "=", book.author)
+                  .executeTakeFirst();
+                if (!hiveBook) {
+                  await searchBooks({ query: book.title, ctx });
+                  hiveBook = await ctx.db
+                    .selectFrom("hive_book")
+                    .select("id")
+                    .select("title")
+                    .select("cover")
+                    // rawTitle is the title from the Goodreads export
+                    .where("hive_book.rawTitle", "=", book.title)
+                    // authors is the author from the Goodreads export
+                    .where("authors", "=", book.author)
+                    .executeTakeFirst();
+                }
+
+                if (!hiveBook) {
+                  unmatchedBooks.push(book);
+                  return;
+                }
+
+                hiveIds.push(hiveBook.id);
+
+                await updateBookRecord({
+                  ctx: c.get("ctx"),
+                  agent,
+                  hiveId: hiveBook.id,
+                  updates: {
+                    authors: book.author,
+                    title: hiveBook.title,
+                    // TODO there is probably something better
+                    // Like make this idempotent
+                    status: book.dateRead
+                      ? "buzz.bookhive.defs#finished"
+                      : "buzz.bookhive.defs#wantToRead",
+                    hiveId: hiveBook.id,
+                    coverImage: hiveBook.cover ?? undefined,
+                    finishedAt: book.dateRead?.toISOString() ?? undefined,
+                    stars: book.myRating ?? undefined,
+                    review: book.myReview ?? undefined,
+                  },
+                });
+              },
+            }),
+          );
+
+        return c.html(
+          <Layout>
+            <h1>Imported {books.length} books</h1>
+            <p>Unmatched books: {JSON.stringify(unmatchedBooks)}</p>
+          </Layout>,
+        );
+      } catch (error) {
+        c.get("ctx").logger.error("Failed to parse Goodreads export", {
+          error,
+        });
+        return c.html(
+          <Layout>
+            <ErrorPage message="Failed to parse Goodreads export" />
+          </Layout>,
+          400,
+        );
+      }
+    },
+  );
 
   app.post(
     "/api/update-book",

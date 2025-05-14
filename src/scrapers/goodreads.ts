@@ -102,6 +102,7 @@ class Goodreads {
         authors,
       }),
       title: result.bookTitleBare,
+      rawTitle: result.title,
       authors,
       source: Goodreads.NAME,
       sourceUrl: `${Goodreads.BOOK_URL}${result.bookId}`,

@@ -126,6 +126,7 @@ export type HiveBook = {
   ratingsCount: number | null;
   createdAt: string;
   updatedAt: string;
+  rawTitle: string | null;
 };
 
 type Simplify<T> = {

@@ -33,6 +33,7 @@ export const BookFields = [
   "hive_book.thumbnail",
   "hive_book.description",
   "hive_book.rating",
+  "hive_book.rawTitle",
 ] as const;
 
 // Migrations
@@ -104,6 +105,18 @@ migrations["002"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("buzz").execute();
+  },
+};
+
+migrations["003"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .addColumn("rawTitle", "text")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("hive_book").dropColumn("rawTitle").execute();
   },
 };
 
