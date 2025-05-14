@@ -7,10 +7,15 @@ import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";
 import { getLogger } from "../logger";
 import { createBidirectionalResolver } from "./id-resolver";
-
+import { searchBooks } from "../routes";
+import type { Storage } from "unstorage";
 const logger = getLogger({ name: "firehose-ingestion" });
 
-export function createIngester(db: Database, idResolver: IdResolver) {
+export function createIngester(
+  db: Database,
+  idResolver: IdResolver,
+  kv: Storage,
+) {
   const bidirectionalResolver = createBidirectionalResolver(idResolver);
   return new Firehose({
     idResolver,
@@ -30,6 +35,19 @@ export function createIngester(db: Database, idResolver: IdResolver) {
           logger.debug("valid book", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
+
+          const hiveId = (
+            await db
+              .selectFrom("hive_book")
+              .select("id")
+              .where("id", "=", record.hiveId as HiveId)
+              .executeTakeFirst()
+          )?.id;
+          if (!hiveId) {
+            // Try to index the book into the hive, async
+            searchBooks({ query: record.title, ctx: { db, kv } });
+            logger.error("Trying to index book into hive", { record });
+          }
           // Store the book in our SQLite
           await db
             .insertInto("user_book")
