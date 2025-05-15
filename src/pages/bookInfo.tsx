@@ -59,7 +59,7 @@ async function Recommendations({
             <a
               key={related.userDid}
               href={`/profile/${handle}`}
-              class="block cursor-pointer rounded-xl border border-zinc-400 bg-yellow-50 px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              class="block cursor-pointer rounded-xl border border-zinc-400 bg-yellow-50 px-2 py-2 hover:bg-zinc-100 dark:border-gray-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             >
               <span class="text-blue-600">@{handle}</span> - marked as{" "}
               {related.status && related.status in BOOK_STATUS_MAP
