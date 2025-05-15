@@ -10,7 +10,8 @@ export const ProfilePage: FC<{
   books: Book[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
-}> = ({ handle, profile, books, isBuzzer }) => {
+  isOwner: boolean;
+}> = ({ handle, profile, books, isBuzzer, isOwner }) => {
   return (
     <div class="bg-sand container mx-auto min-h-[calc(100vh-64px)] max-w-7xl p-8 px-3 dark:bg-zinc-900 dark:text-white">
       <div class="mb-12 flex items-start gap-8 px-4">
@@ -44,7 +45,7 @@ export const ProfilePage: FC<{
         </div>
       </div>
 
-      {isBuzzer ? (
+      {isBuzzer && isOwner ? (
         <div class="flex flex-col gap-10">
           <div class="px-4 lg:px-8">
             To export your Goodreads library,{" "}

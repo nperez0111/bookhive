@@ -422,6 +422,8 @@ export function createRouter(app: HonoServer) {
       ? handle
       : await c.get("ctx").baseIdResolver.handle.resolve(handle);
 
+    const agent = await c.get("ctx").getSessionAgent();
+
     if (!did) {
       return c.render(
         <Fragment>
@@ -474,6 +476,7 @@ export function createRouter(app: HonoServer) {
         handle={handle}
         books={books}
         profile={profile}
+        isOwner={agent?.did === did}
       />,
       {
         title: "BookHive | @" + handle,
