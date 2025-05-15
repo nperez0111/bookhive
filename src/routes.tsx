@@ -282,6 +282,9 @@ async function refetchBooks({
       })
       .onConflict((oc) =>
         oc.column("uri").doUpdateSet((c) => ({
+          cid: c.ref("excluded.cid"),
+          userDid: c.ref("excluded.userDid"),
+          createdAt: c.ref("excluded.createdAt"),
           indexedAt: c.ref("excluded.indexedAt"),
           title: c.ref("excluded.title"),
           authors: c.ref("excluded.authors"),
@@ -300,8 +303,13 @@ async function refetchBooks({
   // TODO optimize this
   if (bookRecordsRaw.data.records.length === 100) {
     // Fetch next page, after a short delay
-    await setTimeout(() => {}, 100);
-    return refetchBooks({ agent, ctx, cursor: bookRecordsRaw.data.cursor });
+    await setTimeout(() => {}, 10);
+    return refetchBooks({
+      agent,
+      ctx,
+      cursor: bookRecordsRaw.data.cursor,
+      uris,
+    });
   } else {
     // Clear books which no longer exist
     await ctx.db
