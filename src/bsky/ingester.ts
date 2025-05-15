@@ -33,7 +33,6 @@ export function createIngester(
           Book.validateRecord(record).success
         ) {
           logger.debug("valid book", { record });
-          console.log("valid book", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
 
