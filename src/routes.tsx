@@ -972,6 +972,18 @@ export function createRouter(app: HonoServer) {
 
                   hiveIds.push(hiveBook.id);
 
+                  const userBook = await ctx.db
+                    .selectFrom("user_book")
+                    .select("hiveId")
+                    .where("userDid", "=", agent.assertDid)
+                    .where("hiveId", "=", hiveBook.id)
+                    .executeTakeFirst();
+
+                  if (userBook) {
+                    // User already has this book, so we don't need to update it
+                    return;
+                  }
+
                   await updateBookRecord({
                     ctx: c.get("ctx"),
                     agent,
