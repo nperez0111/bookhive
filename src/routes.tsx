@@ -980,6 +980,7 @@ export function createRouter(app: HonoServer) {
                     .executeTakeFirst();
 
                   if (userBook) {
+                    matchedBooks++;
                     // User already has this book, so we don't need to update it
                     return;
                   }

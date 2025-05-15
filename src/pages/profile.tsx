@@ -4,6 +4,7 @@ import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsk
 import { BookList } from "./components/book";
 import { formatDistanceToNow } from "date-fns";
 import { FallbackCover } from "./components/fallbackCover";
+import { Script } from "./utils/script";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -87,43 +88,76 @@ export const ProfilePage: FC<{
                 </svg>
               </span>
               <input
+                id="import-file"
                 type="file"
                 name="export"
                 accept=".csv"
                 class="hidden"
-                onchange={`
-                const form = new FormData();
-                form.append('export', this.files[0]);
-                document.getElementById('import-label').classList.add('hidden');
-                document.getElementById('importing-label').classList.remove('hidden');
-                fetch('/import/goodreads', {
-                  method: 'POST',
-                  body: form,
-                  signal: AbortSignal.timeout(5 * 60 * 1000)
-                })
-                .then(async (response) => {
-                  if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to import books');
-                  }
-                  const data = await response.json();
-                  if (data.success) {
-                    const unmatchedNote = data.unmatchedBooks.length 
-                      ? '\nNote: ' + data.unmatchedBooks.length + ' books could not be matched.'
-                      : '';
-                    alert('Successfully imported ' + data.matchedBooks + ' out of ' + data.totalBooks + ' books!' + unmatchedNote);
-                    window.location.reload();
-                  } else {
-                    throw new Error(data.error || 'Failed to import books');
-                  }
-                })
-                .catch((error) => {
-                  document.getElementById('importing-label').classList.add('hidden');
-                  document.getElementById('import-label').classList.remove('hidden');
-                  alert('Error importing books: ' + error.message);
-                });
-              `}
               />
+              <Script
+                script={(document) => {
+                  const importFile = document.getElementById(
+                    "import-file",
+                  ) as HTMLInputElement;
+                  if (!importFile) {
+                    throw new Error("Import file not found");
+                  }
+                  importFile.addEventListener("change", () => {
+                    const files = importFile.files;
+                    if (!files || files.length === 0) {
+                      alert("Please select a file to import");
+                      return;
+                    }
+                    const form = new FormData();
+                    form.append("export", files[0]);
+                    const importLabel = document.getElementById("import-label");
+                    const importingLabel =
+                      document.getElementById("importing-label");
+                    if (!importingLabel || !importLabel) {
+                      throw new Error("Import label not found");
+                    }
+                    importLabel.classList.add("hidden");
+                    importingLabel.classList.remove("hidden");
+                    fetch("/import/goodreads", {
+                      method: "POST",
+                      body: form,
+                      signal: AbortSignal.timeout(5 * 60 * 1000),
+                    })
+                      .then(async (response) => {
+                        if (!response.ok) {
+                          const error = await response.json();
+                          throw new Error(
+                            error.error || "Failed to import books",
+                          );
+                        }
+                        const data = await response.json();
+                        if (data.success) {
+                          const unmatchedNote = data.unmatchedBooks.length
+                            ? "\nNote: " +
+                              data.unmatchedBooks.length +
+                              " books could not be matched."
+                            : "";
+                          alert(
+                            "Successfully imported " +
+                              data.matchedBooks +
+                              " out of " +
+                              data.totalBooks +
+                              " books!" +
+                              unmatchedNote,
+                          );
+                          window.location.reload();
+                        } else {
+                          alert(data.error || "Failed to import books");
+                        }
+                      })
+                      .catch((error) => {
+                        importLabel.classList.remove("hidden");
+                        importingLabel.classList.add("hidden");
+                        alert("Error importing books: " + error.message);
+                      });
+                  });
+                }}
+              ></Script>
             </label>
           </div>
         )}
