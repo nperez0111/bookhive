@@ -45,7 +45,7 @@ export const ProfilePage: FC<{
         </div>
       </div>
 
-      {isBuzzer && isOwner ? (
+      {isOwner ? (
         <div class="flex flex-col gap-10">
           <div class="px-4 lg:px-8">
             To export your Goodreads library,{" "}
