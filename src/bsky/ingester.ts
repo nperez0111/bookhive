@@ -1,7 +1,7 @@
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
 import type { Database } from "../db";
-import type { HiveId } from "../types";
+import type { HiveId, UserBook, Buzz as BuzzRecord } from "../types";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
 import { ids } from "./lexicon/lexicons";
@@ -24,7 +24,7 @@ export function createIngester(
       if (evt.event === "create" || evt.event === "update") {
         const now = new Date();
         const record = evt.record;
-        logger.trace("ingesting event", { evt });
+        logger.debug("ingesting event", { evt });
 
         // If the write is a valid status update
         if (
@@ -33,6 +33,7 @@ export function createIngester(
           Book.validateRecord(record).success
         ) {
           logger.debug("valid book", { record });
+          console.log("valid book", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
 
@@ -58,12 +59,14 @@ export function createIngester(
               hiveId: record.hiveId as HiveId,
               createdAt: record.createdAt,
               indexedAt: now.toISOString(),
-              startedAt: record.startedAt,
-              finishedAt: record.finishedAt,
-              status: record.status,
               title: record.title,
               authors: record.authors,
-            })
+              startedAt: record.startedAt ?? null,
+              finishedAt: record.finishedAt ?? null,
+              status: record.status ?? null,
+              review: record.review ?? null,
+              stars: record.stars ?? null,
+            } satisfies UserBook)
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
                 indexedAt: c.ref("excluded.indexedAt"),
@@ -74,6 +77,10 @@ export function createIngester(
                 stars: c.ref("excluded.stars"),
                 startedAt: c.ref("excluded.startedAt"),
                 finishedAt: c.ref("excluded.finishedAt"),
+                title: c.ref("excluded.title"),
+                authors: c.ref("excluded.authors"),
+                userDid: c.ref("excluded.userDid"),
+                createdAt: c.ref("excluded.createdAt"),
               })),
             )
             .execute();
@@ -115,7 +122,7 @@ export function createIngester(
               comment: record.comment,
               parentCid: record.parent.cid,
               parentUri: record.parent.uri,
-            })
+            } satisfies BuzzRecord)
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
                 uri: c.ref("excluded.uri"),
