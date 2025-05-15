@@ -1000,7 +1000,7 @@ export function createRouter(app: HonoServer) {
                       hiveId: hiveBook.id,
                       coverImage: hiveBook.cover ?? undefined,
                       finishedAt: book.dateRead?.toISOString() ?? undefined,
-                      stars: book.myRating ?? undefined,
+                      stars: book.myRating ? book.myRating * 2 : undefined,
                       review: book.myReview ?? undefined,
                     },
                   });
