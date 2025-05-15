@@ -914,10 +914,11 @@ export function createRouter(app: HonoServer) {
       const ctx = c.get("ctx");
       const agent = await ctx.getSessionAgent();
       if (!agent) {
-        return c.html(
-          <Layout>
-            <ErrorPage message="Invalid Session" />
-          </Layout>,
+        return c.json(
+          {
+            success: false,
+            error: "Invalid Session",
+          },
           401,
         );
       }
@@ -925,7 +926,8 @@ export function createRouter(app: HonoServer) {
       const { export: exportFile } = c.req.valid("form");
 
       const parser = getGoodreadsCsvParser();
-      const books: GoodreadsBook[] = [];
+      let totalBooks = 0;
+      let matchedBooks = 0;
       const unmatchedBooks: GoodreadsBook[] = [];
 
       try {
@@ -937,19 +939,9 @@ export function createRouter(app: HonoServer) {
           .pipeTo(
             new WritableStream({
               async write(book) {
-                let hiveBook = await ctx.db
-                  .selectFrom("hive_book")
-                  .select("id")
-                  .select("title")
-                  .select("cover")
-                  // rawTitle is the title from the Goodreads export
-                  .where("hive_book.rawTitle", "=", book.title)
-                  // authors is the author from the Goodreads export
-                  .where("authors", "=", book.author)
-                  .executeTakeFirst();
-                if (!hiveBook) {
-                  await searchBooks({ query: book.title, ctx });
-                  hiveBook = await ctx.db
+                totalBooks++;
+                try {
+                  let hiveBook = await ctx.db
                     .selectFrom("hive_book")
                     .select("id")
                     .select("title")
@@ -959,52 +951,73 @@ export function createRouter(app: HonoServer) {
                     // authors is the author from the Goodreads export
                     .where("authors", "=", book.author)
                     .executeTakeFirst();
-                }
+                  if (!hiveBook) {
+                    await searchBooks({ query: book.title, ctx });
+                    hiveBook = await ctx.db
+                      .selectFrom("hive_book")
+                      .select("id")
+                      .select("title")
+                      .select("cover")
+                      // rawTitle is the title from the Goodreads export
+                      .where("hive_book.rawTitle", "=", book.title)
+                      // authors is the author from the Goodreads export
+                      .where("authors", "=", book.author)
+                      .executeTakeFirst();
+                  }
 
-                if (!hiveBook) {
-                  unmatchedBooks.push(book);
-                  return;
-                }
+                  if (!hiveBook) {
+                    unmatchedBooks.push(book);
+                    return;
+                  }
 
-                hiveIds.push(hiveBook.id);
+                  hiveIds.push(hiveBook.id);
 
-                await updateBookRecord({
-                  ctx: c.get("ctx"),
-                  agent,
-                  hiveId: hiveBook.id,
-                  updates: {
-                    authors: book.author,
-                    title: hiveBook.title,
-                    // TODO there is probably something better
-                    // Like make this idempotent
-                    status: book.dateRead
-                      ? "buzz.bookhive.defs#finished"
-                      : "buzz.bookhive.defs#wantToRead",
+                  await updateBookRecord({
+                    ctx: c.get("ctx"),
+                    agent,
                     hiveId: hiveBook.id,
-                    coverImage: hiveBook.cover ?? undefined,
-                    finishedAt: book.dateRead?.toISOString() ?? undefined,
-                    stars: book.myRating ?? undefined,
-                    review: book.myReview ?? undefined,
-                  },
-                });
+                    updates: {
+                      authors: book.author,
+                      title: hiveBook.title,
+                      // TODO there is probably something better
+                      // Like make this idempotent
+                      status: book.dateRead
+                        ? "buzz.bookhive.defs#finished"
+                        : "buzz.bookhive.defs#wantToRead",
+                      hiveId: hiveBook.id,
+                      coverImage: hiveBook.cover ?? undefined,
+                      finishedAt: book.dateRead?.toISOString() ?? undefined,
+                      stars: book.myRating ?? undefined,
+                      review: book.myReview ?? undefined,
+                    },
+                  });
+                  matchedBooks++;
+                } catch (e) {
+                  unmatchedBooks.push(book);
+                  ctx.logger.error("Failed to update book record", {
+                    error: e,
+                    book,
+                  });
+                }
               },
             }),
           );
 
-        return c.html(
-          <Layout>
-            <h1>Imported {books.length} books</h1>
-            <p>Unmatched books: {JSON.stringify(unmatchedBooks)}</p>
-          </Layout>,
-        );
+        return c.json({
+          success: true,
+          unmatchedBooks,
+          totalBooks,
+          matchedBooks,
+        });
       } catch (error) {
         c.get("ctx").logger.error("Failed to parse Goodreads export", {
           error,
         });
-        return c.html(
-          <Layout>
-            <ErrorPage message="Failed to parse Goodreads export" />
-          </Layout>,
+        return c.json(
+          {
+            success: false,
+            error: "Failed to parse Goodreads export",
+          },
           400,
         );
       }

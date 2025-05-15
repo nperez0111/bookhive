@@ -45,67 +45,89 @@ export const ProfilePage: FC<{
         </div>
       </div>
 
-      {isOwner ? (
+      {isBuzzer ? (
         <div class="flex flex-col gap-10">
-          <div class="px-4 lg:px-8">
-            To export your Goodreads library,{" "}
-            <a
-              href="https://www.goodreads.com/review/import"
-              class="inline text-blue-800 hover:underline"
-              target="_blank"
-            >
-              export your library
-            </a>{" "}
-            and then you can import it here:
-            <label
-              class="ml-3 inline-block cursor-pointer rounded-md bg-yellow-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              role="menuitem"
-              tabindex={-1}
-              id="user-menu-item-2"
-            >
-              <span id="import-label">Import Goodreads CSV</span>
-              <span id="importing-label" class="hidden">
-                Importing...
-                <svg
-                  class="ml-2 inline-block h-4 w-4 animate-spin"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                    fill="none"
-                  />
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              </span>
-              <input
-                type="file"
-                name="export"
-                accept=".csv"
-                class="hidden"
-                onchange={`
+          {isOwner && (
+            <div class="px-4 lg:px-8">
+              To export your Goodreads library,{" "}
+              <a
+                href="https://www.goodreads.com/review/import"
+                class="inline text-blue-800 hover:underline"
+                target="_blank"
+              >
+                export your library
+              </a>{" "}
+              and then you can import it here:
+              <label
+                class="ml-3 inline-block cursor-pointer rounded-md bg-yellow-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                role="menuitem"
+                tabindex={-1}
+                id="user-menu-item-2"
+              >
+                <span id="import-label">Import Goodreads CSV</span>
+                <span id="importing-label" class="hidden">
+                  Importing...
+                  <svg
+                    class="ml-2 inline-block h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                      fill="none"
+                    />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                </span>
+                <input
+                  type="file"
+                  name="export"
+                  accept=".csv"
+                  class="hidden"
+                  onchange={`
                 const form = new FormData();
                 form.append('export', this.files[0]);
                 document.getElementById('import-label').classList.add('hidden');
                 document.getElementById('importing-label').classList.remove('hidden');
                 fetch('/import/goodreads', {
                   method: 'POST',
-                  body: form
-                }).then(() => {
-                  window.location.reload();
+                  body: form,
+                  signal: AbortSignal.timeout(5 * 60 * 1000)
+                })
+                .then(async (response) => {
+                  if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to import books');
+                  }
+                  const data = await response.json();
+                  if (data.success) {
+                    const unmatchedNote = data.unmatchedBooks.length 
+                      ? '\nNote: ' + data.unmatchedBooks.length + ' books could not be matched.'
+                      : '';
+                    alert('Successfully imported ' + data.matchedBooks + ' out of ' + data.totalBooks + ' books!' + unmatchedNote);
+                    window.location.reload();
+                  } else {
+                    throw new Error(data.error || 'Failed to import books');
+                  }
+                })
+                .catch((error) => {
+                  document.getElementById('importing-label').classList.add('hidden');
+                  document.getElementById('import-label').classList.remove('hidden');
+                  alert('Error importing books: ' + error.message);
                 });
               `}
-              />
-            </label>
-          </div>
+                />
+              </label>
+            </div>
+          )}
           <section class="mt-8 flex flex-col gap-2 px-4 lg:px-8">
             <div class="mb-6">
               <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
