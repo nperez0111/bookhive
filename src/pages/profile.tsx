@@ -102,7 +102,7 @@ export const ProfilePage: FC<{
                   if (!importFile) {
                     throw new Error("Import file not found");
                   }
-                  importFile.addEventListener("change", () => {
+                  importFile.addEventListener("change", async () => {
                     const files = importFile.files;
                     if (!files || files.length === 0) {
                       alert("Please select a file to import");
@@ -118,43 +118,116 @@ export const ProfilePage: FC<{
                     }
                     importLabel.classList.add("hidden");
                     importingLabel.classList.remove("hidden");
-                    fetch("/import/goodreads", {
+                    const response = await fetch("/import/goodreads", {
                       method: "POST",
                       body: form,
                       signal: AbortSignal.timeout(5 * 60 * 1000),
-                    })
-                      .then(async (response) => {
-                        if (!response.ok) {
-                          const error = await response.json();
-                          throw new Error(
-                            error.error || "Failed to import books",
-                          );
-                        }
-                        const data = await response.json();
-                        if (data.success) {
-                          const unmatchedNote = data.unmatchedBooks.length
-                            ? "\nNote: " +
-                              data.unmatchedBooks.length +
-                              " books could not be matched."
-                            : "";
-                          alert(
-                            "Successfully imported " +
-                              data.matchedBooks +
-                              " out of " +
-                              data.totalBooks +
-                              " books!" +
-                              unmatchedNote,
-                          );
-                          window.location.reload();
-                        } else {
-                          alert(data.error || "Failed to import books");
-                        }
-                      })
-                      .catch((error) => {
-                        importLabel.classList.remove("hidden");
-                        importingLabel.classList.add("hidden");
-                        alert("Error importing books: " + error.message);
+                    });
+                    if (!response.ok || !response.body) {
+                      throw new Error("Failed to import books");
+                    }
+
+                    // Create progress display
+                    const progressDiv = document.createElement("div");
+                    progressDiv.className =
+                      "fixed bottom-4 right-4 md:right-8 bg-white dark:bg-zinc-800 p-4 rounded-lg shadow-lg z-50 w-[calc(100%-2rem)] md:w-[448px]";
+                    progressDiv.innerHTML = `
+                      <div class="flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                          <span class="font-medium text-lg">BookHive Import</span>
+                          <button class="text-gray-500 hover:text-gray-700" id="close-progress">×</button>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <div class="flex justify-between text-sm">
+                            <span id="progress-text">Processing...</span>
+                            <span id="progress-count">0/0</span>
+                          </div>
+                          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-yellow-950">
+                            <div id="progress-bar" class="bg-yellow-500 h-2.5 rounded-full" style="width: 0%"></div>
+                          </div>
+                        </div>
+                        <div id="current-book" class="text-sm text-gray-600 dark:text-gray-400 truncate"></div>
+                        <div id="failed-books" class="text-sm text-red-600 dark:text-red-400"></div>
+                        <div id="refresh-button" ></div>
+                      </div>
+                    `;
+                    document.body.appendChild(progressDiv);
+
+                    // Add close button handler
+                    document
+                      .getElementById("close-progress")
+                      ?.addEventListener("click", () => {
+                        progressDiv.remove();
                       });
+
+                    // Get UI elements
+                    const progressBar = document.getElementById("progress-bar");
+                    const progressText =
+                      document.getElementById("progress-text");
+                    const progressCount =
+                      document.getElementById("progress-count");
+                    const currentBook = document.getElementById("current-book");
+                    const failedBooks = document.getElementById("failed-books");
+
+                    try {
+                      // Read the stream
+                      const reader = response.body
+                        .pipeThrough(new TextDecoderStream())
+                        .getReader();
+
+                      while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+
+                        // Each SSE message is prefixed with "data: " and ends with two newlines
+                        const messages = value.split("\n\n");
+                        for (const message of messages) {
+                          if (!message.trim()) continue;
+
+                          // Parse the SSE data
+                          const data = message.replace(/^data: /, "");
+                          try {
+                            const event = JSON.parse(data);
+
+                            if (
+                              progressBar &&
+                              progressText &&
+                              progressCount &&
+                              currentBook &&
+                              failedBooks
+                            ) {
+                              const progress =
+                                (event.processed / event.total) * 100;
+                              progressBar.style.width = `${progress}%`;
+                              progressText.textContent = `Processing books...`;
+                              progressCount.textContent = `${event.processed}/${event.total}`;
+                              currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+
+                              if (event.failedBooks.length > 0) {
+                                failedBooks.innerHTML = `Failed to import:<br>${event.failedBooks.map((b: { title: string; author: string }) => `- ${b.title} by ${b.author}`).join("<br>")}`;
+                              }
+                            }
+                          } catch (e) {
+                            console.error("Failed to parse SSE message:", e);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      console.error("Stream reading failed:", e);
+                    } finally {
+                      progressText!.textContent = "Import complete";
+                      importLabel.classList.remove("hidden");
+                      importingLabel.classList.add("hidden");
+                      // Add refresh button after import completes
+                      const refreshButton = document.createElement("button");
+                      refreshButton.textContent = "Refresh to see new books";
+                      refreshButton.className =
+                        "mt-4 rounded-lg bg-yellow-600 px-4 py-2 text-white hover:bg-yellow-700 cursor-pointer";
+                      refreshButton.onclick = () => window.location.reload();
+                      document
+                        .getElementById("refresh-button")
+                        ?.appendChild(refreshButton);
+                    }
                   });
                 }}
               ></Script>

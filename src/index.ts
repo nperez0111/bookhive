@@ -28,7 +28,7 @@ import { createIngester } from "./bsky/ingester";
 import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
-import { createRouter } from "./routes.tsx";
+import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 import { readThroughCache } from "./utils/readThroughCache.ts";
@@ -36,6 +36,12 @@ import { lazy } from "./utils/lazy.ts";
 import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { getLogger } from "./logger/index.ts";
 import { differenceInSeconds } from "date-fns";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { streamSSE } from "hono/streaming";
+import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv.ts";
+import type { HiveId } from "./types.ts";
+import { updateBookRecord } from "./utils/getBook.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -191,7 +197,6 @@ export class Server {
     );
     app.use(secureHeaders());
     app.use(compress());
-    app.use(etag());
     app.use(jsxRenderer());
 
     // Add context to Hono app
@@ -240,6 +245,168 @@ export class Server {
     app.use("*", registerMetrics);
     app.get("/metrics", printMetrics);
 
+    // This is to import a Goodreads CSV export
+    // It is here because we don't want it behind the etag middleware
+    app.post(
+      "/import/goodreads",
+      zValidator(
+        "form",
+        z.object({
+          export: z.instanceof(File),
+        }),
+      ),
+      async (c) => {
+        const ctx = c.get("ctx");
+        const agent = await ctx.getSessionAgent();
+        if (!agent) {
+          return c.json(
+            {
+              success: false,
+              error: "Invalid Session",
+            },
+            401,
+          );
+        }
+
+        const { export: exportFile } = c.req.valid("form");
+        return streamSSE(c, async (stream) => {
+          const parser = getGoodreadsCsvParser();
+          let id = 0;
+          let totalBooks = 0;
+          let matchedBooks = 0;
+          const unmatchedBooks: GoodreadsBook[] = [];
+
+          const hiveIds: HiveId[] = [];
+          // Create a stream pipeline
+          const [countStream, uploadStream] = exportFile
+            .stream()
+            .pipeThrough(parser)
+            .tee();
+
+          // count the total number of books in a separate stream
+          countStream.pipeTo(
+            new WritableStream({
+              async write() {
+                totalBooks++;
+              },
+            }),
+          );
+
+          await uploadStream.pipeTo(
+            new WritableStream({
+              async write(book) {
+                try {
+                  let hiveBook = await ctx.db
+                    .selectFrom("hive_book")
+                    .select("id")
+                    .select("title")
+                    .select("cover")
+                    // rawTitle is the title from the Goodreads export
+                    .where("hive_book.rawTitle", "=", book.title)
+                    // authors is the author from the Goodreads export
+                    .where("authors", "=", book.author)
+                    .executeTakeFirst();
+                  if (!hiveBook) {
+                    await searchBooks({ query: book.title, ctx });
+                    hiveBook = await ctx.db
+                      .selectFrom("hive_book")
+                      .select("id")
+                      .select("title")
+                      .select("cover")
+                      // rawTitle is the title from the Goodreads export
+                      .where("hive_book.rawTitle", "=", book.title)
+                      // authors is the author from the Goodreads export
+                      .where("authors", "=", book.author)
+                      .executeTakeFirst();
+                  }
+
+                  if (!hiveBook) {
+                    unmatchedBooks.push(book);
+                    return;
+                  }
+
+                  hiveIds.push(hiveBook.id);
+
+                  const userBook = await ctx.db
+                    .selectFrom("user_book")
+                    .select("hiveId")
+                    .where("userDid", "=", agent.assertDid)
+                    .where("hiveId", "=", hiveBook.id)
+                    .executeTakeFirst();
+
+                  // Can skip updating the book if it already exists
+                  if (!userBook) {
+                    await updateBookRecord({
+                      ctx: c.get("ctx"),
+                      agent,
+                      hiveId: hiveBook.id,
+                      updates: {
+                        authors: book.author,
+                        title: hiveBook.title,
+                        // TODO there is probably something better
+                        // Like make this idempotent
+                        status: book.dateRead
+                          ? "buzz.bookhive.defs#finished"
+                          : "buzz.bookhive.defs#wantToRead",
+                        hiveId: hiveBook.id,
+                        coverImage: hiveBook.cover ?? undefined,
+                        finishedAt: book.dateRead?.toISOString() ?? undefined,
+                        stars: book.myRating ? book.myRating * 2 : undefined,
+                        review: book.myReview ?? undefined,
+                      },
+                    });
+                  }
+
+                  matchedBooks++;
+
+                  await stream.writeSSE({
+                    data: JSON.stringify({
+                      title: book.title,
+                      author: book.author,
+                      processed: matchedBooks,
+                      failed: unmatchedBooks.length,
+                      failedBooks: unmatchedBooks.map((b) => ({
+                        title: b.title,
+                        author: b.author,
+                      })),
+                      total: totalBooks,
+                      event: "book-upload",
+                      id: id++,
+                    }),
+                  });
+                } catch (e) {
+                  unmatchedBooks.push(book);
+
+                  await stream.writeSSE({
+                    data: JSON.stringify({
+                      title: book.title,
+                      author: book.author,
+                      processed: matchedBooks,
+                      failed: unmatchedBooks.length,
+                      failedBooks: unmatchedBooks.map((b) => ({
+                        title: b.title,
+                        author: b.author,
+                      })),
+                      total: totalBooks,
+                      event: "book-upload-failed",
+                      id: id++,
+                    }),
+                  });
+
+                  ctx.logger.error("Failed to update book record", {
+                    error: e,
+                    book,
+                  });
+                }
+              },
+            }),
+          );
+        });
+      },
+    );
+
+    // TODO enable etag for everything but import route
+    app.use(etag());
     // Routes
     createRouter(app);
 
