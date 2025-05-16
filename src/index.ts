@@ -307,7 +307,7 @@ export class Server {
                     .where("authors", "=", book.author)
                     .executeTakeFirst();
                   if (!hiveBook) {
-                    searchBooks({ query: book.title, ctx });
+                    await searchBooks({ query: book.title, ctx });
                     hiveBook = await ctx.db
                       .selectFrom("hive_book")
                       .select("id")
