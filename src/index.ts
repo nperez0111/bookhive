@@ -40,7 +40,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { streamSSE } from "hono/streaming";
 import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv.ts";
-import type { HiveBook, HiveId } from "./types.ts";
+import type { HiveId } from "./types.ts";
 import { updateBookRecord } from "./utils/getBook.ts";
 
 // Application state passed to the router and elsewhere
@@ -295,9 +295,36 @@ export class Server {
           await uploadStream.pipeTo(
             new WritableStream({
               async write(book) {
-                const addToDB = async (
-                  hiveBook: Pick<HiveBook, "id" | "title" | "cover">,
-                ) => {
+                try {
+                  let hiveBook = await ctx.db
+                    .selectFrom("hive_book")
+                    .select("id")
+                    .select("title")
+                    .select("cover")
+                    // rawTitle is the title from the Goodreads export
+                    .where("hive_book.rawTitle", "=", book.title)
+                    // authors is the author from the Goodreads export
+                    .where("authors", "=", book.author)
+                    .executeTakeFirst();
+                  if (!hiveBook) {
+                    await searchBooks({ query: book.title, ctx });
+                    hiveBook = await ctx.db
+                      .selectFrom("hive_book")
+                      .select("id")
+                      .select("title")
+                      .select("cover")
+                      // rawTitle is the title from the Goodreads export
+                      .where("hive_book.rawTitle", "=", book.title)
+                      // authors is the author from the Goodreads export
+                      .where("authors", "=", book.author)
+                      .executeTakeFirst();
+                  }
+
+                  if (!hiveBook) {
+                    unmatchedBooks.push(book);
+                    return;
+                  }
+
                   hiveIds.push(hiveBook.id);
 
                   const userBook = await ctx.db
@@ -347,64 +374,6 @@ export class Server {
                       id: id++,
                     }),
                   });
-                };
-                try {
-                  let hiveBook = await ctx.db
-                    .selectFrom("hive_book")
-                    .select("id")
-                    .select("title")
-                    .select("cover")
-                    // rawTitle is the title from the Goodreads export
-                    .where("hive_book.rawTitle", "=", book.title)
-                    // authors is the author from the Goodreads export
-                    .where("authors", "=", book.author)
-                    .executeTakeFirst();
-                  if (!hiveBook) {
-                    // asynchronously search for the book, but don't wait for it
-                    searchBooks({ query: book.title, ctx })
-                      .then(async () => {
-                        hiveBook = await ctx.db
-                          .selectFrom("hive_book")
-                          .select("id")
-                          .select("title")
-                          .select("cover")
-                          // rawTitle is the title from the Goodreads export
-                          .where("hive_book.rawTitle", "=", book.title)
-                          // authors is the author from the Goodreads export
-                          .where("authors", "=", book.author)
-                          .executeTakeFirst();
-                        if (!hiveBook) {
-                          unmatchedBooks.push(book);
-                          return;
-                        }
-                      })
-                      .catch(async (e) => {
-                        unmatchedBooks.push(book);
-
-                        await stream.writeSSE({
-                          data: JSON.stringify({
-                            title: book.title,
-                            author: book.author,
-                            processed: matchedBooks,
-                            failed: unmatchedBooks.length,
-                            failedBooks: unmatchedBooks.map((b) => ({
-                              title: b.title,
-                              author: b.author,
-                            })),
-                            total: totalBooks,
-                            event: "book-upload-failed",
-                            id: id++,
-                          }),
-                        });
-
-                        ctx.logger.error("Failed to update book record", {
-                          error: e,
-                          book,
-                        });
-                      });
-                  } else {
-                    addToDB(hiveBook);
-                  }
                 } catch (e) {
                   unmatchedBooks.push(book);
 
