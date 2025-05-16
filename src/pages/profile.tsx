@@ -121,7 +121,6 @@ export const ProfilePage: FC<{
                     const response = await fetch("/import/goodreads", {
                       method: "POST",
                       body: form,
-                      signal: AbortSignal.timeout(5 * 60 * 1000),
                     });
                     if (!response.ok || !response.body) {
                       throw new Error("Failed to import books");
