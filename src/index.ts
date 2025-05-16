@@ -336,7 +336,8 @@ export class Server {
 
                   // Can skip updating the book if it already exists
                   if (!userBook) {
-                    await updateBookRecord({
+                    // update the book record asynchronously
+                    updateBookRecord({
                       ctx: c.get("ctx"),
                       agent,
                       hiveId: hiveBook.id,
