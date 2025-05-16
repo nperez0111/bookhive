@@ -473,7 +473,7 @@ export function createRouter(app: HonoServer) {
           .select(BookFields)
           .where("user_book.userDid", "=", did)
           .orderBy("user_book.indexedAt", "desc")
-          .limit(100)
+          .limit(10_000)
           .execute()
       : [];
 

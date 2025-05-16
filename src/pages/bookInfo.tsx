@@ -24,7 +24,7 @@ async function Recommendations({
     .selectAll()
     .where("hiveId", "==", book.id)
     .orderBy("indexedAt", "desc")
-    .limit(10)
+    .limit(100)
     .execute();
 
   const didHandleMap = await c
@@ -307,7 +307,7 @@ export const BookInfo: FC<{
     .where("user_book.hiveId", "=", book.id)
     .where("user_book.review", "!=", "")
     .orderBy("user_book.createdAt", "desc")
-    .limit(100)
+    .limit(10_000)
     .execute();
 
   return (
