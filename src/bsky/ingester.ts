@@ -40,7 +40,7 @@ export function createIngester(
             await db
               .selectFrom("hive_book")
               .select("id")
-              .where("id", "=", record.hiveId as HiveId)
+              .where("id", "=", record["hiveId"] as HiveId)
               .executeTakeFirst()
           )?.id;
           if (!hiveId) {
