@@ -4,14 +4,14 @@
 import {
   createServer as createXrpcServer,
   Server as XrpcServer,
-  Options as XrpcOptions,
-  AuthVerifier,
-  StreamAuthVerifier,
+  type Options as XrpcOptions,
+  type AuthVerifier,
+  type StreamAuthVerifier,
 } from "@atproto/xrpc-server";
-import { schemas } from "./lexicons";
-import * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook";
-import * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile";
-import * as BuzzBookhiveSearchBooks from "./types/buzz/bookhive/searchBooks";
+import { schemas } from "./lexicons.js";
+import * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook.js";
+import * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
+import * as BuzzBookhiveSearchBooks from "./types/buzz/bookhive/searchBooks.js";
 
 export const BUZZ_BOOKHIVE = {
   DefsFinished: "buzz.bookhive.defs#finished",
