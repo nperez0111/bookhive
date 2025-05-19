@@ -93,6 +93,9 @@ export async function searchBooks({
           });
       }),
     [] as HiveId[],
+    {
+      requestsPerSecond: 5,
+    },
   );
 }
 
