@@ -1,24 +1,32 @@
 /**
  * GENERATED CODE - DO NOT MODIFY
  */
-import { ValidationResult, BlobRef } from "@atproto/lexicon";
-import { lexicons } from "../../../lexicons";
-import { isObj, hasProp } from "../../../util";
+import { type ValidationResult, BlobRef } from "@atproto/lexicon";
 import { CID } from "multiformats/cid";
-import * as ComAtprotoRepoStrongRef from "../../com/atproto/repo/strongRef";
+import { validate as _validate } from "../../../lexicons";
+import {
+  type $Typed,
+  is$typed as _is$typed,
+  type OmitKey,
+} from "../../../util";
+import type * as ComAtprotoRepoStrongRef from "../../com/atproto/repo/strongRef.js";
 
+const is$typed = _is$typed,
+  validate = _validate;
+const id = "buzz.bookhive.defs";
 /** User has finished reading the book */
-export const FINISHED = "buzz.bookhive.defs#finished";
+export const FINISHED = `${id}#finished`;
 /** User is currently reading the book */
-export const READING = "buzz.bookhive.defs#reading";
+export const READING = `${id}#reading`;
 /** User wants to read the book */
-export const WANTTOREAD = "buzz.bookhive.defs#wantToRead";
+export const WANTTOREAD = `${id}#wantToRead`;
 /** User has abandoned the book */
-export const ABANDONED = "buzz.bookhive.defs#abandoned";
+export const ABANDONED = `${id}#abandoned`;
 /** User owns the book */
-export const OWNED = "buzz.bookhive.defs#owned";
+export const OWNED = `${id}#owned`;
 
 export interface Review {
+  $type?: "buzz.bookhive.defs#review";
   /** The review content */
   review: string;
   /** The date the review was created */
@@ -29,20 +37,20 @@ export interface Review {
   did: string;
   /** The handle of the user who made the review */
   handle: string;
-  [k: string]: unknown;
 }
 
-export function isReview(v: unknown): v is Review {
-  return (
-    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#review"
-  );
+const hashReview = "review";
+
+export function isReview<V>(v: V) {
+  return is$typed(v, id, hashReview);
 }
 
-export function validateReview(v: unknown): ValidationResult {
-  return lexicons.validate("buzz.bookhive.defs#review", v);
+export function validateReview<V>(v: V) {
+  return validate<Review & V>(v, id, hashReview);
 }
 
 export interface Comment {
+  $type?: "buzz.bookhive.defs#comment";
   /** The content of the comment. */
   comment: string;
   /** Client-declared timestamp when this comment was originally created. */
@@ -53,60 +61,60 @@ export interface Comment {
   did: string;
   /** The handle of the user who made the comment */
   handle: string;
-  [k: string]: unknown;
 }
 
-export function isComment(v: unknown): v is Comment {
-  return (
-    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#comment"
-  );
+const hashComment = "comment";
+
+export function isComment<V>(v: V) {
+  return is$typed(v, id, hashComment);
 }
 
-export function validateComment(v: unknown): ValidationResult {
-  return lexicons.validate("buzz.bookhive.defs#comment", v);
+export function validateComment<V>(v: V) {
+  return validate<Comment & V>(v, id, hashComment);
 }
 
 export interface Profile {
+  $type?: "buzz.bookhive.defs#profile";
   displayName: string;
   handle: string;
   avatar?: string;
   description?: string;
   booksRead: number;
   reviews: number;
-  [k: string]: unknown;
 }
 
-export function isProfile(v: unknown): v is Profile {
-  return (
-    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#profile"
-  );
+const hashProfile = "profile";
+
+export function isProfile<V>(v: V) {
+  return is$typed(v, id, hashProfile);
 }
 
-export function validateProfile(v: unknown): ValidationResult {
-  return lexicons.validate("buzz.bookhive.defs#profile", v);
+export function validateProfile<V>(v: V) {
+  return validate<Profile & V>(v, id, hashProfile);
 }
 
 export interface Activity {
+  $type?: "buzz.bookhive.defs#activity";
   type: "review" | "rated" | "started" | "finished" | (string & {});
   createdAt: string;
   /** The hive id of the book */
   hiveId: string;
   /** The title of the book */
   title: string;
-  [k: string]: unknown;
 }
 
-export function isActivity(v: unknown): v is Activity {
-  return (
-    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#activity"
-  );
+const hashActivity = "activity";
+
+export function isActivity<V>(v: V) {
+  return is$typed(v, id, hashActivity);
 }
 
-export function validateActivity(v: unknown): ValidationResult {
-  return lexicons.validate("buzz.bookhive.defs#activity", v);
+export function validateActivity<V>(v: V) {
+  return validate<Activity & V>(v, id, hashActivity);
 }
 
 export interface UserBook {
+  $type?: "buzz.bookhive.defs#userBook";
   /** The title of the book */
   title: string;
   /** The authors of the book (tab separated) */
@@ -137,15 +145,14 @@ export interface UserBook {
   stars?: number;
   /** The book's review */
   review?: string;
-  [k: string]: unknown;
 }
 
-export function isUserBook(v: unknown): v is UserBook {
-  return (
-    isObj(v) && hasProp(v, "$type") && v.$type === "buzz.bookhive.defs#userBook"
-  );
+const hashUserBook = "userBook";
+
+export function isUserBook<V>(v: V) {
+  return is$typed(v, id, hashUserBook);
 }
 
-export function validateUserBook(v: unknown): ValidationResult {
-  return lexicons.validate("buzz.bookhive.defs#userBook", v);
+export function validateUserBook<V>(v: V) {
+  return validate<UserBook & V>(v, id, hashUserBook);
 }

@@ -36,6 +36,7 @@ import { type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
 import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
+import { GoodreadsImport } from "./pages/import";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -71,7 +72,7 @@ export async function searchBooks({
     () =>
       findBookDetails(query).then((res) => {
         if (!res.success) {
-          throw new Error(res.message);
+          return [];
         }
 
         return ctx.db
@@ -93,6 +94,9 @@ export async function searchBooks({
           });
       }),
     [] as HiveId[],
+    {
+      requestsPerSecond: 5,
+    },
   );
 }
 
@@ -422,14 +426,34 @@ export function createRouter(app: HonoServer) {
     return c.redirect(`/profile/${handle}`);
   });
 
+  // Redirect to profile/:handle
+  app.get("/import", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.html(
+        <Layout>
+          <ErrorPage
+            message="Invalid Session"
+            description="Login to view your profile"
+            statusCode={401}
+          />
+        </Layout>,
+        401,
+      );
+    }
+
+    return c.render(<GoodreadsImport />, {
+      title: "BookHive | Import",
+      description: "Import your Goodreads library to BookHive",
+    });
+  });
+
   app.get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
 
     const did = isDid(handle)
       ? handle
       : await c.get("ctx").baseIdResolver.handle.resolve(handle);
-
-    const agent = await c.get("ctx").getSessionAgent();
 
     if (!did) {
       return c.render(
@@ -453,17 +477,6 @@ export function createRouter(app: HonoServer) {
         .executeTakeFirst(),
     );
 
-    // if (!profileRecord) {
-    //   return c.render(
-    //     <Fragment>
-    //       <h1>Profile {handle} not found</h1>
-    //       <p>
-    //         This profile may not exist or has not logged any books on bookhive
-    //       </p>
-    //     </Fragment>,
-    //   );
-    // }
-
     const profile = await getProfile({ ctx: c.get("ctx"), did });
     const books = isBuzzer
       ? await c
@@ -483,7 +496,6 @@ export function createRouter(app: HonoServer) {
         handle={handle}
         books={books}
         profile={profile}
-        isOwner={agent?.did === did}
       />,
       {
         title: "BookHive | @" + handle,
@@ -1091,6 +1103,7 @@ export function createRouter(app: HonoServer) {
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
         book: {
+          $type: "buzz.bookhive.hiveBook",
           title: book.title,
           authors: book.authors,
           cover: book.cover ?? undefined,

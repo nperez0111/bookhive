@@ -2,12 +2,20 @@
  * GENERATED CODE - DO NOT MODIFY
  */
 import express from "express";
-import { ValidationResult, BlobRef } from "@atproto/lexicon";
-import { lexicons } from "../../../lexicons";
-import { isObj, hasProp } from "../../../util";
+import { type ValidationResult, BlobRef } from "@atproto/lexicon";
 import { CID } from "multiformats/cid";
+import { validate as _validate } from "../../../lexicons";
+import {
+  type $Typed,
+  is$typed as _is$typed,
+  type OmitKey,
+} from "../../../util";
 import { HandlerAuth, HandlerPipeThrough } from "@atproto/xrpc-server";
-import * as BuzzBookhiveDefs from "./defs";
+import type * as BuzzBookhiveDefs from "./defs.js";
+
+const is$typed = _is$typed,
+  validate = _validate;
+const id = "buzz.bookhive.getProfile";
 
 export interface QueryParams {
   /** The user's DID to get the profile of */
@@ -24,7 +32,6 @@ export interface OutputSchema {
   profile: BuzzBookhiveDefs.Profile;
   /** The user's activity */
   activity: BuzzBookhiveDefs.Activity[];
-  [k: string]: unknown;
 }
 
 export type HandlerInput = undefined;

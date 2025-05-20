@@ -3,9 +3,8 @@ import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
 
 export const Navbar: FC<{
-  tab?: "home";
   profile?: ProfileViewDetailed | null;
-}> = ({ tab, profile }) => {
+}> = ({ profile }) => {
   return (
     <nav class="bg-yellow-800">
       <div class="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
@@ -262,7 +261,7 @@ export const Navbar: FC<{
                   </a>
                   <form action="/refresh-books" method="get">
                     <button
-                      class="block px-4 py-2 text-sm text-gray-700"
+                      class="block cursor-pointer px-4 py-2 text-sm text-gray-700"
                       type="submit"
                       role="menuitem"
                       tabindex={-1}
@@ -271,10 +270,19 @@ export const Navbar: FC<{
                       Refresh my books
                     </button>
                   </form>
+                  <a
+                    href="/import"
+                    class="block px-4 py-2 text-sm text-gray-700"
+                    role="menuitem"
+                    tabindex={-1}
+                    id="user-menu-item-2"
+                  >
+                    Import books
+                  </a>
                   <form action="/logout" method="post">
                     <button
                       type="submit"
-                      class="block px-4 py-2 text-sm text-gray-700"
+                      class="block cursor-pointer px-4 py-2 text-sm text-gray-700"
                       role="menuitem"
                       tabindex={-1}
                       id="user-menu-item-3"
@@ -299,19 +307,40 @@ export const Navbar: FC<{
       {/* Mobile menu, show/hide based on menu state. */}
       <div class="sm:hidden" id="mobile-menu">
         <div class="space-y-1 px-2 pt-2 pb-3">
-          {/* Current: "bg-zinc-900 text-white", Default: "text-gray-300 hover:bg-zinc-700 hover:text-white" */}
           <a
             href="/"
-            class={
-              "block rounded-md px-3 py-2 text-base font-medium" +
-              (tab === "home"
-                ? " bg-zinc-900 text-white"
-                : " text-gray-300 hover:bg-zinc-700 hover:text-white")
-            }
-            aria-current="page"
+            class="block border-b border-gray-200 p-4 text-sm text-white"
+            role="menuitem"
+            tabindex={-1}
           >
             Home
           </a>
+          <a
+            href="/profile"
+            class="block border-b border-gray-200 p-4 text-sm text-white"
+            role="menuitem"
+            tabindex={-1}
+          >
+            My Books
+          </a>
+          <a
+            href="/import"
+            class="block border-b border-gray-200 p-4 text-sm text-white"
+            role="menuitem"
+            tabindex={-1}
+          >
+            Import from Goodreads
+          </a>
+          <form action="/logout" method="post">
+            <button
+              type="submit"
+              class="block w-full cursor-pointer p-4 text-left text-sm text-white"
+              role="menuitem"
+              tabindex={-1}
+            >
+              Sign out
+            </button>
+          </form>
         </div>
       </div>
       <Script
