@@ -454,7 +454,7 @@ export class Server {
                     ctx,
                     agent,
                     updates: bookUpdates,
-                    overwrite: true,
+                    // overwrite: true,
                     bookRecords,
                   });
                 },
