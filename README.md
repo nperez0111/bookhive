@@ -17,7 +17,7 @@
 </p>
 <br/>
 
-<img align="right" src="./public/bee.svg?raw=true" height="240" />
+<img align="right" src="./public/reading.png?raw=true" height="240" />
 
 Goodreads, but better, built on Bluesky.
 
