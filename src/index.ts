@@ -39,15 +39,11 @@ import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
 import type { HiveId } from "./types.ts";
+import { createBatchTransform } from "./utils/batchTransform.ts";
 import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv.ts";
-import {
-  getUserRepoRecords,
-  updateBookRecord,
-  updateBookRecords,
-} from "./utils/getBook.ts";
+import { getUserRepoRecords, updateBookRecords } from "./utils/getBook.ts";
 import { lazy } from "./utils/lazy.ts";
 import { readThroughCache } from "./utils/readThroughCache.ts";
-import { createBatchTransform } from "./utils/batchTransform.ts";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -282,6 +278,18 @@ export class Server {
           let matchedBooks = 0;
           const unmatchedBooks: GoodreadsBook[] = [];
 
+          // Send initial event
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "import-start",
+              stage: "initializing",
+              stageProgress: {
+                message: "Starting import process...",
+              },
+              id: id++,
+            }),
+          });
+
           // Create a stream pipeline
           const [countStream, uploadStream] = exportFile
             .stream()
@@ -301,13 +309,28 @@ export class Server {
           );
 
           const bookRecords = getUserRepoRecords({
+            ctx,
             agent,
+          });
+
+          // Send event before starting uploads
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "upload-start",
+              stage: "uploading",
+              stageProgress: {
+                current: 0,
+                total: totalBooks,
+                message: "Starting to upload books to your library...",
+              },
+              id: id++,
+            }),
           });
 
           await uploadStream
             .pipeThrough(
               createBatchTransform(
-                100,
+                25,
                 async (
                   books,
                 ): Promise<
@@ -321,6 +344,27 @@ export class Server {
                       await Promise.all(
                         books.map(async (book) => {
                           try {
+                            await stream.writeSSE({
+                              data: JSON.stringify({
+                                title: book.title,
+                                author: book.author,
+                                processed: matchedBooks,
+                                failed: unmatchedBooks.length,
+                                failedBooks: unmatchedBooks.map((b) => ({
+                                  title: b.title,
+                                  author: b.author,
+                                })),
+                                total: totalBooks,
+                                event: "book-load",
+                                stage: "searching",
+                                stageProgress: {
+                                  current: totalBooks,
+                                  total: "unknown",
+                                  message: "Searching for books in Hive...",
+                                },
+                                id: id++,
+                              }),
+                            });
                             // Double-check that the book exists in Hive
                             // Multiple calls get de-duped
                             await searchBooks({ query: book.title, ctx });
@@ -379,15 +423,6 @@ export class Server {
             .pipeTo(
               new WritableStream({
                 async write(bookUpdates) {
-                  console.log("bookUpdates", bookUpdates);
-                  await updateBookRecords({
-                    ctx,
-                    agent,
-                    updates: bookUpdates,
-                    overwrite: true,
-                    bookRecords,
-                  });
-
                   matchedBooks += bookUpdates.size;
                   // Only send one book at a time to the client
                   const book = bookUpdates.values().next().value;
@@ -396,6 +431,7 @@ export class Server {
                     data: JSON.stringify({
                       title: book?.["title"],
                       author: book?.["authors"],
+                      uploaded: bookUpdates.size,
                       processed: matchedBooks,
                       failed: unmatchedBooks.length,
                       failedBooks: unmatchedBooks.map((b) => ({
@@ -404,121 +440,44 @@ export class Server {
                       })),
                       total: totalBooks,
                       event: "book-upload",
+                      stage: "uploading",
+                      stageProgress: {
+                        current: matchedBooks,
+                        total: totalBooks,
+                        message: `Uploading books to your library (${matchedBooks}/${totalBooks})`,
+                      },
                       id: id++,
                     }),
+                  });
+
+                  await updateBookRecords({
+                    ctx,
+                    agent,
+                    updates: bookUpdates,
+                    overwrite: true,
+                    bookRecords,
                   });
                 },
               }),
             );
 
-          // await uploadStream.pipeTo(
-          //   new WritableStream({
-          //     async write(book) {
-          //       try {
-          //         let hiveBook = await ctx.db
-          //           .selectFrom("hive_book")
-          //           .select("id")
-          //           .select("title")
-          //           .select("cover")
-          //           // rawTitle is the title from the Goodreads export
-          //           .where("hive_book.rawTitle", "=", book.title)
-          //           // authors is the author from the Goodreads export
-          //           .where("authors", "=", book.author)
-          //           .executeTakeFirst();
-          //         if (!hiveBook) {
-          //           await searchBooks({ query: book.title, ctx });
-          //           hiveBook = await ctx.db
-          //             .selectFrom("hive_book")
-          //             .select("id")
-          //             .select("title")
-          //             .select("cover")
-          //             // rawTitle is the title from the Goodreads export
-          //             .where("hive_book.rawTitle", "=", book.title)
-          //             // authors is the author from the Goodreads export
-          //             .where("authors", "=", book.author)
-          //             .executeTakeFirst();
-          //         }
-
-          //         if (!hiveBook) {
-          //           unmatchedBooks.push(book);
-          //           return;
-          //         }
-
-          //         const userBook = await ctx.db
-          //           .selectFrom("user_book")
-          //           .select("hiveId")
-          //           .where("userDid", "=", agent.assertDid)
-          //           .where("hiveId", "=", hiveBook.id)
-          //           .executeTakeFirst();
-
-          //         // Can skip updating the book if it already exists
-          //         if (!userBook) {
-          //           // update the book record asynchronously
-          //           await updateBookRecord({
-          //             ctx: c.get("ctx"),
-          //             agent,
-          //             hiveId: hiveBook.id,
-          //             updates: {
-          //               authors: book.author,
-          //               title: hiveBook.title,
-          //               // TODO there is probably something better
-          //               // Like make this idempotent
-          //               status: book.dateRead
-          //                 ? "buzz.bookhive.defs#finished"
-          //                 : "buzz.bookhive.defs#wantToRead",
-          //               hiveId: hiveBook.id,
-          //               coverImage: hiveBook.cover ?? undefined,
-          //               finishedAt: book.dateRead?.toISOString() ?? undefined,
-          //               stars: book.myRating ? book.myRating * 2 : undefined,
-          //               review: book.myReview ?? undefined,
-          //             },
-          //           });
-          //         }
-
-          //         matchedBooks++;
-
-          //         await stream.writeSSE({
-          //           data: JSON.stringify({
-          //             title: book.title,
-          //             author: book.author,
-          //             processed: matchedBooks,
-          //             failed: unmatchedBooks.length,
-          //             failedBooks: unmatchedBooks.map((b) => ({
-          //               title: b.title,
-          //               author: b.author,
-          //             })),
-          //             total: totalBooks,
-          //             event: "book-upload",
-          //             id: id++,
-          //           }),
-          //         });
-          //       } catch (e) {
-          //         unmatchedBooks.push(book);
-
-          //         await stream.writeSSE({
-          //           data: JSON.stringify({
-          //             title: book.title,
-          //             author: book.author,
-          //             processed: matchedBooks,
-          //             failed: unmatchedBooks.length,
-          //             failedBooks: unmatchedBooks.map((b) => ({
-          //               title: b.title,
-          //               author: b.author,
-          //             })),
-          //             total: totalBooks,
-          //             event: "book-upload-failed",
-          //             id: id++,
-          //           }),
-          //         });
-
-          //         ctx.logger.error("Failed to update book record", {
-          //           error: e,
-          //           book,
-          //         });
-          //       }
-          //     },
-          //   }),
-          // );
+          // Send final completion event
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "import-complete",
+              stage: "complete",
+              stageProgress: {
+                current: matchedBooks,
+                total: totalBooks,
+                message: `Import complete! Successfully imported ${matchedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
+              },
+              failedBooks: unmatchedBooks.map((b) => ({
+                title: b.title,
+                author: b.author,
+              })),
+              id: id++,
+            }),
+          });
         });
       },
     );

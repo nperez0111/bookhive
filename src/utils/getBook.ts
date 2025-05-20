@@ -1,5 +1,5 @@
 import { iterateAtpRepo } from "@atcute/car";
-import { Agent } from "@atproto/api";
+import { Agent, jsonToLex } from "@atproto/api";
 import { TID } from "@atproto/common";
 
 import type { AppContext } from "..";
@@ -189,7 +189,7 @@ export async function updateBookRecords({
   ctx,
   agent,
   updates,
-  bookRecords = getUserRepoRecords({ agent }),
+  bookRecords = getUserRepoRecords({ ctx, agent }),
   overwrite = false,
 }: {
   ctx: AppContext;
@@ -205,14 +205,15 @@ export async function updateBookRecords({
     record: BookRecord.Record;
     rkey: string;
     userBook: Omit<UserBook, "uri" | "cid">;
+    originalUpdate: Partial<BookRecord.Record> & { coverImage?: string };
   }> = [];
 
+  const bookMap = (await bookRecords).books;
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
-      (await bookRecords).books
-        .entries()
-        .find(([_rkey, book]) => book.hiveId === hiveId) ?? [];
+      bookMap.entries().find(([_rkey, book]) => book.hiveId === hiveId) ?? [];
 
+    // TODO maybe overwrite can overwrite just those properties we allow
     if (!overwrite && originalBook) {
       // If we're not overwriting, and the book already exists, skip it
       continue;
@@ -225,9 +226,7 @@ export async function updateBookRecords({
       authors: originalBook?.authors || update.authors,
       hiveId: originalBook?.hiveId || hiveId,
       createdAt: originalBook?.createdAt || new Date().toISOString(),
-      cover:
-        originalBook?.cover ||
-        (await uploadImageBlob(update.coverImage, agent)),
+      cover: originalBook?.cover,
       // Always prefer new values
       status: update.status || originalBook?.status,
       startedAt: update.startedAt || originalBook?.startedAt,
@@ -259,58 +258,75 @@ export async function updateBookRecords({
         review: record.review || null,
         stars: record.stars || null,
       },
+      originalUpdate: update,
     });
   }
-
-  console.log("updatesToApply", updatesToApply);
 
   if (updatesToApply.length === 0) {
     return;
   }
 
+  // Upload the cover image in parallel if it is missing
+  await Promise.all(
+    updatesToApply.map(async (u) => {
+      if (!u.record.cover) {
+        u.record.cover = await uploadImageBlob(
+          u.originalUpdate.coverImage,
+          agent,
+        );
+      }
+      return u;
+    }),
+  );
+
+  const response = await agent.com.atproto.repo.applyWrites({
+    repo: agent.assertDid,
+    writes: updatesToApply.map(({ type, record, rkey }) => ({
+      $type: `com.atproto.repo.applyWrites#${type}`,
+      collection: ids.BuzzBookhiveBook,
+      rkey,
+      value: record,
+    })),
+  });
+
+  if (
+    !response.success ||
+    !response.data.results ||
+    response.data.results.length === 0
+  ) {
+    throw new Error("Failed to record books");
+  }
+
+  await response.data.results.reduce(async (acc, result, index) => {
+    await acc;
+    const update = updatesToApply[index];
+    if (
+      result.$type === "com.atproto.repo.applyWrites#updateResult" ||
+      result.$type === "com.atproto.repo.applyWrites#createResult"
+    ) {
+      await updateUserBook({
+        ctx,
+        userBook: { ...update.userBook, uri: result.uri, cid: result.cid },
+      });
+    }
+  }, Promise.resolve());
+
+  ctx.logger.info(`Wrote ${updatesToApply.length} books to PDS & DB`, {
+    userDid: agent.assertDid,
+  });
+
   return;
-  // const response = await agent.com.atproto.repo.applyWrites({
-  //   repo: agent.assertDid,
-  //   writes: updatesToApply.map(({ type, record, rkey }) => ({
-  //     $type: `com.atproto.repo.applyWrites#${type}`,
-  //     collection: ids.BuzzBookhiveBook,
-  //     rkey,
-  //     value: record,
-  //   })),
-  // });
-
-  // if (
-  //   !response.success ||
-  //   !response.data.results ||
-  //   response.data.results.length === 0
-  // ) {
-  //   throw new Error("Failed to record books");
-  // }
-
-  // await response.data.results.reduce(async (acc, result, index) => {
-  //   await acc;
-  //   const update = updatesToApply[index];
-  //   if (
-  //     result.$type === "com.atproto.repo.applyWrites#updateResult" ||
-  //     result.$type === "com.atproto.repo.applyWrites#createResult"
-  //   ) {
-  //     await updateUserBook({
-  //       ctx,
-  //       userBook: { ...update.userBook, uri: result.uri, cid: result.cid },
-  //     });
-  //   }
-  // }, Promise.resolve());
-
-  // return;
 }
 
 /**
  * Get all the books and buzzes from a user's PDS repo
  */
 export async function getUserRepoRecords({
+  ctx,
   agent,
   did = agent.assertDid,
 }: {
+  ctx: AppContext;
   agent: Agent;
   did?: string;
 }): Promise<{
@@ -333,27 +349,33 @@ export async function getUserRepoRecords({
   for (const { collection, rkey: key, record: value } of iterateAtpRepo(data)) {
     switch (collection) {
       case ids.BuzzBookhiveBook: {
-        const bookRaw = JSON.parse(JSON.stringify(value));
-        console.log("isRecord", BookRecord.isRecord(bookRaw));
-        const book = BookRecord.validateRecord(bookRaw);
+        // https://github.com/bluesky-social/atproto/issues/3866 to get the validation to pass
+        // Need to parse the whole object into a JSON, then parse it back into a Lexicon object
+        const book = BookRecord.validateRecord(
+          jsonToLex(JSON.parse(JSON.stringify(value))),
+        );
         if (book.success) {
           books.set(key, book.value);
-        } else {
-          console.log(bookRaw);
-          console.log("invalid book", key, book.error.message);
-          throw new Error("Invalid book: " + book.error.message);
         }
         break;
       }
-      case ids.BuzzBookhiveBuzz:
-        buzzes.set(key, value as BuzzRecord.Record);
+      case ids.BuzzBookhiveBuzz: {
+        // https://github.com/bluesky-social/atproto/issues/3866 to get the validation to pass
+        // Need to parse the whole object into a JSON, then parse it back into a Lexicon object
+        const buzz = BuzzRecord.validateRecord(
+          jsonToLex(JSON.parse(JSON.stringify(value))),
+        );
+        if (buzz.success) {
+          buzzes.set(key, buzz.value);
+        }
         break;
+      }
     }
   }
 
-  console.log("books", books);
-  console.log("buzzes", buzzes);
-  console.log("did", did);
+  ctx.logger.info(`Fetched ${books.size} books & ${buzzes.size} buzzes`, {
+    userDid: did,
+  });
 
   return { books, buzzes };
 }

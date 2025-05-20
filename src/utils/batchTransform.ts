@@ -32,16 +32,3 @@ export function createBatchTransform<T, R>(
     },
   });
 }
-
-// // Usage with progress updates
-// uploadStream.pipeThrough(
-//   createBatchTransform(
-//     100,
-//     async (books) => {
-//       // Your batch processing logic
-//     },
-//     (processedCount) => {
-//       console.log(`Processed ${processedCount} books so far`);
-//     },
-//   ),
-// );

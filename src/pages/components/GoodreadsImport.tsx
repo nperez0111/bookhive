@@ -99,6 +99,7 @@ export const GoodreadsImport: FC = () => {
                       <div id="progress-bar" class="bg-yellow-500 h-2.5 rounded-full" style="width: 0%"></div>
                     </div>
                   </div>
+                  <div id="stage-message" class="text-sm text-gray-600 dark:text-gray-400"></div>
                   <div id="current-book" class="text-sm text-gray-600 dark:text-gray-400 truncate"></div>
                   <div id="failed-books" class="text-sm text-red-600 dark:text-red-400"></div>
                   <div id="refresh-button" ></div>
@@ -119,6 +120,11 @@ export const GoodreadsImport: FC = () => {
               const progressCount = document.getElementById("progress-count");
               const currentBook = document.getElementById("current-book");
               const failedBooks = document.getElementById("failed-books");
+              const stageMessage = document.getElementById("stage-message");
+
+              // Track import statistics
+              let matchedBooks = 0;
+              let unmatchedBooks: { title: string; author: string }[] = [];
 
               try {
                 // Read the stream
@@ -145,15 +151,59 @@ export const GoodreadsImport: FC = () => {
                         progressText &&
                         progressCount &&
                         currentBook &&
-                        failedBooks
+                        failedBooks &&
+                        stageMessage
                       ) {
-                        const progress = (event.processed / event.total) * 100;
-                        progressBar.style.width = `${progress}%`;
-                        progressText.textContent = `Processing books...`;
-                        progressCount.textContent = `${event.processed}/${event.total}`;
-                        currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+                        // Handle different event types
+                        switch (event.event) {
+                          case "import-start":
+                            progressText.textContent = "Starting import...";
+                            stageMessage.textContent =
+                              event.stageProgress.message;
+                            progressBar.style.width = "0%";
+                            break;
 
-                        if (event.failedBooks.length > 0) {
+                          case "book-load":
+                            progressText.textContent = "Processing books...";
+                            stageMessage.textContent =
+                              event.stageProgress.message;
+                            progressCount.textContent = `${event.stageProgress.current} books processed`;
+                            currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+                            break;
+
+                          case "upload-start":
+                            progressText.textContent = "Uploading books...";
+                            stageMessage.textContent =
+                              event.stageProgress.message;
+                            progressCount.textContent =
+                              "0/" + event.stageProgress.total;
+                            progressBar.style.width = "0%";
+                            break;
+
+                          case "book-upload":
+                            const progress =
+                              (event.processed / event.total) * 100;
+                            progressBar.style.width = `${progress}%`;
+                            progressText.textContent = "Uploading books...";
+                            stageMessage.textContent =
+                              event.stageProgress.message;
+                            progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
+                            currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+                            matchedBooks = event.processed;
+                            unmatchedBooks = event.failedBooks;
+                            break;
+
+                          case "import-complete":
+                            progressBar.style.width = "100%";
+                            progressText.textContent = "Import complete";
+                            stageMessage.textContent =
+                              event.stageProgress.message;
+                            progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
+                            currentBook.textContent = "";
+                            break;
+                        }
+
+                        if (event.failedBooks?.length > 0) {
                           failedBooks.innerHTML = `Failed to import:<br>${event.failedBooks.map((b: { title: string; author: string }) => `- ${b.title} by ${b.author}`).join("<br>")}`;
                         }
                       }
@@ -164,8 +214,10 @@ export const GoodreadsImport: FC = () => {
                 }
               } catch (e) {
                 console.error("Stream reading failed:", e);
+                progressText!.textContent = "Import failed";
+                stageMessage!.textContent =
+                  "An error occurred during import. Please try again.";
               } finally {
-                progressText!.textContent = "Import complete";
                 importLabel.classList.remove("hidden");
                 importingLabel.classList.add("hidden");
                 // Add refresh button after import completes

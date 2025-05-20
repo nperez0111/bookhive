@@ -71,7 +71,7 @@ export async function searchBooks({
     () =>
       findBookDetails(query).then((res) => {
         if (!res.success) {
-          throw new Error(res.message);
+          return [];
         }
 
         return ctx.db
@@ -1094,6 +1094,7 @@ export function createRouter(app: HonoServer) {
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
         book: {
+          $type: "buzz.bookhive.hiveBook",
           title: book.title,
           authors: book.authors,
           cover: book.cover ?? undefined,

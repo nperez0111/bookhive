@@ -27,11 +27,12 @@ export function createIngester(
         logger.debug("ingesting event", { evt });
 
         // If the write is a valid status update
-        if (
-          evt.collection === ids.BuzzBookhiveBook &&
-          Book.isRecord(record) &&
-          Book.validateRecord(record).success
-        ) {
+        if (evt.collection === ids.BuzzBookhiveBook) {
+          const asBook = Book.validateRecord(record);
+          if (!asBook.success) {
+            return;
+          }
+          const book = asBook.value;
           logger.debug("valid book", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
@@ -45,7 +46,7 @@ export function createIngester(
           )?.id;
           if (!hiveId) {
             // Try to index the book into the hive, async
-            searchBooks({ query: record.title, ctx: { db, kv } });
+            searchBooks({ query: book.title, ctx: { db, kv } });
             logger.error("Trying to index book into hive", { record });
           }
           // Store the book in our SQLite
@@ -55,16 +56,16 @@ export function createIngester(
               uri: evt.uri.toString(),
               cid: evt.cid.toString(),
               userDid: evt.did,
-              hiveId: record.hiveId as HiveId,
-              createdAt: record.createdAt,
+              hiveId: book.hiveId as HiveId,
+              createdAt: book.createdAt,
               indexedAt: now.toISOString(),
-              title: record.title,
-              authors: record.authors,
-              startedAt: record.startedAt ?? null,
-              finishedAt: record.finishedAt ?? null,
-              status: record.status ?? null,
-              review: record.review ?? null,
-              stars: record.stars ?? null,
+              title: book.title,
+              authors: book.authors,
+              startedAt: book.startedAt ?? null,
+              finishedAt: book.finishedAt ?? null,
+              status: book.status ?? null,
+              review: book.review ?? null,
+              stars: book.stars ?? null,
             } satisfies UserBook)
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
@@ -84,11 +85,12 @@ export function createIngester(
             )
             .execute();
           return;
-        } else if (
-          evt.collection === ids.BuzzBookhiveBuzz &&
-          Buzz.isRecord(record) &&
-          Buzz.validateRecord(record).success
-        ) {
+        } else if (evt.collection === ids.BuzzBookhiveBuzz) {
+          const asBuzz = Buzz.validateRecord(record);
+          if (!asBuzz.success) {
+            return;
+          }
+          const buzz = asBuzz.value;
           logger.debug("valid buzz", { record });
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
@@ -97,7 +99,7 @@ export function createIngester(
             await db
               .selectFrom("user_book")
               .select("hiveId")
-              .where("uri", "=", record.book.uri)
+              .where("uri", "=", buzz.book.uri)
               .executeTakeFirst()
           )?.hiveId;
 
@@ -114,13 +116,13 @@ export function createIngester(
               cid: evt.cid.toString(),
               userDid: evt.did,
               hiveId,
-              createdAt: record.createdAt,
+              createdAt: buzz.createdAt,
               indexedAt: now.toISOString(),
-              bookCid: record.book.cid,
-              bookUri: record.book.uri,
-              comment: record.comment,
-              parentCid: record.parent.cid,
-              parentUri: record.parent.uri,
+              bookCid: buzz.book.cid,
+              bookUri: buzz.book.uri,
+              comment: buzz.comment,
+              parentCid: buzz.parent.cid,
+              parentUri: buzz.parent.uri,
             } satisfies BuzzRecord)
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
