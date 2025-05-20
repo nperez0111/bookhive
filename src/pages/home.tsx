@@ -8,6 +8,7 @@ import { BOOK_STATUS_PAST_TENSE_MAP } from "../constants";
 import { endTime, startTime } from "hono/timing";
 import { BookFields } from "../db";
 import { FallbackCover } from "./components/fallbackCover";
+import { GoodreadsImport } from "./import";
 
 type Props = {
   didHandleMap?: Record<string, string>;
@@ -326,7 +327,7 @@ export const Home: FC<Props> = async () => {
             Here are the books you have added to your library.
           </p>
           <div class="mt-8">
-            <BookList />
+            <BookList fallback={<GoodreadsImport />} />
           </div>
         </div>
       ) : (

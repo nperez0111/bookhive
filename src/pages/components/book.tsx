@@ -1,4 +1,4 @@
-import { type FC } from "hono/jsx";
+import { type Child, type FC } from "hono/jsx";
 import type { Book } from "../../types";
 import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../../constants";
@@ -11,7 +11,8 @@ const NO_BOOKS_FOUND = (
 
 export const BookList: FC<{
   books?: Book[];
-}> = async ({ books: booksFromProps }) => {
+  fallback?: Child;
+}> = async ({ books: booksFromProps, fallback }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
   const books =
@@ -36,7 +37,7 @@ export const BookList: FC<{
   }
 
   if (!books.length) {
-    return NO_BOOKS_FOUND;
+    return fallback || NO_BOOKS_FOUND;
   }
 
   return (
