@@ -195,7 +195,7 @@ async function LatestActivity() {
     .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
     .select(BookFields)
     .orderBy("user_book.createdAt", "desc")
-    .limit(10_000)
+    .limit(100)
     .execute();
   endTime(c, "latestBuzzes");
 
