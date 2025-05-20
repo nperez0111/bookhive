@@ -158,6 +158,7 @@ export const BookListItem: FC<{
           // src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
           alt={book.title}
           className="h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
+          loading="lazy"
         />
       ) : (
         <FallbackCover className="h-full w-full transition-all duration-300 group-hover:saturate-60" />
