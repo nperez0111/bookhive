@@ -24,7 +24,7 @@ export const BookList: FC<{
           .selectAll()
           .where("user_book.userDid", "=", agent.assertDid)
           .orderBy("user_book.createdAt", "desc")
-          .limit(200)
+          .limit(10_000)
           .execute()
       : []);
 
