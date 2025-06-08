@@ -113,6 +113,7 @@ export async function updateBookRecord({
   }
 
   const book = BookRecord.validateRecord({
+    $type: ids.BuzzBookhiveBook,
     // Always prefer original values
     title: originalBook?.title || updates.title,
     authors: originalBook?.authors || updates.authors,
