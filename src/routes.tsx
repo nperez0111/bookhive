@@ -34,6 +34,7 @@ import { ProfilePage } from "./pages/profile";
 import { findBookDetails } from "./scrapers";
 import { type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
+import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
 import { GoodreadsImport } from "./pages/import";
@@ -98,6 +99,28 @@ export async function searchBooks({
       requestsPerSecond: 5,
     },
   );
+}
+
+async function syncFollowsIfNeeded({
+  agent,
+  ctx,
+}: {
+  agent: Agent;
+  ctx: AppContext;
+}) {
+  if (!agent) {
+    return;
+  }
+
+  try {
+    const shouldSync = await shouldSyncFollows(ctx, agent.assertDid);
+    if (shouldSync) {
+      await syncUserFollows(ctx, agent);
+      ctx.logger.info({ userDid: agent.assertDid }, "Follows sync completed on login");
+    }
+  } catch (error) {
+    ctx.logger.warn({ userDid: agent.assertDid, error }, "Failed to sync follows on login");
+  }
 }
 
 // TODO use getUserRepoRecords
@@ -331,9 +354,12 @@ export function createRouter(app: HonoServer) {
         return;
       }
 
-      // Fetch books/buzzes on login, but don't wait for it
+      // Fetch books/buzzes and sync follows on login, but don't wait for it
       await Promise.race([
-        refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
+        Promise.all([
+          refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
+          syncFollowsIfNeeded({ agent, ctx }),
+        ]),
         new Promise((resolve) => setTimeout(resolve, 800)),
       ]);
     },

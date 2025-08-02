@@ -42,6 +42,7 @@ import type { HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
 import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv.ts";
 import { getUserRepoRecords, updateBookRecords } from "./utils/getBook.ts";
+
 import { lazy } from "./utils/lazy.ts";
 import { readThroughCache } from "./utils/readThroughCache.ts";
 
@@ -142,6 +143,10 @@ export class Server {
     kv.mount(
       "didCache:",
       sqliteKv({ location: env.KV_DB_PATH, table: "didCache" }),
+    );
+    kv.mount(
+      "follows_sync:",
+      sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync" }),
     );
     kv.mount(
       "auth_session:",

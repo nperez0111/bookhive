@@ -6,13 +6,15 @@ import {
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import type { Buzz, HiveBook, UserBook } from "./types";
+import type { Buzz, HiveBook, UserBook, UserFollow } from "./types";
 
 // Types
 export type DatabaseSchema = {
   hive_book: HiveBook;
   user_book: UserBook;
   buzz: Buzz;
+  user_follows: UserFollow;
+
 };
 
 export const BookFields = [
@@ -117,6 +119,44 @@ migrations["003"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("hive_book").dropColumn("rawTitle").execute();
+  },
+};
+
+migrations["004"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("user_follows")
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("followsDid", "text", (col) => col.notNull())
+      .addColumn("followedAt", "text", (col) => col.notNull())
+      .addColumn("syncedAt", "text", (col) => col.notNull())
+      .addColumn("lastSeenAt", "text", (col) => col.notNull())
+      .addColumn("isActive", "integer", (col) => col.notNull().defaultTo(1))
+      .execute();
+    
+
+    
+    await db.schema
+      .createIndex("idx_user_follows_primary")
+      .on("user_follows")
+      .columns(["userDid", "followsDid"])
+      .unique()
+      .execute();
+    
+    await db.schema
+      .createIndex("idx_user_follows_user")
+      .on("user_follows")
+      .column("userDid")
+      .execute();
+    
+    await db.schema
+      .createIndex("idx_user_follows_synced")
+      .on("user_follows")
+      .columns(["userDid", "syncedAt"])
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("user_follows").execute();
   },
 };
 
