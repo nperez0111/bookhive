@@ -2,6 +2,7 @@ import { Agent } from "@atproto/api";
 import type { AppContext } from "..";
 import { getLogger } from "../logger";
 
+
 export interface FollowsSync {
   userDid: string;
   lastFullSync: string | null;
@@ -10,8 +11,6 @@ export interface FollowsSync {
 }
 
 const logger = getLogger({ name: "follows-sync" });
-
-
 
 export async function syncUserFollows(ctx: AppContext, agent: Agent): Promise<void> {
   const userDid = agent.assertDid;
@@ -66,7 +65,6 @@ async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): 
   logger.info({ userDid }, "Starting full follows sync");
   
 
-  
   // Mark all existing follows as potentially stale
   try {
     await ctx.db
@@ -147,63 +145,62 @@ async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): 
 async function incrementalFollowsSync(ctx: AppContext, agent: Agent, userDid: string): Promise<void> {
   logger.trace({ userDid }, "Starting incremental follows sync");
   
-  const syncData = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
-  let cursor = syncData?.cursor;
   let newFollows = 0;
+  let cursor: string | undefined = undefined;
+  let foundExisting = false;
   
-  // Fetch recent follows to catch new ones
-  const response = await agent.app.bsky.graph.getFollows({
-    actor: userDid,
-    limit: 100,
-    cursor: undefined, // Always start from the beginning for incremental
-  });
-  
-  const follows = response.data.follows;
-  const now = new Date().toISOString();
-  
-  if (follows.length > 0) {
-    // Check if we've seen the first follow before
-    const firstFollow = follows[0];
-    const exists = await ctx.db
-      .selectFrom("user_follows")
-      .select("userDid")
-      .where("userDid", "=", userDid)
-      .where("followsDid", "=", firstFollow.did)
-      .executeTakeFirst();
+  // Fetch follows starting from the most recent until we find ones we already have
+  do {
+    const response = await agent.app.bsky.graph.getFollows({
+      actor: userDid,
+      limit: 100,
+      cursor,
+    });
     
-    if (exists && !cursor) {
-      // We've caught up to existing data
-      logger.trace({ userDid }, "No new follows found");
-      return;
-    }
+    const follows = response.data.follows;
+    const now = new Date().toISOString();
     
-    // Store new follows
+    if (follows.length === 0) break;
+    
+    // Check if we've seen any of these follows before
     for (const follow of follows) {
-      try {
-        await ctx.db
-          .insertInto("user_follows")
-          .values({
-            userDid,
-            followsDid: follow.did,
-            followedAt: follow.createdAt || now,
-            syncedAt: now,
+      const exists = await ctx.db
+        .selectFrom("user_follows")
+        .select("userDid")
+        .where("userDid", "=", userDid)
+        .where("followsDid", "=", follow.did)
+        .executeTakeFirst();
+      
+      if (exists) {
+        // We've caught up to existing data
+        foundExisting = true;
+        break;
+      }
+      
+      // This is a new follow, store it
+      await ctx.db
+        .insertInto("user_follows")
+        .values({
+          userDid,
+          followsDid: follow.did,
+          followedAt: follow.createdAt || now,
+          syncedAt: now,
+          lastSeenAt: now,
+          isActive: 1,
+        })
+        .onConflict((oc) =>
+          oc.columns(["userDid", "followsDid"]).doUpdateSet({
             lastSeenAt: now,
             isActive: 1,
           })
-          .onConflict((oc) =>
-            oc.columns(["userDid", "followsDid"]).doUpdateSet({
-              lastSeenAt: now,
-              isActive: 1,
-            })
-          )
-          .execute();
-        
-        newFollows++;
-      } catch (error) {
-        // Follow already exists, continue
-      }
+        )
+        .execute();
+      
+      newFollows++;
     }
-  }
+    
+    cursor = response.data.cursor;
+  } while (cursor && !foundExisting);
   
   logger.info({ userDid, newFollows }, "Incremental follows sync completed");
 }
