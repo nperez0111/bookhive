@@ -129,6 +129,35 @@ export type HiveBook = {
   rawTitle: string | null;
 };
 
+export type UserFollow = {
+  /**
+   * DID of the user who is following
+   */
+  userDid: string;
+  /**
+   * DID of the user being followed
+   */
+  followsDid: string;
+  /**
+   * When the follow relationship was created on Bluesky
+   */
+  followedAt: string;
+  /**
+   * When we synced this relationship
+   */
+  syncedAt: string;
+  /**
+   * Last time we saw this follow in a sync
+   */
+  lastSeenAt: string;
+  /**
+   * Whether this follow is currently active (1 = true, 0 = false)
+   */
+  isActive: number;
+};
+
+
+
 type Simplify<T> = {
   [K in keyof T]: T[K];
 };
