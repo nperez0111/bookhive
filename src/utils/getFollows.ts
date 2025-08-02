@@ -65,10 +65,7 @@ async function determineSyncType(ctx: AppContext, userDid: string): Promise<'ful
 async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): Promise<void> {
   logger.info({ userDid }, "Starting full follows sync");
   
-  // Check if agent has the required method
-  if (!agent.app?.bsky?.graph?.getFollows) {
-    throw new Error("Agent does not have getFollows method available");
-  }
+
   
   // Mark all existing follows as potentially stale
   try {
