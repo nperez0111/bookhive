@@ -15,7 +15,9 @@
     "build:js:backend": "rm -rf dist && node ./esbuild.cjs",
     "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
     "build": "concurrently \"pnpm:build:css\" \"pnpm:build:*\" \"pnpm run lexgen --yes\"",
-    "test": "echo \"Error: no test specified\"",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lexgen": "lex gen-server ./src/bsky/lexicon ./lexicons/*",
     "postlexgen": "prettier --write ./src/bsky/lexicon/*",
@@ -80,6 +82,7 @@
     "@types/ws": "8.5.13",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
+    "@vitest/ui": "^3.2.4",
     "concurrently": "^9.1.2",
     "esbuild": "0.24.0",
     "eslint": "^9.26.0",
@@ -90,7 +93,8 @@
     "prettier-plugin-tailwindcss": "^0.6.11",
     "tailwindcss": "^4.1.5",
     "tailwindcss-animated": "^1.1.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

@@ -6,7 +6,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { prometheus } from "@hono/prometheus";
 import { zValidator } from "@hono/zod-validator";
-import { differenceInSeconds } from "date-fns";
+
 import { Hono } from "hono";
 import { pinoLogger, type Env } from "hono-pino";
 import { compress } from "hono/compress";
@@ -89,15 +89,15 @@ export async function getSessionAgent(
 
   try {
     const oauthSession = await ctx.oauthClient.restore(session.did, false);
-    const tokenInfo = await oauthSession.getTokenInfo("auto");
-    if (tokenInfo && tokenInfo.expiresAt) {
-      session.updateConfig({
-        cookieName: "sid",
-        password: env.COOKIE_SECRET,
-        ttl: differenceInSeconds(tokenInfo.expiresAt, new Date()),
-      });
-      await session.save();
-    }
+    // Use "auto" to automatically refresh tokens when needed
+    await oauthSession.getTokenInfo("auto");
+    // Keep session TTL fixed at 24 hours, independent of token expiration
+    session.updateConfig({
+      cookieName: "sid",
+      password: env.COOKIE_SECRET,
+      ttl: 60 * 60 * 24, // 24 hours
+    });
+    await session.save();
     return oauthSession ? new Agent(oauthSession) : null;
   } catch (err) {
     ctx.logger.warn({ err }, "oauth restore failed");

@@ -1,6 +1,6 @@
 import { isValidHandle } from "@atproto/syntax";
 import { getIronSession, sealData } from "iron-session";
-import { differenceInSeconds } from "date-fns";
+
 
 import { OAuthResolverError } from "@atproto/oauth-client-node";
 import { env } from "../env";
@@ -33,15 +33,13 @@ export function loginRouter(
       const { session, state } = await c
         .get("ctx")
         .oauthClient.callback(params);
-      const tokenInfo = await session.getTokenInfo(false);
 
       const clientSession = await getIronSession<Session>(c.req.raw, c.res, {
         cookieName: "sid",
         password: env.COOKIE_SECRET,
-        // TODO need to set TTL for session refresh?
-        ttl: tokenInfo.expiresAt
-          ? differenceInSeconds(tokenInfo.expiresAt, new Date())
-          : undefined,
+        // Set session TTL to 24 hours, independent of token expiration
+        // Tokens will be refreshed automatically before they expire
+        ttl: 60 * 60 * 24, // 24 hours
       });
 
       // assert(!clientSession.did, "session already exists");
@@ -157,15 +155,15 @@ export function loginRouter(
       });
 
       const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
-      const tokenInfo = await oauthSession.getTokenInfo("auto");
-      if (tokenInfo && tokenInfo.expiresAt) {
-        session.updateConfig({
-          cookieName: "sid",
-          password: env.COOKIE_SECRET,
-          ttl: differenceInSeconds(tokenInfo.expiresAt, new Date()),
-        });
-        await session.save();
-      }
+      // Use "auto" to automatically refresh tokens when needed
+      await oauthSession.getTokenInfo("auto");
+      // Keep session TTL fixed at 24 hours for mobile sessions too
+      session.updateConfig({
+        cookieName: "sid",
+        password: env.COOKIE_SECRET,
+        ttl: 60 * 60 * 24, // 24 hours
+      });
+      await session.save();
 
       return c.json({
         success: true,
