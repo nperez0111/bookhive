@@ -58,6 +58,22 @@ To run:
 pnpm run dev
 ```
 
+## Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test
+
+# Run tests once
+pnpm test:run
+
+# Run tests with UI
+pnpm test:ui
+```
+
 ## 🏗️ Architecture
 
 - **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
