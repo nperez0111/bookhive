@@ -116,10 +116,16 @@ async function syncFollowsIfNeeded({
     const shouldSync = await shouldSyncFollows(ctx, agent.assertDid);
     if (shouldSync) {
       await syncUserFollows(ctx, agent);
-      ctx.logger.info({ userDid: agent.assertDid }, "Follows sync completed on login");
+      ctx.logger.info(
+        { userDid: agent.assertDid },
+        "Follows sync completed on login",
+      );
     }
   } catch (error) {
-    ctx.logger.warn({ userDid: agent.assertDid, error }, "Failed to sync follows on login");
+    ctx.logger.warn(
+      { userDid: agent.assertDid, error },
+      "Failed to sync follows on login",
+    );
   }
 }
 
@@ -357,7 +363,9 @@ export function createRouter(app: HonoServer) {
       // Fetch books/buzzes and sync follows on login, but don't wait for it
       await Promise.race([
         Promise.all([
-          refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
+          refetchBooks({ agent, ctx }).then(() =>
+            refetchBuzzes({ agent, ctx }),
+          ),
           syncFollowsIfNeeded({ agent, ctx }),
         ]),
         new Promise((resolve) => setTimeout(resolve, 800)),
@@ -473,6 +481,31 @@ export function createRouter(app: HonoServer) {
       title: "BookHive | Import",
       description: "Import your Goodreads library to BookHive",
     });
+  });
+
+  app.get("/profile/:handle/image", async (c) => {
+    const handle = c.req.param("handle");
+
+    const did = isDid(handle)
+      ? handle
+      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+
+    const profile = await getProfile({ ctx: c.get("ctx"), did: did! });
+
+    if (!profile || !profile.avatar) {
+      return c.html(
+        <Layout>
+          <ErrorPage
+            message="Profile not found"
+            description="The profile you are looking for does not exist"
+            statusCode={404}
+          />
+        </Layout>,
+        404,
+      );
+    }
+
+    return c.redirect(`/images/w_500/${profile.avatar}`);
   });
 
   app.get("/profile/:handle", async (c) => {
@@ -1122,6 +1155,18 @@ export function createRouter(app: HonoServer) {
         .where("user_book.hiveId", "=", book.id)
         .executeTakeFirst();
 
+      const didToHandle = await c
+        .get("ctx")
+        .resolver.resolveDidsToHandles(
+          Array.from(
+            new Set(
+              comments
+                .map((c) => c.userDid)
+                .concat(topLevelReviews.map((r) => r.userDid)),
+            ),
+          ),
+        );
+
       const response = {
         createdAt: userBook?.createdAt,
         startedAt: userBook?.startedAt ?? undefined,
@@ -1154,8 +1199,7 @@ export function createRouter(app: HonoServer) {
           comment: c.comment,
           createdAt: c.createdAt,
           did: c.userDid,
-          // map this id to a handle
-          handle: c.userDid,
+          handle: didToHandle[c.userDid] ?? c.userDid,
           parent: {
             uri: c.parentUri,
             cid: c.parentCid,
@@ -1164,8 +1208,7 @@ export function createRouter(app: HonoServer) {
         reviews: topLevelReviews.map((r) => ({
           createdAt: r.createdAt,
           did: r.userDid,
-          // map this id to a handle
-          handle: r.userDid,
+          handle: didToHandle[r.userDid] ?? r.userDid,
           review: r.comment,
           stars: r.stars ?? undefined,
         })),
