@@ -37,7 +37,7 @@ import { updateBookRecord } from "./utils/getBook";
 import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
-import { GoodreadsImport } from "./pages/import";
+import { LibraryImport } from "./pages/import";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -469,9 +469,9 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    return c.render(<GoodreadsImport />, {
+    return c.render(<LibraryImport />, {
       title: "BookHive | Import",
-      description: "Import your Goodreads library to BookHive",
+      description: "Import your library from Goodreads or StoryGraph to BookHive",
     });
   });
 

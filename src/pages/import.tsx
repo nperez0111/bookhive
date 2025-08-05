@@ -1,23 +1,63 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-export const GoodreadsImport: FC = () => {
+export const LibraryImport: FC = () => {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-        <h2 className="mb-4 text-xl font-semibold">Import from Goodreads</h2>
+        <h2 className="mb-6 text-xl font-semibold">Import your library</h2>
 
-        <p className="mb-6 text-gray-600 dark:text-gray-300">
-          To import your Goodreads library, first{" "}
-          <a
-            href="https://www.goodreads.com/review/import"
-            className="font-medium text-yellow-600 hover:text-yellow-700"
-            target="_blank"
-          >
-            export your library from Goodreads
-          </a>
-          , then upload the CSV file below.
-        </p>
+        {/* Service Selection */}
+        <div className="mb-6">
+          <div className="flex gap-4">
+            <label className="flex cursor-pointer items-center">
+              <input
+                type="radio"
+                name="import-service"
+                value="goodreads"
+                className="sr-only"
+                defaultChecked
+              />
+              <div id="goodreads-option" className="flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500">
+                <span className="font-medium">From Goodreads</span>
+              </div>
+            </label>
+            <label className="flex cursor-pointer items-center">
+              <input
+                type="radio"
+                name="import-service"
+                value="storygraph"
+                className="sr-only"
+              />
+              <div id="storygraph-option" className="flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500">
+                <span className="font-medium">From StoryGraph</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Dynamic Instructions */}
+        <div id="goodreads-instructions" className="mb-6">
+          <p className="text-gray-600 dark:text-gray-300">
+            To import your Goodreads library, first{" "}
+            <a
+              href="https://www.goodreads.com/review/import"
+              className="font-medium text-yellow-600 hover:text-yellow-700"
+              target="_blank"
+            >
+              export your library from Goodreads
+            </a>
+            , then upload the CSV file below.
+          </p>
+        </div>
+
+        <div id="storygraph-instructions" className="mb-6 hidden">
+          <p className="text-gray-600 dark:text-gray-300">
+            To import your StoryGraph library, go to your{" "}
+            <span className="font-medium">Manage Account</span> page on StoryGraph and export your library as a CSV file, then upload it below.
+          </p>
+        </div>
+        
 
         <label
           className="inline-flex cursor-pointer items-center rounded-lg bg-yellow-100 px-4 py-2 text-yellow-800 transition-colors duration-200 hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-800"
@@ -58,6 +98,56 @@ export const GoodreadsImport: FC = () => {
           />
           <Script
             script={(document) => {
+              // Handle service selection toggle
+              const radioButtons = document.querySelectorAll(
+                'input[name="import-service"]'
+              ) as NodeListOf<HTMLInputElement>;
+              const goodreadsInstructions = document.getElementById("goodreads-instructions");
+              const storygraphInstructions = document.getElementById("storygraph-instructions");
+
+              function updateSelection() {
+                const selectedService = document.querySelector(
+                  'input[name="import-service"]:checked'
+                ) as HTMLInputElement;
+                
+                const goodreadsOption = document.getElementById("goodreads-option");
+                const storygraphOption = document.getElementById("storygraph-option");
+                
+                if (selectedService?.value === "storygraph") {
+                  // StoryGraph selected
+                  goodreadsInstructions?.classList.add("hidden");
+                  storygraphInstructions?.classList.remove("hidden");
+                  
+                  // Update styling
+                  if (goodreadsOption) {
+                    goodreadsOption.className = "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
+                  }
+                  if (storygraphOption) {
+                    storygraphOption.className = "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
+                  }
+                } else {
+                  // Goodreads selected
+                  goodreadsInstructions?.classList.remove("hidden");
+                  storygraphInstructions?.classList.add("hidden");
+                  
+                  // Update styling
+                  if (storygraphOption) {
+                    storygraphOption.className = "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
+                  }
+                  if (goodreadsOption) {
+                    goodreadsOption.className = "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
+                  }
+                }
+              }
+
+              // Add event listeners to radio buttons
+              radioButtons.forEach(radio => {
+                radio.addEventListener("change", updateSelection);
+              });
+              
+              // Set initial state on page load
+              updateSelection();
+
               const importFile = document.getElementById(
                 "import-file",
               ) as HTMLInputElement;
@@ -70,6 +160,15 @@ export const GoodreadsImport: FC = () => {
                   alert("Please select a file to import");
                   return;
                 }
+                
+                // Get selected service
+                const selectedService = document.querySelector(
+                  'input[name="import-service"]:checked'
+                ) as HTMLInputElement;
+                const endpoint = selectedService?.value === "storygraph" 
+                  ? "/import/storygraph" 
+                  : "/import/goodreads";
+
                 const form = new FormData();
                 form.append("export", files[0]);
                 const importLabel = document.getElementById("import-label");
@@ -80,7 +179,7 @@ export const GoodreadsImport: FC = () => {
                 }
                 importLabel.classList.add("hidden");
                 importingLabel.classList.remove("hidden");
-                const response = await fetch("/import/goodreads", {
+                const response = await fetch(endpoint, {
                   method: "POST",
                   body: form,
                 });
