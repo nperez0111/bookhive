@@ -1,4 +1,4 @@
-import { parse, Parser } from "csv-parse";
+import { parse } from "csv-parse";
 
 export interface GoodreadsBook {
   bookId: string;
@@ -25,6 +25,143 @@ export interface GoodreadsBook {
   privateNotes: string;
   readCount: number;
   ownedCopies: number;
+}
+
+export interface StorygraphBook {
+  title: string;
+  authors: string;
+  contributors: string;
+  isbn: string;
+  format: string;
+  readStatus: string;
+  dateAdded: Date | null;
+  lastDateRead: Date | null;
+  datesRead: string;
+  readCount: number;
+  moods: string;
+  pace: string;
+  characterOrPlot: string;
+  strongCharacterDevelopment: string;
+  loveableCharacters: string;
+  diverseCharacters: string;
+  flawedCharacters: string;
+  starRating: number;
+  review: string;
+  contentWarnings: string;
+  contentWarningDescription: string;
+  tags: string;
+  owned: boolean;
+}
+
+export function getStorygraphCsvParser() {
+  const parser = parse({
+    skip_empty_lines: true,
+    trim: true,
+    columns: true, // Use first line as column headers
+    cast: (value: string, { column }): any => {
+      // Handle empty values
+      if (value === "" || value === '""') {
+        if (column === "Star Rating") return 0;
+        if (column === "Read Count") return 0;
+        if (column === "Owned?") return false;
+        return null;
+      }
+
+      // Remove surrounding quotes if present
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+
+      // Handle different columns appropriately
+      switch (column) {
+        case "Star Rating":
+          // StoryGraph uses 0-5 scale, multiply by 2 to match Goodreads 0-10 scale internally
+          return parseFloat(value) || 0;
+        case "Read Count":
+          return parseInt(value) || 0;
+        case "Date Added":
+        case "Last Date Read":
+          // StoryGraph uses YYYY/MM/DD format
+          return value && value !== '""' ? new Date(value) : null;
+        case "Owned?":
+          return value.toLowerCase() === "yes";
+        default:
+          return value || "";
+      }
+    },
+  });
+
+  return new TransformStream<Uint8Array, StorygraphBook>({
+    transform(chunk, controller) {
+      parser.write(chunk);
+
+      // Process any records that are ready
+      let record: any;
+      while ((record = parser.read())) {
+        // Map CSV columns to StorygraphBook interface
+        const storygraphBook: StorygraphBook = {
+          title: record["Title"] || "",
+          authors: record["Authors"] || "",
+          contributors: record["Contributors"] || "",
+          isbn: record["ISBN/UID"] || "",
+          format: record["Format"] || "",
+          readStatus: record["Read Status"] || "",
+          dateAdded: record["Date Added"],
+          lastDateRead: record["Last Date Read"],
+          datesRead: record["Dates Read"] || "",
+          readCount: record["Read Count"] || 0,
+          moods: record["Moods"] || "",
+          pace: record["Pace"] || "",
+          characterOrPlot: record["Character- or Plot-Driven?"] || "",
+          strongCharacterDevelopment: record["Strong Character Development?"] || "",
+          loveableCharacters: record["Loveable Characters?"] || "",
+          diverseCharacters: record["Diverse Characters?"] || "",
+          flawedCharacters: record["Flawed Characters?"] || "",
+          starRating: record["Star Rating"] || 0,
+          review: record["Review"] || "",
+          contentWarnings: record["Content Warnings"] || "",
+          contentWarningDescription: record["Content Warning Description"] || "",
+          tags: record["Tags"] || "",
+          owned: record["Owned?"] || false,
+        };
+        controller.enqueue(storygraphBook);
+      }
+    },
+    flush(controller) {
+      parser.end();
+
+      // Get any remaining records
+      let record: any;
+      while ((record = parser.read())) {
+        const storygraphBook: StorygraphBook = {
+          title: record["Title"] || "",
+          authors: record["Authors"] || "",
+          contributors: record["Contributors"] || "",
+          isbn: record["ISBN/UID"] || "",
+          format: record["Format"] || "",
+          readStatus: record["Read Status"] || "",
+          dateAdded: record["Date Added"],
+          lastDateRead: record["Last Date Read"],
+          datesRead: record["Dates Read"] || "",
+          readCount: record["Read Count"] || 0,
+          moods: record["Moods"] || "",
+          pace: record["Pace"] || "",
+          characterOrPlot: record["Character- or Plot-Driven?"] || "",
+          strongCharacterDevelopment: record["Strong Character Development?"] || "",
+          loveableCharacters: record["Loveable Characters?"] || "",
+          diverseCharacters: record["Diverse Characters?"] || "",
+          flawedCharacters: record["Flawed Characters?"] || "",
+          starRating: record["Star Rating"] || 0,
+          review: record["Review"] || "",
+          contentWarnings: record["Content Warnings"] || "",
+          contentWarningDescription: record["Content Warning Description"] || "",
+          tags: record["Tags"] || "",
+          owned: record["Owned?"] || false,
+        };
+        controller.enqueue(storygraphBook);
+      }
+    },
+  });
 }
 
 export function getGoodreadsCsvParser() {

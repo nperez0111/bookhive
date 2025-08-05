@@ -40,7 +40,7 @@ import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
 import type { HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
-import { getGoodreadsCsvParser, type GoodreadsBook } from "./utils/csv.ts";
+import { getGoodreadsCsvParser, getStorygraphCsvParser, type GoodreadsBook, type StorygraphBook } from "./utils/csv.ts";
 import { getUserRepoRecords, updateBookRecords } from "./utils/getBook.ts";
 
 import { lazy } from "./utils/lazy.ts";
@@ -479,6 +479,252 @@ export class Server {
               failedBooks: unmatchedBooks.map((b) => ({
                 title: b.title,
                 author: b.author,
+              })),
+              id: id++,
+            }),
+          });
+        });
+      },
+    );
+
+    // This is to import a StoryGraph CSV export
+    // It is here because we don't want it behind the etag middleware
+    app.post(
+      "/import/storygraph",
+      zValidator(
+        "form",
+        z.object({
+          export: z.instanceof(File),
+        }),
+      ),
+      async (c) => {
+        const ctx = c.get("ctx");
+        const agent = await ctx.getSessionAgent();
+        if (!agent) {
+          return c.json(
+            {
+              success: false,
+              error: "Invalid Session",
+            },
+            401,
+          );
+        }
+
+        const { export: exportFile } = c.req.valid("form");
+        return streamSSE(c, async (stream) => {
+          const parser = getStorygraphCsvParser();
+          let id = 0;
+          let totalBooks = 0;
+          let matchedBooks = 0;
+          const unmatchedBooks: StorygraphBook[] = [];
+
+          // Send initial event
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "import-start",
+              stage: "initializing",
+              stageProgress: {
+                message: "Starting import process...",
+              },
+              id: id++,
+            }),
+          });
+
+          // Create a stream pipeline
+          const [countStream, uploadStream] = exportFile
+            .stream()
+            .pipeThrough(parser)
+            .tee();
+
+          // count the total number of books in a separate stream
+          countStream.pipeTo(
+            new WritableStream({
+              async write(book) {
+                // search asynchronously, already has a rate-limit in place
+                searchBooks({ query: book.title, ctx });
+
+                totalBooks++;
+              },
+            }),
+          );
+
+          const bookRecords = getUserRepoRecords({
+            ctx,
+            agent,
+          });
+
+          // Send event before starting uploads
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "upload-start",
+              stage: "uploading",
+              stageProgress: {
+                current: 0,
+                total: totalBooks,
+                message: "Starting to upload books to your library...",
+              },
+              id: id++,
+            }),
+          });
+
+          await uploadStream
+            .pipeThrough(
+              createBatchTransform(
+                25,
+                async (
+                  books,
+                ): Promise<
+                  Map<
+                    HiveId,
+                    Partial<BookRecord.Record> & { coverImage?: string }
+                  >
+                > => {
+                  return new Map(
+                    (
+                      await Promise.all(
+                        books.map(async (book) => {
+                          try {
+                            await stream.writeSSE({
+                              data: JSON.stringify({
+                                title: book.title,
+                                author: book.authors,
+                                processed: matchedBooks,
+                                failed: unmatchedBooks.length,
+                                failedBooks: unmatchedBooks.map((b) => ({
+                                  title: b.title,
+                                  author: b.authors,
+                                })),
+                                total: totalBooks,
+                                event: "book-load",
+                                stage: "searching",
+                                stageProgress: {
+                                  current: totalBooks,
+                                  total: "unknown",
+                                  message: "Searching for books in Hive...",
+                                },
+                                id: id++,
+                              }),
+                            });
+                            // Double-check that the book exists in Hive
+                            // Multiple calls get de-duped
+                            await searchBooks({ query: book.title, ctx });
+                            let hiveBook = await ctx.db
+                              .selectFrom("hive_book")
+                              .select("id")
+                              .select("title")
+                              .select("cover")
+                              // rawTitle is the title from the StoryGraph export
+                              .where("hive_book.rawTitle", "=", book.title)
+                              // authors is the author from the StoryGraph export
+                              .where("authors", "=", book.authors)
+                              .executeTakeFirst();
+
+                            if (!hiveBook) {
+                              unmatchedBooks.push(book);
+                              return null;
+                            }
+
+                            // Map StoryGraph read status to BookHive status
+                            let status = "buzz.bookhive.defs#wantToRead";
+                            switch (book.readStatus.toLowerCase()) {
+                              case "read":
+                                status = "buzz.bookhive.defs#finished";
+                                break;
+                              case "currently-reading":
+                                status = "buzz.bookhive.defs#reading";
+                                break;
+                              case "to-read":
+                              default:
+                                status = "buzz.bookhive.defs#wantToRead";
+                                break;
+                            }
+
+                            // update the book record asynchronously
+                            return [
+                              hiveBook.id as HiveId,
+                              {
+                                authors: book.authors,
+                                title: hiveBook.title,
+                                status: status,
+                                hiveId: hiveBook.id,
+                                coverImage: hiveBook.cover ?? undefined,
+                                finishedAt:
+                                  book.lastDateRead?.toISOString() ?? undefined,
+                                stars: book.starRating
+                                  ? book.starRating * 2 // Convert 0-5 to 0-10 scale
+                                  : undefined,
+                                review: book.review || undefined,
+                              },
+                            ] as const;
+                          } catch (e) {
+                            ctx.logger.error("Failed to update book record", {
+                              error: e,
+                              book,
+                            });
+                            unmatchedBooks.push(book);
+                            return null;
+                          }
+                        }),
+                      )
+                    ).filter((a) => a !== null),
+                  );
+                },
+              ),
+            )
+            .pipeTo(
+              new WritableStream({
+                async write(bookUpdates) {
+                  matchedBooks += bookUpdates.size;
+                  // Only send one book at a time to the client
+                  const book = bookUpdates.values().next().value;
+
+                  await stream.writeSSE({
+                    data: JSON.stringify({
+                      title: book?.["title"],
+                      author: book?.["authors"],
+                      uploaded: bookUpdates.size,
+                      processed: matchedBooks,
+                      failed: unmatchedBooks.length,
+                      failedBooks: unmatchedBooks.map((b) => ({
+                        title: b.title,
+                        author: b.authors,
+                      })),
+                      total: totalBooks,
+                      event: "book-upload",
+                      stage: "uploading",
+                      stageProgress: {
+                        current: matchedBooks,
+                        total: totalBooks,
+                        message: `Uploading books to your library (${matchedBooks}/${totalBooks})`,
+                      },
+                      id: id++,
+                    }),
+                  });
+
+                  await updateBookRecords({
+                    ctx,
+                    agent,
+                    updates: bookUpdates,
+                    // overwrite: true,
+                    bookRecords,
+                  });
+                },
+              }),
+            );
+
+          // Send final completion event
+          await stream.writeSSE({
+            data: JSON.stringify({
+              event: "import-complete",
+              stage: "complete",
+              stageProgress: {
+                current: matchedBooks,
+                total: totalBooks,
+                message: `Import complete! Successfully imported ${matchedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
+              },
+              failedBooks: unmatchedBooks.map((b) => ({
+                title: b.title,
+                author: b.authors,
               })),
               id: id++,
             }),
