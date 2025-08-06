@@ -13,233 +13,471 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { Colors } from "@/constants/Colors";
 import { router } from "expo-router";
+
 export default function ProfileScreen() {
   const { signOut } = useAuth();
   const { data: profile } = useProfile();
-  const color = useThemeColor({}, "icon");
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
+  const backgroundColor = useThemeColor({}, "background");
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={{ ...styles.header, borderBottomColor: color }}>
-        <Image
-          source={{
-            uri: profile?.profile.avatar,
-          }}
-          style={styles.profileImage}
-        />
-        <ThemedText style={styles.name}>
-          {profile?.profile.displayName}
-        </ThemedText>
-        <ThemedText style={styles.bio}>
-          {profile?.profile.description}
-        </ThemedText>
-        <ThemedView style={styles.statsRow}>
-          <ThemedView style={styles.stat}>
-            <ThemedText style={styles.statNumber}>
-              {profile?.profile.booksRead}
-            </ThemedText>
-            <ThemedText style={styles.statLabel}>Books Read</ThemedText>
-          </ThemedView>
-          <ThemedView style={styles.stat}>
-            <ThemedText style={styles.statNumber}>
-              {profile?.profile.reviews}
-            </ThemedText>
-            <ThemedText style={styles.statLabel}>Reviews</ThemedText>
-          </ThemedView>
-        </ThemedView>
-      </View>
+    <ThemedView style={[styles.container, { backgroundColor }]}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header Section */}
+        <View style={styles.headerSection}>
+          <ThemedText
+            style={[
+              styles.headerTitle,
+              { color: colorScheme === "dark" ? "white" : colors.text },
+            ]}
+          >
+            Profile
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.headerSubtitle,
+              { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+            ]}
+          >
+            Manage your account and preferences
+          </ThemedText>
+        </View>
 
-      {/* TODO: Add reading challenge */}
-      {/* <ThemedView style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Reading Challenge</ThemedText>
-        <ThemedView style={styles.challengeCard}>
-          <ThemedView style={styles.challengeInfo}>
-            <ThemedText style={styles.challengeTitle}>
-              2025 Reading Challenge
-            </ThemedText>
-            <ThemedText style={styles.challengeProgress}>
-              12 of 50 books read
-            </ThemedText>
-            <ThemedView style={styles.progressBarContainer}>
-              <ThemedView style={[styles.progressBar, { width: "24%" }]} />
-            </ThemedView>
-          </ThemedView>
-        </ThemedView>
-      </ThemedView> */}
+        {/* Profile Card */}
+        <View style={styles.profileSection}>
+          <View
+            style={[
+              styles.profileCard,
+              {
+                backgroundColor: colors.cardBackground,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <View style={styles.profileHeader}>
+              <Image
+                source={{
+                  uri: profile?.profile.avatar,
+                }}
+                style={styles.profileImage}
+              />
+              <View style={styles.profileInfo}>
+                <ThemedText
+                  style={[
+                    styles.profileName,
+                    { color: colorScheme === "dark" ? "white" : colors.text },
+                  ]}
+                >
+                  {profile?.profile.displayName}
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.profileBio,
+                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {profile?.profile.description || "No bio available"}
+                </ThemedText>
+              </View>
+            </View>
 
-      <View style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Recent Activity</ThemedText>
-        <ThemedView style={{ ...styles.activityList, borderColor: color }}>
-          {profile?.activity.map((activity, i, all) => (
-            <Pressable
-              style={{
-                ...styles.activityItem,
-                borderColor: color,
-                borderBottomWidth: i === all.length - 1 ? 0 : 1,
-              }}
-              key={activity.hiveId}
-              onPress={() => router.push(`/book/${activity.hiveId}`)}
+            {/* Stats Row */}
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <ThemedText
+                  style={[styles.statNumber, { color: colors.primary }]}
+                >
+                  {profile?.profile.booksRead || 0}
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.statLabel,
+                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+                  ]}
+                >
+                  Books Read
+                </ThemedText>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <ThemedText
+                  style={[styles.statNumber, { color: colors.primary }]}
+                >
+                  {profile?.profile.reviews || 0}
+                </ThemedText>
+                <ThemedText
+                  style={[
+                    styles.statLabel,
+                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+                  ]}
+                >
+                  Reviews
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Recent Activity Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderContent}>
+              <Ionicons name="time-outline" size={24} color={colors.primary} />
+              <ThemedText
+                style={[
+                  styles.sectionTitle,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Recent Activity
+              </ThemedText>
+            </View>
+          </View>
+
+          {profile?.activity && profile.activity.length > 0 ? (
+            <View
+              style={[
+                styles.activityCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.cardBorder,
+                },
+              ]}
+            >
+              {profile.activity.map((activity, i, all) => (
+                <Pressable
+                  style={[
+                    styles.activityItem,
+                    {
+                      borderBottomColor: colors.cardBorder,
+                      borderBottomWidth: i === all.length - 1 ? 0 : 1,
+                    },
+                  ]}
+                  key={activity.hiveId}
+                  onPress={() => router.push(`/book/${activity.hiveId}`)}
+                >
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      {
+                        backgroundColor: colors.activeBackground,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        activity.type === "rated"
+                          ? "star"
+                          : activity.type === "review"
+                            ? "chatbubble"
+                            : "book"
+                      }
+                      size={20}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <ThemedText
+                      style={[
+                        styles.activityText,
+                        {
+                          color: colorScheme === "dark" ? "white" : colors.text,
+                        },
+                      ]}
+                    >
+                      {activity.type === "started"
+                        ? "Started reading"
+                        : activity.type === "finished"
+                          ? "Finished reading"
+                          : "Reviewed"}{" "}
+                      <ThemedText style={styles.bold}>
+                        {activity.title}
+                      </ThemedText>
+                    </ThemedText>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.emptyState,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.cardBorder,
+                },
+              ]}
             >
               <Ionicons
-                name={
-                  activity.type === "rated"
-                    ? "star"
-                    : activity.type === "review"
-                      ? "chatbubble"
-                      : "book"
-                }
-                size={24}
-                color="#6366f1"
+                name="time-outline"
+                size={48}
+                color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
               />
-              <ThemedView style={styles.activityContent}>
-                <ThemedText style={styles.activityText}>
-                  {activity.type === "started"
-                    ? "Started reading"
-                    : activity.type === "finished"
-                      ? "Finished reading"
-                      : "Reviewed"}{" "}
-                  <ThemedText style={styles.bold}>{activity.title}</ThemedText>
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-          ))}
-        </ThemedView>
-      </View>
+              <ThemedText
+                style={[
+                  styles.emptyTitle,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                No Recent Activity
+              </ThemedText>
+              <ThemedText
+                style={[
+                  styles.emptySubtitle,
+                  { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+                ]}
+              >
+                Your reading activity will appear here
+              </ThemedText>
+            </View>
+          )}
+        </View>
 
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={{ ...styles.settingsButton, borderColor: color }}
-          onPress={signOut}
-        >
-          <Ionicons name="log-out-outline" size={24} color="#EF4444" />
-          <ThemedText style={[styles.signoutButtonText, { color: "#EF4444" }]}>
-            Sign Out
-          </ThemedText>
-          <Ionicons name="chevron-forward" size={24} color="#EF4444" />
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        {/* Settings Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderContent}>
+              <Ionicons
+                name="settings-outline"
+                size={24}
+                color={colors.primary}
+              />
+              <ThemedText
+                style={[
+                  styles.sectionTitle,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Account
+              </ThemedText>
+            </View>
+          </View>
+
+          <Pressable
+            style={[
+              styles.settingsButton,
+              {
+                backgroundColor: colors.cardBackground,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+            onPress={signOut}
+          >
+            <View
+              style={[
+                styles.settingsIcon,
+                {
+                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                },
+              ]}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+            </View>
+            <ThemedText
+              style={[styles.settingsButtonText, { color: "#EF4444" }]}
+            >
+              Sign Out
+            </ThemedText>
+            <Ionicons name="chevron-forward" size={20} color="#EF4444" />
+          </Pressable>
+        </View>
+
+        <View style={styles.bottomSpacing} />
+      </ScrollView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 12,
   },
-  header: {
+  scrollView: {
+    flex: 1,
+  },
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    lineHeight: 36,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  profileSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  profileCard: {
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  profileHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderBottomWidth: 1,
+    marginBottom: 20,
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginRight: 16,
   },
-  name: {
-    fontSize: 24,
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
     fontWeight: "600",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  bio: {
-    fontSize: 16,
-    marginBottom: 16,
+  profileBio: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   statsRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    width: "100%",
-    marginTop: 16,
+    alignItems: "center",
   },
-  stat: {
+  statItem: {
+    flex: 1,
     alignItems: "center",
   },
   statNumber: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#6366f1",
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 14,
-    marginTop: 4,
+    textAlign: "center",
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    marginHorizontal: 20,
+    height: 40,
   },
   section: {
-    marginTop: 24,
-    marginBottom: 64,
+    marginBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  sectionHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "600",
-    marginHorizontal: 16,
-    marginBottom: 16,
   },
-  challengeCard: {
-    marginHorizontal: 16,
-    borderRadius: 12,
-    padding: 16,
+  activityCard: {
+    marginHorizontal: 20,
+    borderRadius: 16,
     borderWidth: 1,
-  },
-  challengeInfo: {
-    flex: 1,
-  },
-  challengeTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  challengeProgress: {
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: "#e5e7eb",
-    borderRadius: 4,
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: "#6366f1",
-    borderRadius: 4,
-  },
-  activityList: {
-    borderWidth: 1,
-    borderRadius: 12,
-    marginHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   activityItem: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderBottomWidth: 1,
+  },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   activityContent: {
-    marginLeft: 12,
     flex: 1,
   },
   activityText: {
     fontSize: 14,
-  },
-  activityTime: {
-    fontSize: 12,
-    marginTop: 4,
+    lineHeight: 20,
   },
   bold: {
     fontWeight: "600",
   },
+  emptyState: {
+    marginHorizontal: 20,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: "center",
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
   settingsButton: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
   },
-  signoutButtonText: {
+  settingsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  settingsButtonText: {
     flex: 1,
-    marginLeft: 12,
     fontSize: 16,
+    fontWeight: "500",
+  },
+  bottomSpacing: {
+    height: 20,
   },
 });

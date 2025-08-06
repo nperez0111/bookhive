@@ -101,7 +101,13 @@ const initialAuthPromise = (async () => {
   }
 })();
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({
+  setCacheBustKey,
+  children,
+}: {
+  setCacheBustKey: (key: string) => void;
+  children: React.ReactNode;
+}) {
   const [authState, setAuthState] = useState<AuthState | null>(() =>
     getAuthState(),
   );
@@ -111,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authState) {
       initialAuthPromise.then(() => {
         setAuthState(getAuthState());
+        setCacheBustKey(getAuthState()?.did ?? "");
       });
     }
   }, []);

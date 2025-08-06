@@ -8,6 +8,7 @@ import {
   UserBook,
 } from "../../src/types";
 import { useEffect, useState } from "react";
+import { classifyNetworkError } from "@/utils/networkErrorHandler";
 
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -25,17 +26,45 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
+// Enhanced fetch function with better error handling
+const enhancedAuthFetch = async <T>(url: string, options?: any): Promise<T> => {
+  try {
+    const response = await authFetch<T>(url, options);
+    return response;
+  } catch (error: any) {
+    // Classify the error for better handling
+    const networkError = classifyNetworkError(error);
+
+    // Re-throw with enhanced error information
+    const enhancedError = new Error(networkError.message);
+    (enhancedError as any).networkError = networkError;
+    (enhancedError as any).originalError = error;
+    throw enhancedError;
+  }
+};
+
 export const useSearchBooks = (query: string) => {
   const debouncedQuery = useDebounce(query, 300);
 
   return useQuery({
     queryKey: ["searchBooks", query] as const,
     queryFn: async ({ queryKey: [, q] }) => {
-      return await authFetch<HiveBook[]>(
+      return await enhancedAuthFetch<HiveBook[]>(
         `/xrpc/buzz.bookhive.searchBooks?q=${q}`,
       );
     },
     enabled: Boolean(debouncedQuery),
+    retry: (failureCount, error: any) => {
+      // Don't retry if it's a non-retryable error
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      // Retry up to 3 times for retryable errors
+      return failureCount < 3;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 };
 
@@ -48,11 +77,20 @@ export const useBookInfo = (id: HiveId | undefined | null) => {
   return useQuery({
     queryKey: ["getBook", id] as const,
     queryFn: async ({ queryKey: [, hiveId] }) => {
-      return await authFetch<GetBook.OutputSchema>(
+      return await enhancedAuthFetch<GetBook.OutputSchema>(
         `/xrpc/buzz.bookhive.getBook?id=${hiveId}`,
       );
     },
     enabled: Boolean(id),
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
   });
 };
 
@@ -65,10 +103,19 @@ export const useProfile = (didOrHandle?: string) => {
   return useQuery({
     queryKey: ["profile", didOrHandle] as const,
     queryFn: async ({ queryKey: [, id] }) => {
-      return await authFetch<GetProfile.OutputSchema>(
+      return await enhancedAuthFetch<GetProfile.OutputSchema>(
         `/xrpc/buzz.bookhive.getProfile?id=${id}`,
       );
     },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
   });
 };
 
@@ -87,7 +134,7 @@ export const useUpdateBook = () => {
       Partial<UserBook>,
       "hiveId" | "uri" | "cid" | "userDid" | "indexedAt" | "createdAt"
     >) => {
-      return await authFetch<{ success: boolean; message: string }>(
+      return await enhancedAuthFetch<{ success: boolean; message: string }>(
         `/api/update-book`,
         {
           method: "POST",
@@ -102,5 +149,12 @@ export const useUpdateBook = () => {
       // Invalidate the book query to refetch latest data
       queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
     },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2; // Fewer retries for mutations
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 };

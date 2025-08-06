@@ -11,12 +11,14 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, StrictMode } from "react";
+import { useEffect, StrictMode, useState } from "react";
 
 import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
+import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -25,6 +27,24 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      retry: (failureCount, error: any) => {
+        // Don't retry if it's a non-retryable error
+        if (error?.networkError && !error.networkError.retryable) {
+          return false;
+        }
+        // Retry up to 3 times for retryable errors
+        return failureCount < 3;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    },
+    mutations: {
+      retry: (failureCount, error: any) => {
+        if (error?.networkError && !error.networkError.retryable) {
+          return false;
+        }
+        return failureCount < 2;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
   },
 });
@@ -39,6 +59,8 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
+  const [cacheBusterKey, setCacheBusterKey] = useState("");
+
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
@@ -51,22 +73,28 @@ export default function RootLayout() {
 
   return (
     <StrictMode>
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{ persister: asyncStoragePersister }}
-      >
-        <AuthProvider>
-          <ThemeProvider
-            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-          >
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            </Stack>
-            <StatusBar style="auto" />
-          </ThemeProvider>
-        </AuthProvider>
-      </PersistQueryClientProvider>
+      <NetworkErrorBoundary>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            buster: `user_${cacheBusterKey}`,
+          }}
+        >
+          <AuthProvider setCacheBustKey={setCacheBusterKey}>
+            <ThemeProvider
+              value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+            >
+              <NetworkStatusIndicator />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              </Stack>
+              <StatusBar style="auto" />
+            </ThemeProvider>
+          </AuthProvider>
+        </PersistQueryClientProvider>
+      </NetworkErrorBoundary>
     </StrictMode>
   );
 }
