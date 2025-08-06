@@ -4,8 +4,7 @@ import { BookList } from "./components/book";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
 import { BookFields } from "../db";
-import { GoodreadsImport } from "./import";
-
+import { LibraryImport } from "./import";
 import { BuzzSection } from "./components/buzz";
 
 type Props = {
@@ -274,7 +273,7 @@ export const Home: FC<Props> = async () => {
             Here are the books you have added to your library.
           </p>
           <div class="mt-8">
-            <BookList fallback={<GoodreadsImport />} />
+            <BookList fallback={<LibraryImport />} />
           </div>
         </div>
       ) : (
