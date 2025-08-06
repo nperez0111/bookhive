@@ -15,6 +15,7 @@ import {
   TextInput,
   PanResponder,
   ViewStyle,
+  ImageBackground,
 } from "react-native";
 import type { HiveId } from "../../../../src/types";
 import {
@@ -28,6 +29,10 @@ import { useState, useEffect, useRef } from "react";
 import { ThemedView } from "@/components/ThemedView";
 import { getBaseUrl } from "@/context/auth";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import {
+  CommentsSection,
+  type CommentItem,
+} from "@/components/CommentsSection";
 
 const STATUS_OPTIONS = [
   BOOK_STATUS.FINISHED,
@@ -135,12 +140,28 @@ const StarRating: React.FC<StarRatingProps> = ({
 export default function BookInfo() {
   const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
   const textColor = useThemeColor({}, "text");
+  const backgroundColor = useThemeColor({}, "background");
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
 
   const bookQuery = useBookInfo(hiveId);
+
+  // Combine comments and reviews from the API response
+  const comments = bookQuery.data
+    ? [
+        ...bookQuery.data.comments.map((comment, index) => ({
+          ...comment,
+          id: `comment-${index}`,
+        })),
+        ...bookQuery.data.reviews.map((review, index) => ({
+          ...review,
+          id: `review-${index}`,
+        })),
+      ]
+    : [];
   const updateBook = useUpdateBook();
+
   const handleStatusUpdate = async (status: NonNullable<BookStatus>) => {
     let currentStatus = selectedStatus;
     setSelectedStatus(status);
@@ -159,7 +180,6 @@ export default function BookInfo() {
 
   const handleAddReview = async () => {
     if (!userReviewText.trim()) {
-      // Maybe show an alert?
       return;
     }
     try {
@@ -167,10 +187,8 @@ export default function BookInfo() {
         hiveId: hiveId,
         review: userReviewText,
       });
-      // Optionally clear the input or show success message
       setUserReviewText("");
     } catch (e) {
-      // Error is handled by the hook's error state
       console.error("Failed to add review:", e);
     }
   };
@@ -182,218 +200,208 @@ export default function BookInfo() {
     });
   };
 
+  // Comment interaction handlers
+  const handleLikeComment = (commentId: string) => {
+    // TODO: Implement like functionality
+    console.log("Like comment:", commentId);
+  };
+
+  const handleCommentPress = (commentId: string) => {
+    // TODO: Implement comment thread view
+    console.log("Open comment thread:", commentId);
+  };
+
+  const handleUserPress = (userDid: string) => {
+    // TODO: Navigate to user profile
+    console.log("Open user profile:", userDid);
+  };
+
+  const handleViewOnGoodreads = () => {
+    if (bookQuery.data?.book.sourceUrl) {
+      Linking.openURL(bookQuery.data.book.sourceUrl);
+    }
+  };
+
   if (bookQuery.isLoading) {
-    return <ActivityIndicator size="large" color="#0000ff" />;
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor }]}>
+        <ActivityIndicator size="large" color="#FBBF24" />
+      </View>
+    );
   }
 
   if (bookQuery.error) {
-    return <ThemedText>Error: {bookQuery.error.message}</ThemedText>;
+    return (
+      <View style={[styles.errorContainer, { backgroundColor }]}>
+        <ThemedText>Error: {bookQuery.error.message}</ThemedText>
+      </View>
+    );
   }
 
-  const { book, reviews, comments, ...userBook } = bookQuery.data!;
+  const { book, reviews, comments: apiComments, ...userBook } = bookQuery.data!;
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;
   const review = userReviewText || userBook.review;
 
+  console.log(bookQuery.data);
+
   return (
-    <View style={styles.mainContainer}>
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="#666" />
-      </Pressable>
+    <View style={[styles.mainContainer, { backgroundColor }]}>
+      {/* Blurred Background */}
+      <ImageBackground
+        source={{
+          uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
+        }}
+        style={styles.backgroundImage}
+        blurRadius={20}
+      >
+        <View style={styles.backgroundOverlay} />
+      </ImageBackground>
 
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.contentContainer}>
-          {/* Book Cover Section */}
-          <View style={styles.coverContainer}>
-            <Image
-              source={{
-                uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
-              }}
-              style={styles.cover}
-              resizeMode="cover"
-            />
-          </View>
-
-          {/* Book Info Section */}
-          <View style={styles.infoContainer}>
-            <ThemedText style={styles.title}>{book.title}</ThemedText>
-            <ThemedText style={styles.author}>
-              by {book.authors.split("\t").join(", ")}
-            </ThemedText>
-
-            {/* Rating Section */}
-            {book.rating && book.ratingsCount && (
-              <View style={styles.ratingContainer}>
-                <View style={styles.starsContainer}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <View key={star} style={styles.starWrapper}>
-                      <ThemedText style={[styles.star, styles.starBackground]}>
-                        ★
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.star,
-                          styles.starFilled,
-                          {
-                            width: `${Math.min(
-                              100,
-                              Math.max(0, (rating - (star - 1)) * 100),
-                            )}%`,
-                          },
-                        ]}
-                      >
-                        ★
-                      </ThemedText>
-                    </View>
-                  ))}
-                </View>
-                <ThemedText style={styles.ratingText}>
-                  {rating.toFixed(2)} ({book.ratingsCount.toLocaleString()}{" "}
-                  ratings)
-                </ThemedText>
-              </View>
-            )}
-
-            {/* Status Button / Dropdown Trigger */}
-            <Pressable
-              style={styles.statusButton}
-              onPress={() => setModalVisible(true)}
-            >
-              <ThemedText style={styles.statusButtonText}>
-                {status ? BOOK_STATUS_MAP[status] : "Add to Shelf"}
-              </ThemedText>
-              <Ionicons
-                name="chevron-down"
-                size={16}
-                color="white"
-                style={{ marginLeft: 8 }}
+          {/* Book Cover and Info Section */}
+          <View style={styles.bookSection}>
+            <View style={styles.coverContainer}>
+              <Image
+                source={{
+                  uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
+                }}
+                style={styles.cover}
+                resizeMode="cover"
               />
-            </Pressable>
-
-            {/* Status Selection Modal */}
-            <Modal
-              animationType="fade"
-              transparent={true}
-              visible={modalVisible}
-              onRequestClose={() => {
-                setModalVisible(!modalVisible);
-              }}
-            >
-              <Pressable
-                style={styles.modalBackdrop}
-                onPress={() => setModalVisible(false)}
-              >
-                <ThemedView
-                  style={styles.modalView}
-                  onStartShouldSetResponder={() => true}
-                >
-                  {updateBook.isPending ? (
-                    <ActivityIndicator
-                      size="large"
-                      color="#4CAF50"
-                      style={{ paddingVertical: 20 }}
-                    />
-                  ) : (
-                    <FlatList
-                      data={STATUS_OPTIONS}
-                      keyExtractor={(item) => item}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={[styles.modalOption]}
-                          onPress={() => handleStatusUpdate(item)}
-                        >
-                          <ThemedText
-                            style={[styles.modalOptionText]}
-                            type={
-                              status === item ? "defaultSemiBold" : "default"
-                            }
-                            themeSource={status === item ? "tint" : "text"}
-                          >
-                            {BOOK_STATUS_MAP[item]}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      )}
-                      ItemSeparatorComponent={() => (
-                        <View style={styles.separator} />
-                      )}
-                    />
-                  )}
-                </ThemedView>
-              </Pressable>
-            </Modal>
-
-            {/* Display mutation error if any */}
-            {updateBook.error && (
-              <ThemedText style={styles.errorText}>
-                Error updating status: {updateBook.error.message}
-              </ThemedText>
-            )}
-
-            {/* Description */}
-            <View style={styles.descriptionContainer}>
-              <ThemedText style={styles.description}>
-                {decode(book.description || "No description available")}
-              </ThemedText>
             </View>
 
-            {/* Source Button */}
-            {book.sourceUrl && (
-              <Pressable
-                style={styles.sourceButton}
-                onPress={() => {
-                  if (book.sourceUrl) {
-                    Linking.openURL(book.sourceUrl);
-                  }
-                }}
-              >
-                <ThemedText style={styles.sourceButtonText}>
-                  {book.source}
-                </ThemedText>
-              </Pressable>
-            )}
+            <View style={styles.bookInfo}>
+              <ThemedText style={styles.title}>{book.title}</ThemedText>
+              <ThemedText style={styles.author}>
+                {book.authors.split("\t").join(", ")}
+              </ThemedText>
 
-            {/* Review Section */}
-            <View style={styles.reviewSectionContainer}>
-              <ThemedText style={styles.ratingTitle}>Your Rating</ThemedText>
-              <StarRating
-                rating={userBook.stars}
-                onRate={handleRatingUpdate}
-                disabled={updateBook.isPending}
-              />
-              <ThemedText style={styles.reviewTitle}>Your Review</ThemedText>
-              <TextInput
-                style={[styles.reviewInput, { color: textColor }]}
-                placeholder="Write your review..."
-                value={review}
-                onChangeText={setUserReviewText}
-                multiline
-                placeholderTextColor="#9CA3AF"
-              />
-              <Pressable
-                style={[
-                  styles.submitButton,
-                  updateBook.isPending && styles.submitButtonDisabled,
-                ]}
-                onPress={handleAddReview}
-                disabled={updateBook.isPending}
-              >
-                {updateBook.isPending ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <ThemedText style={styles.submitButtonText}>
-                    Submit Review
+              {/* Rating Display */}
+              {book.rating && book.ratingsCount && (
+                <View style={styles.ratingDisplay}>
+                  <ThemedText style={styles.ratingText}>
+                    {rating.toFixed(1)} ★
                   </ThemedText>
-                )}
-              </Pressable>
-              {updateBook.error && (
-                <ThemedText style={styles.errorText}>
-                  Error submitting review: {updateBook.error.message}
-                </ThemedText>
+                  <ThemedText style={styles.ratingsCount}>
+                    {book.ratingsCount.toLocaleString()} ratings
+                  </ThemedText>
+                </View>
               )}
             </View>
           </View>
+
+          <View style={styles.actionButtons}>
+            {/* <Pressable
+              style={styles.actionButton}
+              onPress={() => setModalVisible(true)}
+            >
+              <Ionicons name="add" size={20} color="white" />
+              <ThemedText style={styles.actionButtonText}>Add</ThemedText>
+            </Pressable>
+
+            <Pressable style={styles.actionButton} onPress={handleShare}>
+              <Ionicons name="share-outline" size={20} color="white" />
+              <ThemedText style={styles.actionButtonText}>Share</ThemedText>
+            </Pressable> */}
+
+            <Pressable
+              style={styles.actionButton}
+              onPress={handleViewOnGoodreads}
+            >
+              <Ionicons name="share-outline" size={20} color="white" />
+              <ThemedText style={styles.actionButtonText}>Goodreads</ThemedText>
+            </Pressable>
+          </View>
+
+          {/* Description */}
+          <View style={styles.descriptionSection}>
+            <ThemedText style={styles.sectionTitle}>Description</ThemedText>
+            <ThemedText style={[styles.description]}>
+              {decode(book.description || "No description available")}
+            </ThemedText>
+          </View>
+
+          {/* Rating Input Section */}
+          <View style={styles.ratingSection}>
+            <ThemedText style={styles.sectionTitle}>
+              {userBook.stars ? `You rated: ${userBook.stars / 2}` : "Rating"}
+            </ThemedText>
+            <StarRating
+              rating={userBook.stars}
+              onRate={handleRatingUpdate}
+              disabled={updateBook.isPending}
+              starSize={28}
+            />
+            <ThemedText style={styles.sectionTitle}>
+              {userBook.review ? "Your Review" : "Review"}
+            </ThemedText>
+            <TextInput
+              style={[styles.reviewInput, { color: textColor }]}
+              placeholder="What did you think?"
+              value={review}
+              onChangeText={setUserReviewText}
+              multiline
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+
+          {/* Comments Section */}
+          <CommentsSection
+            comments={comments}
+            onLikeComment={handleLikeComment}
+            onCommentPress={handleCommentPress}
+            onUserPress={handleUserPress}
+          />
         </View>
       </ScrollView>
+
+      {/* Status Selection Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setModalVisible(false)}
+        >
+          <ThemedView
+            style={styles.modalView}
+            onStartShouldSetResponder={() => true}
+          >
+            {updateBook.isPending ? (
+              <ActivityIndicator
+                size="large"
+                color="#FBBF24"
+                style={{ paddingVertical: 20 }}
+              />
+            ) : (
+              <FlatList
+                data={STATUS_OPTIONS}
+                keyExtractor={(item) => item}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.modalOption}
+                    onPress={() => handleStatusUpdate(item)}
+                  >
+                    <ThemedText
+                      style={styles.modalOptionText}
+                      type={status === item ? "defaultSemiBold" : "default"}
+                      themeSource={status === item ? "tint" : "text"}
+                    >
+                      {BOOK_STATUS_MAP[item]}
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            )}
+          </ThemedView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -402,125 +410,227 @@ const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
     position: "relative",
-    marginTop: 24,
-    marginBottom: 56,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  backgroundImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  backgroundOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+  },
+  navBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 16,
+    zIndex: 10,
   },
   backButton: {
-    position: "absolute",
-    top: 16,
-    left: 16,
-    zIndex: 1,
+    padding: 8,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginHorizontal: 16,
+  },
+  searchPlaceholder: {
+    marginLeft: 8,
+    color: "#9CA3AF",
+    fontSize: 16,
+  },
+  notificationButton: {
     padding: 8,
   },
   container: {
     flex: 1,
+    paddingTop: 36,
   },
   contentContainer: {
     padding: 16,
-    alignItems: "center",
-    paddingTop: 56,
+    paddingTop: 0,
+  },
+  bookSection: {
+    flexDirection: "row",
+    marginBottom: 24,
   },
   coverContainer: {
-    marginTop: 20,
-    marginBottom: 24,
+    marginRight: 16,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   cover: {
-    width: 200,
-    height: 300,
-    borderRadius: 12,
+    width: 120,
+    height: 180,
+    borderRadius: 8,
   },
-  infoContainer: {
-    width: "100%",
-    alignItems: "center",
+  bookInfo: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  seriesLabel: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginBottom: 4,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
+    color: "white",
+    marginBottom: 4,
+    lineHeight: 24,
   },
   author: {
     fontSize: 16,
-    marginBottom: 12,
-    opacity: 0.8,
-    textAlign: "center",
-  },
-  ratingContainer: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  starsContainer: {
-    flexDirection: "row",
+    color: "#E5E7EB",
     marginBottom: 4,
   },
-  starWrapper: {
-    width: 24,
-    height: 24,
-    position: "relative",
+  publicationInfo: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginBottom: 8,
   },
-  star: {
-    position: "absolute",
-    fontSize: 22,
-  },
-  starBackground: {
-    color: "#D1D5DB",
-  },
-  starFilled: {
-    color: "#FBBF24",
-    overflow: "hidden",
+  ratingDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   ratingText: {
-    fontSize: 14,
-    opacity: 0.6,
-  },
-  statusButton: {
-    flexDirection: "row",
-    backgroundColor: "#4CAF50",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    marginVertical: 16,
-    width: "80%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
+    color: "#FBBF24",
+    marginRight: 8,
   },
-  descriptionContainer: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    width: "100%",
+  ratingsCount: {
+    fontSize: 14,
+    color: "#9CA3AF",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 24,
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  actionButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  descriptionSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "white",
+    marginBottom: 12,
   },
   description: {
     fontSize: 16,
     lineHeight: 24,
-    textAlign: "left",
+    color: "#E5E7EB",
+    marginBottom: 8,
   },
-  sourceButton: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: "#4B5563",
-    borderRadius: 8,
-    alignItems: "center",
-    width: "100%",
+  descriptionCollapsed: {
+    // This style is used to ensure proper text truncation
   },
-  sourceButtonText: {
-    color: "white",
+  readMoreText: {
+    color: "#FBBF24",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  ratingSection: {
+    marginBottom: 24,
+  },
+  reviewInput: {
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    padding: 16,
     fontSize: 16,
-    fontWeight: "600",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    marginTop: 16,
+    minHeight: 80,
+    textAlignVertical: "top",
+    color: "white",
   },
+  allRatingsSection: {
+    marginBottom: 24,
+  },
+  ratingsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  ratingDistribution: {
+    gap: 8,
+  },
+  ratingBar: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  ratingLabel: {
+    width: 30,
+    fontSize: 14,
+    color: "#9CA3AF",
+  },
+  barContainer: {
+    flex: 1,
+    height: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 4,
+    marginHorizontal: 12,
+    overflow: "hidden",
+  },
+  bar: {
+    height: "100%",
+    backgroundColor: "#FBBF24",
+    borderRadius: 4,
+  },
+  ratingPercentage: {
+    width: 35,
+    fontSize: 12,
+    color: "#9CA3AF",
+    textAlign: "right",
+  },
+
   modalBackdrop: {
     flex: 1,
     justifyContent: "center",
@@ -529,22 +639,22 @@ const styles = StyleSheet.create({
   },
   modalView: {
     margin: 20,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: "stretch",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
     width: "80%",
     maxHeight: "50%",
   },
   modalOption: {
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 20,
   },
   modalOptionText: {
@@ -553,17 +663,9 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: "#E5E7EB",
-    marginHorizontal: 15,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    marginHorizontal: 16,
   },
-  errorText: {
-    color: "red",
-    marginTop: 10,
-    textAlign: "center",
-    fontSize: 14,
-    width: "90%",
-  },
-
   starRatingContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -572,53 +674,5 @@ const styles = StyleSheet.create({
   },
   starIconWrapper: {
     marginHorizontal: 2,
-  },
-  ratingTitle: {
-    fontSize: 22,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  reviewSectionContainer: {
-    marginTop: 36,
-    width: "100%",
-    alignItems: "center",
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  reviewTitle: {
-    fontSize: 22,
-    fontWeight: "600",
-    marginBottom: 12,
-    marginTop: 12,
-  },
-  reviewInput: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    width: "100%",
-    minHeight: 100,
-    textAlignVertical: "top",
-    marginBottom: 16,
-  },
-  submitButton: {
-    backgroundColor: "#10B981",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "80%",
-    minHeight: 48,
-  },
-  submitButtonDisabled: {
-    backgroundColor: "#6EE7B7",
-  },
-  submitButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
   },
 });
