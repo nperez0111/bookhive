@@ -39,14 +39,9 @@ export default function SearchScreen() {
       style={[
         styles.searchResultItem,
         {
-          backgroundColor:
-            colorScheme === "dark"
-              ? "rgba(255, 255, 255, 0.05)"
-              : "rgba(0, 0, 0, 0.08)",
-          borderColor:
-            colorScheme === "dark"
-              ? "rgba(255, 255, 255, 0.1)"
-              : "rgba(0, 0, 0, 0.15)",
+          backgroundColor: colors.cardBackground,
+          borderColor: colors.cardBorder,
+          shadowColor: colors.shadowLight,
         },
       ]}
     >
@@ -61,20 +56,16 @@ export default function SearchScreen() {
       </View>
       <View style={styles.searchResultInfo}>
         <ThemedText
-          style={[
-            styles.searchResultTitle,
-            { color: colorScheme === "dark" ? "white" : colors.text },
-          ]}
+          style={[styles.searchResultTitle, { color: colors.primaryText }]}
           numberOfLines={2}
+          type="label"
         >
           {book.title}
         </ThemedText>
         <ThemedText
-          style={[
-            styles.searchResultAuthor,
-            { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-          ]}
+          style={[styles.searchResultAuthor, { color: colors.secondaryText }]}
           numberOfLines={1}
+          type="caption"
         >
           {book.authors}
         </ThemedText>
@@ -82,10 +73,8 @@ export default function SearchScreen() {
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={14} color={colors.primary} />
             <ThemedText
-              style={[
-                styles.ratingText,
-                { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-              ]}
+              style={[styles.ratingText, { color: colors.secondaryText }]}
+              type="caption"
             >
               {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0}{" "}
               ratings)
@@ -96,326 +85,189 @@ export default function SearchScreen() {
     </Pressable>
   );
 
-  const renderCurrentlyReadingItem = ({ item: book }: { item: any }) => (
-    <Pressable
-      onPress={() => router.push(`/book/${book.hiveId}`)}
-      style={[
-        styles.currentlyReadingCard,
-        {
-          backgroundColor:
-            colorScheme === "dark"
-              ? "rgba(255, 255, 255, 0.05)"
-              : "rgba(0, 0, 0, 0.08)",
-          borderColor:
-            colorScheme === "dark"
-              ? "rgba(255, 255, 255, 0.1)"
-              : "rgba(0, 0, 0, 0.15)",
-        },
-      ]}
-    >
-      <View style={styles.coverContainer}>
-        <Image
-          source={{
-            uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-          }}
-          style={styles.currentlyReadingCover}
-          resizeMode="cover"
-        />
-      </View>
-      <View style={styles.bookInfo}>
-        <ThemedText
-          style={[
-            styles.currentlyReadingTitle,
-            { color: colorScheme === "dark" ? "white" : colors.text },
-          ]}
-          numberOfLines={2}
-        >
-          {book.title}
-        </ThemedText>
-        <ThemedText
-          style={[
-            styles.currentlyReadingAuthor,
-            { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-          ]}
-          numberOfLines={1}
-        >
-          {book.authors}
-        </ThemedText>
-      </View>
-    </Pressable>
-  );
-
-  const currentlyReadingBooks =
-    profile.data?.books.filter((book) => book.status === BOOK_STATUS.READING) ||
-    [];
+  const hasSearchResults =
+    query.length > 0 && searchResults && searchResults.length > 0;
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.headerSection}>
-          <ThemedText
-            style={[
-              styles.headerTitle,
-              { color: colorScheme === "dark" ? "white" : colors.text },
-            ]}
-          >
-            Discover Books
-          </ThemedText>
-          <ThemedText
-            style={[
-              styles.headerSubtitle,
-              { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-            ]}
-          >
-            Search for your next great read
-          </ThemedText>
-        </View>
+      {/* Search Header */}
+      <View style={styles.searchHeader}>
+        <ThemedText
+          style={[styles.searchTitle, { color: colors.primaryText }]}
+          type="title"
+        >
+          Search Books
+        </ThemedText>
+        <ThemedText
+          style={[styles.searchSubtitle, { color: colors.secondaryText }]}
+          type="body"
+        >
+          Discover your next great read
+        </ThemedText>
+      </View>
 
-        {/* Search Bar */}
-        <View style={styles.searchSection}>
+      {/* Search Input */}
+      <View style={styles.searchInputContainer}>
+        <View
+          style={[
+            styles.searchInputWrapper,
+            {
+              backgroundColor: colors.cardBackground,
+              borderColor: colors.cardBorder,
+            },
+          ]}
+        >
+          <Ionicons
+            name="search"
+            size={20}
+            color={colors.tertiaryText}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={[
+              styles.searchInput,
+              {
+                color: colors.primaryText,
+              },
+            ]}
+            placeholder="Search for books, authors, or genres..."
+            placeholderTextColor={colors.placeholderText}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery("")} style={styles.clearButton}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={colors.tertiaryText}
+              />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Content based on search state */}
+      {query.length === 0 ? (
+        // No search query - show default content
+        <View style={styles.emptySearchState}>
           <View
             style={[
-              styles.searchContainer,
-              {
-                backgroundColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.05)"
-                    : "rgba(0, 0, 0, 0.08)",
-                borderColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : "rgba(0, 0, 0, 0.15)",
-              },
+              styles.emptyIconContainer,
+              { backgroundColor: colors.inactiveBackground },
             ]}
           >
             <Ionicons
-              name="search"
-              size={20}
-              color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={[
-                styles.searchBox,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
-              placeholder="Search for books, authors, or genres..."
-              placeholderTextColor={
-                colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-              }
-              value={query}
-              onChangeText={setQuery}
-              autoComplete="off"
-              clearButtonMode="while-editing"
-              autoCapitalize="none"
+              name="library-outline"
+              size={48}
+              color={colors.tertiaryText}
             />
           </View>
+          <ThemedText
+            style={[styles.emptySearchTitle, { color: colors.primaryText }]}
+            type="heading"
+          >
+            Start exploring
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.emptySearchSubtitle,
+              { color: colors.secondaryText },
+            ]}
+            type="body"
+          >
+            Search for your favorite books, authors, or genres to discover new
+            reads
+          </ThemedText>
         </View>
+      ) : (
+        // Has search query - show search results
+        <View style={styles.searchResultsSection}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderContent}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.activeBackground },
+                ]}
+              >
+                <Ionicons name="search" size={20} color={colors.primary} />
+              </View>
+              <ThemedText
+                style={[styles.sectionTitle, { color: colors.primaryText }]}
+                type="heading"
+              >
+                Search Results
+              </ThemedText>
+            </View>
+            {searchResults && (
+              <ThemedText
+                style={[styles.resultCount, { color: colors.secondaryText }]}
+                type="caption"
+                numberOfLines={1}
+              >
+                {searchResults.length} results
+              </ThemedText>
+            )}
+          </View>
 
-        {/* Content */}
-        {!query && (
-          <>
-            {/* Currently Reading Section */}
-            {currentlyReadingBooks.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionHeaderContent}>
-                    <Ionicons
-                      name="bookmark"
-                      size={24}
-                      color={colors.primary}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.sectionTitle,
-                        {
-                          color: colorScheme === "dark" ? "white" : colors.text,
-                        },
-                      ]}
-                    >
-                      Continue Reading
-                    </ThemedText>
-                  </View>
-                </View>
-
-                <FlatList
-                  data={currentlyReadingBooks}
-                  renderItem={renderCurrentlyReadingItem}
-                  keyExtractor={(item) => item.hiveId}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalListContent}
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <ThemedText
+                style={[styles.loadingText, { color: colors.secondaryText }]}
+                type="body"
+              >
+                Searching for books...
+              </ThemedText>
+            </View>
+          ) : error ? (
+            <QueryErrorHandler
+              error={error}
+              onRetry={() => {}} // Search will retry automatically
+              showRetryButton={false}
+              showGoBackButton={false}
+            />
+          ) : searchResults && searchResults.length > 0 ? (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSearchResultItem}
+              contentContainerStyle={styles.searchResultsList}
+              showsVerticalScrollIndicator={false}
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <View
+                style={[
+                  styles.emptyIconContainer,
+                  { backgroundColor: colors.inactiveBackground },
+                ]}
+              >
+                <Ionicons
+                  name="search-outline"
+                  size={32}
+                  color={colors.tertiaryText}
                 />
               </View>
-            )}
-
-            {/* Empty State */}
-            {currentlyReadingBooks.length === 0 && (
-              <View style={styles.emptyStateSection}>
-                <View
-                  style={[
-                    styles.emptyState,
-                    {
-                      backgroundColor:
-                        colorScheme === "dark"
-                          ? "rgba(255, 255, 255, 0.05)"
-                          : "rgba(0, 0, 0, 0.08)",
-                      borderColor:
-                        colorScheme === "dark"
-                          ? "rgba(255, 255, 255, 0.1)"
-                          : "rgba(0, 0, 0, 0.15)",
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="search-outline"
-                    size={64}
-                    color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.emptyTitle,
-                      { color: colorScheme === "dark" ? "white" : colors.text },
-                    ]}
-                  >
-                    Start Your Search
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.emptySubtitle,
-                      { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                    ]}
-                  >
-                    Search for books by title, author, or genre to discover your
-                    next great read
-                  </ThemedText>
-                </View>
-              </View>
-            )}
-          </>
-        )}
-
-        {/* Search Results */}
-        {query && (
-          <View style={styles.searchResultsSection}>
-            {isLoading && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <ThemedText
-                  style={[
-                    styles.loadingText,
-                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                  ]}
-                >
-                  Searching for "{query}"...
-                </ThemedText>
-              </View>
-            )}
-
-            {error && (
-              <QueryErrorHandler
-                error={error}
-                onRetry={() => {}} // The search will retry automatically
-                showRetryButton={false}
-                showGoBackButton={false}
-              />
-            )}
-
-            {searchResults && searchResults.length > 0 && !isLoading && (
-              <>
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionHeaderContent}>
-                    <Ionicons name="library" size={24} color={colors.primary} />
-                    <ThemedText
-                      style={[
-                        styles.sectionTitle,
-                        {
-                          color: colorScheme === "dark" ? "white" : colors.text,
-                        },
-                      ]}
-                    >
-                      Search Results
-                    </ThemedText>
-                  </View>
-                  <ThemedText
-                    style={[
-                      styles.resultCount,
-                      { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                    ]}
-                  >
-                    {searchResults.length}{" "}
-                    {searchResults.length === 1 ? "book" : "books"}
-                  </ThemedText>
-                </View>
-
-                <View style={styles.searchResultsList}>
-                  {searchResults.map((book) => (
-                    <View key={book.id}>
-                      {renderSearchResultItem({ item: book })}
-                    </View>
-                  ))}
-                </View>
-              </>
-            )}
-
-            {searchResults &&
-              searchResults.length === 0 &&
-              !isLoading &&
-              query.length > 0 && (
-                <View style={styles.noResultsSection}>
-                  <View
-                    style={[
-                      styles.emptyState,
-                      {
-                        backgroundColor:
-                          colorScheme === "dark"
-                            ? "rgba(255, 255, 255, 0.05)"
-                            : "rgba(0, 0, 0, 0.08)",
-                        borderColor:
-                          colorScheme === "dark"
-                            ? "rgba(255, 255, 255, 0.1)"
-                            : "rgba(0, 0, 0, 0.15)",
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name="search-outline"
-                      size={64}
-                      color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.emptyTitle,
-                        {
-                          color: colorScheme === "dark" ? "white" : colors.text,
-                        },
-                      ]}
-                    >
-                      No books found
-                    </ThemedText>
-                    <ThemedText
-                      style={[
-                        styles.emptySubtitle,
-                        {
-                          color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280",
-                        },
-                      ]}
-                    >
-                      No books found for "{query}". Try a different search term.
-                    </ThemedText>
-                  </View>
-                </View>
-              )}
-          </View>
-        )}
-
-        {/* Bottom spacing */}
-        <View style={styles.bottomSpacing} />
-      </ScrollView>
+              <ThemedText
+                style={[styles.emptyTitle, { color: colors.primaryText }]}
+                type="heading"
+              >
+                No books found
+              </ThemedText>
+              <ThemedText
+                style={[styles.emptySubtitle, { color: colors.secondaryText }]}
+                type="body"
+              >
+                Try searching with different keywords
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -424,51 +276,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
-  },
-  headerSection: {
-    paddingHorizontal: 20,
+  searchHeader: {
     paddingTop: 60,
-    paddingBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    lineHeight: 36,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  searchSection: {
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
-  searchContainer: {
+  searchTitle: {
+    marginBottom: 8,
+  },
+  searchSubtitle: {
+    lineHeight: 24,
+  },
+  searchInputContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  searchInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 16,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   searchIcon: {
     marginRight: 12,
   },
-  searchBox: {
+  searchInput: {
     flex: 1,
     fontSize: 16,
     paddingVertical: 4,
+  },
+  clearButton: {
+    marginLeft: 8,
   },
   section: {
     marginBottom: 32,
@@ -479,143 +319,70 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 16,
+    gap: 12,
   },
   sectionHeaderContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
+    flex: 1,
   },
   resultCount: {
-    fontSize: 14,
+    textAlign: "right",
+    flexShrink: 0,
   },
   horizontalListContent: {
     paddingHorizontal: 20,
   },
-  currentlyReadingCard: {
-    borderRadius: 16,
-    padding: 12,
-    marginRight: 16,
-    width: 140,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  coverContainer: {
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  currentlyReadingCover: {
-    width: 100,
-    height: 150,
-    borderRadius: 8,
-  },
-  bookInfo: {
-    flex: 1,
-  },
-  currentlyReadingTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  currentlyReadingAuthor: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  emptyStateSection: {
-    paddingHorizontal: 20,
-    paddingTop: 40,
-  },
-  emptyState: {
-    borderRadius: 16,
-    padding: 32,
-    alignItems: "center",
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-  },
   searchResultsSection: {
     flex: 1,
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    textAlign: "center",
-  },
-  noResultsSection: {
-    paddingHorizontal: 20,
-    paddingTop: 40,
   },
   searchResultsList: {
     paddingHorizontal: 20,
   },
   searchResultItem: {
     flexDirection: "row",
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    borderRadius: 16,
     borderWidth: 1,
-    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 3,
   },
+  coverContainer: {
+    marginRight: 16,
+  },
   searchResultCover: {
-    width: 80,
-    height: 120,
+    width: 60,
+    height: 90,
     borderRadius: 8,
   },
   searchResultInfo: {
     flex: 1,
-    marginLeft: 16,
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   searchResultTitle: {
-    fontSize: 16,
-    fontWeight: "600",
     marginBottom: 4,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   searchResultAuthor: {
-    fontSize: 14,
     marginBottom: 8,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   ratingContainer: {
     flexDirection: "row",
@@ -623,9 +390,48 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   ratingText: {
-    fontSize: 12,
+    lineHeight: 16,
   },
-  bottomSpacing: {
-    height: 20,
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+  },
+  emptyState: {
+    paddingVertical: 40,
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptySubtitle: {
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  emptySearchState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  emptySearchTitle: {
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  emptySearchSubtitle: {
+    textAlign: "center",
+    lineHeight: 24,
   },
 });

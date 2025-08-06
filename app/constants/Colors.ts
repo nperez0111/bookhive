@@ -1,72 +1,106 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Enhanced color scheme for BookHive with beautiful gradients and sophisticated colors
+ * The colors are designed to create a warm, inviting reading experience
  */
 
-const tintColorLight = "#4c3e4c";
-const tintColorDark = "#ffe020";
+const tintColorLight = "#d08700";
+const tintColorDark = "#fbbf24";
 
 export const Colors = {
   light: {
-    text: "#11181C",
-    background: "#fff",
+    text: "#1a1a1a",
+    background: "#ffffff",
     tint: tintColorLight,
     icon: "#687076",
     tabIconDefault: "#687076",
     tabIconSelected: tintColorLight,
 
-    // Card and UI colors
-    cardBackground: "rgba(200, 200, 3, 0.03)",
-    cardBorder: "rgba(0, 0, 0, 0.15)",
-    buttonBackground: "rgba(0, 0, 0, 0.05)",
-    buttonBorder: "rgba(0, 0, 0, 0.15)",
+    // Enhanced card and UI colors
+    cardBackground: "rgba(255, 255, 255, 0.95)",
+    cardBorder: "rgba(208, 135, 0, 0.15)",
+    buttonBackground: "rgba(208, 135, 0, 0.08)",
+    buttonBorder: "rgba(208, 135, 0, 0.2)",
 
-    // Text colors
-    primaryText: "#11181C",
-    secondaryText: "#374151",
-    tertiaryText: "#6B7280",
-    placeholderText: "#6B7280",
+    // Enhanced text colors with better hierarchy
+    primaryText: "#1a1a1a",
+    secondaryText: "#4a5568",
+    tertiaryText: "#718096",
+    placeholderText: "#a0aec0",
 
-    // Accent colors
-    primary: "#d08700", // Darker yellow for light mode
-    primaryLight: "#f0b100", // Lighter yellow for highlights
-    success: "#10B981",
-    error: "#EF4444",
-    warning: "#F59E0B",
+    // Beautiful accent colors
+    primary: "#d08700",
+    primaryLight: "#f0b100",
+    primaryDark: "#b77900",
+    primaryGradient: ["#d08700", "#f0b100"],
 
-    // Interactive states
-    activeBackground: "rgba(217, 119, 6, 0.15)", // Primary with opacity
-    inactiveBackground: "rgba(0, 0, 0, 0.08)",
+    // Additional accent colors
+    success: "#10b981",
+    successLight: "#34d399",
+    error: "#ef4444",
+    errorLight: "#f87171",
+    warning: "#f59e0b",
+    warningLight: "#fbbf24",
+
+    // Interactive states with better feedback
+    activeBackground: "rgba(208, 135, 0, 0.12)",
+    inactiveBackground: "rgba(0, 0, 0, 0.04)",
+    pressedBackground: "rgba(208, 135, 0, 0.2)",
+
+    // Surface colors
+    surfacePrimary: "#ffffff",
+    surfaceSecondary: "#f7fafc",
+    surfaceTertiary: "#edf2f7",
+
+    // Shadow colors
+    shadowLight: "rgba(0, 0, 0, 0.08)",
+    shadowMedium: "rgba(0, 0, 0, 0.12)",
   },
   dark: {
-    text: "#ECEDEE",
-    background: "#151718",
+    text: "#f7fafc",
+    background: "#0f1419",
     tint: tintColorDark,
-    icon: "#9BA1A6",
-    tabIconDefault: "#9BA1A6",
+    icon: "#9ba1a6",
+    tabIconDefault: "#9ba1a6",
     tabIconSelected: tintColorDark,
 
-    // Card and UI colors
-    cardBackground: "rgba(255, 255, 255, 0.05)",
-    cardBorder: "rgba(255, 255, 255, 0.1)",
-    buttonBackground: "rgba(255, 255, 255, 0.05)",
-    buttonBorder: "rgba(255, 255, 255, 0.1)",
+    // Enhanced card and UI colors for dark mode
+    cardBackground: "rgba(255, 255, 255, 0.08)",
+    cardBorder: "rgba(251, 191, 36, 0.2)",
+    buttonBackground: "rgba(251, 191, 36, 0.1)",
+    buttonBorder: "rgba(251, 191, 36, 0.25)",
 
-    // Text colors
-    primaryText: "#ECEDEE",
-    secondaryText: "#9CA3AF",
-    tertiaryText: "#9CA3AF",
-    placeholderText: "#9CA3AF",
+    // Enhanced text colors for dark mode
+    primaryText: "#f7fafc",
+    secondaryText: "#cbd5e0",
+    tertiaryText: "#a0aec0",
+    placeholderText: "#718096",
 
-    // Accent colors
-    primary: "#FBBF24", // Bright yellow for dark mode
-    primaryLight: "#FBBF24", // Same as primary for dark mode
-    success: "#10B981",
-    error: "#EF4444",
-    warning: "#F59E0B",
+    // Beautiful accent colors for dark mode
+    primary: "#fbbf24",
+    primaryLight: "#fcd34d",
+    primaryDark: "#f59e0b",
+    primaryGradient: ["#fbbf24", "#fcd34d"],
 
-    // Interactive states
-    activeBackground: "rgba(251, 191, 36, 0.1)", // Primary with opacity
-    inactiveBackground: "rgba(255, 255, 255, 0.05)",
+    // Additional accent colors
+    success: "#10b981",
+    successLight: "#34d399",
+    error: "#ef4444",
+    errorLight: "#f87171",
+    warning: "#f59e0b",
+    warningLight: "#fbbf24",
+
+    // Interactive states for dark mode
+    activeBackground: "rgba(251, 191, 36, 0.15)",
+    inactiveBackground: "rgba(255, 255, 255, 0.06)",
+    pressedBackground: "rgba(251, 191, 36, 0.25)",
+
+    // Surface colors for dark mode
+    surfacePrimary: "#1a202c",
+    surfaceSecondary: "#2d3748",
+    surfaceTertiary: "#4a5568",
+
+    // Shadow colors for dark mode
+    shadowLight: "rgba(0, 0, 0, 0.3)",
+    shadowMedium: "rgba(0, 0, 0, 0.4)",
   },
 };

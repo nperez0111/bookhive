@@ -73,7 +73,7 @@ export const NetworkStatusIndicator: React.FC<NetworkStatusIndicatorProps> = ({
     >
       <View style={styles.content}>
         <Ionicons
-          name={isOnline ? "wifi" : "wifi-off"}
+          name={isOnline ? "wifi" : "wifi-outline"}
           size={16}
           color="white"
         />

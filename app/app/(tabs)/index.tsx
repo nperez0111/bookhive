@@ -13,6 +13,7 @@ import {
 import { HelloWave } from "@/components/HelloWave";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { GradientView } from "@/components/GradientView";
 import { getBaseUrl } from "@/context/auth";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { router } from "expo-router";
@@ -51,59 +52,57 @@ function BookSection({
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderContent}>
-            <Ionicons
-              name={icon as any}
-              size={24}
-              color={colorScheme === "dark" ? "#FBBF24" : "#FBBF24"}
-            />
-            <ThemedText
+            <View
               style={[
-                styles.sectionTitle,
-                { color: colorScheme === "dark" ? "white" : colors.text },
+                styles.iconContainer,
+                { backgroundColor: colors.activeBackground },
               ]}
+            >
+              <Ionicons name={icon as any} size={20} color={colors.primary} />
+            </View>
+            <ThemedText
+              style={[styles.sectionTitle, { color: colors.primaryText }]}
+              type="heading"
             >
               {title}
             </ThemedText>
           </View>
         </View>
 
-        <View
+        <ThemedView
+          variant="card"
           style={[
             styles.emptyState,
             {
-              backgroundColor:
-                colorScheme === "dark"
-                  ? "rgba(255, 255, 255, 0.05)"
-                  : "rgba(0, 0, 0, 0.08)",
-              borderColor:
-                colorScheme === "dark"
-                  ? "rgba(255, 255, 255, 0.1)"
-                  : "rgba(0, 0, 0, 0.15)",
+              borderColor: colors.cardBorder,
             },
           ]}
         >
-          <Ionicons
-            name="book-outline"
-            size={48}
-            color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-          />
-          <ThemedText
+          <View
             style={[
-              styles.emptyTitle,
-              { color: colorScheme === "dark" ? "white" : colors.text },
+              styles.emptyIconContainer,
+              { backgroundColor: colors.inactiveBackground },
             ]}
+          >
+            <Ionicons
+              name="book-outline"
+              size={32}
+              color={colors.tertiaryText}
+            />
+          </View>
+          <ThemedText
+            style={[styles.emptyTitle, { color: colors.primaryText }]}
+            type="heading"
           >
             {emptyMessage}
           </ThemedText>
           <ThemedText
-            style={[
-              styles.emptySubtitle,
-              { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-            ]}
+            style={[styles.emptySubtitle, { color: colors.secondaryText }]}
+            type="body"
           >
             {emptySubtitle}
           </ThemedText>
-        </View>
+        </ThemedView>
       </View>
     );
   }
@@ -112,25 +111,25 @@ function BookSection({
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderContent}>
-          <Ionicons
-            name={icon as any}
-            size={24}
-            color={colorScheme === "dark" ? "#FBBF24" : "#FBBF24"}
-          />
-          <ThemedText
+          <View
             style={[
-              styles.sectionTitle,
-              { color: colorScheme === "dark" ? "white" : colors.text },
+              styles.iconContainer,
+              { backgroundColor: colors.activeBackground },
             ]}
+          >
+            <Ionicons name={icon as any} size={20} color={colors.primary} />
+          </View>
+          <ThemedText
+            style={[styles.sectionTitle, { color: colors.primaryText }]}
+            type="heading"
           >
             {title}
           </ThemedText>
         </View>
         <ThemedText
-          style={[
-            styles.bookCount,
-            { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-          ]}
+          style={[styles.bookCount, { color: colors.secondaryText }]}
+          type="caption"
+          numberOfLines={1}
         >
           {books.length} {books.length === 1 ? "book" : "books"}
         </ThemedText>
@@ -138,20 +137,19 @@ function BookSection({
 
       <FlatList
         data={books}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.horizontalListContent}
+        keyExtractor={(item) => item.hiveId}
         renderItem={({ item: book }) => (
           <Pressable
             onPress={() => router.push(`/book/${book.hiveId}`)}
             style={[
               styles.bookCard,
               {
-                backgroundColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.05)"
-                    : "rgba(0, 0, 0, 0.08)",
-                borderColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : "rgba(0, 0, 0, 0.15)",
+                backgroundColor: colors.cardBackground,
+                borderColor: colors.cardBorder,
+                shadowColor: colors.shadowLight,
               },
             ]}
           >
@@ -166,30 +164,22 @@ function BookSection({
             </View>
             <View style={styles.bookInfo}>
               <ThemedText
-                style={[
-                  styles.bookTitle,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
+                style={[styles.bookTitle, { color: colors.primaryText }]}
                 numberOfLines={2}
+                type="label"
               >
                 {book.title}
               </ThemedText>
               <ThemedText
-                style={[
-                  styles.bookAuthor,
-                  { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                ]}
+                style={[styles.bookAuthor, { color: colors.secondaryText }]}
                 numberOfLines={1}
+                type="caption"
               >
                 {book.authors}
               </ThemedText>
             </View>
           </Pressable>
         )}
-        keyExtractor={(item) => item.hiveId}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalListContent}
       />
     </View>
   );
@@ -210,12 +200,10 @@ export default function HomeScreen() {
   if (profile.isLoading && !isRefreshing && !profile.data) {
     return (
       <ThemedView style={[styles.loadingContainer, { backgroundColor }]}>
-        <ActivityIndicator size="large" color="#FBBF24" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <ThemedText
-          style={[
-            styles.loadingText,
-            { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-          ]}
+          style={[styles.loadingText, { color: colors.secondaryText }]}
+          type="body"
         >
           Loading your library...
         </ThemedText>
@@ -237,20 +225,20 @@ export default function HomeScreen() {
   if (!profile.data) {
     return (
       <ThemedView style={[styles.errorContainer, { backgroundColor }]}>
-        <Ionicons name="alert-circle-outline" size={64} color="#FBBF24" />
+        <Ionicons
+          name="alert-circle-outline"
+          size={64}
+          color={colors.primary}
+        />
         <ThemedText
-          style={[
-            styles.errorTitle,
-            { color: colorScheme === "dark" ? "white" : colors.text },
-          ]}
+          style={[styles.errorTitle, { color: colors.primaryText }]}
+          type="heading"
         >
           No Profile Data
         </ThemedText>
         <ThemedText
-          style={[
-            styles.errorMessage,
-            { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-          ]}
+          style={[styles.errorMessage, { color: colors.secondaryText }]}
+          type="body"
         >
           Unable to load your profile. Please try refreshing.
         </ThemedText>
@@ -279,92 +267,104 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
-            tintColor="#FBBF24"
-            colors={["#FBBF24"]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
-        {/* Welcome Header */}
-        <View style={styles.welcomeSection}>
+        {/* Welcome Header with Gradient */}
+        <GradientView variant="warm" style={styles.welcomeSection}>
           <View style={styles.welcomeContent}>
             <View style={styles.welcomeTextContainer}>
               <ThemedText
                 style={[
                   styles.welcomeTitle,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
+                  { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
                 ]}
+                type="subtitle"
               >
                 Welcome back,
               </ThemedText>
               <ThemedText
                 style={[
                   styles.welcomeName,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
+                  { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
                 ]}
+                type="title"
               >
-                {profile.data.profile.displayName}!
+                {profile.data.profile.displayName ||
+                  profile.data.profile.handle}
               </ThemedText>
             </View>
             <HelloWave />
           </View>
+        </GradientView>
 
-          {totalBooks > 0 && (
+        {/* Stats Section */}
+        <ThemedView variant="card" style={styles.statsSection}>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <ThemedText
+                style={[styles.statNumber, { color: colors.primary }]}
+                type="title"
+              >
+                {totalBooks}
+              </ThemedText>
+              <ThemedText
+                style={[styles.statLabel, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                Total Books
+              </ThemedText>
+            </View>
             <View
               style={[
-                styles.statsContainer,
-                {
-                  backgroundColor: colors.cardBackground,
-                  borderColor: colors.cardBorder,
-                },
+                styles.statDivider,
+                { backgroundColor: colors.cardBorder },
               ]}
-            >
-              <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                >
-                  {totalBooks}
-                </ThemedText>
-                <ThemedText
-                  style={[styles.statLabel, { color: colors.tertiaryText }]}
-                >
-                  Total Books
-                </ThemedText>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                >
-                  {readingBooks.length}
-                </ThemedText>
-                <ThemedText
-                  style={[styles.statLabel, { color: colors.tertiaryText }]}
-                >
-                  Reading
-                </ThemedText>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                >
-                  {finishedBooks.length}
-                </ThemedText>
-                <ThemedText
-                  style={[styles.statLabel, { color: colors.tertiaryText }]}
-                >
-                  Completed
-                </ThemedText>
-              </View>
+            />
+            <View style={styles.statItem}>
+              <ThemedText
+                style={[styles.statNumber, { color: colors.primary }]}
+                type="title"
+              >
+                {readingBooks.length}
+              </ThemedText>
+              <ThemedText
+                style={[styles.statLabel, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                Currently Reading
+              </ThemedText>
             </View>
-          )}
-        </View>
+            <View
+              style={[
+                styles.statDivider,
+                { backgroundColor: colors.cardBorder },
+              ]}
+            />
+            <View style={styles.statItem}>
+              <ThemedText
+                style={[styles.statNumber, { color: colors.primary }]}
+                type="title"
+              >
+                {finishedBooks.length}
+              </ThemedText>
+              <ThemedText
+                style={[styles.statLabel, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                Finished
+              </ThemedText>
+            </View>
+          </View>
+        </ThemedView>
 
         {/* Book Sections */}
         <BookSection
           books={readingBooks}
           title="Currently Reading"
-          icon="bookmark"
+          icon="book"
           emptyMessage="No books in progress"
           emptySubtitle="Start reading a book to see it here"
           colorScheme={colorScheme ?? "light"}
@@ -374,24 +374,23 @@ export default function HomeScreen() {
         <BookSection
           books={wantToReadBooks}
           title="Want to Read"
-          icon="heart"
-          emptyMessage="No books in your wishlist"
-          emptySubtitle="Add books you want to read"
+          icon="bookmark"
+          emptyMessage="No books in your list"
+          emptySubtitle="Add books to your reading list"
           colorScheme={colorScheme ?? "light"}
           colors={colors}
         />
 
         <BookSection
           books={finishedBooks}
-          title="Completed"
+          title="Finished"
           icon="checkmark-circle"
-          emptyMessage="No completed books"
-          emptySubtitle="Finish reading books to see them here"
+          emptyMessage="No finished books"
+          emptySubtitle="Complete a book to see it here"
           colorScheme={colorScheme ?? "light"}
           colors={colors}
         />
 
-        {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </ThemedView>
@@ -409,76 +408,69 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
-    textAlign: "center",
   },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 32,
   },
   errorTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
     marginTop: 16,
     marginBottom: 8,
     textAlign: "center",
   },
   errorMessage: {
-    fontSize: 16,
     textAlign: "center",
     lineHeight: 24,
   },
   welcomeSection: {
-    paddingHorizontal: 20,
     paddingTop: 60,
-    paddingBottom: 24,
+    paddingBottom: 32,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   welcomeContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 20,
   },
   welcomeTextContainer: {
     flex: 1,
   },
   welcomeTitle: {
-    fontSize: 18,
     marginBottom: 4,
   },
   welcomeName: {
-    fontSize: 28,
-    fontWeight: "bold",
-    lineHeight: 36,
+    lineHeight: 40,
   },
-  statsContainer: {
+  statsSection: {
+    margin: 20,
+    padding: 24,
+    borderRadius: 20,
+  },
+  statsRow: {
     flexDirection: "row",
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   statItem: {
     flex: 1,
     alignItems: "center",
   },
   statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 14,
     textAlign: "center",
   },
   statDivider: {
     width: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    height: 40,
     marginHorizontal: 10,
   },
   section: {
@@ -490,36 +482,49 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 16,
+    gap: 12,
   },
   sectionHeaderContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
+    flex: 1,
   },
   bookCount: {
-    fontSize: 14,
+    textAlign: "right",
+    flexShrink: 0,
   },
   emptyState: {
     marginHorizontal: 20,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 32,
     alignItems: "center",
     borderWidth: 1,
     borderStyle: "dashed",
   },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 16,
     marginBottom: 8,
     textAlign: "center",
   },
   emptySubtitle: {
-    fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
   },
@@ -527,47 +532,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   bookCard: {
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 20,
+    padding: 16,
     marginRight: 16,
     width: 140,
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  coverContainer: {
-    marginBottom: 12,
-    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  coverContainer: {
+    marginBottom: 12,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
     elevation: 8,
   },
   bookCover: {
     width: 100,
     height: 150,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   bookInfo: {
     flex: 1,
   },
   bookTitle: {
-    fontSize: 14,
-    fontWeight: "600",
     marginBottom: 4,
     lineHeight: 18,
   },
   bookAuthor: {
-    fontSize: 12,
     lineHeight: 16,
   },
   bottomSpacing: {
