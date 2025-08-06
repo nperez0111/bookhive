@@ -1,11 +1,12 @@
-import React from "react";
-import { View, StyleSheet, FlatList, Pressable, Image } from "react-native";
-import { ThemedText } from "./ThemedText";
-import { ThemedView } from "./ThemedView";
-import { Ionicons } from "@expo/vector-icons";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import * as BuzzBookhiveDefs from "@/../src/bsky/lexicon/types/buzz/bookhive/defs";
 import { getBaseUrl } from "@/context/auth";
+import { Ionicons } from "@expo/vector-icons";
+import { formatDistanceToNow } from "date-fns";
+import React from "react";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import { ThemedText } from "./ThemedText";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { Colors } from "@/constants/Colors";
 
 // Union type for both comments and reviews
 export type CommentItem = (
@@ -27,6 +28,9 @@ const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({
   rating,
   size = 16,
 }) => {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
+
   // Convert 1-10 rating to 1-5 stars
   const starRating = rating ? Math.round(rating / 2) : 0;
 
@@ -37,7 +41,13 @@ const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({
           key={star}
           name={starRating >= star ? "star" : "star-outline"}
           size={size}
-          color={starRating >= star ? "#FBBF24" : "#9CA3AF"}
+          color={
+            starRating >= star
+              ? colors.primary
+              : colorScheme === "dark"
+                ? "#9CA3AF"
+                : colors.icon
+          }
         />
       ))}
     </View>
@@ -47,34 +57,11 @@ const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({
 // Individual Comment Component
 const CommentItem: React.FC<{
   comment: CommentItem;
-  onLike: (commentId: string) => void;
   onCommentPress: (commentId: string) => void;
   onUserPress: (userDid: string) => void;
-}> = ({ comment, onLike, onCommentPress, onUserPress }) => {
-  const textColor = useThemeColor({}, "text");
-  const backgroundColor = useThemeColor({}, "background");
-
-  const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
-    );
-
-    if (diffInDays === 0) {
-      return "Today";
-    } else if (diffInDays === 1) {
-      return "Yesterday";
-    } else if (diffInDays < 7) {
-      return `${diffInDays} days ago`;
-    } else {
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    }
-  };
+}> = ({ comment, onCommentPress, onUserPress }) => {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
 
   // Determine if this is a review or comment
   const isReview = "review" in comment;
@@ -87,7 +74,12 @@ const CommentItem: React.FC<{
     <View
       style={[
         styles.commentContainer,
-        { borderBottomColor: "rgba(255, 255, 255, 0.1)" },
+        {
+          borderBottomColor:
+            colorScheme === "dark"
+              ? "rgba(255, 255, 255, 0.1)"
+              : "rgba(0, 0, 0, 0.1)",
+        },
       ]}
     >
       {/* User Header */}
@@ -100,7 +92,14 @@ const CommentItem: React.FC<{
             style={styles.avatar}
           />
           <View style={styles.userDetails}>
-            <ThemedText style={styles.userName}>{userHandle}</ThemedText>
+            <ThemedText
+              style={[
+                styles.userName,
+                { color: colorScheme === "dark" ? "white" : colors.text },
+              ]}
+            >
+              @{userHandle}
+            </ThemedText>
           </View>
         </Pressable>
 
@@ -109,28 +108,37 @@ const CommentItem: React.FC<{
       </View>
 
       {/* Timestamp */}
-      <ThemedText style={styles.timestamp}>
-        {formatTimestamp(comment.createdAt)}
+      <ThemedText
+        style={[
+          styles.timestamp,
+          { color: colorScheme === "dark" ? "#9CA3AF" : colors.icon },
+        ]}
+      >
+        {formatDistanceToNow(comment.createdAt, { addSuffix: true })}
       </ThemedText>
 
       {/* Comment Text */}
-      <ThemedText style={styles.commentText}>{content}</ThemedText>
+      <ThemedText
+        style={[
+          styles.commentText,
+          { color: colorScheme === "dark" ? "#E5E7EB" : colors.text },
+        ]}
+      >
+        {content}
+      </ThemedText>
 
       {/* Interaction Footer */}
       <View style={styles.interactionFooter}>
         <View style={styles.interactionButtons}>
           <Pressable
             style={styles.interactionButton}
-            onPress={() => onLike(comment.id)}
-          >
-            <Ionicons name="heart-outline" size={20} color="#9CA3AF" />
-          </Pressable>
-
-          <Pressable
-            style={styles.interactionButton}
             onPress={() => onCommentPress(comment.id)}
           >
-            <Ionicons name="chatbubble-outline" size={20} color="#9CA3AF" />
+            <Ionicons
+              name="chatbubble-outline"
+              size={20}
+              color={colorScheme === "dark" ? "#9CA3AF" : colors.icon}
+            />
           </Pressable>
         </View>
       </View>
@@ -140,13 +148,11 @@ const CommentItem: React.FC<{
 
 export const CommentsSection: React.FC<CommentsSectionProps> = ({
   comments,
-  onLikeComment,
   onCommentPress,
   onUserPress,
 }) => {
-  const handleLike = (commentId: string) => {
-    onLikeComment?.(commentId);
-  };
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
 
   const handleCommentPress = (commentId: string) => {
     onCommentPress?.(commentId);
@@ -158,30 +164,70 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
   return (
     <View style={styles.container}>
-      <ThemedText style={styles.sectionTitle}>Comments</ThemedText>
+      <ThemedText
+        style={[
+          styles.sectionTitle,
+          { color: colorScheme === "dark" ? "white" : colors.text },
+        ]}
+      >
+        Comments
+      </ThemedText>
 
       {comments.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="chatbubble-outline" size={48} color="#9CA3AF" />
-          <ThemedText style={styles.emptyStateText}>
+        <View
+          style={[
+            styles.emptyState,
+            {
+              backgroundColor:
+                colorScheme === "dark"
+                  ? "rgba(255, 255, 255, 0.05)"
+                  : "rgba(0, 0, 0, 0.05)",
+              borderColor:
+                colorScheme === "dark"
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "rgba(0, 0, 0, 0.1)",
+            },
+          ]}
+        >
+          <Ionicons
+            name="chatbubble-outline"
+            size={48}
+            color={colorScheme === "dark" ? "#9CA3AF" : colors.icon}
+          />
+          <ThemedText
+            style={[
+              styles.emptyStateText,
+              { color: colorScheme === "dark" ? "#9CA3AF" : colors.icon },
+            ]}
+          >
             No comments yet. Be the first to share your thoughts!
           </ThemedText>
         </View>
       ) : (
-        <FlatList
-          data={comments}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <CommentItem
-              comment={item}
-              onLike={handleLike}
-              onCommentPress={handleCommentPress}
-              onUserPress={handleUserPress}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          showsVerticalScrollIndicator={false}
-        />
+        <View>
+          {comments.map((comment, index) => (
+            <React.Fragment key={comment.id}>
+              <CommentItem
+                comment={comment}
+                onCommentPress={handleCommentPress}
+                onUserPress={handleUserPress}
+              />
+              {index < comments.length - 1 && (
+                <View
+                  style={[
+                    styles.separator,
+                    {
+                      backgroundColor:
+                        colorScheme === "dark"
+                          ? "rgba(255, 255, 255, 0.1)"
+                          : "rgba(0, 0, 0, 0.1)",
+                    },
+                  ]}
+                />
+              )}
+            </React.Fragment>
+          ))}
+        </View>
       )}
     </View>
   );
@@ -194,7 +240,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "white",
     marginBottom: 16,
   },
   commentContainer: {
@@ -224,7 +269,6 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "white",
     marginBottom: 2,
   },
   starRating: {
@@ -233,13 +277,11 @@ const styles = StyleSheet.create({
   },
   timestamp: {
     fontSize: 14,
-    color: "#9CA3AF",
     marginBottom: 12,
   },
   commentText: {
     fontSize: 16,
     lineHeight: 24,
-    color: "#E5E7EB",
     marginBottom: 16,
   },
   interactionFooter: {
@@ -258,19 +300,15 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   emptyState: {
     alignItems: "center",
     paddingVertical: 40,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
   },
   emptyStateText: {
     marginTop: 12,
-    color: "#9CA3AF",
     fontSize: 16,
     textAlign: "center",
   },

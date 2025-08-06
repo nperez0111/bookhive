@@ -107,9 +107,20 @@ export async function updateBookRecord({
     });
   }
 
-  if (!originalBook) {
-    // TODO do some checks here that we have everything for a new book then
-    // validate does the minimum, but we should see that everything is there to display in UI
+  if (!originalBook && !userBook) {
+    const hiveBook = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", hiveId)
+      .executeTakeFirst();
+    if (hiveBook) {
+      Object.assign(updates, {
+        coverImage: (hiveBook.cover || hiveBook.thumbnail) as string,
+        title: hiveBook.title,
+        authors: hiveBook.authors,
+        ...updates,
+      });
+    }
   }
 
   const book = BookRecord.validateRecord({

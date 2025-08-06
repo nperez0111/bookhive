@@ -1003,7 +1003,6 @@ export function createRouter(app: HonoServer) {
       const { hiveId, ...rest } = c.req.valid("json");
 
       if (!hiveId) {
-        console.log("No hiveId");
         return c.json({ success: false, message: "Invalid ID" }, 400);
       }
       const bookLockKey = "book_lock:" + agent.assertDid;
@@ -1153,6 +1152,7 @@ export function createRouter(app: HonoServer) {
         .db.selectFrom("user_book")
         .selectAll()
         .where("user_book.hiveId", "=", book.id)
+        .where("user_book.userDid", "=", agent.assertDid)
         .executeTakeFirst();
 
       const didToHandle = await c
