@@ -18,7 +18,10 @@ export const LibraryImport: FC = () => {
                 className="sr-only"
                 defaultChecked
               />
-              <div id="goodreads-option" className="flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500">
+              <div
+                id="goodreads-option"
+                className="flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500"
+              >
                 <span className="font-medium">From Goodreads</span>
               </div>
             </label>
@@ -29,7 +32,10 @@ export const LibraryImport: FC = () => {
                 value="storygraph"
                 className="sr-only"
               />
-              <div id="storygraph-option" className="flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500">
+              <div
+                id="storygraph-option"
+                className="flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500"
+              >
                 <span className="font-medium">From StoryGraph</span>
               </div>
             </label>
@@ -54,10 +60,17 @@ export const LibraryImport: FC = () => {
         <div id="storygraph-instructions" className="mb-6 hidden">
           <p className="text-gray-600 dark:text-gray-300">
             To import your StoryGraph library, go to your{" "}
-            <span className="font-medium">Manage Account</span> page on StoryGraph and export your library as a CSV file, then upload it below.
+            <a
+              href="https://app.thestorygraph.com/user-export"
+              className="font-medium text-yellow-600 hover:text-yellow-700"
+              target="_blank"
+            >
+              User Export
+            </a>{" "}
+            page on StoryGraph and export your library as a CSV file, then
+            upload it below.
           </p>
         </div>
-        
 
         <label
           className="inline-flex cursor-pointer items-center rounded-lg bg-yellow-100 px-4 py-2 text-yellow-800 transition-colors duration-200 hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-800"
@@ -100,51 +113,61 @@ export const LibraryImport: FC = () => {
             script={(document) => {
               // Handle service selection toggle
               const radioButtons = document.querySelectorAll(
-                'input[name="import-service"]'
+                'input[name="import-service"]',
               ) as NodeListOf<HTMLInputElement>;
-              const goodreadsInstructions = document.getElementById("goodreads-instructions");
-              const storygraphInstructions = document.getElementById("storygraph-instructions");
+              const goodreadsInstructions = document.getElementById(
+                "goodreads-instructions",
+              );
+              const storygraphInstructions = document.getElementById(
+                "storygraph-instructions",
+              );
 
               function updateSelection() {
                 const selectedService = document.querySelector(
-                  'input[name="import-service"]:checked'
+                  'input[name="import-service"]:checked',
                 ) as HTMLInputElement;
-                
-                const goodreadsOption = document.getElementById("goodreads-option");
-                const storygraphOption = document.getElementById("storygraph-option");
-                
+
+                const goodreadsOption =
+                  document.getElementById("goodreads-option");
+                const storygraphOption =
+                  document.getElementById("storygraph-option");
+
                 if (selectedService?.value === "storygraph") {
                   // StoryGraph selected
                   goodreadsInstructions?.classList.add("hidden");
                   storygraphInstructions?.classList.remove("hidden");
-                  
+
                   // Update styling
                   if (goodreadsOption) {
-                    goodreadsOption.className = "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
+                    goodreadsOption.className =
+                      "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
                   }
                   if (storygraphOption) {
-                    storygraphOption.className = "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
+                    storygraphOption.className =
+                      "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
                   }
                 } else {
                   // Goodreads selected
                   goodreadsInstructions?.classList.remove("hidden");
                   storygraphInstructions?.classList.add("hidden");
-                  
+
                   // Update styling
                   if (storygraphOption) {
-                    storygraphOption.className = "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
+                    storygraphOption.className =
+                      "flex items-center rounded-lg border-2 border-gray-200 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-zinc-600 dark:hover:border-yellow-500";
                   }
                   if (goodreadsOption) {
-                    goodreadsOption.className = "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
+                    goodreadsOption.className =
+                      "flex items-center rounded-lg border-2 border-yellow-500 bg-yellow-50 px-4 py-3 transition-colors hover:border-yellow-300 dark:border-yellow-500 dark:bg-yellow-900/20 dark:hover:border-yellow-500";
                   }
                 }
               }
 
               // Add event listeners to radio buttons
-              radioButtons.forEach(radio => {
+              radioButtons.forEach((radio) => {
                 radio.addEventListener("change", updateSelection);
               });
-              
+
               // Set initial state on page load
               updateSelection();
 
@@ -160,14 +183,15 @@ export const LibraryImport: FC = () => {
                   alert("Please select a file to import");
                   return;
                 }
-                
+
                 // Get selected service
                 const selectedService = document.querySelector(
-                  'input[name="import-service"]:checked'
+                  'input[name="import-service"]:checked',
                 ) as HTMLInputElement;
-                const endpoint = selectedService?.value === "storygraph" 
-                  ? "/import/storygraph" 
-                  : "/import/goodreads";
+                const endpoint =
+                  selectedService?.value === "storygraph"
+                    ? "/import/storygraph"
+                    : "/import/goodreads";
 
                 const form = new FormData();
                 form.append("export", files[0]);
