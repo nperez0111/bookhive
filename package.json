@@ -13,7 +13,7 @@
     "dev:css": "pnpm run build:css --watch",
     "build:js:frontend": "esbuild src/client/index.tsx --bundle --outfile=public/js/client.js --alias:react=hono/jsx/dom --sourcemap",
     "build:js:backend": "rm -rf dist && node ./esbuild.cjs",
-    "build:css": "tailwindcss -i ./src/index.css -o ./public/output.css",
+    "build:css": "tailwindcss -m -i ./src/index.css -o ./public/output.css",
     "build": "concurrently \"pnpm:build:css\" \"pnpm:build:*\" \"pnpm run lexgen --yes\"",
     "test": "vitest",
     "test:ui": "vitest --ui",
