@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DarkTheme,
   DefaultTheme,
-  ThemeProvider,
+  ThemeProvider as NavigationThemeProvider,
 } from "@react-navigation/native";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient } from "@tanstack/react-query";
@@ -16,7 +16,8 @@ import { useEffect, StrictMode, useState } from "react";
 import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
-import { useColorScheme } from "@/hooks/useColorScheme";
+import { ThemeProvider } from "@/context/theme";
+import { useColorScheme } from "react-native";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 
@@ -82,15 +83,23 @@ export default function RootLayout() {
           }}
         >
           <AuthProvider setCacheBustKey={setCacheBusterKey}>
-            <ThemeProvider
-              value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-            >
-              <NetworkStatusIndicator />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              </Stack>
-              <StatusBar style="auto" />
+            <ThemeProvider>
+              <NavigationThemeProvider
+                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+              >
+                <NetworkStatusIndicator />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen
+                    name="(auth)"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="(tabs)"
+                    options={{ headerShown: false }}
+                  />
+                </Stack>
+                <StatusBar style="auto" />
+              </NavigationThemeProvider>
             </ThemeProvider>
           </AuthProvider>
         </PersistQueryClientProvider>

@@ -4,6 +4,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedCard } from "@/components/ThemedCard";
 import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 import {
   StyleSheet,
@@ -157,70 +158,23 @@ export default function ProfileScreen() {
 
             {/* Settings Items */}
             <View style={styles.settingsList}>
-              <Pressable style={styles.settingItem}>
-                <View style={styles.settingLeft}>
-                  <Ionicons
-                    name="moon"
-                    size={20}
-                    color={colors.secondaryText}
-                  />
-                  <ThemedText
-                    style={[styles.settingText, { color: colors.primaryText }]}
-                    type="body"
-                  >
-                    Dark Mode
-                  </ThemedText>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.tertiaryText}
-                />
-              </Pressable>
-
-              <Pressable style={styles.settingItem}>
-                <View style={styles.settingLeft}>
-                  <Ionicons
-                    name="notifications"
-                    size={20}
-                    color={colors.secondaryText}
-                  />
-                  <ThemedText
-                    style={[styles.settingText, { color: colors.primaryText }]}
-                    type="body"
-                  >
-                    Notifications
-                  </ThemedText>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.tertiaryText}
-                />
-              </Pressable>
-
-              <Pressable style={styles.settingItem}>
-                <View style={styles.settingLeft}>
-                  <Ionicons
-                    name="shield-checkmark"
-                    size={20}
-                    color={colors.secondaryText}
-                  />
-                  <ThemedText
-                    style={[styles.settingText, { color: colors.primaryText }]}
-                    type="body"
-                  >
-                    Privacy
-                  </ThemedText>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.tertiaryText}
-                />
-              </Pressable>
+              <ThemeToggle style={styles.settingItem} />
             </View>
           </ThemedCard>
+        </View>
+
+        {/* Sign Out Button */}
+        <View style={styles.signOutSection}>
+          <ThemedButton
+            title="Sign Out"
+            onPress={signOut}
+            variant="outline"
+            leftIcon={
+              <Ionicons name="log-out" size={20} color={colors.error} />
+            }
+            style={styles.signOutButton}
+            textStyle={{ color: colors.error }}
+          />
         </View>
 
         {/* Support Section */}
@@ -289,20 +243,6 @@ export default function ProfileScreen() {
           </ThemedCard>
         </View>
 
-        {/* Sign Out Button */}
-        <View style={styles.signOutSection}>
-          <ThemedButton
-            title="Sign Out"
-            onPress={signOut}
-            variant="outline"
-            leftIcon={
-              <Ionicons name="log-out" size={20} color={colors.error} />
-            }
-            style={styles.signOutButton}
-            textStyle={{ color: colors.error }}
-          />
-        </View>
-
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </ThemedView>
@@ -312,6 +252,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    marginBottom: 20,
   },
   scrollView: {
     flex: 1,

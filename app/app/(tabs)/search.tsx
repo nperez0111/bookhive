@@ -6,8 +6,11 @@ import {
   StyleSheet,
   TextInput,
   View,
-  ScrollView,
+  Animated,
 } from "react-native";
+
+// Create animated FlatList for scroll events
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<HiveBook>);
 import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -17,7 +20,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { getBaseUrl } from "@/context/auth";
 import type { HiveBook } from "../../../src/types";
 import { BOOK_STATUS } from "@/constants";
@@ -32,6 +35,29 @@ export default function SearchScreen() {
 
   const profile = useProfile();
   const { data: searchResults, isLoading, error } = useSearchBooks(query);
+
+  // Animation values for collapsible header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = 120; // Height of the full header
+  const collapsedHeaderHeight = 80; // Height when collapsed
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, -60],
+    extrapolate: "clamp",
+  });
+
+  const searchInputTranslateY = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, -100],
+    extrapolate: "clamp",
+  });
 
   const renderSearchResultItem = ({ item: book }: { item: HiveBook }) => (
     <Pressable
@@ -90,24 +116,16 @@ export default function SearchScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
-      {/* Search Header */}
-      <View style={styles.searchHeader}>
-        <ThemedText
-          style={[styles.searchTitle, { color: colors.primaryText }]}
-          type="title"
-        >
-          Search Books
-        </ThemedText>
-        <ThemedText
-          style={[styles.searchSubtitle, { color: colors.secondaryText }]}
-          type="body"
-        >
-          Discover your next great read
-        </ThemedText>
-      </View>
-
-      {/* Search Input */}
-      <View style={styles.searchInputContainer}>
+      {/* Fixed Search Input (always visible) */}
+      <Animated.View
+        style={[
+          styles.fixedSearchContainer,
+          {
+            transform: [{ translateY: searchInputTranslateY }],
+            zIndex: 1000,
+          },
+        ]}
+      >
         <View
           style={[
             styles.searchInputWrapper,
@@ -147,7 +165,40 @@ export default function SearchScreen() {
             </Pressable>
           )}
         </View>
-      </View>
+
+        {hasSearchResults && (
+          <ThemedText
+            style={[styles.resultCount, { color: colors.secondaryText }]}
+            type="caption"
+          >
+            {searchResults?.length} results
+          </ThemedText>
+        )}
+      </Animated.View>
+
+      {/* Collapsible Header */}
+      <Animated.View
+        style={[
+          styles.searchHeader,
+          {
+            opacity: headerOpacity,
+            transform: [{ translateY: headerTranslateY }],
+          },
+        ]}
+      >
+        <ThemedText
+          style={[styles.searchTitle, { color: colors.primaryText }]}
+          type="title"
+        >
+          Search Books
+        </ThemedText>
+        <ThemedText
+          style={[styles.searchSubtitle, { color: colors.secondaryText }]}
+          type="body"
+        >
+          Discover your next great read
+        </ThemedText>
+      </Animated.View>
 
       {/* Content based on search state */}
       {query.length === 0 ? (
@@ -185,34 +236,6 @@ export default function SearchScreen() {
       ) : (
         // Has search query - show search results
         <View style={styles.searchResultsSection}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderContent}>
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: colors.activeBackground },
-                ]}
-              >
-                <Ionicons name="search" size={20} color={colors.primary} />
-              </View>
-              <ThemedText
-                style={[styles.sectionTitle, { color: colors.primaryText }]}
-                type="heading"
-              >
-                Search Results
-              </ThemedText>
-            </View>
-            {searchResults && (
-              <ThemedText
-                style={[styles.resultCount, { color: colors.secondaryText }]}
-                type="caption"
-                numberOfLines={1}
-              >
-                {searchResults.length} results
-              </ThemedText>
-            )}
-          </View>
-
           {isLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
@@ -231,12 +254,17 @@ export default function SearchScreen() {
               showGoBackButton={false}
             />
           ) : searchResults && searchResults.length > 0 ? (
-            <FlatList
+            <AnimatedFlatList
               data={searchResults}
               keyExtractor={(item) => item.id}
               renderItem={renderSearchResultItem}
               contentContainerStyle={styles.searchResultsList}
               showsVerticalScrollIndicator={false}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                { useNativeDriver: true },
+              )}
+              scrollEventThrottle={16}
             />
           ) : (
             <View style={styles.emptyState}>
@@ -279,17 +307,20 @@ const styles = StyleSheet.create({
   searchHeader: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 16, // Reduced from 24
+  },
+  fixedSearchContainer: {
+    position: "absolute",
+    top: 140,
+    left: 20,
+    right: 20,
+    zIndex: 1000,
   },
   searchTitle: {
     marginBottom: 8,
   },
   searchSubtitle: {
     lineHeight: 24,
-  },
-  searchInputContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
   },
   searchInputWrapper: {
     flexDirection: "row",
@@ -326,6 +357,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     flex: 1,
+    marginTop: 60,
   },
   iconContainer: {
     width: 40,
@@ -340,6 +372,7 @@ const styles = StyleSheet.create({
   resultCount: {
     textAlign: "right",
     flexShrink: 0,
+    marginTop: 10,
   },
   horizontalListContent: {
     paddingHorizontal: 20,
@@ -349,11 +382,13 @@ const styles = StyleSheet.create({
   },
   searchResultsList: {
     paddingHorizontal: 20,
+    paddingTop: 160,
+    paddingBottom: 50,
   },
   searchResultItem: {
     flexDirection: "row",
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     marginBottom: 12,
     borderWidth: 1,
     shadowOffset: {
@@ -363,34 +398,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    minHeight: 100,
   },
   coverContainer: {
-    marginRight: 16,
+    marginRight: 12,
+    justifyContent: "center",
   },
   searchResultCover: {
-    width: 60,
-    height: 90,
-    borderRadius: 8,
+    width: 65,
+    height: 95,
+    borderRadius: 10,
   },
   searchResultInfo: {
     flex: 1,
     justifyContent: "center",
+    paddingVertical: 2,
   },
   searchResultTitle: {
     marginBottom: 4,
     lineHeight: 18,
+    fontSize: 15,
   },
   searchResultAuthor: {
-    marginBottom: 8,
+    marginBottom: 6,
     lineHeight: 16,
+    fontSize: 13,
   },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    marginTop: 2,
   },
   ratingText: {
     lineHeight: 16,
+    fontSize: 12,
   },
   loadingContainer: {
     paddingVertical: 40,
