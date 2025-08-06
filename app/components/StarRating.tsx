@@ -87,9 +87,10 @@ export const StarRating: React.FC<StarRatingProps> = ({
           lastTouchXRef.current = currentX;
         }
       },
-      onPanResponderRelease: () => {
+      onPanResponderRelease: (evt) => {
+        const newRating = calculateRating(evt.nativeEvent.pageX);
         // Call the onRate callback only when the gesture ends
-        onRate(currentRating * 2); // Convert 0-5 (half steps) back to 0-10
+        onRate(newRating * 2); // Convert 0-5 (half steps) back to 0-10
         lastTouchXRef.current = null;
       },
     }),
@@ -143,19 +144,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
                 starPositionsRef.current[index] = { width, x };
               }}
             >
-              <Ionicons
-                name={iconName}
-                size={starSize}
-                color={starColor}
-                style={{
-                  textShadowColor:
-                    starColor === colors.primary
-                      ? colors.primary
-                      : "transparent",
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 4,
-                }}
-              />
+              <Ionicons name={iconName} size={starSize} color={starColor} />
             </View>
           );
         })}

@@ -15,7 +15,7 @@ interface BookActionCardProps {
   rating?: number;
   review?: string;
   onStatusPress?: () => void;
-  onRatingChange?: (rating: number) => void;
+  onRatingChange: (rating: number) => void;
   onReviewChange?: (text: string) => void;
   onReviewSave?: () => void;
   isPending?: boolean;
@@ -91,7 +91,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
           <View style={styles.ratingContainer}>
             <StarRating
               rating={rating}
-              onRate={onRatingChange || (() => {})}
+              onRate={onRatingChange}
               disabled={isPending}
               starSize={36}
               style={styles.starRating}
@@ -100,7 +100,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               <ThemedText
                 style={[styles.ratingText, { color: colors.secondaryText }]}
               >
-                {rating / 10} out of 5 stars
+                {rating / 2} out of 5 stars
               </ThemedText>
             )}
           </View>
