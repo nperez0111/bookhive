@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, PanResponder, ViewStyle } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
+import { PanResponder, View, ViewStyle } from "react-native";
 
 interface StarRatingProps {
   /** rating (0-10, supports half steps like 1, 3, 5...) */
   rating: number | undefined;
-  onRate: (rating: number) => void;
+  onRate?: (rating: number) => void;
   disabled?: boolean;
   starSize?: number;
   style?: ViewStyle;
@@ -16,7 +16,7 @@ interface StarRatingProps {
 export const StarRating: React.FC<StarRatingProps> = ({
   rating,
   onRate,
-  disabled = false,
+  disabled = !onRate,
   starSize = 48,
   style,
 }) => {
@@ -90,7 +90,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
       onPanResponderRelease: (evt) => {
         const newRating = calculateRating(evt.nativeEvent.pageX);
         // Call the onRate callback only when the gesture ends
-        onRate(newRating * 2); // Convert 0-5 (half steps) back to 0-10
+        onRate?.(newRating * 2); // Convert 0-5 (half steps) back to 0-10
         lastTouchXRef.current = null;
       },
     }),

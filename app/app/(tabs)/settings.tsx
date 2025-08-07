@@ -178,6 +178,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* Support Section */}
+        {/*
         <View style={styles.supportSection}>
           <ThemedCard variant="outlined" style={styles.supportCard}>
             <View style={styles.sectionHeader}>
@@ -241,7 +242,7 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </ThemedCard>
-        </View>
+        </View> */}
 
         <View style={styles.bottomSpacing} />
       </ScrollView>

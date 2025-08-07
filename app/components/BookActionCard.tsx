@@ -15,7 +15,7 @@ interface BookActionCardProps {
   rating?: number;
   review?: string;
   onStatusPress?: () => void;
-  onRatingChange: (rating: number) => void;
+  onRatingChange?: (rating: number) => void;
   onReviewChange?: (text: string) => void;
   onReviewSave?: () => void;
   isPending?: boolean;

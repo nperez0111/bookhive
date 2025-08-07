@@ -435,6 +435,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   loadingContainer: {
+    marginTop: 30,
     paddingVertical: 40,
     alignItems: "center",
   },

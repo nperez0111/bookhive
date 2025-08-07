@@ -79,7 +79,7 @@ export default function RootLayout() {
           client={queryClient}
           persistOptions={{
             persister: asyncStoragePersister,
-            buster: `user_${cacheBusterKey}`,
+            buster: `${process.env.NODE_ENV === "development" ? Math.random() : ""}did_${cacheBusterKey}`,
           }}
         >
           <AuthProvider setCacheBustKey={setCacheBusterKey}>

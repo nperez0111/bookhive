@@ -1025,6 +1025,152 @@ export function createRouter(app: HonoServer) {
     },
   );
 
+  app.post(
+    "/api/update-comment",
+    zValidator(
+      "json",
+      z.object({
+        uri: z
+          .string()
+          .describe(
+            "The URI of the comment to update. If this is not provided, a new comment will be created.",
+          )
+          .optional(),
+        hiveId: z.string(),
+        comment: z.string(),
+        parentUri: z.string(),
+        parentCid: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json(
+          {
+            success: false,
+            message: "Invalid Session",
+          },
+          401,
+        );
+      }
+
+      const { hiveId, comment, parentUri, parentCid, uri } =
+        await c.req.valid("json");
+
+      const originalBuzz = uri
+        ? await c
+            .get("ctx")
+            .db.selectFrom("buzz")
+            .selectAll()
+            .where("uri", "=", uri)
+            .limit(1)
+            .executeTakeFirst()
+        : null;
+      const book = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select(["cid", "uri"])
+        .where("hiveId", "=", hiveId as HiveId)
+        .executeTakeFirst();
+      const createdAt = originalBuzz?.createdAt || new Date().toISOString();
+
+      const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
+      const parentRef = validateMain({ uri: parentUri, cid: parentCid });
+      if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
+        return c.json(
+          {
+            success: false,
+            message: "Invalid Hive ID",
+            description: "The book you are looking for does not exist",
+          },
+          404,
+        );
+      }
+
+      const response = await agent.com.atproto.repo.applyWrites({
+        repo: agent.assertDid,
+        writes: [
+          {
+            $type: originalBuzz
+              ? "com.atproto.repo.applyWrites#update"
+              : "com.atproto.repo.applyWrites#create",
+            collection: ids.BuzzBookhiveBuzz,
+            rkey: originalBuzz
+              ? originalBuzz.uri.split("/").at(-1)!
+              : TID.nextStr(),
+            value: {
+              book: bookRef.value,
+              comment,
+              parent: parentRef.value,
+              createdAt,
+            },
+          },
+        ],
+      });
+
+      const firstResult = response.data.results?.[0];
+      if (
+        !response.success ||
+        !response.data.results ||
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
+      ) {
+        return c.json(
+          {
+            success: false,
+            message: "Failed to post comment",
+            description: "Failed to write comment to the database",
+          },
+          500,
+        );
+      }
+
+      await c
+        .get("ctx")
+        .db.insertInto("buzz")
+        .values({
+          uri: firstResult.uri,
+          cid: firstResult.cid,
+          userDid: agent.assertDid,
+          createdAt: createdAt,
+          indexedAt: new Date().toISOString(),
+          hiveId: hiveId as HiveId,
+          comment,
+          parentUri,
+          parentCid,
+          bookCid: book.cid,
+          bookUri: book.uri,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet((c) => ({
+            indexedAt: c.ref("excluded.indexedAt"),
+            cid: c.ref("excluded.cid"),
+            userDid: c.ref("excluded.userDid"),
+            createdAt: c.ref("excluded.createdAt"),
+            hiveId: c.ref("excluded.hiveId"),
+            comment: c.ref("excluded.comment"),
+            parentUri: c.ref("excluded.parentUri"),
+            parentCid: c.ref("excluded.parentCid"),
+            bookCid: c.ref("excluded.bookCid"),
+            bookUri: c.ref("excluded.bookUri"),
+          })),
+        )
+        .execute();
+
+      return c.json({
+        success: true,
+        message: "Comment posted",
+        comment: {
+          uri: firstResult.uri,
+        },
+      });
+    },
+  );
+
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
@@ -1174,6 +1320,8 @@ export function createRouter(app: HonoServer) {
         status: userBook?.status ?? undefined,
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
+        userBookUri: userBook?.uri ?? undefined,
+        userBookCid: userBook?.cid ?? undefined,
         book: {
           $type: "buzz.bookhive.hiveBook",
           title: book.title,
@@ -1200,6 +1348,8 @@ export function createRouter(app: HonoServer) {
           createdAt: c.createdAt,
           did: c.userDid,
           handle: didToHandle[c.userDid] ?? c.userDid,
+          uri: c.uri,
+          cid: c.cid,
           parent: {
             uri: c.parentUri,
             cid: c.parentCid,
@@ -1211,6 +1361,8 @@ export function createRouter(app: HonoServer) {
           handle: didToHandle[r.userDid] ?? r.userDid,
           review: r.comment,
           stars: r.stars ?? undefined,
+          uri: r.uri,
+          cid: r.cid,
         })),
       } satisfies GetBook.OutputSchema;
 
@@ -1231,6 +1383,8 @@ export function createRouter(app: HonoServer) {
       const agent = await c.get("ctx").getSessionAgent();
 
       let { did, handle } = c.req.valid("query");
+      console.log("did", did);
+      console.log("handle", handle);
 
       if (!did && !handle) {
         if (!agent) {
@@ -1249,6 +1403,7 @@ export function createRouter(app: HonoServer) {
         did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
       }
       did = did as string;
+      console.log("did2", did);
 
       const books = await c
         .get("ctx")

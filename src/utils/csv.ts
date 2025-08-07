@@ -1,4 +1,4 @@
-import { parse, Parser } from "csv-parse";
+import { parse } from "csv-parse";
 
 export interface GoodreadsBook {
   bookId: string;

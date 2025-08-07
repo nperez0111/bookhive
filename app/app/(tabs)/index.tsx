@@ -42,11 +42,8 @@ function BookSection({
   icon,
   emptyMessage,
   emptySubtitle,
-  colorScheme,
   colors,
 }: BookSectionProps) {
-  const backgroundColor = useThemeColor({}, "background");
-
   if (books.length === 0) {
     return (
       <View style={styles.section}>

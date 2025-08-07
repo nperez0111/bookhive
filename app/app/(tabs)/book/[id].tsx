@@ -15,7 +15,7 @@ import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 import { decode } from "html-entities";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import React, { useState, useRef } from "react";
 import { getBaseUrl } from "@/context/auth";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -37,6 +37,7 @@ export default function BookInfo() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const bookQuery = useBookInfo(hiveId);
 
@@ -93,14 +94,32 @@ export default function BookInfo() {
     });
   };
 
-  const handleCommentPress = (commentId: string) => {
-    // TODO: Implement comment thread view
-    console.log("Open comment thread:", commentId);
+  const handleUserPress = (userDid: string) => {
+    router.push(`/profile/${userDid}`);
   };
 
-  const handleUserPress = (userDid: string) => {
-    // TODO: Navigate to user profile
-    console.log("Open user profile:", userDid);
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<View>,
+  ) => {
+    // Scroll to the reply form after a short delay to ensure it's rendered
+    setTimeout(() => {
+      if (replyFormRef.current && scrollViewRef.current) {
+        replyFormRef.current.measureLayout(
+          // @ts-ignore - measureLayout exists on View
+          scrollViewRef.current,
+          (x: number, y: number) => {
+            scrollViewRef.current?.scrollTo({
+              y: y - 100, // Offset to show some content above the reply form
+              animated: true,
+            });
+          },
+          () => {
+            console.log("Could not measure reply form layout");
+          },
+        );
+      }
+    }, 100);
   };
 
   const handleViewOnGoodreads = () => {
@@ -157,7 +176,11 @@ export default function BookInfo() {
         />
       </ImageBackground>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.contentContainer}>
           {/* Book Cover and Info Section */}
           <View style={styles.bookSection}>
@@ -323,8 +346,9 @@ export default function BookInfo() {
 
           <CommentsSection
             comments={comments}
-            onCommentPress={handleCommentPress}
+            hiveId={hiveId}
             onUserPress={handleUserPress}
+            onReplyClick={handleReplyClick}
           />
         </View>
       </ScrollView>

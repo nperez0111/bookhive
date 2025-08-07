@@ -211,6 +211,7 @@ export async function CommentsSection({
     .select([
       "user_book.review as comment",
       "user_book.createdAt",
+      "user_book.stars",
       "user_book.userDid",
       "user_book.uri",
       "user_book.cid",
