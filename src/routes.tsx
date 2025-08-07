@@ -402,6 +402,10 @@ export function createRouter(app: HonoServer) {
     });
   });
 
+  app.get("/.well-known/atproto-did", async (c) => {
+    return c.text("did:plc:enu2j5xjlqsjaylv3du4myh4");
+  });
+
   app.get("/refresh-books", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
@@ -1364,7 +1368,10 @@ export function createRouter(app: HonoServer) {
           uri: r.uri,
           cid: r.cid,
         })),
-      } satisfies GetBook.OutputSchema;
+      } satisfies GetBook.OutputSchema & {
+        userBookUri?: string;
+        userBookCid?: string;
+      };
 
       return c.json(response);
     },
