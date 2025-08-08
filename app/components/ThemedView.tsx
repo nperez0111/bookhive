@@ -53,7 +53,18 @@ export function ThemedView({
 
   return (
     <View
-      style={[{ backgroundColor }, variant === "card" && styles.card, style]}
+      style={[
+        { backgroundColor },
+        variant === "card" && [
+          styles.card,
+          {
+            borderColor: colors.cardBorder,
+            borderWidth: 1,
+            shadowColor: colors.shadowLight,
+          },
+        ],
+        style,
+      ]}
       {...otherProps}
     />
   );

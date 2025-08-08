@@ -1,7 +1,6 @@
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   View,
@@ -25,6 +24,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { AnimatedListItem } from "@/components/AnimatedListItem";
+import { FadeInImage } from "@/components/FadeInImage";
 
 interface BookSectionProps {
   books: UserBook[];
@@ -138,44 +140,46 @@ function BookSection({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.horizontalListContent}
         keyExtractor={(item) => item.hiveId}
-        renderItem={({ item: book }) => (
-          <Pressable
-            onPress={() => router.push(`/book/${book.hiveId}`)}
-            style={[
-              styles.bookCard,
-              {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.cardBorder,
-                shadowColor: colors.shadowLight,
-              },
-            ]}
-          >
-            <View style={styles.coverContainer}>
-              <Image
-                source={{
-                  uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-                }}
-                style={styles.bookCover}
-                resizeMode="cover"
-              />
-            </View>
-            <View style={styles.bookInfo}>
-              <ThemedText
-                style={[styles.bookTitle, { color: colors.primaryText }]}
-                numberOfLines={2}
-                type="label"
-              >
-                {book.title}
-              </ThemedText>
-              <ThemedText
-                style={[styles.bookAuthor, { color: colors.secondaryText }]}
-                numberOfLines={1}
-                type="caption"
-              >
-                {book.authors}
-              </ThemedText>
-            </View>
-          </Pressable>
+        renderItem={({ item: book, index }) => (
+          <AnimatedListItem index={index}>
+            <Pressable
+              onPress={() => router.push(`/book/${book.hiveId}`)}
+              style={[
+                styles.bookCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.cardBorder,
+                  shadowColor: colors.shadowLight,
+                },
+              ]}
+            >
+              <View style={styles.coverContainer}>
+                <FadeInImage
+                  source={{
+                    uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+                  }}
+                  style={styles.bookCover}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={styles.bookInfo}>
+                <ThemedText
+                  style={[styles.bookTitle, { color: colors.primaryText }]}
+                  numberOfLines={2}
+                  type="label"
+                >
+                  {book.title}
+                </ThemedText>
+                <ThemedText
+                  style={[styles.bookAuthor, { color: colors.secondaryText }]}
+                  numberOfLines={1}
+                  type="caption"
+                >
+                  {book.authors}
+                </ThemedText>
+              </View>
+            </Pressable>
+          </AnimatedListItem>
         )}
       />
     </View>
@@ -188,6 +192,7 @@ export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
+  const bottom = useBottomTabOverflow();
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -256,7 +261,9 @@ export default function HomeScreen() {
   const totalBooks = profile.data.books.length;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
+    >
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -388,7 +395,7 @@ export default function HomeScreen() {
           colors={colors}
         />
 
-        <View style={styles.bottomSpacing} />
+        <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
     </ThemedView>
   );

@@ -23,6 +23,9 @@ export function ThemedCard({
     const baseStyle = {
       borderRadius: 16,
       backgroundColor: colors.cardBackground,
+      padding: 0,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
     };
 
     // Padding styles

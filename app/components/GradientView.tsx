@@ -17,7 +17,7 @@ export function GradientView({
   variant = "primary",
   colors,
   start = { x: 0, y: 0 },
-  end = { x: 1, y: 1 },
+  end = { x: 1, y: 0.8 },
   children,
   ...otherProps
 }: GradientViewProps) {
@@ -55,7 +55,10 @@ export function GradientView({
       colors={getGradientColors()}
       start={start}
       end={end}
-      style={[styles.container, style]}
+      style={[
+        styles.container,
+        StyleSheet.flatten([{ borderRadius: 24 }, style]),
+      ]}
       {...restProps}
     >
       {children}

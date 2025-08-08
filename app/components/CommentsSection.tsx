@@ -19,8 +19,8 @@ import { ThemedText } from "./ThemedText";
 
 // Union type for both comments and reviews
 export type CommentItem = (
-  | (BuzzBookhiveDefs.Comment & { uri: string; cid: string })
-  | (BuzzBookhiveDefs.Review & { uri: string; cid: string })
+  | (BuzzBookhiveDefs.Comment & { uri?: string; cid?: string })
+  | (BuzzBookhiveDefs.Review & { uri?: string; cid?: string })
 ) & {
   id: string; // Add an id for React keys
 };
@@ -98,7 +98,7 @@ const CommentItem: React.FC<{
 
     try {
       // Both comments and reviews can have replies
-      if (isReview && "uri" in comment && "cid" in comment) {
+      if (isReview && "uri" in comment && comment.uri && comment.cid) {
         // For reviews, use the review's URI and CID as parent
         await updateComment.mutateAsync({
           hiveId: hiveId as any,
@@ -108,7 +108,7 @@ const CommentItem: React.FC<{
         });
         setReplyText("");
         setShowReplyForm(false);
-      } else if (!isReview && "uri" in comment && "cid" in comment) {
+      } else if (!isReview && "uri" in comment && comment.uri && comment.cid) {
         // For comments, use the comment's URI and CID as parent
         await updateComment.mutateAsync({
           hiveId: hiveId as any,
@@ -130,6 +130,7 @@ const CommentItem: React.FC<{
     try {
       if (
         "uri" in comment &&
+        comment.uri &&
         "parent" in comment &&
         typeof comment.parent === "object" &&
         comment.parent !== null
@@ -141,7 +142,7 @@ const CommentItem: React.FC<{
           comment: editText,
           parentUri: parent.uri,
           parentCid: parent.cid,
-          uri: comment.uri,
+          uri: comment.uri!,
         });
         setIsEditing(false);
         setEditText("");

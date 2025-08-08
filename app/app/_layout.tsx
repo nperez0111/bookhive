@@ -12,14 +12,16 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, StrictMode, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
 import { ThemeProvider } from "@/context/theme";
-import { useColorScheme } from "react-native";
+import { useColorScheme, View } from "react-native";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
+import { Colors } from "@/constants/Colors";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -59,6 +61,7 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const { top } = useSafeAreaInsets();
 
   const [cacheBusterKey, setCacheBusterKey] = useState("");
 
@@ -85,8 +88,32 @@ export default function RootLayout() {
           <AuthProvider setCacheBustKey={setCacheBusterKey}>
             <ThemeProvider>
               <NavigationThemeProvider
-                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+                value={{
+                  ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
+                  colors: {
+                    ...(colorScheme === "dark"
+                      ? DarkTheme.colors
+                      : DefaultTheme.colors),
+                    primary: Colors[colorScheme ?? "light"].primary,
+                    background: Colors[colorScheme ?? "light"].background,
+                    text: Colors[colorScheme ?? "light"].text,
+                    card: Colors[colorScheme ?? "light"].surfacePrimary,
+                    border: Colors[colorScheme ?? "light"].cardBorder,
+                  },
+                }}
               >
+                {/* iOS status bar background overlay */}
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: top,
+                    backgroundColor: "#000",
+                    zIndex: 1,
+                  }}
+                />
                 <NetworkStatusIndicator />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen
@@ -98,7 +125,11 @@ export default function RootLayout() {
                     options={{ headerShown: false }}
                   />
                 </Stack>
-                <StatusBar style="auto" />
+                <StatusBar
+                  style="light"
+                  backgroundColor="#000000"
+                  translucent={false}
+                />
               </NavigationThemeProvider>
             </ThemeProvider>
           </AuthProvider>

@@ -11,10 +11,9 @@ export default function TabBarBackground() {
       style={[
         StyleSheet.absoluteFill,
         {
-          backgroundColor:
-            colorScheme === "dark"
-              ? "rgba(15, 20, 25, 0.95)"
-              : "rgba(255, 255, 255, 0.95)",
+          backgroundColor: colorScheme === "dark" ? "#000000" : "#ffffff",
+          borderTopColor: colors.cardBorder,
+          borderTopWidth: StyleSheet.hairlineWidth,
         },
       ]}
     />

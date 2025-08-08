@@ -1,7 +1,6 @@
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   TextInput,
@@ -15,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useProfile, useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -25,6 +25,8 @@ import { getBaseUrl } from "@/context/auth";
 import type { HiveBook } from "../../../src/types";
 import { BOOK_STATUS } from "@/constants";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { AnimatedListItem } from "@/components/AnimatedListItem";
+import { FadeInImage } from "@/components/FadeInImage";
 
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
@@ -32,6 +34,7 @@ export default function SearchScreen() {
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
+  const bottom = useBottomTabOverflow();
 
   const profile = useProfile();
   const { data: searchResults, isLoading, error } = useSearchBooks(query);
@@ -59,63 +62,73 @@ export default function SearchScreen() {
     extrapolate: "clamp",
   });
 
-  const renderSearchResultItem = ({ item: book }: { item: HiveBook }) => (
-    <Pressable
-      onPress={() => router.push(`/book/${book.id}`)}
-      style={[
-        styles.searchResultItem,
-        {
-          backgroundColor: colors.cardBackground,
-          borderColor: colors.cardBorder,
-          shadowColor: colors.shadowLight,
-        },
-      ]}
-    >
-      <View style={styles.coverContainer}>
-        <Image
-          source={{
-            uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-          }}
-          style={styles.searchResultCover}
-          resizeMode="cover"
-        />
-      </View>
-      <View style={styles.searchResultInfo}>
-        <ThemedText
-          style={[styles.searchResultTitle, { color: colors.primaryText }]}
-          numberOfLines={2}
-          type="label"
-        >
-          {book.title}
-        </ThemedText>
-        <ThemedText
-          style={[styles.searchResultAuthor, { color: colors.secondaryText }]}
-          numberOfLines={1}
-          type="caption"
-        >
-          {book.authors}
-        </ThemedText>
-        {book.rating && (
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={14} color={colors.primary} />
-            <ThemedText
-              style={[styles.ratingText, { color: colors.secondaryText }]}
-              type="caption"
-            >
-              {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0}{" "}
-              ratings)
-            </ThemedText>
-          </View>
-        )}
-      </View>
-    </Pressable>
+  const renderSearchResultItem = ({
+    item: book,
+    index,
+  }: {
+    item: HiveBook;
+    index: number;
+  }) => (
+    <AnimatedListItem index={index}>
+      <Pressable
+        onPress={() => router.push(`/book/${book.id}`)}
+        style={[
+          styles.searchResultItem,
+          {
+            backgroundColor: colors.cardBackground,
+            borderColor: colors.cardBorder,
+            shadowColor: colors.shadowLight,
+          },
+        ]}
+      >
+        <View style={styles.coverContainer}>
+          <FadeInImage
+            source={{
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+            }}
+            style={styles.searchResultCover}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={styles.searchResultInfo}>
+          <ThemedText
+            style={[styles.searchResultTitle, { color: colors.primaryText }]}
+            numberOfLines={2}
+            type="label"
+          >
+            {book.title}
+          </ThemedText>
+          <ThemedText
+            style={[styles.searchResultAuthor, { color: colors.secondaryText }]}
+            numberOfLines={1}
+            type="caption"
+          >
+            {book.authors}
+          </ThemedText>
+          {book.rating && (
+            <View style={styles.ratingContainer}>
+              <Ionicons name="star" size={14} color={colors.primary} />
+              <ThemedText
+                style={[styles.ratingText, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0}{" "}
+                ratings)
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </Pressable>
+    </AnimatedListItem>
   );
 
   const hasSearchResults =
     query.length > 0 && searchResults && searchResults.length > 0;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
+    >
       {/* Fixed Search Input (always visible) */}
       <Animated.View
         style={[
@@ -258,7 +271,10 @@ export default function SearchScreen() {
               data={searchResults}
               keyExtractor={(item) => item.id}
               renderItem={renderSearchResultItem}
-              contentContainerStyle={styles.searchResultsList}
+              contentContainerStyle={[
+                styles.searchResultsList,
+                { paddingBottom: 50 + bottom },
+              ]}
               showsVerticalScrollIndicator={false}
               onScroll={Animated.event(
                 [{ nativeEvent: { contentOffset: { y: scrollY } } }],

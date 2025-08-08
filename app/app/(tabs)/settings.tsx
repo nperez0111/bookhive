@@ -20,6 +20,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { router } from "expo-router";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
@@ -27,9 +28,12 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
+  const bottom = useBottomTabOverflow();
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
+    >
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -244,7 +248,7 @@ export default function ProfileScreen() {
           </ThemedCard>
         </View> */}
 
-        <View style={styles.bottomSpacing} />
+        <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
     </ThemedView>
   );

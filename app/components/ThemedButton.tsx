@@ -32,7 +32,7 @@ export function ThemedButton({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  const getButtonStyle = (): ViewStyle => {
+  const getButtonStyle = (pressed?: boolean): ViewStyle => {
     const baseStyle: ViewStyle = {
       borderRadius: 12,
       alignItems: "center",
@@ -59,26 +59,44 @@ export function ThemedButton({
     // Variant styles
     switch (variant) {
       case "primary":
-        baseStyle.backgroundColor = colors.primary;
+        baseStyle.backgroundColor = pressed
+          ? colors.primaryDark
+          : colors.primary;
+        baseStyle.shadowColor = colors.shadowLight as any;
+        baseStyle.shadowOffset = { width: 0, height: 2 } as any;
+        baseStyle.shadowOpacity = 0.2 as any;
+        baseStyle.shadowRadius = 6 as any;
+        baseStyle.elevation = 3 as any;
         break;
       case "secondary":
-        baseStyle.backgroundColor = colors.buttonBackground;
+        baseStyle.backgroundColor = pressed
+          ? colors.activeBackground
+          : colors.buttonBackground;
         baseStyle.borderWidth = 1;
         baseStyle.borderColor = colors.buttonBorder;
         break;
       case "outline":
-        baseStyle.backgroundColor = "transparent";
+        baseStyle.backgroundColor = pressed
+          ? colors.activeBackground
+          : "transparent";
         baseStyle.borderWidth = 2;
         baseStyle.borderColor = colors.primary;
         break;
       case "ghost":
-        baseStyle.backgroundColor = "transparent";
+        baseStyle.backgroundColor = pressed
+          ? colors.activeBackground
+          : "transparent";
         break;
     }
 
     // Disabled state
     if (disabled) {
       baseStyle.opacity = 0.5;
+    }
+
+    // Press feedback
+    if (pressed && !disabled) {
+      baseStyle.transform = [{ scale: 0.98 }];
     }
 
     return baseStyle;
@@ -122,9 +140,12 @@ export function ThemedButton({
 
   return (
     <Pressable
-      style={[getButtonStyle(), style]}
+      style={({ pressed }) => [getButtonStyle(pressed), style]}
       onPress={onPress}
       disabled={disabled || loading}
+      android_ripple={{
+        color: Colors[colorScheme ?? "light"].pressedBackground as any,
+      }}
     >
       {leftIcon}
       <ThemedText style={[getTextStyle(), textStyle]}>

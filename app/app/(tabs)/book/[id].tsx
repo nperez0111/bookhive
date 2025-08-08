@@ -27,6 +27,13 @@ import {
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { BookActionCard } from "@/components/BookActionCard";
 import { StatusSelectionModal } from "@/components/StatusSelectionModal";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  LinearTransition,
+} from "react-native-reanimated";
+import { FadeInImage } from "@/components/FadeInImage";
 
 export default function BookInfo() {
   const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
@@ -38,6 +45,7 @@ export default function BookInfo() {
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
   const scrollViewRef = useRef<ScrollView>(null);
+  const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
 
@@ -154,7 +162,9 @@ export default function BookInfo() {
   const review = userReviewText || userBook.review;
 
   return (
-    <View style={[styles.mainContainer, { backgroundColor }]}>
+    <View
+      style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
+    >
       {/* Blurred Background */}
       <ImageBackground
         source={{
@@ -177,15 +187,20 @@ export default function BookInfo() {
       </ImageBackground>
 
       <ScrollView
+        key={hiveId as string}
         ref={scrollViewRef}
         style={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.contentContainer}>
+        <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
-          <View style={styles.bookSection}>
+          <Animated.View
+            style={styles.bookSection}
+            entering={FadeInDown.delay(40).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <View style={styles.coverContainer}>
-              <Image
+              <FadeInImage
                 source={{
                   uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
                 }}
@@ -233,9 +248,13 @@ export default function BookInfo() {
                 </View>
               )}
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.actionButtons}>
+          <Animated.View
+            style={styles.actionButtons}
+            entering={FadeInDown.delay(80).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             {/* <Pressable
               style={styles.actionButton}
               onPress={() => setModalVisible(true)}
@@ -279,10 +298,14 @@ export default function BookInfo() {
                 Goodreads
               </ThemedText>
             </Pressable>
-          </View>
+          </Animated.View>
 
           {/* Description */}
-          <View style={styles.descriptionSection}>
+          <Animated.View
+            style={styles.descriptionSection}
+            entering={FadeInDown.delay(110).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <ThemedText
               style={[
                 styles.sectionTitle,
@@ -299,10 +322,14 @@ export default function BookInfo() {
             >
               {decode(book.description || "No description available")}
             </ThemedText>
-          </View>
+          </Animated.View>
 
           {/* Interactive Book Actions */}
-          <View style={styles.actionsContainer}>
+          <Animated.View
+            style={styles.actionsContainer}
+            entering={FadeInDown.delay(140).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <BookActionCard
               type="status"
               title="Reading Status"
@@ -334,7 +361,7 @@ export default function BookInfo() {
               reviewText={review}
               onReviewTextChange={setUserReviewText}
             />
-          </View>
+          </Animated.View>
 
           <StatusSelectionModal
             visible={modalVisible}
@@ -344,12 +371,17 @@ export default function BookInfo() {
             isPending={updateBook.isPending}
           />
 
-          <CommentsSection
-            comments={comments}
-            hiveId={hiveId}
-            onUserPress={handleUserPress}
-            onReplyClick={handleReplyClick}
-          />
+          <Animated.View
+            entering={FadeInUp.delay(180).duration(240)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <CommentsSection
+              comments={comments}
+              hiveId={hiveId}
+              onUserPress={handleUserPress}
+              onReplyClick={handleReplyClick}
+            />
+          </Animated.View>
         </View>
       </ScrollView>
     </View>

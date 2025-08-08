@@ -47,6 +47,12 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
     shadowColor: colors.shadowLight,
   };
 
+  const containerStyle = [
+    styles.actionCard,
+    cardStyle,
+    type === "rating" && { paddingVertical: 16 },
+  ];
+
   const buttonStyle = {
     backgroundColor: colors.buttonBackground,
     borderColor: colors.buttonBorder,
@@ -93,7 +99,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               rating={rating}
               onRate={onRatingChange}
               disabled={isPending}
-              starSize={36}
+              starSize={28}
               style={styles.starRating}
             />
             {rating && (
@@ -155,8 +161,13 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   };
 
   return (
-    <View style={[styles.actionCard, cardStyle]}>
-      <View style={styles.actionCardHeader}>
+    <View style={containerStyle}>
+      <View
+        style={[
+          styles.actionCardHeader,
+          type === "rating" && { marginBottom: 12 },
+        ]}
+      >
         <View
           style={[
             styles.iconContainer,
@@ -221,14 +232,14 @@ const styles = StyleSheet.create({
   },
   ratingContainer: {
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 6,
   },
   starRating: {
-    marginVertical: 12,
+    marginVertical: 6,
   },
   ratingText: {
-    marginTop: 8,
-    fontSize: 14,
+    marginTop: 4,
+    fontSize: 13,
   },
   reviewInput: {
     borderWidth: 1,
