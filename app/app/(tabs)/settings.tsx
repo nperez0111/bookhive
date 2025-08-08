@@ -1,6 +1,10 @@
 import { useAuth } from "@/context/auth";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
+import { ThemedCard } from "@/components/ThemedCard";
+import { ThemedButton } from "@/components/ThemedButton";
+import { GradientView } from "@/components/GradientView";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 import {
   StyleSheet,
@@ -16,6 +20,9 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { router } from "expo-router";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { SectionHeader } from "@/components/SectionHeader";
+import { ListItem } from "@/components/ListItem";
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
@@ -23,65 +30,71 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
+  const bottom = useBottomTabOverflow();
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
+    >
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header Section */}
-        <View style={styles.headerSection}>
+        {/* Header Section with Gradient */}
+        <GradientView variant="warm" style={styles.headerSection}>
           <ThemedText
             style={[
               styles.headerTitle,
-              { color: colorScheme === "dark" ? "white" : colors.text },
+              { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
             ]}
+            type="title"
           >
             Profile
           </ThemedText>
           <ThemedText
             style={[
               styles.headerSubtitle,
-              { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
+              { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
             ]}
+            type="body"
           >
             Manage your account and preferences
           </ThemedText>
-        </View>
+        </GradientView>
 
         {/* Profile Card */}
         <View style={styles.profileSection}>
-          <View
-            style={[
-              styles.profileCard,
-              {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
+          <ThemedCard variant="elevated" style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <Image
-                source={{
-                  uri: profile?.profile.avatar,
-                }}
-                style={styles.profileImage}
-              />
+              <View
+                style={[
+                  styles.profileImageContainer,
+                  { backgroundColor: colors.inactiveBackground },
+                ]}
+              >
+                {profile?.profile.avatar ? (
+                  <Image
+                    source={{ uri: profile.profile.avatar }}
+                    style={styles.profileImage}
+                  />
+                ) : (
+                  <Ionicons
+                    name="person"
+                    size={40}
+                    color={colors.tertiaryText}
+                  />
+                )}
+              </View>
               <View style={styles.profileInfo}>
                 <ThemedText
-                  style={[
-                    styles.profileName,
-                    { color: colorScheme === "dark" ? "white" : colors.text },
-                  ]}
+                  style={[styles.profileName, { color: colors.primaryText }]}
+                  type="heading"
                 >
-                  {profile?.profile.displayName}
+                  {profile?.profile.displayName || "User"}
                 </ThemedText>
                 <ThemedText
-                  style={[
-                    styles.profileBio,
-                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                  ]}
+                  style={[styles.profileBio, { color: colors.secondaryText }]}
+                  type="body"
                   numberOfLines={2}
                 >
                   {profile?.profile.description || "No bio available"}
@@ -94,203 +107,152 @@ export default function ProfileScreen() {
               <View style={styles.statItem}>
                 <ThemedText
                   style={[styles.statNumber, { color: colors.primary }]}
+                  type="title"
                 >
                   {profile?.profile.booksRead || 0}
                 </ThemedText>
                 <ThemedText
-                  style={[
-                    styles.statLabel,
-                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                  ]}
+                  style={[styles.statLabel, { color: colors.secondaryText }]}
+                  type="caption"
                 >
                   Books Read
                 </ThemedText>
               </View>
-              <View style={styles.statDivider} />
+              <View
+                style={[
+                  styles.statDivider,
+                  { backgroundColor: colors.cardBorder },
+                ]}
+              />
               <View style={styles.statItem}>
                 <ThemedText
                   style={[styles.statNumber, { color: colors.primary }]}
+                  type="title"
                 >
                   {profile?.profile.reviews || 0}
                 </ThemedText>
                 <ThemedText
-                  style={[
-                    styles.statLabel,
-                    { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                  ]}
+                  style={[styles.statLabel, { color: colors.secondaryText }]}
+                  type="caption"
                 >
                   Reviews
                 </ThemedText>
               </View>
             </View>
-          </View>
+          </ThemedCard>
         </View>
 
-        {/* Recent Activity Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderContent}>
-              <Ionicons name="time-outline" size={24} color={colors.primary} />
-              <ThemedText
-                style={[
-                  styles.sectionTitle,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                Recent Activity
-              </ThemedText>
-            </View>
-          </View>
-
-          {profile?.activity && profile.activity.length > 0 ? (
-            <View
-              style={[
-                styles.activityCard,
-                {
-                  backgroundColor: colors.cardBackground,
-                  borderColor: colors.cardBorder,
-                },
-              ]}
-            >
-              {profile.activity.map((activity, i, all) => (
-                <Pressable
-                  style={[
-                    styles.activityItem,
-                    {
-                      borderBottomColor: colors.cardBorder,
-                      borderBottomWidth: i === all.length - 1 ? 0 : 1,
-                    },
-                  ]}
-                  key={activity.hiveId}
-                  onPress={() => router.push(`/book/${activity.hiveId}`)}
-                >
-                  <View
-                    style={[
-                      styles.activityIcon,
-                      {
-                        backgroundColor: colors.activeBackground,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={
-                        activity.type === "rated"
-                          ? "star"
-                          : activity.type === "review"
-                            ? "chatbubble"
-                            : "book"
-                      }
-                      size={20}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <View style={styles.activityContent}>
-                    <ThemedText
-                      style={[
-                        styles.activityText,
-                        {
-                          color: colorScheme === "dark" ? "white" : colors.text,
-                        },
-                      ]}
-                    >
-                      {activity.type === "started"
-                        ? "Started reading"
-                        : activity.type === "finished"
-                          ? "Finished reading"
-                          : "Reviewed"}{" "}
-                      <ThemedText style={styles.bold}>
-                        {activity.title}
-                      </ThemedText>
-                    </ThemedText>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.emptyState,
-                {
-                  backgroundColor: colors.cardBackground,
-                  borderColor: colors.cardBorder,
-                },
-              ]}
-            >
-              <Ionicons
-                name="time-outline"
-                size={48}
-                color={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
+        {/* Settings Sections */}
+        <View style={styles.settingsSection}>
+          <ThemedCard variant="outlined" style={styles.settingsCard}>
+            <SectionHeader
+              icon="settings"
+              title="Settings"
+              style={{ marginHorizontal: -4, marginBottom: 12 }}
+            />
+            <View style={styles.settingsList}>
+              <ThemeToggle style={styles.settingItem} />
+              {/* <ListItem
+                icon="document-text"
+                title="Terms of Service"
+                onPress={() => {}}
               />
-              <ThemedText
-                style={[
-                  styles.emptyTitle,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                No Recent Activity
-              </ThemedText>
-              <ThemedText
-                style={[
-                  styles.emptySubtitle,
-                  { color: colorScheme === "dark" ? "#9CA3AF" : "#6B7280" },
-                ]}
-              >
-                Your reading activity will appear here
-              </ThemedText>
+              <ListItem
+                icon="shield-checkmark"
+                title="Privacy Policy"
+                onPress={() => {}}
+              />
+              <ListItem
+                icon="bug-outline"
+                title="Report a Bug"
+                onPress={() => {}}
+              /> */}
             </View>
-          )}
+          </ThemedCard>
         </View>
 
-        {/* Settings Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderContent}>
-              <Ionicons
-                name="settings-outline"
-                size={24}
-                color={colors.primary}
-              />
-              <ThemedText
-                style={[
-                  styles.sectionTitle,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                Account
-              </ThemedText>
-            </View>
-          </View>
-
-          <Pressable
-            style={[
-              styles.settingsButton,
-              {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.cardBorder,
-              },
-            ]}
+        {/* Sign Out Button */}
+        <View style={styles.signOutSection}>
+          <ThemedButton
+            title="Sign Out"
             onPress={signOut}
-          >
-            <View
-              style={[
-                styles.settingsIcon,
-                {
-                  backgroundColor: "rgba(239, 68, 68, 0.1)",
-                },
-              ]}
-            >
-              <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-            </View>
-            <ThemedText
-              style={[styles.settingsButtonText, { color: "#EF4444" }]}
-            >
-              Sign Out
-            </ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#EF4444" />
-          </Pressable>
+            variant="outline"
+            leftIcon={
+              <Ionicons name="log-out" size={20} color={colors.error} />
+            }
+            style={styles.signOutButton}
+            textStyle={{ color: colors.error }}
+          />
         </View>
 
-        <View style={styles.bottomSpacing} />
+        {/* Support Section */}
+        {/*
+        <View style={styles.supportSection}>
+          <ThemedCard variant="outlined" style={styles.supportCard}>
+            <View style={styles.sectionHeader}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.activeBackground },
+                ]}
+              >
+                <Ionicons name="help-circle" size={20} color={colors.primary} />
+              </View>
+              <ThemedText
+                style={[styles.sectionTitle, { color: colors.primaryText }]}
+                type="heading"
+              >
+                Support
+              </ThemedText>
+            </View>
+
+            <View style={styles.settingsList}>
+              <Pressable style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Ionicons
+                    name="document-text"
+                    size={20}
+                    color={colors.secondaryText}
+                  />
+                  <ThemedText
+                    style={[styles.settingText, { color: colors.primaryText }]}
+                    type="body"
+                  >
+                    Help & FAQ
+                  </ThemedText>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={colors.tertiaryText}
+                />
+              </Pressable>
+
+              <Pressable style={styles.settingItem}>
+                <View style={styles.settingLeft}>
+                  <Ionicons
+                    name="mail"
+                    size={20}
+                    color={colors.secondaryText}
+                  />
+                  <ThemedText
+                    style={[styles.settingText, { color: colors.primaryText }]}
+                    type="body"
+                  >
+                    Contact Support
+                  </ThemedText>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={colors.tertiaryText}
+                />
+              </Pressable>
+            </View>
+          </ThemedCard>
+        </View> */}
+
+        <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
     </ThemedView>
   );
@@ -299,183 +261,131 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    marginBottom: 20,
   },
   scrollView: {
     flex: 1,
   },
   headerSection: {
-    paddingHorizontal: 20,
     paddingTop: 60,
-    paddingBottom: 16,
+    paddingBottom: 32,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    lineHeight: 36,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   headerSubtitle: {
-    fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   profileSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+    margin: 20,
   },
   profileCard: {
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 24,
   },
   profileHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 24,
+  },
+  profileImageContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
   },
   profileImage: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    marginRight: 16,
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
-    fontSize: 20,
-    fontWeight: "600",
     marginBottom: 4,
   },
   profileBio: {
-    fontSize: 14,
     lineHeight: 20,
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-around",
   },
   statItem: {
-    flex: 1,
     alignItems: "center",
+    flex: 1,
   },
   statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 14,
     textAlign: "center",
   },
   statDivider: {
     width: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    marginHorizontal: 20,
     height: 40,
   },
-  section: {
-    marginBottom: 32,
+  settingsSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  settingsCard: {
+    padding: 20,
+  },
+  supportSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  supportCard: {
+    padding: 20,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  sectionHeaderContent: {
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  sectionTitle: {
+    flex: 1,
+  },
+  settingsList: {
+    gap: 8,
+  },
+  settingItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  settingLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-  },
-  activityCard: {
-    marginHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  activityItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-  },
-  activityIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  activityContent: {
+  settingText: {
     flex: 1,
   },
-  activityText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: "600",
-  },
-  emptyState: {
+  signOutSection: {
     marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 32,
-    alignItems: "center",
-    borderWidth: 1,
-    borderStyle: "dashed",
+    marginBottom: 20,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  settingsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 20,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  settingsIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  settingsButtonText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "500",
+  signOutButton: {
+    borderColor: "#ef4444",
   },
   bottomSpacing: {
     height: 20,

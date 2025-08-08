@@ -60,90 +60,120 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
           ]}
           onStartShouldSetResponder={() => true}
         >
-          <View
-            style={[
-              styles.modalHeader,
-              {
-                borderBottomColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : "rgba(0, 0, 0, 0.1)",
-              },
-            ]}
-          >
-            <ThemedText
-              style={[
-                styles.modalTitle,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
-            >
-              Select Reading Status
-            </ThemedText>
-            <Pressable onPress={onClose}>
-              <Ionicons
-                name="close"
-                size={24}
-                color={colorScheme === "dark" ? "#9CA3AF" : colors.icon}
-              />
-            </Pressable>
-          </View>
           {isPending ? (
-            <ActivityIndicator
-              size="large"
-              color={colors.primary}
-              style={{ paddingVertical: 20 }}
-            />
+            // Loading state - no header, just loading content
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator
+                size="large"
+                color={colors.primary}
+                style={styles.loadingSpinner}
+              />
+              <ThemedText
+                style={[
+                  styles.loadingText,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+                type="body"
+              >
+                Updating your reading status...
+              </ThemedText>
+              <ThemedText
+                style={[
+                  styles.loadingSubtext,
+                  {
+                    color:
+                      colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
+                  },
+                ]}
+                type="caption"
+              >
+                Please wait a moment
+              </ThemedText>
+            </View>
           ) : (
-            <View>
-              {STATUS_OPTIONS.map((item, index) => (
-                <View key={item}>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalOption,
-                      currentStatus === item && {
-                        backgroundColor:
-                          colorScheme === "dark"
-                            ? "rgba(251, 191, 36, 0.1)"
-                            : "rgba(251, 191, 36, 0.1)",
-                      },
-                    ]}
-                    onPress={() => onStatusSelect(item)}
-                  >
-                    <ThemedText
+            // Normal state with header and options
+            <>
+              <View
+                style={[
+                  styles.modalHeader,
+                  {
+                    borderBottomColor:
+                      colorScheme === "dark"
+                        ? "rgba(255, 255, 255, 0.1)"
+                        : "rgba(0, 0, 0, 0.1)",
+                  },
+                ]}
+              >
+                <ThemedText
+                  style={[
+                    styles.modalTitle,
+                    { color: colorScheme === "dark" ? "white" : colors.text },
+                  ]}
+                  type="heading"
+                >
+                  Select Reading Status
+                </ThemedText>
+                <Pressable onPress={onClose}>
+                  <Ionicons
+                    name="close"
+                    size={24}
+                    color={colorScheme === "dark" ? "#9CA3AF" : colors.icon}
+                  />
+                </Pressable>
+              </View>
+              <View>
+                {STATUS_OPTIONS.map((item, index) => (
+                  <View key={item}>
+                    <TouchableOpacity
                       style={[
-                        styles.modalOptionText,
-                        {
-                          color: colorScheme === "dark" ? "white" : colors.text,
+                        styles.modalOption,
+                        currentStatus === item && {
+                          backgroundColor: colors.activeBackground,
                         },
-                        currentStatus === item && styles.modalOptionTextActive,
                       ]}
+                      onPress={() => onStatusSelect(item)}
                     >
-                      {BOOK_STATUS_MAP[item]}
-                    </ThemedText>
-                    {currentStatus === item && (
-                      <Ionicons
-                        name="checkmark"
-                        size={20}
-                        color={colors.primary}
+                      <ThemedText
+                        style={[
+                          styles.modalOptionText,
+                          {
+                            color:
+                              colorScheme === "dark" ? "white" : colors.text,
+                          },
+                          currentStatus === item && {
+                            color: colors.primary,
+                            fontWeight: "600",
+                          },
+                        ]}
+                        type="body"
+                      >
+                        {BOOK_STATUS_MAP[item]}
+                      </ThemedText>
+                      {currentStatus === item && (
+                        <Ionicons
+                          name="checkmark"
+                          size={20}
+                          color={colors.primary}
+                        />
+                      )}
+                    </TouchableOpacity>
+                    {index < STATUS_OPTIONS.length - 1 && (
+                      <View
+                        style={[
+                          styles.separator,
+                          {
+                            backgroundColor:
+                              colorScheme === "dark"
+                                ? "rgba(255, 255, 255, 0.1)"
+                                : "rgba(0, 0, 0, 0.1)",
+                          },
+                        ]}
                       />
                     )}
-                  </TouchableOpacity>
-                  {index < STATUS_OPTIONS.length - 1 && (
-                    <View
-                      style={[
-                        styles.separator,
-                        {
-                          backgroundColor:
-                            colorScheme === "dark"
-                              ? "rgba(255, 255, 255, 0.1)"
-                              : "rgba(0, 0, 0, 0.1)",
-                        },
-                      ]}
-                    />
-                  )}
-                </View>
-              ))}
-            </View>
+                  </View>
+                ))}
+              </View>
+            </>
           )}
         </ThemedView>
       </Pressable>
@@ -174,6 +204,22 @@ const styles = StyleSheet.create({
     width: "80%",
     maxHeight: "50%",
   },
+  loadingContainer: {
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingSpinner: {
+    marginBottom: 16,
+  },
+  loadingText: {
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  loadingSubtext: {
+    textAlign: "center",
+  },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -183,8 +229,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
+    flex: 1,
   },
   modalOption: {
     paddingVertical: 16,
@@ -194,14 +239,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   modalOptionText: {
-    fontSize: 18,
     textAlign: "center",
-    fontWeight: "500",
     textTransform: "capitalize",
-  },
-  modalOptionTextActive: {
-    color: "#FBBF24",
-    fontWeight: "600",
   },
   separator: {
     height: 1,

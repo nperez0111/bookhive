@@ -99,12 +99,12 @@ export const useBookInfo = (id: HiveId | undefined | null) => {
  * @param didOrHandle If undefined, the auth'd user's profile will be fetched
  * @returns
  */
-export const useProfile = (didOrHandle?: string) => {
+export const useProfile = (did?: string) => {
   return useQuery({
-    queryKey: ["profile", didOrHandle] as const,
+    queryKey: ["profile", did] as const,
     queryFn: async ({ queryKey: [, id] }) => {
       return await enhancedAuthFetch<GetProfile.OutputSchema>(
-        `/xrpc/buzz.bookhive.getProfile?id=${id}`,
+        `/xrpc/buzz.bookhive.getProfile?did=${id || ""}`,
       );
     },
     retry: (failureCount, error: any) => {
@@ -141,6 +141,50 @@ export const useUpdateBook = () => {
           body: {
             hiveId,
             ...rest,
+          },
+        },
+      );
+    },
+    onSuccess: (_, { hiveId }) => {
+      // Invalidate the book query to refetch latest data
+      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2; // Fewer retries for mutations
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useUpdateComment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      hiveId,
+      comment,
+      parentUri,
+      parentCid,
+      uri,
+    }: {
+      hiveId: HiveId;
+      comment: string;
+      parentUri: string;
+      parentCid: string;
+      uri?: string;
+    }) => {
+      return await enhancedAuthFetch<{ success: boolean; message: string }>(
+        `/api/update-comment`,
+        {
+          method: "POST",
+          body: {
+            uri,
+            hiveId,
+            comment,
+            parentUri,
+            parentCid,
           },
         },
       );

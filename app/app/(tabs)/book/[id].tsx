@@ -15,7 +15,7 @@ import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 import { decode } from "html-entities";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import React, { useState, useRef } from "react";
 import { getBaseUrl } from "@/context/auth";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -27,6 +27,13 @@ import {
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { BookActionCard } from "@/components/BookActionCard";
 import { StatusSelectionModal } from "@/components/StatusSelectionModal";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  LinearTransition,
+} from "react-native-reanimated";
+import { FadeInImage } from "@/components/FadeInImage";
 
 export default function BookInfo() {
   const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
@@ -37,6 +44,8 @@ export default function BookInfo() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
+  const scrollViewRef = useRef<ScrollView>(null);
+  const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
 
@@ -93,14 +102,32 @@ export default function BookInfo() {
     });
   };
 
-  const handleCommentPress = (commentId: string) => {
-    // TODO: Implement comment thread view
-    console.log("Open comment thread:", commentId);
+  const handleUserPress = (userDid: string) => {
+    router.push(`/profile/${userDid}`);
   };
 
-  const handleUserPress = (userDid: string) => {
-    // TODO: Navigate to user profile
-    console.log("Open user profile:", userDid);
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<View>,
+  ) => {
+    // Scroll to the reply form after a short delay to ensure it's rendered
+    setTimeout(() => {
+      if (replyFormRef.current && scrollViewRef.current) {
+        replyFormRef.current.measureLayout(
+          // @ts-ignore - measureLayout exists on View
+          scrollViewRef.current,
+          (x: number, y: number) => {
+            scrollViewRef.current?.scrollTo({
+              y: y - 100, // Offset to show some content above the reply form
+              animated: true,
+            });
+          },
+          () => {
+            console.log("Could not measure reply form layout");
+          },
+        );
+      }
+    }, 100);
   };
 
   const handleViewOnGoodreads = () => {
@@ -135,7 +162,9 @@ export default function BookInfo() {
   const review = userReviewText || userBook.review;
 
   return (
-    <View style={[styles.mainContainer, { backgroundColor }]}>
+    <View
+      style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
+    >
       {/* Blurred Background */}
       <ImageBackground
         source={{
@@ -157,12 +186,21 @@ export default function BookInfo() {
         />
       </ImageBackground>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.contentContainer}>
+      <ScrollView
+        key={hiveId as string}
+        ref={scrollViewRef}
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
-          <View style={styles.bookSection}>
+          <Animated.View
+            style={styles.bookSection}
+            entering={FadeInDown.delay(40).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <View style={styles.coverContainer}>
-              <Image
+              <FadeInImage
                 source={{
                   uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
                 }}
@@ -210,9 +248,13 @@ export default function BookInfo() {
                 </View>
               )}
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.actionButtons}>
+          <Animated.View
+            style={styles.actionButtons}
+            entering={FadeInDown.delay(80).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             {/* <Pressable
               style={styles.actionButton}
               onPress={() => setModalVisible(true)}
@@ -256,10 +298,14 @@ export default function BookInfo() {
                 Goodreads
               </ThemedText>
             </Pressable>
-          </View>
+          </Animated.View>
 
           {/* Description */}
-          <View style={styles.descriptionSection}>
+          <Animated.View
+            style={styles.descriptionSection}
+            entering={FadeInDown.delay(110).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <ThemedText
               style={[
                 styles.sectionTitle,
@@ -276,10 +322,14 @@ export default function BookInfo() {
             >
               {decode(book.description || "No description available")}
             </ThemedText>
-          </View>
+          </Animated.View>
 
           {/* Interactive Book Actions */}
-          <View style={styles.actionsContainer}>
+          <Animated.View
+            style={styles.actionsContainer}
+            entering={FadeInDown.delay(140).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <BookActionCard
               type="status"
               title="Reading Status"
@@ -311,7 +361,7 @@ export default function BookInfo() {
               reviewText={review}
               onReviewTextChange={setUserReviewText}
             />
-          </View>
+          </Animated.View>
 
           <StatusSelectionModal
             visible={modalVisible}
@@ -321,11 +371,17 @@ export default function BookInfo() {
             isPending={updateBook.isPending}
           />
 
-          <CommentsSection
-            comments={comments}
-            onCommentPress={handleCommentPress}
-            onUserPress={handleUserPress}
-          />
+          <Animated.View
+            entering={FadeInUp.delay(180).duration(240)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <CommentsSection
+              comments={comments}
+              hiveId={hiveId}
+              onUserPress={handleUserPress}
+              onReplyClick={handleReplyClick}
+            />
+          </Animated.View>
         </View>
       </ScrollView>
     </View>

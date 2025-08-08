@@ -44,7 +44,14 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   const cardStyle = {
     backgroundColor: colors.cardBackground,
     borderColor: colors.cardBorder,
+    shadowColor: colors.shadowLight,
   };
+
+  const containerStyle = [
+    styles.actionCard,
+    cardStyle,
+    type === "rating" && { paddingVertical: 16 },
+  ];
 
   const buttonStyle = {
     backgroundColor: colors.buttonBackground,
@@ -71,7 +78,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                 styles.actionCardButtonText,
                 {
                   color: status ? colors.background : colors.secondaryText,
-                  fontWeight: status ? "bold" : "normal",
+                  fontWeight: status ? "600" : "500",
                 },
               ]}
             >
@@ -90,11 +97,18 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
           <View style={styles.ratingContainer}>
             <StarRating
               rating={rating}
-              onRate={onRatingChange || (() => {})}
+              onRate={onRatingChange}
               disabled={isPending}
-              starSize={32}
+              starSize={28}
               style={styles.starRating}
             />
+            {rating && (
+              <ThemedText
+                style={[styles.ratingText, { color: colors.secondaryText }]}
+              >
+                {rating / 2} out of 5 stars
+              </ThemedText>
+            )}
           </View>
         );
 
@@ -147,11 +161,24 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   };
 
   return (
-    <View style={[styles.actionCard, cardStyle]}>
-      <View style={styles.actionCardHeader}>
-        <Ionicons name={icon} size={24} color={colors.primary} />
+    <View style={containerStyle}>
+      <View
+        style={[
+          styles.actionCardHeader,
+          type === "rating" && { marginBottom: 12 },
+        ]}
+      >
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: colors.activeBackground },
+          ]}
+        >
+          <Ionicons name={icon} size={20} color={colors.primary} />
+        </View>
         <ThemedText
           style={[styles.actionCardTitle, { color: colors.primaryText }]}
+          type="heading"
         >
           {title}
         </ThemedText>
@@ -163,62 +190,78 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
 
 const styles = StyleSheet.create({
   actionCard: {
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   actionCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   actionCardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginLeft: 12,
+    flex: 1,
   },
   actionCardButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 16,
+    paddingVertical: 18,
     paddingHorizontal: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-  },
-  actionCardButtonActive: {
-    borderColor: "#FBBF24", // This will be updated to use colors.primary
-    backgroundColor: "rgba(251, 191, 36, 0.15)", // This will be updated to use colors.activeBackground
   },
   actionCardButtonText: {
     fontSize: 16,
-    fontWeight: "500",
     textTransform: "capitalize",
-  },
-  actionCardButtonTextActive: {
-    color: "#FBBF24",
   },
   ratingContainer: {
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   starRating: {
-    marginVertical: 8,
+    marginVertical: 6,
+  },
+  ratingText: {
+    marginTop: 4,
+    fontSize: 13,
   },
   reviewInput: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     fontSize: 16,
-    minHeight: 80,
+    minHeight: 100,
     textAlignVertical: "top",
   },
   saveReviewButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
     alignItems: "center",
     marginTop: 16,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   saveReviewButtonText: {
     fontSize: 16,
