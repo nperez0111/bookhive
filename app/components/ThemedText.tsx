@@ -14,7 +14,8 @@ export type ThemedTextProps = TextProps & {
     | "caption"
     | "heading"
     | "body"
-    | "label";
+    | "label"
+    | "overline";
   themeSource?: Parameters<typeof useThemeColor>[1];
 };
 
@@ -44,6 +45,7 @@ export function ThemedText({
         type === "heading" ? styles.heading : undefined,
         type === "body" ? styles.body : undefined,
         type === "label" ? styles.label : undefined,
+        type === "overline" ? styles.overline : undefined,
         style,
       ]}
       {...rest}
@@ -102,5 +104,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     textDecorationLine: "underline",
+  },
+  overline: {
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    fontWeight: "600",
   },
 });

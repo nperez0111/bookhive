@@ -27,6 +27,10 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { FadeInImage } from "@/components/FadeInImage";
+import { SectionHeader } from "@/components/SectionHeader";
+import { StatsCard } from "@/components/StatsCard";
+import { BookCard } from "@/components/BookCard";
+import { QuickAction } from "@/components/QuickAction";
 
 interface BookSectionProps {
   books: UserBook[];
@@ -108,31 +112,20 @@ function BookSection({
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionHeaderContent}>
-          <View
-            style={[
-              styles.iconContainer,
-              { backgroundColor: colors.activeBackground },
-            ]}
-          >
-            <Ionicons name={icon as any} size={20} color={colors.primary} />
-          </View>
+      <SectionHeader
+        icon={icon as any}
+        title={title}
+        right={
           <ThemedText
-            style={[styles.sectionTitle, { color: colors.primaryText }]}
-            type="heading"
+            style={[styles.bookCount, { color: colors.secondaryText }]}
+            type="caption"
+            numberOfLines={1}
           >
-            {title}
+            {books.length} {books.length === 1 ? "book" : "books"}
           </ThemedText>
-        </View>
-        <ThemedText
-          style={[styles.bookCount, { color: colors.secondaryText }]}
-          type="caption"
-          numberOfLines={1}
-        >
-          {books.length} {books.length === 1 ? "book" : "books"}
-        </ThemedText>
-      </View>
+        }
+        style={{ marginBottom: 16 }}
+      />
 
       <FlatList
         data={books}
@@ -142,43 +135,19 @@ function BookSection({
         keyExtractor={(item) => item.hiveId}
         renderItem={({ item: book, index }) => (
           <AnimatedListItem index={index}>
-            <Pressable
+            <BookCard
+              title={book.title}
+              authors={book.authors}
+              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
               onPress={() => router.push(`/book/${book.hiveId}`)}
-              style={[
-                styles.bookCard,
-                {
-                  backgroundColor: colors.cardBackground,
-                  borderColor: colors.cardBorder,
-                  shadowColor: colors.shadowLight,
-                },
-              ]}
-            >
-              <View style={styles.coverContainer}>
-                <FadeInImage
-                  source={{
-                    uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-                  }}
-                  style={styles.bookCover}
-                  resizeMode="cover"
-                />
-              </View>
-              <View style={styles.bookInfo}>
-                <ThemedText
-                  style={[styles.bookTitle, { color: colors.primaryText }]}
-                  numberOfLines={2}
-                  type="label"
-                >
-                  {book.title}
-                </ThemedText>
-                <ThemedText
-                  style={[styles.bookAuthor, { color: colors.secondaryText }]}
-                  numberOfLines={1}
-                  type="caption"
-                >
-                  {book.authors}
-                </ThemedText>
-              </View>
-            </Pressable>
+              orientation="horizontal"
+              style={{
+                width: 180,
+                marginRight: 16,
+                paddingBottom: 8,
+                alignItems: "center",
+              }}
+            />
           </AnimatedListItem>
         )}
       />
@@ -282,12 +251,12 @@ export default function HomeScreen() {
             <View style={styles.welcomeTextContainer}>
               <ThemedText
                 style={[
-                  styles.welcomeTitle,
+                  styles.welcomeOverline,
                   { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
                 ]}
-                type="subtitle"
+                type="overline"
               >
-                Welcome back,
+                Welcome back
               </ThemedText>
               <ThemedText
                 style={[
@@ -299,70 +268,27 @@ export default function HomeScreen() {
                 {profile.data.profile.displayName ||
                   profile.data.profile.handle}
               </ThemedText>
+              <View style={styles.quickActionsRow}>
+                <QuickAction
+                  icon="search"
+                  label="Search"
+                  onPress={() => router.push("/search")}
+                />
+              </View>
             </View>
             <HelloWave />
           </View>
         </GradientView>
 
         {/* Stats Section */}
-        <ThemedView variant="card" style={styles.statsSection}>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <ThemedText
-                style={[styles.statNumber, { color: colors.primary }]}
-                type="title"
-              >
-                {totalBooks}
-              </ThemedText>
-              <ThemedText
-                style={[styles.statLabel, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                Total Books
-              </ThemedText>
-            </View>
-            <View
-              style={[
-                styles.statDivider,
-                { backgroundColor: colors.cardBorder },
-              ]}
-            />
-            <View style={styles.statItem}>
-              <ThemedText
-                style={[styles.statNumber, { color: colors.primary }]}
-                type="title"
-              >
-                {readingBooks.length}
-              </ThemedText>
-              <ThemedText
-                style={[styles.statLabel, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                Currently Reading
-              </ThemedText>
-            </View>
-            <View
-              style={[
-                styles.statDivider,
-                { backgroundColor: colors.cardBorder },
-              ]}
-            />
-            <View style={styles.statItem}>
-              <ThemedText
-                style={[styles.statNumber, { color: colors.primary }]}
-                type="title"
-              >
-                {finishedBooks.length}
-              </ThemedText>
-              <ThemedText
-                style={[styles.statLabel, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                Finished
-              </ThemedText>
-            </View>
-          </View>
-        </ThemedView>
+        <StatsCard
+          style={styles.statsSection}
+          items={[
+            { label: "Total Books", value: totalBooks },
+            { label: "Currently Reading", value: readingBooks.length },
+            { label: "Finished", value: finishedBooks.length },
+          ]}
+        />
 
         {/* Book Sections */}
         <BookSection
@@ -443,8 +369,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  welcomeOverline: {
+    opacity: 0.9,
+  },
   welcomeTextContainer: {
     flex: 1,
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
   },
   welcomeTitle: {
     marginBottom: 4,

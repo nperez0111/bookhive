@@ -21,6 +21,8 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { router } from "expo-router";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { SectionHeader } from "@/components/SectionHeader";
+import { ListItem } from "@/components/ListItem";
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
@@ -143,26 +145,28 @@ export default function ProfileScreen() {
         {/* Settings Sections */}
         <View style={styles.settingsSection}>
           <ThemedCard variant="outlined" style={styles.settingsCard}>
-            <View style={styles.sectionHeader}>
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: colors.activeBackground },
-                ]}
-              >
-                <Ionicons name="settings" size={20} color={colors.primary} />
-              </View>
-              <ThemedText
-                style={[styles.sectionTitle, { color: colors.primaryText }]}
-                type="heading"
-              >
-                Settings
-              </ThemedText>
-            </View>
-
-            {/* Settings Items */}
+            <SectionHeader
+              icon="settings"
+              title="Settings"
+              style={{ marginHorizontal: -4, marginBottom: 12 }}
+            />
             <View style={styles.settingsList}>
               <ThemeToggle style={styles.settingItem} />
+              {/* <ListItem
+                icon="document-text"
+                title="Terms of Service"
+                onPress={() => {}}
+              />
+              <ListItem
+                icon="shield-checkmark"
+                title="Privacy Policy"
+                onPress={() => {}}
+              />
+              <ListItem
+                icon="bug-outline"
+                title="Report a Bug"
+                onPress={() => {}}
+              /> */}
             </View>
           </ThemedCard>
         </View>
