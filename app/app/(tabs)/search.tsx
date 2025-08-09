@@ -29,7 +29,6 @@ import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { FadeInImage } from "@/components/FadeInImage";
 import { SectionHeader } from "@/components/SectionHeader";
 import { Badge } from "@/components/Badge";
-import { BookCard } from "@/components/BookCard";
 
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
@@ -73,14 +72,55 @@ export default function SearchScreen() {
     index: number;
   }) => (
     <AnimatedListItem index={index}>
-      <BookCard
-        title={book.title}
-        authors={book.authors}
-        imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+      <Pressable
         onPress={() => router.push(`/book/${book.id}`)}
-        orientation="horizontal"
-        style={{ marginBottom: 12, alignItems: "center" }}
-      />
+        style={[
+          styles.searchResultItem,
+          {
+            backgroundColor: colors.cardBackground,
+            borderColor: colors.cardBorder,
+            shadowColor: colors.shadowLight,
+          },
+        ]}
+      >
+        <View style={styles.coverContainer}>
+          <FadeInImage
+            source={{
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+            }}
+            style={styles.searchResultCover}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={styles.searchResultInfo}>
+          <ThemedText
+            style={[styles.searchResultTitle, { color: colors.primaryText }]}
+            numberOfLines={2}
+            type="label"
+          >
+            {book.title}
+          </ThemedText>
+          <ThemedText
+            style={[styles.searchResultAuthor, { color: colors.secondaryText }]}
+            numberOfLines={1}
+            type="caption"
+          >
+            {book.authors}
+          </ThemedText>
+          {book.rating && (
+            <View style={styles.ratingContainer}>
+              <Ionicons name="star" size={14} color={colors.primary} />
+              <ThemedText
+                style={[styles.ratingText, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0}{" "}
+                ratings)
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </Pressable>
     </AnimatedListItem>
   );
 
@@ -170,11 +210,6 @@ export default function SearchScreen() {
           title="Search"
           subtitle="Discover your next great read"
           style={{ paddingHorizontal: 0, paddingTop: 0, marginBottom: 8 }}
-          right={
-            hasSearchResults ? (
-              <Badge label={`${searchResults?.length} results`} />
-            ) : undefined
-          }
         />
       </Animated.View>
 
@@ -416,7 +451,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   loadingContainer: {
-    marginTop: 30,
+    marginTop: 40,
     paddingVertical: 40,
     alignItems: "center",
   },
@@ -424,7 +459,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   emptyState: {
-    paddingVertical: 40,
+    paddingVertical: 80,
     alignItems: "center",
     paddingHorizontal: 20,
   },
