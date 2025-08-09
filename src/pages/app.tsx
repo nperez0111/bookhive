@@ -46,7 +46,7 @@ function Hero() {
         <div class="mt-6 flex flex-col gap-3 sm:flex-row">
           <AppStoreBadge />
           <a
-            href="/"
+            href="https://bookhive.buzz"
             class="inline-flex items-center justify-center rounded-md border border-yellow-700 bg-yellow-50 px-3.5 py-2.5 text-sm font-medium text-yellow-900 shadow-xs hover:bg-yellow-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-100 dark:hover:bg-yellow-900"
           >
             Continue on the web
