@@ -52,6 +52,15 @@
     },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "e5bb0612-33b8-4bfd-8ae4-b37fe1b82a3b"
+      }
+    },
+    "owner": "nickthesick"
   }
 }
