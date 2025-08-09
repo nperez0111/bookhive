@@ -10,14 +10,17 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bookhive.app"
+      "bundleIdentifier": "buzz.bookhive.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bookhive.app"
+      "package": "buzz.bookhive.app"
     },
     "web": {
       "bundler": "metro",
