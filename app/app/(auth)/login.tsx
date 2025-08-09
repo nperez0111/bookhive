@@ -1,25 +1,19 @@
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedTextInput } from "@/components/ThemedTextInput";
+import { Colors } from "@/constants/Colors";
+import { useAuth } from "@/context/auth";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
-  StyleSheet,
-  TextInput,
-  Image,
   Animated,
-  Pressable,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
+  StyleSheet,
   View,
 } from "react-native";
-import { useState, useRef, useEffect } from "react";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { ThemedTextInput } from "@/components/ThemedTextInput";
-import { useAuth } from "@/context/auth";
-import { LinearGradient } from "expo-linear-gradient";
-import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
-
-const { width, height } = Dimensions.get("window");
 
 export default function LoginScreen() {
   const { signIn } = useAuth();

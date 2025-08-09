@@ -28,6 +28,7 @@ import { BookInfo } from "./pages/bookInfo";
 import { CommentsSection } from "./pages/comments";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
+import { AppPage } from "./pages/app";
 import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
@@ -393,9 +394,10 @@ export function createRouter(app: HonoServer) {
 
   // Homepage
   app.get("/", async (c) => {
-    // const didHandleMap = await c
-    //   .get("ctx")
-    //   .resolver.resolveDidsToHandles([]);
+    const url = new URL(c.req.raw.url);
+    if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
+      return c.redirect("/app");
+    }
 
     return c.render(<Home />, {
       title: "BookHive | Home",
@@ -483,7 +485,17 @@ export function createRouter(app: HonoServer) {
 
     return c.render(<LibraryImport />, {
       title: "BookHive | Import",
-      description: "Import your library from Goodreads or StoryGraph to BookHive",
+      description:
+        "Import your library from Goodreads or StoryGraph to BookHive",
+    });
+  });
+
+  app.get("/app", async (c) => {
+    return c.render(<AppPage />, {
+      title: "BookHive App for iOS",
+      description:
+        "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
+      image: "/public/hive.jpg",
     });
   });
 
