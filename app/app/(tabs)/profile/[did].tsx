@@ -1,34 +1,32 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Pressable,
-  StyleSheet,
-  View,
   RefreshControl,
   ScrollView,
+  StyleSheet,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
 
+import { GradientView } from "@/components/GradientView";
+import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { ThemedCard } from "@/components/ThemedCard";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
-import { ThemedCard } from "@/components/ThemedCard";
-import { GradientView } from "@/components/GradientView";
-import { useProfile, useBookInfo } from "@/hooks/useBookhiveQuery";
-import { useThemeColor } from "@/hooks/useThemeColor";
-import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
-import { router } from "expo-router";
-import { useState, useCallback } from "react";
-import { getBaseUrl } from "@/context/auth";
-import type { HiveBook } from "../../../../src/types";
 import { BOOK_STATUS } from "@/constants";
-import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { Colors } from "@/constants/Colors";
+import { getBaseUrl } from "@/context/auth";
+import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { useThemeColor } from "@/hooks/useThemeColor";
+import { router } from "expo-router";
+import { useCallback, useState } from "react";
 
 export default function ProfileScreen() {
   const { did } = useLocalSearchParams<{ did: string }>();
-  console.log("did", did);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];

@@ -18,7 +18,7 @@ import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
 import { ThemeProvider } from "@/context/theme";
-import { useColorScheme, View } from "react-native";
+import { useColorScheme, View, Platform } from "react-native";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 import { Colors } from "@/constants/Colors";
@@ -103,28 +103,37 @@ export default function RootLayout() {
                 }}
               >
                 {/* iOS status bar background overlay */}
+                {Platform.OS === "ios" && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: top,
+                      backgroundColor: "#000",
+                      zIndex: 1,
+                    }}
+                  />
+                )}
                 <View
                   style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: top,
-                    backgroundColor: "#000",
-                    zIndex: 1,
+                    flex: 1,
+                    paddingTop: Platform.OS === "ios" ? top : 0,
                   }}
-                />
-                <NetworkStatusIndicator />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen
-                    name="(auth)"
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="(tabs)"
-                    options={{ headerShown: false }}
-                  />
-                </Stack>
+                >
+                  <NetworkStatusIndicator />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen
+                      name="(auth)"
+                      options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                      name="(tabs)"
+                      options={{ headerShown: false }}
+                    />
+                  </Stack>
+                </View>
                 <StatusBar
                   style="light"
                   backgroundColor="#000000"
