@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -13,6 +13,7 @@ type ListItemProps = {
   right?: React.ReactNode;
   disabled?: boolean;
   style?: any;
+  avatarUri?: string;
 };
 
 export function ListItem({
@@ -23,6 +24,7 @@ export function ListItem({
   right,
   disabled,
   style,
+  avatarUri,
 }: ListItemProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -42,7 +44,9 @@ export function ListItem({
       ]}
     >
       <View style={[styles.left, { gap: 12 }]}>
-        {icon ? (
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatar} />
+        ) : icon ? (
           <View
             style={[
               styles.iconContainer,
@@ -107,5 +111,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginLeft: 12,
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
 });

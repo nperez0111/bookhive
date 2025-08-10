@@ -1317,17 +1317,25 @@ export function createRouter(app: HonoServer) {
         .where("user_book.userDid", "=", agent.assertDid)
         .executeTakeFirst();
 
-      const didToHandle = await c
+      const peerBooks = await c
         .get("ctx")
-        .resolver.resolveDidsToHandles(
-          Array.from(
-            new Set(
-              comments
-                .map((c) => c.userDid)
-                .concat(topLevelReviews.map((r) => r.userDid)),
-            ),
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("hiveId", "==", book.id)
+        .orderBy("indexedAt", "desc")
+        .limit(100)
+        .execute();
+
+      const didToHandle = await c.get("ctx").resolver.resolveDidsToHandles(
+        Array.from(
+          new Set(
+            comments
+              .map((c) => c.userDid)
+              .concat(topLevelReviews.map((r) => r.userDid))
+              .concat(peerBooks.map((b) => b.userDid)),
           ),
-        );
+        ),
+      );
 
       const response = {
         createdAt: userBook?.createdAt,
@@ -1379,6 +1387,21 @@ export function createRouter(app: HonoServer) {
           stars: r.stars ?? undefined,
           uri: r.uri,
           cid: r.cid,
+        })),
+        activity: peerBooks.map((b) => ({
+          type:
+            b.status &&
+            b.status in BOOK_STATUS_MAP &&
+            BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
+              ? "finished"
+              : b.review
+                ? "review"
+                : "started",
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
         })),
       } satisfies GetBook.OutputSchema & {
         userBookUri?: string;

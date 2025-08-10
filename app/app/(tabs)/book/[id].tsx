@@ -24,6 +24,7 @@ import {
   CommentsSection,
   type CommentItem,
 } from "@/components/CommentsSection";
+import { ListItem } from "@/components/ListItem";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { BookActionCard } from "@/components/BookActionCard";
 import { StatusSelectionModal } from "@/components/StatusSelectionModal";
@@ -157,6 +158,7 @@ export default function BookInfo() {
   }
 
   const { book, reviews, comments: apiComments, ...userBook } = bookQuery.data!;
+  const activity = bookQuery.data?.activity ?? [];
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;
   const review = userReviewText || userBook.review;
@@ -363,6 +365,66 @@ export default function BookInfo() {
             />
           </Animated.View>
 
+          {/* Activity from other users */}
+          <Animated.View
+            style={styles.activitySection}
+            entering={FadeInDown.delay(160).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <ThemedText
+              style={[
+                styles.sectionTitle,
+                { color: colorScheme === "dark" ? "white" : colors.text },
+              ]}
+            >
+              Activity
+            </ThemedText>
+            {activity.length === 0 ? (
+              <ThemedText
+                style={{
+                  color: colorScheme === "dark" ? "#9CA3AF" : colors.icon,
+                }}
+                type="body"
+              >
+                No recent activity on this book
+              </ThemedText>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {activity.map((item, idx) => {
+                  const t = item.type;
+                  const iconName =
+                    t === "finished"
+                      ? ("checkmark-circle-outline" as const)
+                      : t === "review"
+                        ? ("chatbubble-ellipses-outline" as const)
+                        : ("book-outline" as const);
+                  const userDid = (item as any).userDid as string | undefined;
+                  const userHandle = (item as any).userHandle as
+                    | string
+                    | undefined;
+                  const title = `@${userHandle ?? userDid ?? "user"}`;
+                  const subtitle = `${t.charAt(0).toUpperCase()}${t.slice(1)} · ${new Date(item.createdAt).toLocaleDateString()}`;
+                  return (
+                    <ListItem
+                      key={`${item.hiveId}-${userDid ?? idx}-${item.createdAt}`}
+                      icon={iconName}
+                      avatarUri={
+                        userHandle
+                          ? `${getBaseUrl()}/profile/${userHandle}/image`
+                          : undefined
+                      }
+                      title={title}
+                      subtitle={subtitle}
+                      onPress={
+                        userDid ? () => handleUserPress(userDid) : undefined
+                      }
+                    />
+                  );
+                })}
+              </View>
+            )}
+          </Animated.View>
+
           <StatusSelectionModal
             visible={modalVisible}
             onClose={() => setModalVisible(false)}
@@ -550,6 +612,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   ratingSection: {
+    marginBottom: 24,
+  },
+  activitySection: {
     marginBottom: 24,
   },
 

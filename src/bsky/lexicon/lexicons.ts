@@ -437,6 +437,14 @@ export const schemaDict = {
                   ref: "lex:buzz.bookhive.defs#comment",
                 },
               },
+              activity: {
+                description: "Other users' activity on the book",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#activity",
+                },
+              },
             },
           },
         },
