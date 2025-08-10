@@ -32,6 +32,7 @@ import { AppPage } from "./pages/app";
 import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
+import { PrivacyPolicy } from "./pages/privacy-policy";
 import { findBookDetails } from "./scrapers";
 import { type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
@@ -496,6 +497,14 @@ export function createRouter(app: HonoServer) {
       description:
         "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
       image: "/public/hive.jpg",
+    });
+  });
+
+  app.get("/privacy-policy", async (c) => {
+    return c.render(<PrivacyPolicy />, {
+      title: "BookHive | Privacy Policy",
+      description:
+        "Learn how BookHive uses cookies for login and only processes public ATProto data.",
     });
   });
 
