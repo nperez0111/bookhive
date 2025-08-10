@@ -228,6 +228,7 @@ export default function HomeScreen() {
   );
 
   const totalBooks = profile.data.books.length;
+  const friendActivity = profile.data.friendActivity ?? [];
 
   return (
     <ThemedView
@@ -320,6 +321,94 @@ export default function HomeScreen() {
           colorScheme={colorScheme ?? "light"}
           colors={colors}
         />
+
+        {/* Friend Activity */}
+        <View style={styles.section}>
+          <SectionHeader
+            icon={"people" as any}
+            title="Friend Activity"
+            right={
+              <ThemedText
+                style={[styles.bookCount, { color: colors.secondaryText }]}
+                type="caption"
+                numberOfLines={1}
+              >
+                {friendActivity.length}{" "}
+                {friendActivity.length === 1 ? "item" : "items"}
+              </ThemedText>
+            }
+            style={{ marginBottom: 16 }}
+          />
+
+          {friendActivity.length === 0 ? (
+            <ThemedView
+              variant="card"
+              style={[
+                styles.emptyState,
+                {
+                  borderColor: colors.cardBorder,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.emptyIconContainer,
+                  { backgroundColor: colors.inactiveBackground },
+                ]}
+              >
+                <Ionicons
+                  name="people-outline"
+                  size={32}
+                  color={colors.tertiaryText}
+                />
+              </View>
+              <ThemedText
+                style={[styles.emptyTitle, { color: colors.primaryText }]}
+                type="heading"
+              >
+                No friend activity yet
+              </ThemedText>
+              <ThemedText
+                style={[styles.emptySubtitle, { color: colors.secondaryText }]}
+                type="body"
+              >
+                Follow some friends to see their book activity here
+              </ThemedText>
+            </ThemedView>
+          ) : (
+            <FlatList
+              data={friendActivity}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalListContent}
+              keyExtractor={(item) =>
+                item.hiveId +
+                "_" +
+                item.userDid +
+                "_" +
+                (item.startedAt || item.finishedAt || item.createdAt)
+              }
+              renderItem={({ item: book, index }) => (
+                <AnimatedListItem index={index}>
+                  <BookCard
+                    title={book.title}
+                    authors={book.authors}
+                    meta={`@${book.userHandle ?? book.userDid}`}
+                    imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+                    onPress={() => router.push(`/book/${book.hiveId}`)}
+                    orientation="horizontal"
+                    style={{
+                      width: 180,
+                      marginRight: 16,
+                      paddingBottom: 8,
+                      alignItems: "center",
+                    }}
+                  />
+                </AnimatedListItem>
+              )}
+            />
+          )}
+        </View>
 
         <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>

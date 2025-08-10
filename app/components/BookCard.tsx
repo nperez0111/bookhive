@@ -12,6 +12,8 @@ export type BookCardProps = {
   onPress?: () => void;
   orientation?: "vertical" | "horizontal"; // vertical = image left, text right; horizontal = image on top
   style?: ViewStyle;
+  /** Optional extra line of metadata to show under authors, e.g., "@handle" */
+  meta?: string;
 };
 
 export function BookCard({
@@ -21,6 +23,7 @@ export function BookCard({
   onPress,
   orientation = "horizontal",
   style,
+  meta,
 }: BookCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -81,6 +84,15 @@ export function BookCard({
         >
           {authors}
         </ThemedText>
+        {meta ? (
+          <ThemedText
+            style={{ color: colors.tertiaryText, marginTop: 2 }}
+            numberOfLines={1}
+            type="caption"
+          >
+            {meta}
+          </ThemedText>
+        ) : null}
       </View>
     </Pressable>
   );

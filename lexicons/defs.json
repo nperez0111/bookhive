@@ -132,8 +132,23 @@
     },
     "userBook": {
       "type": "object",
-      "required": ["title", "authors", "hiveId", "createdAt", "thumbnail"],
+      "required": [
+        "userDid",
+        "title",
+        "authors",
+        "hiveId",
+        "createdAt",
+        "thumbnail"
+      ],
       "properties": {
+        "userDid": {
+          "type": "string",
+          "description": "The DID of the user who added the book"
+        },
+        "userHandle": {
+          "type": "string",
+          "description": "The handle of the user who added the book"
+        },
         "title": {
           "type": "string",
           "description": "The title of the book",

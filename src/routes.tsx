@@ -1402,8 +1402,6 @@ export function createRouter(app: HonoServer) {
       const agent = await c.get("ctx").getSessionAgent();
 
       let { did, handle } = c.req.valid("query");
-      console.log("did", did);
-      console.log("handle", handle);
 
       if (!did && !handle) {
         if (!agent) {
@@ -1434,6 +1432,33 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
       const profile = await getProfile({ ctx: c.get("ctx"), did });
+      const friendsBuzzes = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .innerJoin(
+          "user_follows",
+          "user_book.userDid",
+          "user_follows.followsDid",
+        )
+        .select(BookFields)
+        .where("user_follows.userDid", "=", did)
+        .where("user_follows.isActive", "=", 1)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(50)
+        .execute();
+
+      const didToHandle = await c
+        .get("ctx")
+        .resolver.resolveDidsToHandles(
+          Array.from(
+            new Set(
+              books
+                .map((c) => c.userDid)
+                .concat(friendsBuzzes.map((r) => r.userDid)),
+            ),
+          ),
+        );
 
       const response = {
         profile: {
@@ -1450,7 +1475,26 @@ export function createRouter(app: HonoServer) {
           ).length,
           reviews: books.filter((b) => b.review).length,
         },
+        friendActivity: friendsBuzzes.map((b) => ({
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
+          authors: b.authors,
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          thumbnail: b.thumbnail || "",
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          finishedAt: b.finishedAt ?? undefined,
+          review: b.review ?? undefined,
+          stars: b.stars ?? undefined,
+          status: b.status ?? undefined,
+          description: b.description ?? undefined,
+          rating: b.rating ?? undefined,
+          startedAt: b.startedAt ?? undefined,
+        })),
         books: books.map((b) => ({
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
           createdAt: b.createdAt,
           hiveId: b.hiveId,
