@@ -598,7 +598,7 @@ export function createRouter(app: HonoServer) {
         books={books}
         profile={profile}
         isFollowing={isFollowing}
-        canFollow={Boolean(sessionAgent) && sessionAgent.assertDid !== did}
+        canFollow={Boolean(sessionAgent) && sessionAgent?.assertDid !== did}
       />,
       {
         title: "BookHive | @" + handle,
@@ -1302,8 +1302,14 @@ export function createRouter(app: HonoServer) {
         return c.redirect("/", 302);
       }
       const { did } = c.req.valid("form");
+      let targetHandle = did;
+      try {
+        // Resolve handle for redirect target
+        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+      } catch {}
+
       if (!did || did === agent.assertDid) {
-        return c.redirect(c.req.header("referer") || "/", 302);
+        return c.redirect(`/profile/${targetHandle}`, 302);
       }
 
       try {
@@ -1341,7 +1347,7 @@ export function createRouter(app: HonoServer) {
           .execute();
       } catch {}
 
-      return c.redirect(c.req.header("referer") || "/", 302);
+      return c.redirect(`/profile/${targetHandle}`, 302);
     },
   );
 
@@ -1730,6 +1736,8 @@ export function createRouter(app: HonoServer) {
                   createdAt: b.createdAt,
                   hiveId: b.hiveId,
                   title: b.title,
+                  userDid: b.userDid,
+                  userHandle: didToHandle[b.userDid] ?? b.userDid,
                 });
               }
               return acc;
@@ -1739,6 +1747,8 @@ export function createRouter(app: HonoServer) {
               createdAt: string;
               hiveId: string;
               title: string;
+              userDid: string;
+              userHandle: string;
             }>,
           )
           .sort(
