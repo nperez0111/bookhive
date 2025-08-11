@@ -24,6 +24,35 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
+import { useFollow } from "@/hooks/useBookhiveQuery";
+
+function FollowButton({ targetDid }: { targetDid: string }) {
+  const follow = useFollow();
+  const onPress = () => {
+    if (!follow.isPending) follow.mutate({ did: targetDid });
+  };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        backgroundColor: "#2563eb",
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 9999,
+        opacity: follow.isPending ? 0.7 : 1,
+      }}
+    >
+      {follow.isPending ? (
+        <ActivityIndicator size="small" color="#ffffff" />
+      ) : (
+        <ThemedText type="caption" style={{ color: "#ffffff" }}>
+          Follow
+        </ThemedText>
+      )}
+    </Pressable>
+  );
+}
 
 export default function ProfileScreen() {
   const { did } = useLocalSearchParams<{ did: string }>();
@@ -178,15 +207,33 @@ export default function ProfileScreen() {
               )}
             </View>
             <View style={styles.headerInfo}>
-              <ThemedText
-                style={[
-                  styles.headerTitle,
-                  { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-                ]}
-                type="title"
-              >
-                {profile.data.profile.displayName || "User"}
-              </ThemedText>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ThemedText
+                  style={[
+                    styles.headerTitle,
+                    { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
+                  ]}
+                  type="title"
+                >
+                  {profile.data.profile.displayName || "User"}
+                </ThemedText>
+                {profile.data.profile.isFollowing === true ? (
+                  <View
+                    style={{
+                      backgroundColor: "#dcfce7",
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 9999,
+                    }}
+                  >
+                    <ThemedText type="caption" style={{ color: "#166534" }}>
+                      Following
+                    </ThemedText>
+                  </View>
+                ) : profile.data.profile.isFollowing === false ? (
+                  <FollowButton targetDid={did!} />
+                ) : null}
+              </View>
               <ThemedText
                 style={[
                   styles.headerSubtitle,

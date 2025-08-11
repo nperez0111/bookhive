@@ -232,11 +232,22 @@ export const schemaDict = {
             type: "integer",
             minimum: 0,
           },
+          isFollowing: {
+            type: "boolean",
+            description: "Whether the authed user is following this profile",
+          },
         },
       },
       activity: {
         type: "object",
-        required: ["type", "createdAt", "hiveId", "title"],
+        required: [
+          "type",
+          "createdAt",
+          "hiveId",
+          "title",
+          "userDid",
+          "userHandle",
+        ],
         properties: {
           type: {
             type: "string",
@@ -253,6 +264,14 @@ export const schemaDict = {
           title: {
             type: "string",
             description: "The title of the book",
+          },
+          userDid: {
+            type: "string",
+            description: "The DID of the user who added the book",
+          },
+          userHandle: {
+            type: "string",
+            description: "The handle of the user who added the book",
           },
         },
       },

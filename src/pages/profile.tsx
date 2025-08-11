@@ -7,13 +7,16 @@ import { BookReview } from "./components/BookReview";
 
 export const ProfilePage: FC<{
   handle: string;
+  did: string;
   books: Book[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
-}> = ({ handle, profile, books, isBuzzer }) => {
+  isFollowing?: boolean;
+  canFollow?: boolean;
+}> = ({ handle, did, profile, books, isBuzzer, isFollowing, canFollow }) => {
   return (
     <div class="bg-sand container mx-auto min-h-[calc(100vh-64px)] max-w-7xl p-8 px-3 dark:bg-zinc-900 dark:text-white">
-      <ProfileHeader handle={handle} profile={profile} books={books} />
+      <ProfileHeader handle={handle} did={did} isFollowing={isFollowing} canFollow={canFollow} profile={profile} books={books} />
 
       <div class="flex flex-col gap-10">
         {isBuzzer ? (

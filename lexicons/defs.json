@@ -105,6 +105,10 @@
         "reviews": {
           "type": "integer",
           "minimum": 0
+        },
+        "isFollowing": {
+          "type": "boolean",
+          "description": "Whether the authed user is following this profile"
         }
       }
     },
