@@ -120,6 +120,31 @@ export const useProfile = (did?: string) => {
 };
 
 /**
+ * Follow a DID
+ */
+export const useFollow = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ did }: { did: string }) => {
+      return await enhancedAuthFetch<{ success: boolean }>(`/api/follow`, {
+        method: "POST",
+        body: { did },
+      });
+    },
+    onSuccess: (_, { did }) => {
+      queryClient.invalidateQueries({ queryKey: ["profile", did] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+/**
  * Update the status of a book
  */
 export const useUpdateBook = () => {
