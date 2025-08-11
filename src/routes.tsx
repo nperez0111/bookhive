@@ -576,18 +576,19 @@ export function createRouter(app: HonoServer) {
       : [];
 
     const sessionAgent = await c.get("ctx").getSessionAgent();
-    const isFollowing = sessionAgent && sessionAgent.assertDid !== did
-      ? Boolean(
-          await c
-            .get("ctx")
-            .db.selectFrom("user_follows")
-            .select(["followsDid"]) // lightweight
-            .where("userDid", "=", sessionAgent.assertDid)
-            .where("followsDid", "=", did)
-            .where("isActive", "=", 1)
-            .executeTakeFirst(),
-        )
-      : undefined;
+    const isFollowing =
+      sessionAgent && sessionAgent.assertDid !== did
+        ? Boolean(
+            await c
+              .get("ctx")
+              .db.selectFrom("user_follows")
+              .select(["followsDid"]) // lightweight
+              .where("userDid", "=", sessionAgent.assertDid)
+              .where("followsDid", "=", did)
+              .where("isActive", "=", 1)
+              .executeTakeFirst(),
+          )
+        : undefined;
 
     return c.render(
       <ProfilePage
@@ -1257,7 +1258,6 @@ export function createRouter(app: HonoServer) {
           throw new Error("Failed to follow user");
         }
 
-        const now = new Date().toISOString();
         await c
           .get("ctx")
           .db.insertInto("user_follows")
@@ -1265,13 +1265,13 @@ export function createRouter(app: HonoServer) {
             userDid: agent.assertDid,
             followsDid: did,
             followedAt: createdAt,
-            syncedAt: now,
-            lastSeenAt: now,
+            syncedAt: createdAt,
+            lastSeenAt: createdAt,
             isActive: 1,
           })
           .onConflict((oc) =>
             oc.columns(["userDid", "followsDid"]).doUpdateSet({
-              lastSeenAt: now,
+              lastSeenAt: createdAt,
               isActive: 1,
             }),
           )
@@ -1279,7 +1279,10 @@ export function createRouter(app: HonoServer) {
 
         return c.json({ success: true });
       } catch (e: any) {
-        return c.json({ success: false, message: e?.message || "Follow failed" }, 400);
+        return c.json(
+          { success: false, message: e?.message || "Follow failed" },
+          400,
+        );
       }
     },
   );
@@ -1638,18 +1641,19 @@ export function createRouter(app: HonoServer) {
           ),
         );
 
-      const isFollowing = agent && agent.assertDid !== did
-        ? Boolean(
-            await c
-              .get("ctx")
-              .db.selectFrom("user_follows")
-              .select(["followsDid"]) // lightweight
-              .where("userDid", "=", agent.assertDid)
-              .where("followsDid", "=", did)
-              .where("isActive", "=", 1)
-              .executeTakeFirst(),
-          )
-        : undefined;
+      const isFollowing =
+        agent && agent.assertDid !== did
+          ? Boolean(
+              await c
+                .get("ctx")
+                .db.selectFrom("user_follows")
+                .select(["followsDid"]) // lightweight
+                .where("userDid", "=", agent.assertDid)
+                .where("followsDid", "=", did)
+                .where("isActive", "=", 1)
+                .executeTakeFirst(),
+            )
+          : undefined;
 
       const response = {
         profile: {
