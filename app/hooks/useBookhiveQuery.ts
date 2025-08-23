@@ -172,7 +172,15 @@ export const useUpdateBook = () => {
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate the book query to refetch latest data
-      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      queryClient.invalidateQueries({
+        queryKey: ["getBook", hiveId],
+      });
+      queryClient.refetchQueries({
+        queryKey: ["profile"],
+      });
+      queryClient.refetchQueries({
+        queryKey: ["getBook", hiveId],
+      });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
@@ -216,13 +224,48 @@ export const useUpdateComment = () => {
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate the book query to refetch latest data
-      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      queryClient.invalidateQueries({
+        queryKey: ["getBook", hiveId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["profile"],
+      });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
         return false;
       }
       return failureCount < 2; // Fewer retries for mutations
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+/**
+ * Delete a book from the user's library by HiveId
+ */
+export const useDeleteBook = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ hiveId }: { hiveId: HiveId }) => {
+      return await enhancedAuthFetch<{ success: boolean; bookId: string }>(
+        `/books/${hiveId}`,
+        {
+          method: "DELETE",
+          headers: { Accept: "application/json" },
+        },
+      );
+    },
+    onSuccess: (_, { hiveId }) => {
+      // Invalidate and refetch book and profile data
+      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });

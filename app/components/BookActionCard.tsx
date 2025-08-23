@@ -21,6 +21,7 @@ interface BookActionCardProps {
   isPending?: boolean;
   reviewText?: string;
   onReviewTextChange?: (text: string) => void;
+  rightAccessory?: React.ReactNode;
 }
 
 export const BookActionCard: React.FC<BookActionCardProps> = ({
@@ -37,6 +38,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   isPending = false,
   reviewText = "",
   onReviewTextChange,
+  rightAccessory,
 }) => {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -182,6 +184,9 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
         >
           {title}
         </ThemedText>
+        {rightAccessory ? (
+          <View style={styles.headerAccessory}>{rightAccessory}</View>
+        ) : null}
       </View>
       {renderContent()}
     </View>
@@ -216,6 +221,9 @@ const styles = StyleSheet.create({
   },
   actionCardTitle: {
     flex: 1,
+  },
+  headerAccessory: {
+    marginLeft: 8,
   },
   actionCardButton: {
     flexDirection: "row",

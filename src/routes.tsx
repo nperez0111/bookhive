@@ -655,38 +655,41 @@ export function createRouter(app: HonoServer) {
     }
 
     const bookId = c.req.param("hiveId") as HiveId;
-    const bookUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBook}/${bookId}`;
 
     const book = await c
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
       .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
+      .where("hiveId", "=", bookId)
       .execute();
 
     if (book.length === 0) {
       return c.json({ success: false, bookId, book: null });
     }
+    try {
+      await agent.com.atproto.repo.deleteRecord({
+        repo: agent.assertDid,
+        collection: ids.BuzzBookhiveBook,
+        rkey: book[0].uri.split("/").at(-1)!,
+      });
 
-    await agent.com.atproto.repo.deleteRecord({
-      repo: agent.assertDid,
-      collection: ids.BuzzBookhiveBook,
-      rkey: bookId,
-    });
+      await c
+        .get("ctx")
+        .db.deleteFrom("user_book")
+        .where("userDid", "=", agent.assertDid)
+        .where("uri", "=", book[0].uri)
+        .execute();
 
-    await c
-      .get("ctx")
-      .db.deleteFrom("user_book")
-      .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
-      .execute();
+      if (c.req.header()["accept"] === "application/json") {
+        return c.json({ success: true, bookId, book: book[0] });
+      }
 
-    if (c.req.header()["accept"] === "application/json") {
-      return c.json({ success: true, bookId, book: book[0] });
+      return c.redirect("/books/" + book[0].hiveId);
+    } catch (e) {
+      console.error("Failed to delete book", e);
+      throw e;
     }
-
-    return c.redirect("/books/" + book[0].hiveId);
   });
 
   app.post(
