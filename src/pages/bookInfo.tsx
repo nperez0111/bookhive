@@ -256,7 +256,7 @@ const BookStatusButton: FC<{
         />
       </UpdateBookForm>
       {usersBook && (
-        <form action={`/books/${usersBook.uri.split("/").pop()}`} method="post">
+        <form action={`/books/${book.id}`} method="post">
           <button
             type="submit"
             class="mt-2 cursor-pointer rounded-md border border-red-500 px-3 py-1 text-xs text-red-500 hover:bg-red-500 hover:text-white dark:border-red-400 dark:hover:bg-red-400 dark:hover:text-white"

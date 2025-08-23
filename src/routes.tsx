@@ -599,6 +599,7 @@ export function createRouter(app: HonoServer) {
         profile={profile}
         isFollowing={isFollowing}
         canFollow={Boolean(sessionAgent) && sessionAgent?.assertDid !== did}
+        isOwnProfile={sessionAgent?.assertDid === did}
       />,
       {
         title: "BookHive | @" + handle,
@@ -685,7 +686,11 @@ export function createRouter(app: HonoServer) {
         return c.json({ success: true, bookId, book: book[0] });
       }
 
-      return c.redirect("/books/" + book[0].hiveId);
+      // Redirect back to the user's profile page
+      const handle = await c
+        .get("ctx")
+        .resolver.resolveDidToHandle(agent.assertDid);
+      return c.redirect(`/profile/${handle}`);
     } catch (e) {
       console.error("Failed to delete book", e);
       throw e;
