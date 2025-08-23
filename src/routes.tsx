@@ -575,12 +575,30 @@ export function createRouter(app: HonoServer) {
           .execute()
       : [];
 
+    const sessionAgent = await c.get("ctx").getSessionAgent();
+    const isFollowing =
+      sessionAgent && sessionAgent.assertDid !== did
+        ? Boolean(
+            await c
+              .get("ctx")
+              .db.selectFrom("user_follows")
+              .select(["followsDid"]) // lightweight
+              .where("userDid", "=", sessionAgent.assertDid)
+              .where("followsDid", "=", did)
+              .where("isActive", "=", 1)
+              .executeTakeFirst(),
+          )
+        : undefined;
+
     return c.render(
       <ProfilePage
         isBuzzer={isBuzzer}
         handle={handle}
+        did={did}
         books={books}
         profile={profile}
+        isFollowing={isFollowing}
+        canFollow={Boolean(sessionAgent) && sessionAgent?.assertDid !== did}
       />,
       {
         title: "BookHive | @" + handle,
@@ -637,38 +655,41 @@ export function createRouter(app: HonoServer) {
     }
 
     const bookId = c.req.param("hiveId") as HiveId;
-    const bookUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBook}/${bookId}`;
 
     const book = await c
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
       .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
+      .where("hiveId", "=", bookId)
       .execute();
 
     if (book.length === 0) {
       return c.json({ success: false, bookId, book: null });
     }
+    try {
+      await agent.com.atproto.repo.deleteRecord({
+        repo: agent.assertDid,
+        collection: ids.BuzzBookhiveBook,
+        rkey: book[0].uri.split("/").at(-1)!,
+      });
 
-    await agent.com.atproto.repo.deleteRecord({
-      repo: agent.assertDid,
-      collection: ids.BuzzBookhiveBook,
-      rkey: bookId,
-    });
+      await c
+        .get("ctx")
+        .db.deleteFrom("user_book")
+        .where("userDid", "=", agent.assertDid)
+        .where("uri", "=", book[0].uri)
+        .execute();
 
-    await c
-      .get("ctx")
-      .db.deleteFrom("user_book")
-      .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
-      .execute();
+      if (c.req.header()["accept"] === "application/json") {
+        return c.json({ success: true, bookId, book: book[0] });
+      }
 
-    if (c.req.header()["accept"] === "application/json") {
-      return c.json({ success: true, bookId, book: book[0] });
+      return c.redirect("/books/" + book[0].hiveId);
+    } catch (e) {
+      console.error("Failed to delete book", e);
+      throw e;
     }
-
-    return c.redirect("/books/" + book[0].hiveId);
   });
 
   app.post(
@@ -1196,6 +1217,143 @@ export function createRouter(app: HonoServer) {
     },
   );
 
+  // Follow (JSON)
+  app.post(
+    "/api/follow",
+    zValidator(
+      "json",
+      z.object({
+        did: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { did } = c.req.valid("json");
+      if (!did || did === agent.assertDid) {
+        return c.json({ success: false, message: "Invalid DID" }, 400);
+      }
+
+      try {
+        const createdAt = new Date().toISOString();
+        const response = await agent.com.atproto.repo.applyWrites({
+          repo: agent.assertDid,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.nextStr(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        });
+
+        const firstResult = response.data.results?.[0];
+        if (
+          !response.success ||
+          !response.data.results ||
+          response.data.results.length === 0 ||
+          !firstResult ||
+          firstResult.$type !== "com.atproto.repo.applyWrites#createResult"
+        ) {
+          throw new Error("Failed to follow user");
+        }
+
+        await c
+          .get("ctx")
+          .db.insertInto("user_follows")
+          .values({
+            userDid: agent.assertDid,
+            followsDid: did,
+            followedAt: createdAt,
+            syncedAt: createdAt,
+            lastSeenAt: createdAt,
+            isActive: 1,
+          })
+          .onConflict((oc) =>
+            oc.columns(["userDid", "followsDid"]).doUpdateSet({
+              lastSeenAt: createdAt,
+              isActive: 1,
+            }),
+          )
+          .execute();
+
+        return c.json({ success: true });
+      } catch (e: any) {
+        return c.json(
+          { success: false, message: e?.message || "Follow failed" },
+          400,
+        );
+      }
+    },
+  );
+
+  // Follow (Form)
+  app.post(
+    "/api/follow-form",
+    zValidator(
+      "form",
+      z.object({
+        did: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.redirect("/", 302);
+      }
+      const { did } = c.req.valid("form");
+      let targetHandle = did;
+      try {
+        // Resolve handle for redirect target
+        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+      } catch {}
+
+      if (!did || did === agent.assertDid) {
+        return c.redirect(`/profile/${targetHandle}`, 302);
+      }
+
+      try {
+        const createdAt = new Date().toISOString();
+        await agent.com.atproto.repo.applyWrites({
+          repo: agent.assertDid,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.nextStr(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        });
+
+        const now = new Date().toISOString();
+        await c
+          .get("ctx")
+          .db.insertInto("user_follows")
+          .values({
+            userDid: agent.assertDid,
+            followsDid: did,
+            followedAt: createdAt,
+            syncedAt: now,
+            lastSeenAt: now,
+            isActive: 1,
+          })
+          .onConflict((oc) =>
+            oc.columns(["userDid", "followsDid"]).doUpdateSet({
+              lastSeenAt: now,
+              isActive: 1,
+            }),
+          )
+          .execute();
+      } catch {}
+
+      return c.redirect(`/profile/${targetHandle}`, 302);
+    },
+  );
+
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
@@ -1492,6 +1650,20 @@ export function createRouter(app: HonoServer) {
           ),
         );
 
+      const isFollowing =
+        agent && agent.assertDid !== did
+          ? Boolean(
+              await c
+                .get("ctx")
+                .db.selectFrom("user_follows")
+                .select(["followsDid"]) // lightweight
+                .where("userDid", "=", agent.assertDid)
+                .where("followsDid", "=", did)
+                .where("isActive", "=", 1)
+                .executeTakeFirst(),
+            )
+          : undefined;
+
       const response = {
         profile: {
           displayName: profile?.displayName ?? profile?.handle ?? did,
@@ -1506,6 +1678,7 @@ export function createRouter(app: HonoServer) {
                 "read",
           ).length,
           reviews: books.filter((b) => b.review).length,
+          isFollowing,
         },
         friendActivity: friendsBuzzes.map((b) => ({
           userDid: b.userDid,
@@ -1566,6 +1739,8 @@ export function createRouter(app: HonoServer) {
                   createdAt: b.createdAt,
                   hiveId: b.hiveId,
                   title: b.title,
+                  userDid: b.userDid,
+                  userHandle: didToHandle[b.userDid] ?? b.userDid,
                 });
               }
               return acc;
@@ -1575,6 +1750,8 @@ export function createRouter(app: HonoServer) {
               createdAt: string;
               hiveId: string;
               title: string;
+              userDid: string;
+              userHandle: string;
             }>,
           )
           .sort(

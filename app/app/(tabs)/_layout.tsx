@@ -3,13 +3,12 @@ import React from "react";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HapticTab } from "@/components/HapticTab";
-import { IconSymbol } from "@/components/ui/IconSymbol";
 import { AnimatedTabIcon } from "@/components/AnimatedTabIcon";
+import { HapticTab } from "@/components/HapticTab";
 import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
-import { useColorScheme } from "@/hooks/useColorScheme";
 import { useAuth } from "@/context/auth";
+import { useColorScheme } from "@/hooks/useColorScheme";
 
 // TODO consider using a drawer for navigation instead of tabs
 // Then we can use tabs for bookshelf, search, etc.

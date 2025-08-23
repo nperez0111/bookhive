@@ -1,48 +1,49 @@
+import { BookActionCard } from "@/components/BookActionCard";
+import { CommentsSection } from "@/components/CommentsSection";
+import { DeleteConfirmationModal } from "@/components/DeleteConfirmationModal";
+import { FadeInImage } from "@/components/FadeInImage";
+import { ListItem } from "@/components/ListItem";
+import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { StatusSelectionModal } from "@/components/StatusSelectionModal";
 import { ThemedText } from "@/components/ThemedText";
-import { useBookInfo, useUpdateBook } from "@/hooks/useBookhiveQuery";
-import { useLocalSearchParams, router } from "expo-router";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { Colors } from "@/constants/Colors";
+import { getBaseUrl } from "@/context/auth";
+import {
+  useBookInfo,
+  useDeleteBook,
+  useUpdateBook,
+} from "@/hooks/useBookhiveQuery";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { useThemeColor } from "@/hooks/useThemeColor";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import { decode } from "html-entities";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  ImageBackground,
+  Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
-  Pressable,
-  Linking,
-  ImageBackground,
 } from "react-native";
-import type { HiveId } from "../../../../src/types";
-import { type BookStatus } from "../../../constants/index";
-import { decode } from "html-entities";
-import { Ionicons } from "@expo/vector-icons";
-import React, { useState, useRef } from "react";
-import { getBaseUrl } from "@/context/auth";
-import { useThemeColor } from "@/hooks/useThemeColor";
-import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
-import {
-  CommentsSection,
-  type CommentItem,
-} from "@/components/CommentsSection";
-import { ListItem } from "@/components/ListItem";
-import { QueryErrorHandler } from "@/components/QueryErrorHandler";
-import { BookActionCard } from "@/components/BookActionCard";
-import { StatusSelectionModal } from "@/components/StatusSelectionModal";
-import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import Animated, {
   FadeInDown,
   FadeInUp,
   LinearTransition,
 } from "react-native-reanimated";
-import { FadeInImage } from "@/components/FadeInImage";
+import type { HiveId } from "../../../../src/types";
+import { type BookStatus } from "../../../constants/index";
 
-export default function BookInfo() {
-  const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
+function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const textColor = useThemeColor({}, "text");
   const backgroundColor = useThemeColor({}, "background");
   const [modalVisible, setModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
   const scrollViewRef = useRef<ScrollView>(null);
@@ -64,6 +65,7 @@ export default function BookInfo() {
       ]
     : [];
   const updateBook = useUpdateBook();
+  const deleteBook = useDeleteBook();
 
   const handleStatusUpdate = async (status: BookStatus) => {
     let currentStatus = selectedStatus;
@@ -101,6 +103,17 @@ export default function BookInfo() {
       hiveId: hiveId,
       stars: newRating,
     });
+  };
+
+  const handleDeleteBook = async () => {
+    try {
+      await deleteBook.mutateAsync({ hiveId });
+      setSelectedStatus(null);
+      setUserReviewText("");
+      setDeleteModalVisible(false);
+    } catch (e) {
+      console.error("Failed to delete book:", e);
+    }
   };
 
   const handleUserPress = (userDid: string) => {
@@ -189,7 +202,6 @@ export default function BookInfo() {
       </ImageBackground>
 
       <ScrollView
-        key={hiveId as string}
         ref={scrollViewRef}
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -338,6 +350,22 @@ export default function BookInfo() {
               icon="bookmark-outline"
               status={status}
               onStatusPress={() => setModalVisible(true)}
+              rightAccessory={
+                // Only show delete button if user has this book in their library
+                userBook.status || userBook.stars || userBook.review ? (
+                  <Pressable
+                    onPress={() => setDeleteModalVisible(true)}
+                    hitSlop={8}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={colorScheme === "dark" ? "#ef4444" : "#991b1b"}
+                    />
+                  </Pressable>
+                ) : null
+              }
             />
 
             <BookActionCard
@@ -433,6 +461,18 @@ export default function BookInfo() {
             isPending={updateBook.isPending}
           />
 
+          {/* Only render delete modal if user has the book in their library */}
+          {(userBook.status || userBook.stars || userBook.review) && (
+            <DeleteConfirmationModal
+              visible={deleteModalVisible}
+              onClose={() => setDeleteModalVisible(false)}
+              onConfirm={handleDeleteBook}
+              title="Delete Book"
+              message="Are you sure you want to delete this book? This action cannot be undone."
+              isPending={deleteBook.isPending}
+            />
+          )}
+
           <Animated.View
             entering={FadeInUp.delay(180).duration(240)}
             layout={LinearTransition.springify().damping(18).stiffness(180)}
@@ -447,6 +487,13 @@ export default function BookInfo() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+export default function BookInfo() {
+  const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
+  return (
+    <BookInfoContent key={(hiveId as string) ?? ""} hiveId={hiveId as HiveId} />
   );
 }
 
