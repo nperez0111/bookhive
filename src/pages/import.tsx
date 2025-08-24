@@ -3,8 +3,11 @@ import { Script } from "./utils/script";
 
 export const LibraryImport: FC = () => {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+    <div className="mx-auto max-w-5xl px-4 py-8">
+      {/* Dynamic table mount; hidden until import starts */}
+      <div id="import-table" className="hidden" />
+
+      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
         <h2 className="mb-6 text-xl font-semibold">Import your library</h2>
 
         {/* Service Selection */}
@@ -72,7 +75,50 @@ export const LibraryImport: FC = () => {
           </p>
         </div>
 
+        {/* Inline Progress Section (hidden until import starts) */}
+        <div id="import-progress" className="mb-6 hidden">
+          <div className="rounded-lg border border-gray-200 bg-yellow-50 p-6 dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xl font-semibold">Import Progress</span>
+              <div id="refresh-button" className="flex justify-end"></div>
+            </div>
+            <div className="mt-4 space-y-4">
+              <div className="flex items-baseline justify-between">
+                <span id="progress-text" className="text-lg font-semibold">
+                  Processing...
+                </span>
+                <span
+                  id="progress-count"
+                  className="text-sm text-gray-700 dark:text-gray-300"
+                >
+                  0/0
+                </span>
+              </div>
+              <div className="h-3 w-full rounded-full bg-gray-100 dark:bg-zinc-700">
+                <div
+                  id="progress-bar"
+                  className="h-3 rounded-full bg-yellow-500 transition-all duration-300"
+                  style="width: 0%"
+                ></div>
+              </div>
+              <div
+                id="stage-message"
+                className="text-base text-gray-700 dark:text-gray-300"
+              ></div>
+              <div
+                id="current-book"
+                className="truncate text-base text-gray-700 dark:text-gray-300"
+              ></div>
+              <div
+                id="failed-books"
+                className="max-h-40 overflow-y-auto text-sm text-red-600 dark:text-red-400"
+              ></div>
+            </div>
+          </div>
+        </div>
+
         <label
+          id="import-controls"
           className="inline-flex cursor-pointer items-center rounded-lg bg-yellow-100 px-4 py-2 text-yellow-800 transition-colors duration-200 hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-800"
           role="button"
           tabIndex={0}
@@ -82,7 +128,7 @@ export const LibraryImport: FC = () => {
           </span>
           <span
             id="importing-label"
-            className="flex hidden items-center text-sm font-medium"
+            className="hidden items-center text-sm font-medium"
           >
             Importing...
             <svg className="ml-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
@@ -111,6 +157,22 @@ export const LibraryImport: FC = () => {
           />
           <Script
             script={(document) => {
+              // dispatch helper to client table app
+              function dispatchImportEvent(detail: any) {
+                window.dispatchEvent(
+                  new CustomEvent("bookhive:import-event", { detail }),
+                );
+                // reveal table, progress and hide controls on first meaningful event
+                const table = document.getElementById("import-table");
+                const controls = document.getElementById("import-controls");
+                const progress = document.getElementById("import-progress");
+                if (table && table.classList.contains("hidden")) {
+                  table.classList.remove("hidden");
+                  controls?.classList.add("hidden");
+                  progress?.classList.remove("hidden");
+                }
+              }
+
               // Handle service selection toggle
               const radioButtons = document.querySelectorAll(
                 'input[name="import-service"]',
@@ -184,6 +246,11 @@ export const LibraryImport: FC = () => {
                   return;
                 }
 
+                // Clear any cached results for a fresh session
+                try {
+                  localStorage.removeItem("bookhive_import_results");
+                } catch {}
+
                 // Get selected service
                 const selectedService = document.querySelector(
                   'input[name="import-service"]:checked',
@@ -198,11 +265,16 @@ export const LibraryImport: FC = () => {
                 const importLabel = document.getElementById("import-label");
                 const importingLabel =
                   document.getElementById("importing-label");
+                const controls = document.getElementById("import-controls");
+                const progress = document.getElementById("import-progress");
                 if (!importingLabel || !importLabel) {
                   throw new Error("Import label not found");
                 }
                 importLabel.classList.add("hidden");
                 importingLabel.classList.remove("hidden");
+                // Immediately show inline progress and hide controls
+                controls?.classList.add("hidden");
+                progress?.classList.remove("hidden");
                 const response = await fetch(endpoint, {
                   method: "POST",
                   body: form,
@@ -211,50 +283,13 @@ export const LibraryImport: FC = () => {
                   throw new Error("Failed to import books");
                 }
 
-                // Create progress display
-                const progressDiv = document.createElement("div");
-                progressDiv.className =
-                  "fixed bottom-4 right-4 md:right-8 bg-white dark:bg-zinc-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 z-50 w-[calc(100%-2rem)] md:w-[448px]";
-                progressDiv.innerHTML = `
-                  <div class="flex flex-col gap-4">
-                    <div class="flex items-center justify-between">
-                      <span class="font-semibold text-lg">Import Progress</span>
-                      <button class="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors" id="close-progress">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                      </button>
-                    </div>
-                    <div class="space-y-3">
-                      <div class="flex justify-between text-sm">
-                        <span id="progress-text" class="font-medium">Processing...</span>
-                        <span id="progress-count" class="text-gray-600 dark:text-gray-400">0/0</span>
-                      </div>
-                      <div class="w-full bg-gray-100 dark:bg-zinc-700 rounded-full h-2">
-                        <div id="progress-bar" class="bg-yellow-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
-                      </div>
-                    </div>
-                    <div id="stage-message" class="text-sm text-gray-600 dark:text-gray-400"></div>
-                    <div id="current-book" class="text-sm text-gray-600 dark:text-gray-400 truncate"></div>
-                    <div id="failed-books" class="text-sm text-red-600 dark:text-red-400 max-h-32 overflow-y-auto"></div>
-                    <div id="refresh-button" class="flex justify-end"></div>
-                  </div>
-                `;
-                document.body.appendChild(progressDiv);
-
-                // Add close button handler
-                document
-                  .getElementById("close-progress")
-                  ?.addEventListener("click", () => {
-                    progressDiv.remove();
-                  });
-
                 // Get UI elements
                 const progressBar = document.getElementById("progress-bar");
                 const progressText = document.getElementById("progress-text");
                 const progressCount = document.getElementById("progress-count");
                 const currentBook = document.getElementById("current-book");
-                const failedBooks = document.getElementById("failed-books");
+                // For inline list of failures if needed later
+                // const failedBooks = document.getElementById("failed-books");
                 const stageMessage = document.getElementById("stage-message");
 
                 try {
@@ -276,33 +311,31 @@ export const LibraryImport: FC = () => {
                       const data = message.replace(/^data: /, "");
                       try {
                         const event = JSON.parse(data);
-
+                        // Update popup progress UI
                         if (
                           progressBar &&
                           progressText &&
                           progressCount &&
                           currentBook &&
-                          failedBooks &&
                           stageMessage
                         ) {
-                          // Handle different event types
                           switch (event.event) {
-                            case "import-start":
+                            case "import-start": {
                               progressText.textContent = "Starting import...";
                               stageMessage.textContent =
                                 event.stageProgress.message;
                               progressBar.style.width = "0%";
                               break;
-
-                            case "book-load":
+                            }
+                            case "book-load": {
                               progressText.textContent = "Processing books...";
                               stageMessage.textContent =
                                 event.stageProgress.message;
                               progressCount.textContent = `${event.stageProgress.current} books processed`;
                               currentBook.textContent = `Current: ${event.title} by ${event.author}`;
                               break;
-
-                            case "upload-start":
+                            }
+                            case "upload-start": {
                               progressText.textContent = "Uploading books...";
                               stageMessage.textContent =
                                 event.stageProgress.message;
@@ -310,8 +343,8 @@ export const LibraryImport: FC = () => {
                                 "0/" + event.stageProgress.total;
                               progressBar.style.width = "0%";
                               break;
-
-                            case "book-upload":
+                            }
+                            case "book-upload": {
                               const progress =
                                 (event.processed / event.total) * 100;
                               progressBar.style.width = `${progress}%`;
@@ -321,8 +354,8 @@ export const LibraryImport: FC = () => {
                               progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
                               currentBook.textContent = `Current: ${event.title} by ${event.author}`;
                               break;
-
-                            case "import-complete":
+                            }
+                            case "import-complete": {
                               progressBar.style.width = "100%";
                               progressText.textContent = "Import complete!";
                               stageMessage.textContent =
@@ -330,20 +363,57 @@ export const LibraryImport: FC = () => {
                               progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
                               currentBook.textContent = "";
                               break;
+                            }
                           }
+                        }
 
-                          if (event.failedBooks?.length > 0) {
-                            failedBooks.innerHTML = `
-                              <p class="font-medium mb-2">Failed to import ${event.failedBooks.length} books:</p>
-                              ${event.failedBooks
-                                .map(
-                                  (b: { title: string; author: string }) =>
-                                    `<div class="pl-3 border-l-2 border-red-400 mb-2">
-                                  ${b.title} by ${b.author}
-                                </div>`,
-                                )
-                                .join("")}
-                            `;
+                        // Dispatch a normalized event for the client ImportTableApp
+                        if (
+                          event.event === "book-upload" &&
+                          event.title &&
+                          event.author
+                        ) {
+                          const book = {
+                            hiveId: event.hiveId || event.book?.hiveId,
+                            title: event.title || event.book?.title,
+                            authors: event.author || event.book?.authors,
+                            coverImage:
+                              event.coverImage || event.book?.coverImage,
+                            status: event.status || event.book?.status,
+                            finishedAt:
+                              event.finishedAt || event.book?.finishedAt,
+                            stars: event.stars ?? event.book?.stars,
+                            review: event.review ?? event.book?.review,
+                            alreadyExists:
+                              event.alreadyExists ?? event.book?.alreadyExists,
+                          };
+                          dispatchImportEvent({
+                            event: "book-upload",
+                            processed: event.processed,
+                            total: event.total,
+                            uploaded: event.uploaded,
+                            stage: event.stage,
+                            stageProgress: event.stageProgress,
+                            book,
+                          });
+                        } else if (
+                          event.event === "import-start" ||
+                          event.event === "upload-start"
+                        ) {
+                          dispatchImportEvent(event);
+                        } else if (event.event === "import-complete") {
+                          dispatchImportEvent(event);
+                          if (event.failedBooks?.length) {
+                            // Emit individual failure rows at completion to avoid duplicates
+                            for (let i = 0; i < event.failedBooks.length; i++) {
+                              const fb = event.failedBooks[i];
+                              const details =
+                                event.failedBookDetails?.[i] || {};
+                              dispatchImportEvent({
+                                event: "book-failed",
+                                failedBook: { ...fb, ...details },
+                              });
+                            }
                           }
                         }
                       } catch (e) {
@@ -353,21 +423,29 @@ export const LibraryImport: FC = () => {
                   }
                 } catch (e) {
                   console.error("Stream reading failed:", e);
-                  progressText!.textContent = "Import failed";
-                  stageMessage!.textContent =
-                    "An error occurred during import. Please try again.";
+                  if (progressText) progressText.textContent = "Import failed";
+                  if (stageMessage)
+                    stageMessage.textContent =
+                      "An error occurred during import. Please try again.";
                 } finally {
                   importLabel.classList.remove("hidden");
                   importingLabel.classList.add("hidden");
-                  // Add refresh button after import completes
-                  const refreshButton = document.createElement("a");
-                  refreshButton.href = "/profile";
-                  refreshButton.textContent = "See your imported books";
-                  refreshButton.className =
-                    "px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium";
-                  document
-                    .getElementById("refresh-button")
-                    ?.appendChild(refreshButton);
+                  // Add reset/import-more button after import completes
+                  const container = document.getElementById("refresh-button");
+                  if (container) {
+                    container.innerHTML = "";
+                    const reset = document.createElement("button");
+                    reset.textContent = "Import more";
+                    reset.className =
+                      "px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium";
+                    reset.addEventListener("click", () => {
+                      try {
+                        localStorage.removeItem("bookhive_import_results");
+                      } catch {}
+                      window.location.reload();
+                    });
+                    container.appendChild(reset);
+                  }
                 }
               });
             }}

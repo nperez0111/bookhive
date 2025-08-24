@@ -3,6 +3,7 @@ import { render } from "hono/jsx/dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SearchBox } from "./components/SearchBox";
 import { StarRating } from "./components/StarRating";
+import { ImportTableApp } from "./components/import/ImportTableApp";
 
 const queryClient = new QueryClient();
 const ClientProvider = ({ children }: { children: any }): any =>
@@ -39,6 +40,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }}
       />,
       starRating,
+    );
+  }
+
+  const importTable = document.getElementById("import-table");
+  if (importTable) {
+    render(
+      <ClientProvider>
+        <ImportTableApp />
+      </ClientProvider>,
+      importTable,
     );
   }
 });

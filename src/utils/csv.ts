@@ -58,6 +58,11 @@ export function getStorygraphCsvParser() {
     skip_empty_lines: true,
     trim: true,
     columns: true, // Use first line as column headers
+    // Add error handling options
+    skip_records_with_error: true,
+    skip_records_with_empty_values: false,
+    relax_column_count: true, // Allow inconsistent column counts
+    relax_quotes: true, // Be more lenient with quotes
     cast: (value: string, { column }): any => {
       // Handle empty values
       if (value === "" || value === '""') {
@@ -93,72 +98,99 @@ export function getStorygraphCsvParser() {
 
   return new TransformStream<Uint8Array, StorygraphBook>({
     transform(chunk, controller) {
-      parser.write(chunk);
+      try {
+        parser.write(chunk);
 
-      // Process any records that are ready
-      let record: any;
-      while ((record = parser.read())) {
-        // Map CSV columns to StorygraphBook interface
-        const storygraphBook: StorygraphBook = {
-          title: record["Title"] || "",
-          authors: record["Authors"] || "",
-          contributors: record["Contributors"] || "",
-          isbn: record["ISBN/UID"] || "",
-          format: record["Format"] || "",
-          readStatus: record["Read Status"] || "",
-          dateAdded: record["Date Added"],
-          lastDateRead: record["Last Date Read"],
-          datesRead: record["Dates Read"] || "",
-          readCount: record["Read Count"] || 0,
-          moods: record["Moods"] || "",
-          pace: record["Pace"] || "",
-          characterOrPlot: record["Character- or Plot-Driven?"] || "",
-          strongCharacterDevelopment: record["Strong Character Development?"] || "",
-          loveableCharacters: record["Loveable Characters?"] || "",
-          diverseCharacters: record["Diverse Characters?"] || "",
-          flawedCharacters: record["Flawed Characters?"] || "",
-          starRating: record["Star Rating"] || 0,
-          review: record["Review"] || "",
-          contentWarnings: record["Content Warnings"] || "",
-          contentWarningDescription: record["Content Warning Description"] || "",
-          tags: record["Tags"] || "",
-          owned: record["Owned?"] || false,
-        };
-        controller.enqueue(storygraphBook);
+        // Process any records that are ready
+        let record: any;
+        while ((record = parser.read())) {
+          // Validate the record before enqueueing
+          if (record && record["Title"] && record["Authors"]) {
+            // Map CSV columns to StorygraphBook interface
+            const storygraphBook: StorygraphBook = {
+              title: record["Title"] || "",
+              authors: record["Authors"] || "",
+              contributors: record["Contributors"] || "",
+              isbn: record["ISBN/UID"] || "",
+              format: record["Format"] || "",
+              readStatus: record["Read Status"] || "",
+              dateAdded: record["Date Added"],
+              lastDateRead: record["Last Date Read"],
+              datesRead: record["Dates Read"] || "",
+              readCount: record["Read Count"] || 0,
+              moods: record["Moods"] || "",
+              pace: record["Pace"] || "",
+              characterOrPlot: record["Character- or Plot-Driven?"] || "",
+              strongCharacterDevelopment:
+                record["Strong Character Development?"] || "",
+              loveableCharacters: record["Loveable Characters?"] || "",
+              diverseCharacters: record["Diverse Characters?"] || "",
+              flawedCharacters: record["Flawed Characters?"] || "",
+              starRating: record["Star Rating"] || 0,
+              review: record["Review"] || "",
+              contentWarnings: record["Content Warnings"] || "",
+              contentWarningDescription:
+                record["Content Warning Description"] || "",
+              tags: record["Tags"] || "",
+              owned: record["Owned?"] || false,
+            };
+            controller.enqueue(storygraphBook);
+          } else {
+            console.warn("Skipping invalid StoryGraph record:", record);
+          }
+        }
+      } catch (error) {
+        console.warn("Error processing StoryGraph CSV chunk:", error);
+        // Continue processing other chunks instead of crashing
       }
     },
     flush(controller) {
-      parser.end();
+      try {
+        parser.end();
 
-      // Get any remaining records
-      let record: any;
-      while ((record = parser.read())) {
-        const storygraphBook: StorygraphBook = {
-          title: record["Title"] || "",
-          authors: record["Authors"] || "",
-          contributors: record["Contributors"] || "",
-          isbn: record["ISBN/UID"] || "",
-          format: record["Format"] || "",
-          readStatus: record["Read Status"] || "",
-          dateAdded: record["Date Added"],
-          lastDateRead: record["Last Date Read"],
-          datesRead: record["Dates Read"] || "",
-          readCount: record["Read Count"] || 0,
-          moods: record["Moods"] || "",
-          pace: record["Pace"] || "",
-          characterOrPlot: record["Character- or Plot-Driven?"] || "",
-          strongCharacterDevelopment: record["Strong Character Development?"] || "",
-          loveableCharacters: record["Loveable Characters?"] || "",
-          diverseCharacters: record["Diverse Characters?"] || "",
-          flawedCharacters: record["Flawed Characters?"] || "",
-          starRating: record["Star Rating"] || 0,
-          review: record["Review"] || "",
-          contentWarnings: record["Content Warnings"] || "",
-          contentWarningDescription: record["Content Warning Description"] || "",
-          tags: record["Tags"] || "",
-          owned: record["Owned?"] || false,
-        };
-        controller.enqueue(storygraphBook);
+        // Get any remaining records
+        let record: any;
+        while ((record = parser.read())) {
+          // Validate the record before enqueueing
+          if (record && record["Title"] && record["Authors"]) {
+            const storygraphBook: StorygraphBook = {
+              title: record["Title"] || "",
+              authors: record["Authors"] || "",
+              contributors: record["Contributors"] || "",
+              isbn: record["ISBN/UID"] || "",
+              format: record["Format"] || "",
+              readStatus: record["Read Status"] || "",
+              dateAdded: record["Date Added"],
+              lastDateRead: record["Last Date Read"],
+              datesRead: record["Dates Read"] || "",
+              readCount: record["Read Count"] || 0,
+              moods: record["Moods"] || "",
+              pace: record["Pace"] || "",
+              characterOrPlot: record["Character- or Plot-Driven?"] || "",
+              strongCharacterDevelopment:
+                record["Strong Character Development?"] || "",
+              loveableCharacters: record["Loveable Characters?"] || "",
+              diverseCharacters: record["Diverse Characters?"] || "",
+              flawedCharacters: record["Flawed Characters?"] || "",
+              starRating: record["Star Rating"] || 0,
+              review: record["Review"] || "",
+              contentWarnings: record["Content Warnings"] || "",
+              contentWarningDescription:
+                record["Content Warning Description"] || "",
+              tags: record["Tags"] || "",
+              owned: record["Owned?"] || false,
+            };
+            controller.enqueue(storygraphBook);
+          } else {
+            console.warn(
+              "Skipping invalid StoryGraph record during flush:",
+              record,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn("Error during StoryGraph CSV parser flush:", error);
+        // Don't crash, just log the error
       }
     },
   });
@@ -226,25 +258,53 @@ export function getGoodreadsCsvParser() {
           return value;
       }
     },
+    // Add error handling options
+    skip_records_with_error: true,
+    skip_records_with_empty_values: false,
+    relax_column_count: true, // Allow inconsistent column counts
+    relax_quotes: true, // Be more lenient with quotes
   });
 
   return new TransformStream<Uint8Array, GoodreadsBook>({
     transform(chunk, controller) {
-      parser.write(chunk);
+      try {
+        parser.write(chunk);
 
-      // Process any records that are ready
-      let record: GoodreadsBook;
-      while ((record = parser.read() as GoodreadsBook)) {
-        controller.enqueue(record);
+        // Process any records that are ready
+        let record: GoodreadsBook;
+        while ((record = parser.read() as GoodreadsBook)) {
+          // Validate the record before enqueueing
+          if (record && record.title && record.author) {
+            controller.enqueue(record);
+          } else {
+            console.warn("Skipping invalid Goodreads record:", record);
+          }
+        }
+      } catch (error) {
+        console.warn("Error processing CSV chunk:", error);
+        // Continue processing other chunks instead of crashing
       }
     },
     flush(controller) {
-      parser.end();
+      try {
+        parser.end();
 
-      // Get any remaining records
-      let record: GoodreadsBook;
-      while ((record = parser.read() as GoodreadsBook)) {
-        controller.enqueue(record);
+        // Get any remaining records
+        let record: GoodreadsBook;
+        while ((record = parser.read() as GoodreadsBook)) {
+          // Validate the record before enqueueing
+          if (record && record.title && record.author) {
+            controller.enqueue(record);
+          } else {
+            console.warn(
+              "Skipping invalid Goodreads record during flush:",
+              record,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn("Error during CSV parser flush:", error);
+        // Don't crash, just log the error
       }
     },
   });
