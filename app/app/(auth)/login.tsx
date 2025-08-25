@@ -9,8 +9,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -114,127 +116,158 @@ export default function LoginScreen() {
         }
         style={styles.gradientBackground}
       >
-        <View style={styles.content}>
-          {/* Header Section */}
-          <Animated.View
-            style={[
-              styles.headerSection,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
-            <Animated.Image
-              source={require("@/assets/images/bee.png")}
-              style={[
-                styles.logo,
-                {
-                  transform: [{ rotate: spin }, { scale: scaleAnim }],
-                },
-              ]}
-            />
-
-            <ThemedText
-              type="title"
-              style={[styles.title, { color: colors.primaryText }]}
-            >
-              Welcome to BookHive
-            </ThemedText>
-
-            <ThemedText
-              style={[styles.subtitle, { color: colors.secondaryText }]}
-            >
-              Connect with your Bluesky account to start buzzing about books
-            </ThemedText>
-          </Animated.View>
-
-          {/* Form Section */}
-          <Animated.View
-            style={[
-              styles.formSection,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.content}>
+            {/* Header Section */}
             <Animated.View
               style={[
-                styles.inputContainer,
+                styles.headerSection,
                 {
-                  transform: [{ scale: inputScaleAnim }],
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
                 },
               ]}
             >
-              <ThemedTextInput
+              <Animated.Image
+                source={require("@/assets/images/bee.png")}
                 style={[
-                  styles.input,
+                  styles.logo,
                   {
-                    backgroundColor:
-                      colorScheme === "dark"
-                        ? colors.cardBackground
-                        : "#ffffff",
-                    borderColor: isFocused ? colors.primary : colors.cardBorder,
-                    color: colors.primaryText,
-                  },
-                  isFocused && {
-                    shadowColor: colors.primary,
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 4,
+                    transform: [{ rotate: spin }, { scale: scaleAnim }],
                   },
                 ]}
-                placeholder="Enter your Bluesky handle"
-                placeholderTextColor={colors.placeholderText}
-                value={handle}
-                onChangeText={setHandle}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!isLoading}
-                onSubmitEditing={handleSubmit}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
               />
+
+              <ThemedText
+                type="title"
+                style={[styles.title, { color: colors.primaryText }]}
+              >
+                Welcome to BookHive
+              </ThemedText>
+
+              <ThemedText
+                style={[styles.subtitle, { color: colors.secondaryText }]}
+              >
+                Connect with your Bluesky account to start buzzing about books
+              </ThemedText>
             </Animated.View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                pressed && styles.buttonPressed,
-                isLoading && styles.buttonLoading,
+            {/* Form Section */}
+            <Animated.View
+              style={[
+                styles.formSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
               ]}
-              onPress={handleSubmit}
-              disabled={isLoading || !handle}
             >
-              <LinearGradient
-                colors={
-                  handle
-                    ? [colors.primary, colors.primaryLight]
-                    : [colors.buttonBackground, colors.buttonBackground]
-                }
-                style={styles.buttonGradient}
+              <Animated.View
+                style={[
+                  styles.inputContainer,
+                  {
+                    transform: [{ scale: inputScaleAnim }],
+                  },
+                ]}
               >
-                <ThemedText
+                <ThemedTextInput
                   style={[
-                    styles.buttonText,
+                    styles.input,
                     {
-                      color: handle ? colors.background : colors.tertiaryText,
+                      backgroundColor:
+                        colorScheme === "dark"
+                          ? colors.cardBackground
+                          : "#ffffff",
+                      borderColor: isFocused
+                        ? colors.primary
+                        : colors.cardBorder,
+                      color: colors.primaryText,
+                    },
+                    isFocused && {
+                      shadowColor: colors.primary,
+                      shadowOpacity: 0.3,
+                      shadowRadius: 8,
+                      elevation: 4,
                     },
                   ]}
-                >
-                  {isLoading ? "Buzzing in..." : "Buzz in"}
-                </ThemedText>
-              </LinearGradient>
-            </Pressable>
+                  placeholder="Enter your Bluesky handle"
+                  placeholderTextColor={colors.placeholderText}
+                  value={handle}
+                  onChangeText={setHandle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isLoading}
+                  onSubmitEditing={handleSubmit}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
+                />
+              </Animated.View>
 
-            <ThemedText
-              style={[styles.footerText, { color: colors.tertiaryText }]}
-            >
-              Your reading journey starts here 🐝
-            </ThemedText>
-          </Animated.View>
-        </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.button,
+                  pressed && styles.buttonPressed,
+                  isLoading && styles.buttonLoading,
+                ]}
+                onPress={handleSubmit}
+                disabled={isLoading || !handle}
+              >
+                <LinearGradient
+                  colors={
+                    handle
+                      ? [colors.primary, colors.primaryLight]
+                      : [colors.buttonBackground, colors.buttonBackground]
+                  }
+                  style={styles.buttonGradient}
+                >
+                  <ThemedText
+                    style={[
+                      styles.buttonText,
+                      {
+                        color: handle ? colors.background : colors.tertiaryText,
+                      },
+                    ]}
+                  >
+                    {isLoading ? "Buzzing in..." : "Buzz in"}
+                  </ThemedText>
+                </LinearGradient>
+              </Pressable>
+
+              <ThemedText
+                style={[styles.footerText, { color: colors.tertiaryText }]}
+              >
+                Your reading journey starts here 🐝
+              </ThemedText>
+
+              <Pressable
+                onPress={() => {
+                  // Open Bluesky website in browser
+                  if (Platform.OS === "web") {
+                    window.open("https://bsky.app/", "_blank");
+                  } else {
+                    // For mobile, use Linking
+                    Linking.openURL("https://bsky.app/");
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.createAccountLink,
+                  pressed && styles.createAccountLinkPressed,
+                ]}
+              >
+                <ThemedText
+                  style={[styles.createAccountText, { color: colors.primary }]}
+                >
+                  Don't have an account? Create one on Bluesky
+                </ThemedText>
+              </Pressable>
+            </Animated.View>
+          </View>
+        </ScrollView>
       </LinearGradient>
     </KeyboardAvoidingView>
   );
@@ -246,6 +279,13 @@ const styles = StyleSheet.create({
   },
   gradientBackground: {
     flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   content: {
     flex: 1,
@@ -344,5 +384,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
     marginTop: 16,
+  },
+  createAccountLink: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  createAccountLinkPressed: {
+    opacity: 0.7,
+  },
+  createAccountText: {
+    fontSize: 16,
+    textAlign: "center",
+    textDecorationLine: "underline",
   },
 });
