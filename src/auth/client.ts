@@ -24,6 +24,7 @@ export const createClient = async (kv: Storage) => {
       token_endpoint_auth_method: "none",
       dpop_bound_access_tokens: true,
       logo_uri: `${url}/public/full_logo.jpg`,
+      policy_uri: `${url}/privacy-policy`,
     },
     stateStore: new StateStore(kv),
     sessionStore: new SessionStore(kv),
