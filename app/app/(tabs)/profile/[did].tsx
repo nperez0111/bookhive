@@ -118,14 +118,28 @@ export default function ProfileScreen() {
     );
   }
 
-  const readingBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.READING,
+  // Dedupe by hiveId to avoid duplicate keys in FlatLists
+  const dedupeByHiveId = <T extends { hiveId: string }>(books: T[]) => {
+    const seen = new Set<string>();
+    const unique: T[] = [];
+    for (const book of books) {
+      const key = String(book.hiveId);
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(book);
+      }
+    }
+    return unique;
+  };
+
+  const readingBooks = dedupeByHiveId(
+    profile.data.books.filter((book) => book.status === BOOK_STATUS.READING),
   );
-  const wantToReadBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.WANTTOREAD,
+  const wantToReadBooks = dedupeByHiveId(
+    profile.data.books.filter((book) => book.status === BOOK_STATUS.WANTTOREAD),
   );
-  const readBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.FINISHED,
+  const readBooks = dedupeByHiveId(
+    profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED),
   );
 
   const renderBookItem = ({ item: book }: { item: any }) => (
@@ -207,7 +221,9 @@ export default function ProfileScreen() {
               )}
             </View>
             <View style={styles.headerInfo}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
                 <ThemedText
                   style={[
                     styles.headerTitle,
