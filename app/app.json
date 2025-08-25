@@ -69,6 +69,12 @@
         "projectId": "e5bb0612-33b8-4bfd-8ae4-b37fe1b82a3b"
       }
     },
-    "owner": "nickthesick"
+    "owner": "nickthesick",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e5bb0612-33b8-4bfd-8ae4-b37fe1b82a3b"
+    }
   }
 }
