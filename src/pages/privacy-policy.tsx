@@ -97,7 +97,7 @@ export function PrivacyPolicy() {
       </p>
 
       <p class="text-sm text-slate-500 dark:text-slate-400">
-        Last updated: {new Date().toISOString().slice(0, 10)}
+        Last updated: 2025-08-25
       </p>
     </div>
   );
