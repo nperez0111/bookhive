@@ -3,8 +3,8 @@ import { type FC } from "hono/jsx";
 function AppStoreBadge() {
   return (
     <a
-      href="#"
-      aria-label="Download on the App Store (coming soon)"
+      href="https://apps.apple.com/us/app/bookhive-a-better-goodreads/id6749799032"
+      aria-label="Download on the App Store"
       class="inline-flex items-center gap-3"
       rel="noopener noreferrer"
     >
