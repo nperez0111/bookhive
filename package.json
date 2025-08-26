@@ -23,7 +23,9 @@
     "postlexgen": "prettier --write ./src/bsky/lexicon/*",
     "start": "node --require ./dist/instrumentation.cjs ./dist/index.js",
     "ios": "pnpm run --prefix=app ios",
-    "android": "pnpm run --prefix=app android"
+    "android": "pnpm run --prefix=app android",
+    "ios:build": "pnpm run --prefix=app ios:build",
+    "ios:submit": "pnpm run --prefix=app ios:submit"
   },
   "dependencies": {
     "@atcute/car": "3.0.5",
