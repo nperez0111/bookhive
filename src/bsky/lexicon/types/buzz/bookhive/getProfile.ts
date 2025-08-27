@@ -32,6 +32,8 @@ export interface OutputSchema {
   profile: BuzzBookhiveDefs.Profile;
   /** The user's activity */
   activity: BuzzBookhiveDefs.Activity[];
+  /** The user's friend activity */
+  friendActivity: BuzzBookhiveDefs.UserBook[];
 }
 
 export type HandlerInput = undefined;

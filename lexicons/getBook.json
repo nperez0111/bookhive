@@ -82,6 +82,14 @@
                 "type": "ref",
                 "ref": "buzz.bookhive.defs#comment"
               }
+            },
+            "activity": {
+              "description": "Other users' activity on the book",
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "buzz.bookhive.defs#activity"
+              }
             }
           }
         }

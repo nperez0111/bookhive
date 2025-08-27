@@ -28,9 +28,11 @@ import { BookInfo } from "./pages/bookInfo";
 import { CommentsSection } from "./pages/comments";
 import { Error as ErrorPage } from "./pages/error";
 import { Home } from "./pages/home";
+import { AppPage } from "./pages/app";
 import { Layout } from "./pages/layout";
 import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
+import { PrivacyPolicy } from "./pages/privacy-policy";
 import { findBookDetails } from "./scrapers";
 import { type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
@@ -393,13 +395,18 @@ export function createRouter(app: HonoServer) {
 
   // Homepage
   app.get("/", async (c) => {
-    // const didHandleMap = await c
-    //   .get("ctx")
-    //   .resolver.resolveDidsToHandles([]);
+    const url = new URL(c.req.raw.url);
+    if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
+      return c.redirect("/app");
+    }
 
     return c.render(<Home />, {
       title: "BookHive | Home",
     });
+  });
+
+  app.get("/.well-known/atproto-did", async (c) => {
+    return c.text("did:plc:enu2j5xjlqsjaylv3du4myh4");
   });
 
   app.get("/refresh-books", async (c) => {
@@ -479,7 +486,25 @@ export function createRouter(app: HonoServer) {
 
     return c.render(<LibraryImport />, {
       title: "BookHive | Import",
-      description: "Import your library from Goodreads or StoryGraph to BookHive",
+      description:
+        "Import your library from Goodreads or StoryGraph to BookHive",
+    });
+  });
+
+  app.get("/app", async (c) => {
+    return c.render(<AppPage />, {
+      title: "BookHive App for iOS",
+      description:
+        "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
+      image: "/public/hive.jpg",
+    });
+  });
+
+  app.get("/privacy-policy", async (c) => {
+    return c.render(<PrivacyPolicy />, {
+      title: "BookHive | Privacy Policy",
+      description:
+        "Learn how BookHive uses cookies for login and only processes public ATProto data.",
     });
   });
 
@@ -550,12 +575,31 @@ export function createRouter(app: HonoServer) {
           .execute()
       : [];
 
+    const sessionAgent = await c.get("ctx").getSessionAgent();
+    const isFollowing =
+      sessionAgent && sessionAgent.assertDid !== did
+        ? Boolean(
+            await c
+              .get("ctx")
+              .db.selectFrom("user_follows")
+              .select(["followsDid"]) // lightweight
+              .where("userDid", "=", sessionAgent.assertDid)
+              .where("followsDid", "=", did)
+              .where("isActive", "=", 1)
+              .executeTakeFirst(),
+          )
+        : undefined;
+
     return c.render(
       <ProfilePage
         isBuzzer={isBuzzer}
         handle={handle}
+        did={did}
         books={books}
         profile={profile}
+        isFollowing={isFollowing}
+        canFollow={Boolean(sessionAgent) && sessionAgent?.assertDid !== did}
+        isOwnProfile={sessionAgent?.assertDid === did}
       />,
       {
         title: "BookHive | @" + handle,
@@ -612,38 +656,45 @@ export function createRouter(app: HonoServer) {
     }
 
     const bookId = c.req.param("hiveId") as HiveId;
-    const bookUri = `at://${agent.assertDid}/${ids.BuzzBookhiveBook}/${bookId}`;
 
     const book = await c
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
       .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
+      .where("hiveId", "=", bookId)
       .execute();
 
     if (book.length === 0) {
       return c.json({ success: false, bookId, book: null });
     }
+    try {
+      await agent.com.atproto.repo.deleteRecord({
+        repo: agent.assertDid,
+        collection: ids.BuzzBookhiveBook,
+        rkey: book[0].uri.split("/").at(-1)!,
+      });
 
-    await agent.com.atproto.repo.deleteRecord({
-      repo: agent.assertDid,
-      collection: ids.BuzzBookhiveBook,
-      rkey: bookId,
-    });
+      await c
+        .get("ctx")
+        .db.deleteFrom("user_book")
+        .where("userDid", "=", agent.assertDid)
+        .where("uri", "=", book[0].uri)
+        .execute();
 
-    await c
-      .get("ctx")
-      .db.deleteFrom("user_book")
-      .where("userDid", "=", agent.assertDid)
-      .where("uri", "=", bookUri)
-      .execute();
+      if (c.req.header()["accept"] === "application/json") {
+        return c.json({ success: true, bookId, book: book[0] });
+      }
 
-    if (c.req.header()["accept"] === "application/json") {
-      return c.json({ success: true, bookId, book: book[0] });
+      // Redirect back to the user's profile page
+      const handle = await c
+        .get("ctx")
+        .resolver.resolveDidToHandle(agent.assertDid);
+      return c.redirect(`/profile/${handle}`);
+    } catch (e) {
+      console.error("Failed to delete book", e);
+      throw e;
     }
-
-    return c.redirect("/books/" + book[0].hiveId);
   });
 
   app.post(
@@ -1025,6 +1076,289 @@ export function createRouter(app: HonoServer) {
     },
   );
 
+  app.post(
+    "/api/update-comment",
+    zValidator(
+      "json",
+      z.object({
+        uri: z
+          .string()
+          .describe(
+            "The URI of the comment to update. If this is not provided, a new comment will be created.",
+          )
+          .optional(),
+        hiveId: z.string(),
+        comment: z.string(),
+        parentUri: z.string(),
+        parentCid: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json(
+          {
+            success: false,
+            message: "Invalid Session",
+          },
+          401,
+        );
+      }
+
+      const { hiveId, comment, parentUri, parentCid, uri } =
+        await c.req.valid("json");
+
+      const originalBuzz = uri
+        ? await c
+            .get("ctx")
+            .db.selectFrom("buzz")
+            .selectAll()
+            .where("uri", "=", uri)
+            .limit(1)
+            .executeTakeFirst()
+        : null;
+      const book = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select(["cid", "uri"])
+        .where("hiveId", "=", hiveId as HiveId)
+        .executeTakeFirst();
+      const createdAt = originalBuzz?.createdAt || new Date().toISOString();
+
+      const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
+      const parentRef = validateMain({ uri: parentUri, cid: parentCid });
+      if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
+        return c.json(
+          {
+            success: false,
+            message: "Invalid Hive ID",
+            description: "The book you are looking for does not exist",
+          },
+          404,
+        );
+      }
+
+      const response = await agent.com.atproto.repo.applyWrites({
+        repo: agent.assertDid,
+        writes: [
+          {
+            $type: originalBuzz
+              ? "com.atproto.repo.applyWrites#update"
+              : "com.atproto.repo.applyWrites#create",
+            collection: ids.BuzzBookhiveBuzz,
+            rkey: originalBuzz
+              ? originalBuzz.uri.split("/").at(-1)!
+              : TID.nextStr(),
+            value: {
+              book: bookRef.value,
+              comment,
+              parent: parentRef.value,
+              createdAt,
+            },
+          },
+        ],
+      });
+
+      const firstResult = response.data.results?.[0];
+      if (
+        !response.success ||
+        !response.data.results ||
+        response.data.results.length === 0 ||
+        !firstResult ||
+        !(
+          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
+          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
+        )
+      ) {
+        return c.json(
+          {
+            success: false,
+            message: "Failed to post comment",
+            description: "Failed to write comment to the database",
+          },
+          500,
+        );
+      }
+
+      await c
+        .get("ctx")
+        .db.insertInto("buzz")
+        .values({
+          uri: firstResult.uri,
+          cid: firstResult.cid,
+          userDid: agent.assertDid,
+          createdAt: createdAt,
+          indexedAt: new Date().toISOString(),
+          hiveId: hiveId as HiveId,
+          comment,
+          parentUri,
+          parentCid,
+          bookCid: book.cid,
+          bookUri: book.uri,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet((c) => ({
+            indexedAt: c.ref("excluded.indexedAt"),
+            cid: c.ref("excluded.cid"),
+            userDid: c.ref("excluded.userDid"),
+            createdAt: c.ref("excluded.createdAt"),
+            hiveId: c.ref("excluded.hiveId"),
+            comment: c.ref("excluded.comment"),
+            parentUri: c.ref("excluded.parentUri"),
+            parentCid: c.ref("excluded.parentCid"),
+            bookCid: c.ref("excluded.bookCid"),
+            bookUri: c.ref("excluded.bookUri"),
+          })),
+        )
+        .execute();
+
+      return c.json({
+        success: true,
+        message: "Comment posted",
+        comment: {
+          uri: firstResult.uri,
+        },
+      });
+    },
+  );
+
+  // Follow (JSON)
+  app.post(
+    "/api/follow",
+    zValidator(
+      "json",
+      z.object({
+        did: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { did } = c.req.valid("json");
+      if (!did || did === agent.assertDid) {
+        return c.json({ success: false, message: "Invalid DID" }, 400);
+      }
+
+      try {
+        const createdAt = new Date().toISOString();
+        const response = await agent.com.atproto.repo.applyWrites({
+          repo: agent.assertDid,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.nextStr(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        });
+
+        const firstResult = response.data.results?.[0];
+        if (
+          !response.success ||
+          !response.data.results ||
+          response.data.results.length === 0 ||
+          !firstResult ||
+          firstResult.$type !== "com.atproto.repo.applyWrites#createResult"
+        ) {
+          throw new Error("Failed to follow user");
+        }
+
+        await c
+          .get("ctx")
+          .db.insertInto("user_follows")
+          .values({
+            userDid: agent.assertDid,
+            followsDid: did,
+            followedAt: createdAt,
+            syncedAt: createdAt,
+            lastSeenAt: createdAt,
+            isActive: 1,
+          })
+          .onConflict((oc) =>
+            oc.columns(["userDid", "followsDid"]).doUpdateSet({
+              lastSeenAt: createdAt,
+              isActive: 1,
+            }),
+          )
+          .execute();
+
+        return c.json({ success: true });
+      } catch (e: any) {
+        return c.json(
+          { success: false, message: e?.message || "Follow failed" },
+          400,
+        );
+      }
+    },
+  );
+
+  // Follow (Form)
+  app.post(
+    "/api/follow-form",
+    zValidator(
+      "form",
+      z.object({
+        did: z.string(),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.redirect("/", 302);
+      }
+      const { did } = c.req.valid("form");
+      let targetHandle = did;
+      try {
+        // Resolve handle for redirect target
+        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+      } catch {}
+
+      if (!did || did === agent.assertDid) {
+        return c.redirect(`/profile/${targetHandle}`, 302);
+      }
+
+      try {
+        const createdAt = new Date().toISOString();
+        await agent.com.atproto.repo.applyWrites({
+          repo: agent.assertDid,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.nextStr(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        });
+
+        const now = new Date().toISOString();
+        await c
+          .get("ctx")
+          .db.insertInto("user_follows")
+          .values({
+            userDid: agent.assertDid,
+            followsDid: did,
+            followedAt: createdAt,
+            syncedAt: now,
+            lastSeenAt: now,
+            isActive: 1,
+          })
+          .onConflict((oc) =>
+            oc.columns(["userDid", "followsDid"]).doUpdateSet({
+              lastSeenAt: now,
+              isActive: 1,
+            }),
+          )
+          .execute();
+      } catch {}
+
+      return c.redirect(`/profile/${targetHandle}`, 302);
+    },
+  );
+
   app.get(
     "/xrpc/" + ids.BuzzBookhiveSearchBooks,
     zValidator(
@@ -1155,17 +1489,25 @@ export function createRouter(app: HonoServer) {
         .where("user_book.userDid", "=", agent.assertDid)
         .executeTakeFirst();
 
-      const didToHandle = await c
+      const peerBooks = await c
         .get("ctx")
-        .resolver.resolveDidsToHandles(
-          Array.from(
-            new Set(
-              comments
-                .map((c) => c.userDid)
-                .concat(topLevelReviews.map((r) => r.userDid)),
-            ),
+        .db.selectFrom("user_book")
+        .selectAll()
+        .where("hiveId", "==", book.id)
+        .orderBy("indexedAt", "desc")
+        .limit(100)
+        .execute();
+
+      const didToHandle = await c.get("ctx").resolver.resolveDidsToHandles(
+        Array.from(
+          new Set(
+            comments
+              .map((c) => c.userDid)
+              .concat(topLevelReviews.map((r) => r.userDid))
+              .concat(peerBooks.map((b) => b.userDid)),
           ),
-        );
+        ),
+      );
 
       const response = {
         createdAt: userBook?.createdAt,
@@ -1174,6 +1516,8 @@ export function createRouter(app: HonoServer) {
         status: userBook?.status ?? undefined,
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
+        userBookUri: userBook?.uri ?? undefined,
+        userBookCid: userBook?.cid ?? undefined,
         book: {
           $type: "buzz.bookhive.hiveBook",
           title: book.title,
@@ -1200,6 +1544,8 @@ export function createRouter(app: HonoServer) {
           createdAt: c.createdAt,
           did: c.userDid,
           handle: didToHandle[c.userDid] ?? c.userDid,
+          uri: c.uri,
+          cid: c.cid,
           parent: {
             uri: c.parentUri,
             cid: c.parentCid,
@@ -1211,8 +1557,28 @@ export function createRouter(app: HonoServer) {
           handle: didToHandle[r.userDid] ?? r.userDid,
           review: r.comment,
           stars: r.stars ?? undefined,
+          uri: r.uri,
+          cid: r.cid,
         })),
-      } satisfies GetBook.OutputSchema;
+        activity: peerBooks.map((b) => ({
+          type:
+            b.status &&
+            b.status in BOOK_STATUS_MAP &&
+            BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
+              ? "finished"
+              : b.review
+                ? "review"
+                : "started",
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
+        })),
+      } satisfies GetBook.OutputSchema & {
+        userBookUri?: string;
+        userBookCid?: string;
+      };
 
       return c.json(response);
     },
@@ -1249,6 +1615,7 @@ export function createRouter(app: HonoServer) {
         did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
       }
       did = did as string;
+      console.log("did2", did);
 
       const books = await c
         .get("ctx")
@@ -1260,6 +1627,47 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
       const profile = await getProfile({ ctx: c.get("ctx"), did });
+      const friendsBuzzes = await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .innerJoin(
+          "user_follows",
+          "user_book.userDid",
+          "user_follows.followsDid",
+        )
+        .select(BookFields)
+        .where("user_follows.userDid", "=", did)
+        .where("user_follows.isActive", "=", 1)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(50)
+        .execute();
+
+      const didToHandle = await c
+        .get("ctx")
+        .resolver.resolveDidsToHandles(
+          Array.from(
+            new Set(
+              books
+                .map((c) => c.userDid)
+                .concat(friendsBuzzes.map((r) => r.userDid)),
+            ),
+          ),
+        );
+
+      const isFollowing =
+        agent && agent.assertDid !== did
+          ? Boolean(
+              await c
+                .get("ctx")
+                .db.selectFrom("user_follows")
+                .select(["followsDid"]) // lightweight
+                .where("userDid", "=", agent.assertDid)
+                .where("followsDid", "=", did)
+                .where("isActive", "=", 1)
+                .executeTakeFirst(),
+            )
+          : undefined;
 
       const response = {
         profile: {
@@ -1275,8 +1683,28 @@ export function createRouter(app: HonoServer) {
                 "read",
           ).length,
           reviews: books.filter((b) => b.review).length,
+          isFollowing,
         },
+        friendActivity: friendsBuzzes.map((b) => ({
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
+          authors: b.authors,
+          createdAt: b.createdAt,
+          hiveId: b.hiveId,
+          title: b.title,
+          thumbnail: b.thumbnail || "",
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          finishedAt: b.finishedAt ?? undefined,
+          review: b.review ?? undefined,
+          stars: b.stars ?? undefined,
+          status: b.status ?? undefined,
+          description: b.description ?? undefined,
+          rating: b.rating ?? undefined,
+          startedAt: b.startedAt ?? undefined,
+        })),
         books: books.map((b) => ({
+          userDid: b.userDid,
+          userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
           createdAt: b.createdAt,
           hiveId: b.hiveId,
@@ -1316,6 +1744,8 @@ export function createRouter(app: HonoServer) {
                   createdAt: b.createdAt,
                   hiveId: b.hiveId,
                   title: b.title,
+                  userDid: b.userDid,
+                  userHandle: didToHandle[b.userDid] ?? b.userDid,
                 });
               }
               return acc;
@@ -1325,6 +1755,8 @@ export function createRouter(app: HonoServer) {
               createdAt: string;
               hiveId: string;
               title: string;
+              userDid: string;
+              userHandle: string;
             }>,
           )
           .sort(

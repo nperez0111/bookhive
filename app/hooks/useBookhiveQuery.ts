@@ -99,12 +99,12 @@ export const useBookInfo = (id: HiveId | undefined | null) => {
  * @param didOrHandle If undefined, the auth'd user's profile will be fetched
  * @returns
  */
-export const useProfile = (didOrHandle?: string) => {
+export const useProfile = (did?: string) => {
   return useQuery({
-    queryKey: ["profile", didOrHandle] as const,
+    queryKey: ["profile", did] as const,
     queryFn: async ({ queryKey: [, id] }) => {
       return await enhancedAuthFetch<GetProfile.OutputSchema>(
-        `/xrpc/buzz.bookhive.getProfile?id=${id}`,
+        `/xrpc/buzz.bookhive.getProfile?did=${id || ""}`,
       );
     },
     retry: (failureCount, error: any) => {
@@ -116,6 +116,31 @@ export const useProfile = (didOrHandle?: string) => {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 15 * 60 * 1000, // 15 minutes
+  });
+};
+
+/**
+ * Follow a DID
+ */
+export const useFollow = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ did }: { did: string }) => {
+      return await enhancedAuthFetch<{ success: boolean }>(`/api/follow`, {
+        method: "POST",
+        body: { did },
+      });
+    },
+    onSuccess: (_, { did }) => {
+      queryClient.invalidateQueries({ queryKey: ["profile", did] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 };
 
@@ -147,13 +172,100 @@ export const useUpdateBook = () => {
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate the book query to refetch latest data
-      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      queryClient.invalidateQueries({
+        queryKey: ["getBook", hiveId],
+      });
+      queryClient.refetchQueries({
+        queryKey: ["profile"],
+      });
+      queryClient.refetchQueries({
+        queryKey: ["getBook", hiveId],
+      });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
         return false;
       }
       return failureCount < 2; // Fewer retries for mutations
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useUpdateComment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      hiveId,
+      comment,
+      parentUri,
+      parentCid,
+      uri,
+    }: {
+      hiveId: HiveId;
+      comment: string;
+      parentUri: string;
+      parentCid: string;
+      uri?: string;
+    }) => {
+      return await enhancedAuthFetch<{ success: boolean; message: string }>(
+        `/api/update-comment`,
+        {
+          method: "POST",
+          body: {
+            uri,
+            hiveId,
+            comment,
+            parentUri,
+            parentCid,
+          },
+        },
+      );
+    },
+    onSuccess: (_, { hiveId }) => {
+      // Invalidate the book query to refetch latest data
+      queryClient.invalidateQueries({
+        queryKey: ["getBook", hiveId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["profile"],
+      });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2; // Fewer retries for mutations
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+/**
+ * Delete a book from the user's library by HiveId
+ */
+export const useDeleteBook = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ hiveId }: { hiveId: HiveId }) => {
+      return await enhancedAuthFetch<{ success: boolean; bookId: string }>(
+        `/books/${hiveId}`,
+        {
+          method: "DELETE",
+          headers: { Accept: "application/json" },
+        },
+      );
+    },
+    onSuccess: (_, { hiveId }) => {
+      // Invalidate and refetch book and profile data
+      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) {
+        return false;
+      }
+      return failureCount < 2;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });

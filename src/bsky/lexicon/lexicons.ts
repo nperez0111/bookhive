@@ -232,11 +232,22 @@ export const schemaDict = {
             type: "integer",
             minimum: 0,
           },
+          isFollowing: {
+            type: "boolean",
+            description: "Whether the authed user is following this profile",
+          },
         },
       },
       activity: {
         type: "object",
-        required: ["type", "createdAt", "hiveId", "title"],
+        required: [
+          "type",
+          "createdAt",
+          "hiveId",
+          "title",
+          "userDid",
+          "userHandle",
+        ],
         properties: {
           type: {
             type: "string",
@@ -254,12 +265,35 @@ export const schemaDict = {
             type: "string",
             description: "The title of the book",
           },
+          userDid: {
+            type: "string",
+            description: "The DID of the user who added the book",
+          },
+          userHandle: {
+            type: "string",
+            description: "The handle of the user who added the book",
+          },
         },
       },
       userBook: {
         type: "object",
-        required: ["title", "authors", "hiveId", "createdAt", "thumbnail"],
+        required: [
+          "userDid",
+          "title",
+          "authors",
+          "hiveId",
+          "createdAt",
+          "thumbnail",
+        ],
         properties: {
+          userDid: {
+            type: "string",
+            description: "The DID of the user who added the book",
+          },
+          userHandle: {
+            type: "string",
+            description: "The handle of the user who added the book",
+          },
           title: {
             type: "string",
             description: "The title of the book",
@@ -422,6 +456,14 @@ export const schemaDict = {
                   ref: "lex:buzz.bookhive.defs#comment",
                 },
               },
+              activity: {
+                description: "Other users' activity on the book",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#activity",
+                },
+              },
             },
           },
         },
@@ -452,7 +494,7 @@ export const schemaDict = {
           encoding: "application/json",
           schema: {
             type: "object",
-            required: ["books", "profile", "activity"],
+            required: ["books", "profile", "activity", "friendActivity"],
             properties: {
               books: {
                 description: "All books in the user's library",
@@ -473,6 +515,14 @@ export const schemaDict = {
                 items: {
                   type: "ref",
                   ref: "lex:buzz.bookhive.defs#activity",
+                },
+              },
+              friendActivity: {
+                description: "The user's friend activity",
+                type: "array",
+                items: {
+                  type: "ref",
+                  ref: "lex:buzz.bookhive.defs#userBook",
                 },
               },
             },

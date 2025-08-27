@@ -5,6 +5,8 @@ import * as WebBrowser from "expo-web-browser";
 import { ofetch } from "ofetch";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
+import * as Application from "expo-application";
+import Constants from "expo-constants";
 
 export type AuthState = {
   /**
@@ -57,7 +59,10 @@ export const getAuthState = (): AuthState | null => {
 export const authFetch = ofetch.create({
   headers: {
     accept: "application/json",
-    ["x-bookhive-version"]: "1.0.0",
+    ["x-bookhive-version"]:
+      Application.nativeApplicationVersion ??
+      (Constants.expoConfig?.version as string | undefined) ??
+      "unknown",
     ["x-bookhive-platform"]: Platform.OS,
     ["x-bookhive-platform-version"]: String(Platform.Version),
   },

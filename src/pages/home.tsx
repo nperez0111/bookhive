@@ -216,7 +216,7 @@ async function LatestActivity() {
 async function FriendsBuzzes() {
   const c = useRequestContext();
   const profile = await c.get("ctx").getProfile();
-  
+
   if (!profile) {
     return <Fragment />; // Don't show friends buzzes if user is not logged in
   }
@@ -295,6 +295,10 @@ export const Home: FC<Props> = async () => {
         , built by{" "}
         <a href="https://nickthesick.com" class="text-blue-600 hover:underline">
           Nick The Sick
+        </a>
+        <span class="mx-2">·</span>
+        <a href="/privacy-policy" class="text-blue-600 hover:underline">
+          Privacy Policy
         </a>
       </div>
     </div>

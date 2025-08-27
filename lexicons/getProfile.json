@@ -22,7 +22,7 @@
         "encoding": "application/json",
         "schema": {
           "type": "object",
-          "required": ["books", "profile", "activity"],
+          "required": ["books", "profile", "activity", "friendActivity"],
           "properties": {
             "books": {
               "description": "All books in the user's library",
@@ -43,6 +43,14 @@
               "items": {
                 "type": "ref",
                 "ref": "buzz.bookhive.defs#activity"
+              }
+            },
+            "friendActivity": {
+              "description": "The user's friend activity",
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "buzz.bookhive.defs#userBook"
               }
             }
           }

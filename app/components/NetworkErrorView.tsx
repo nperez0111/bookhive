@@ -4,6 +4,7 @@ import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useRouter } from "expo-router";
 
 export interface NetworkError {
   type:
@@ -35,6 +36,11 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
 }) => {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
+  const router = useRouter();
+
+  const handleSignIn = () => {
+    router.push("/(auth)/login");
+  };
 
   const getErrorIcon = () => {
     switch (error.type) {
@@ -109,6 +115,13 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
         )}
 
         <View style={styles.buttonContainer}>
+          {error.type === "unauthorized" && (
+            <Pressable style={styles.signInButton} onPress={handleSignIn}>
+              <Ionicons name="person-circle" size={24} color="white" />
+              <ThemedText style={styles.signInButtonText}>Sign In</ThemedText>
+            </Pressable>
+          )}
+
           {showRetryButton && error.retryable && onRetry && (
             <Pressable style={styles.retryButton} onPress={onRetry}>
               <Ionicons name="refresh" size={20} color="white" />
@@ -169,6 +182,22 @@ const styles = StyleSheet.create({
     gap: 12,
     flexWrap: "wrap",
     justifyContent: "center",
+  },
+  signInButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FBBF24",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    gap: 10,
+    width: 280,
+  },
+  signInButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "600",
   },
   retryButton: {
     flexDirection: "row",

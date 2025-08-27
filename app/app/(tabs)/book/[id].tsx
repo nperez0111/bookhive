@@ -1,42 +1,53 @@
+import { BookActionCard } from "@/components/BookActionCard";
+import { CommentsSection } from "@/components/CommentsSection";
+import { DeleteConfirmationModal } from "@/components/DeleteConfirmationModal";
+import { FadeInImage } from "@/components/FadeInImage";
+import { ListItem } from "@/components/ListItem";
+import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { StatusSelectionModal } from "@/components/StatusSelectionModal";
 import { ThemedText } from "@/components/ThemedText";
-import { useBookInfo, useUpdateBook } from "@/hooks/useBookhiveQuery";
-import { useLocalSearchParams, router } from "expo-router";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { Colors } from "@/constants/Colors";
+import { getBaseUrl } from "@/context/auth";
+import {
+  useBookInfo,
+  useDeleteBook,
+  useUpdateBook,
+} from "@/hooks/useBookhiveQuery";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { useThemeColor } from "@/hooks/useThemeColor";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import { decode } from "html-entities";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  ImageBackground,
+  Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
-  Pressable,
-  Linking,
-  ImageBackground,
 } from "react-native";
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  LinearTransition,
+} from "react-native-reanimated";
 import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
-import { decode } from "html-entities";
-import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { getBaseUrl } from "@/context/auth";
-import { useThemeColor } from "@/hooks/useThemeColor";
-import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
-import {
-  CommentsSection,
-  type CommentItem,
-} from "@/components/CommentsSection";
-import { QueryErrorHandler } from "@/components/QueryErrorHandler";
-import { BookActionCard } from "@/components/BookActionCard";
-import { StatusSelectionModal } from "@/components/StatusSelectionModal";
 
-export default function BookInfo() {
-  const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
+function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const textColor = useThemeColor({}, "text");
   const backgroundColor = useThemeColor({}, "background");
   const [modalVisible, setModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
+  const scrollViewRef = useRef<ScrollView>(null);
+  const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
 
@@ -54,6 +65,7 @@ export default function BookInfo() {
       ]
     : [];
   const updateBook = useUpdateBook();
+  const deleteBook = useDeleteBook();
 
   const handleStatusUpdate = async (status: BookStatus) => {
     let currentStatus = selectedStatus;
@@ -93,14 +105,43 @@ export default function BookInfo() {
     });
   };
 
-  const handleCommentPress = (commentId: string) => {
-    // TODO: Implement comment thread view
-    console.log("Open comment thread:", commentId);
+  const handleDeleteBook = async () => {
+    try {
+      await deleteBook.mutateAsync({ hiveId });
+      setSelectedStatus(null);
+      setUserReviewText("");
+      setDeleteModalVisible(false);
+    } catch (e) {
+      console.error("Failed to delete book:", e);
+    }
   };
 
   const handleUserPress = (userDid: string) => {
-    // TODO: Navigate to user profile
-    console.log("Open user profile:", userDid);
+    router.push(`/profile/${userDid}`);
+  };
+
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<View>,
+  ) => {
+    // Scroll to the reply form after a short delay to ensure it's rendered
+    setTimeout(() => {
+      if (replyFormRef.current && scrollViewRef.current) {
+        replyFormRef.current.measureLayout(
+          // @ts-ignore - measureLayout exists on View
+          scrollViewRef.current,
+          (x: number, y: number) => {
+            scrollViewRef.current?.scrollTo({
+              y: y - 100, // Offset to show some content above the reply form
+              animated: true,
+            });
+          },
+          () => {
+            console.log("Could not measure reply form layout");
+          },
+        );
+      }
+    }, 100);
   };
 
   const handleViewOnGoodreads = () => {
@@ -130,12 +171,15 @@ export default function BookInfo() {
   }
 
   const { book, reviews, comments: apiComments, ...userBook } = bookQuery.data!;
+  const activity = bookQuery.data?.activity ?? [];
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;
   const review = userReviewText || userBook.review;
 
   return (
-    <View style={[styles.mainContainer, { backgroundColor }]}>
+    <View
+      style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
+    >
       {/* Blurred Background */}
       <ImageBackground
         source={{
@@ -157,12 +201,20 @@ export default function BookInfo() {
         />
       </ImageBackground>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.contentContainer}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
-          <View style={styles.bookSection}>
+          <Animated.View
+            style={styles.bookSection}
+            entering={FadeInDown.delay(40).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <View style={styles.coverContainer}>
-              <Image
+              <FadeInImage
                 source={{
                   uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
                 }}
@@ -210,9 +262,13 @@ export default function BookInfo() {
                 </View>
               )}
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.actionButtons}>
+          <Animated.View
+            style={styles.actionButtons}
+            entering={FadeInDown.delay(80).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             {/* <Pressable
               style={styles.actionButton}
               onPress={() => setModalVisible(true)}
@@ -256,10 +312,14 @@ export default function BookInfo() {
                 Goodreads
               </ThemedText>
             </Pressable>
-          </View>
+          </Animated.View>
 
           {/* Description */}
-          <View style={styles.descriptionSection}>
+          <Animated.View
+            style={styles.descriptionSection}
+            entering={FadeInDown.delay(110).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <ThemedText
               style={[
                 styles.sectionTitle,
@@ -276,16 +336,36 @@ export default function BookInfo() {
             >
               {decode(book.description || "No description available")}
             </ThemedText>
-          </View>
+          </Animated.View>
 
           {/* Interactive Book Actions */}
-          <View style={styles.actionsContainer}>
+          <Animated.View
+            style={styles.actionsContainer}
+            entering={FadeInDown.delay(140).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
             <BookActionCard
               type="status"
               title="Reading Status"
               icon="bookmark-outline"
               status={status}
               onStatusPress={() => setModalVisible(true)}
+              rightAccessory={
+                // Only show delete button if user has this book in their library
+                userBook.status || userBook.stars || userBook.review ? (
+                  <Pressable
+                    onPress={() => setDeleteModalVisible(true)}
+                    hitSlop={8}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={colorScheme === "dark" ? "#ef4444" : "#991b1b"}
+                    />
+                  </Pressable>
+                ) : null
+              }
             />
 
             <BookActionCard
@@ -311,7 +391,67 @@ export default function BookInfo() {
               reviewText={review}
               onReviewTextChange={setUserReviewText}
             />
-          </View>
+          </Animated.View>
+
+          {/* Activity from other users */}
+          <Animated.View
+            style={styles.activitySection}
+            entering={FadeInDown.delay(160).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <ThemedText
+              style={[
+                styles.sectionTitle,
+                { color: colorScheme === "dark" ? "white" : colors.text },
+              ]}
+            >
+              Activity
+            </ThemedText>
+            {activity.length === 0 ? (
+              <ThemedText
+                style={{
+                  color: colorScheme === "dark" ? "#9CA3AF" : colors.icon,
+                }}
+                type="body"
+              >
+                No recent activity on this book
+              </ThemedText>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {activity.map((item, idx) => {
+                  const t = item.type;
+                  const iconName =
+                    t === "finished"
+                      ? ("checkmark-circle-outline" as const)
+                      : t === "review"
+                        ? ("chatbubble-ellipses-outline" as const)
+                        : ("book-outline" as const);
+                  const userDid = (item as any).userDid as string | undefined;
+                  const userHandle = (item as any).userHandle as
+                    | string
+                    | undefined;
+                  const title = `@${userHandle ?? userDid ?? "user"}`;
+                  const subtitle = `${t.charAt(0).toUpperCase()}${t.slice(1)} · ${new Date(item.createdAt).toLocaleDateString()}`;
+                  return (
+                    <ListItem
+                      key={`${item.hiveId}-${userDid ?? idx}-${item.createdAt}`}
+                      icon={iconName}
+                      avatarUri={
+                        userHandle
+                          ? `${getBaseUrl()}/profile/${userHandle}/image`
+                          : undefined
+                      }
+                      title={title}
+                      subtitle={subtitle}
+                      onPress={
+                        userDid ? () => handleUserPress(userDid) : undefined
+                      }
+                    />
+                  );
+                })}
+              </View>
+            )}
+          </Animated.View>
 
           <StatusSelectionModal
             visible={modalVisible}
@@ -321,14 +461,39 @@ export default function BookInfo() {
             isPending={updateBook.isPending}
           />
 
-          <CommentsSection
-            comments={comments}
-            onCommentPress={handleCommentPress}
-            onUserPress={handleUserPress}
-          />
+          {/* Only render delete modal if user has the book in their library */}
+          {(userBook.status || userBook.stars || userBook.review) && (
+            <DeleteConfirmationModal
+              visible={deleteModalVisible}
+              onClose={() => setDeleteModalVisible(false)}
+              onConfirm={handleDeleteBook}
+              title="Delete Book"
+              message="Are you sure you want to delete this book? This action cannot be undone."
+              isPending={deleteBook.isPending}
+            />
+          )}
+
+          <Animated.View
+            entering={FadeInUp.delay(180).duration(240)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <CommentsSection
+              comments={comments}
+              hiveId={hiveId}
+              onUserPress={handleUserPress}
+              onReplyClick={handleReplyClick}
+            />
+          </Animated.View>
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+export default function BookInfo() {
+  const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
+  return (
+    <BookInfoContent key={(hiveId as string) ?? ""} hiveId={hiveId as HiveId} />
   );
 }
 
@@ -494,6 +659,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   ratingSection: {
+    marginBottom: 24,
+  },
+  activitySection: {
     marginBottom: 24,
   },
 

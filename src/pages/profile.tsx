@@ -4,16 +4,37 @@ import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsk
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
+import { EditableLibraryTable } from "./components/EditableLibraryTable";
 
 export const ProfilePage: FC<{
   handle: string;
+  did: string;
   books: Book[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
-}> = ({ handle, profile, books, isBuzzer }) => {
+  isFollowing?: boolean;
+  canFollow?: boolean;
+  isOwnProfile?: boolean;
+}> = ({
+  handle,
+  did,
+  profile,
+  books,
+  isBuzzer,
+  isFollowing,
+  canFollow,
+  isOwnProfile,
+}) => {
   return (
     <div class="bg-sand container mx-auto min-h-[calc(100vh-64px)] max-w-7xl p-8 px-3 dark:bg-zinc-900 dark:text-white">
-      <ProfileHeader handle={handle} profile={profile} books={books} />
+      <ProfileHeader
+        handle={handle}
+        did={did}
+        isFollowing={isFollowing}
+        canFollow={canFollow}
+        profile={profile}
+        books={books}
+      />
 
       <div class="flex flex-col gap-10">
         {isBuzzer ? (
@@ -24,7 +45,11 @@ export const ProfilePage: FC<{
                   Library
                 </h2>
               </div>
-              <BookList books={books} />
+              {isOwnProfile ? (
+                <EditableLibraryTable books={books} />
+              ) : (
+                <BookList books={books} />
+              )}
             </section>
             {books.some((book) => book.review) && (
               <section class="mt-16 flex flex-col gap-2 px-4 lg:px-8">

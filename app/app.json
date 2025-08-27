@@ -8,16 +8,24 @@
     "scheme": "bookhive",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "githubUrl": "https://github.com/nperez0111/bookhive",
+    "appStoreUrl": "https://apps.apple.com/us/app/bookhive-a-better-goodreads/id6749799032",
     "ios": {
+      "icon": {
+        "light": "./assets/images/icon.png"
+      },
       "supportsTablet": true,
-      "bundleIdentifier": "com.bookhive.app"
+      "bundleIdentifier": "buzz.bookhive.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.bookhive.app"
+      "package": "buzz.bookhive.app"
     },
     "web": {
       "bundler": "metro",
@@ -32,12 +40,41 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#0f1419"
+          }
         }
       ]
     ],
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "imageWidth": 200,
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/images/splash-icon.png",
+        "backgroundColor": "#0f1419"
+      }
+    },
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "e5bb0612-33b8-4bfd-8ae4-b37fe1b82a3b"
+      }
+    },
+    "owner": "nickthesick",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e5bb0612-33b8-4bfd-8ae4-b37fe1b82a3b"
     }
   }
 }

@@ -81,6 +81,8 @@ export interface Profile {
   description?: string;
   booksRead: number;
   reviews: number;
+  /** Whether the authed user is following this profile */
+  isFollowing?: boolean;
 }
 
 const hashProfile = "profile";
@@ -101,6 +103,10 @@ export interface Activity {
   hiveId: string;
   /** The title of the book */
   title: string;
+  /** The DID of the user who added the book */
+  userDid: string;
+  /** The handle of the user who added the book */
+  userHandle: string;
 }
 
 const hashActivity = "activity";
@@ -115,6 +121,10 @@ export function validateActivity<V>(v: V) {
 
 export interface UserBook {
   $type?: "buzz.bookhive.defs#userBook";
+  /** The DID of the user who added the book */
+  userDid: string;
+  /** The handle of the user who added the book */
+  userHandle?: string;
   /** The title of the book */
   title: string;
   /** The authors of the book (tab separated) */

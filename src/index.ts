@@ -40,7 +40,12 @@ import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
 import type { HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
-import { getGoodreadsCsvParser, getStorygraphCsvParser, type GoodreadsBook, type StorygraphBook } from "./utils/csv.ts";
+import {
+  getGoodreadsCsvParser,
+  getStorygraphCsvParser,
+  type GoodreadsBook,
+  type StorygraphBook,
+} from "./utils/csv.ts";
 import { getUserRepoRecords, updateBookRecords } from "./utils/getBook.ts";
 
 import { lazy } from "./utils/lazy.ts";
@@ -277,11 +282,15 @@ export class Server {
 
         const { export: exportFile } = c.req.valid("form");
         return streamSSE(c, async (stream) => {
+          const normalizeStr = (s: string) =>
+            s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
           const parser = getGoodreadsCsvParser();
           let id = 0;
           let totalBooks = 0;
-          let matchedBooks = 0;
+          let matchedBooks = 0; // processed (matched to Hive)
+          let uploadedBooks = 0; // newly created (not alreadyExists)
           const unmatchedBooks: GoodreadsBook[] = [];
+          const unmatchedSet = new Set<string>();
 
           // Send initial event
           await stream.writeSSE({
@@ -317,6 +326,9 @@ export class Server {
             ctx,
             agent,
           });
+          const existingHiveIdsPromise = bookRecords.then(
+            (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
+          );
 
           // Send event before starting uploads
           await stream.writeSSE({
@@ -341,7 +353,10 @@ export class Server {
                 ): Promise<
                   Map<
                     HiveId,
-                    Partial<BookRecord.Record> & { coverImage?: string }
+                    Partial<BookRecord.Record> & {
+                      coverImage?: string;
+                      alreadyExists?: boolean;
+                    }
                   >
                 > => {
                   return new Map(
@@ -385,10 +400,16 @@ export class Server {
                               .executeTakeFirst();
 
                             if (!hiveBook) {
-                              unmatchedBooks.push(book);
+                              const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
+                              if (!unmatchedSet.has(key)) {
+                                unmatchedSet.add(key);
+                                unmatchedBooks.push(book);
+                              }
                               return null;
                             }
 
+                            const existingHiveIds =
+                              await existingHiveIdsPromise;
                             // update the book record asynchronously
                             return [
                               hiveBook.id as HiveId,
@@ -408,6 +429,7 @@ export class Server {
                                   ? book.myRating * 2
                                   : undefined,
                                 review: book.myReview ?? undefined,
+                                alreadyExists: existingHiveIds.has(hiveBook.id),
                               },
                             ] as const;
                           } catch (e) {
@@ -428,32 +450,48 @@ export class Server {
             .pipeTo(
               new WritableStream({
                 async write(bookUpdates) {
-                  matchedBooks += bookUpdates.size;
-                  // Only send one book at a time to the client
-                  const book = bookUpdates.values().next().value;
-
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      title: book?.["title"],
-                      author: book?.["authors"],
-                      uploaded: bookUpdates.size,
-                      processed: matchedBooks,
-                      failed: unmatchedBooks.length,
-                      failedBooks: unmatchedBooks.map((b) => ({
-                        title: b.title,
-                        author: b.author,
-                      })),
-                      total: totalBooks,
-                      event: "book-upload",
-                      stage: "uploading",
-                      stageProgress: {
-                        current: matchedBooks,
+                  const startProcessed = matchedBooks;
+                  let idx = 0;
+                  for (const book of bookUpdates.values()) {
+                    const processed = startProcessed + ++idx;
+                    await stream.writeSSE({
+                      data: JSON.stringify({
+                        title: book?.["title"],
+                        author: book?.["authors"],
+                        uploaded: 1,
+                        processed,
+                        failed: unmatchedBooks.length,
                         total: totalBooks,
-                        message: `Uploading books to your library (${matchedBooks}/${totalBooks})`,
-                      },
-                      id: id++,
-                    }),
-                  });
+                        event: "book-upload",
+                        stage: "uploading",
+                        stageProgress: {
+                          current: processed,
+                          total: totalBooks,
+                          message: `Uploading books to your library (${processed}/${totalBooks})`,
+                        },
+                        // include the full book object for client rendering
+                        book: book
+                          ? {
+                              hiveId: book["hiveId"],
+                              title: book["title"],
+                              authors: book["authors"],
+                              coverImage: book["coverImage"],
+                              status: book["status"],
+                              finishedAt: book["finishedAt"],
+                              stars: book["stars"],
+                              review: book["review"],
+                              alreadyExists: book["alreadyExists"],
+                            }
+                          : undefined,
+                        id: id++,
+                      }),
+                    });
+                    if (book && !(book as any)["alreadyExists"]) {
+                      uploadedBooks++;
+                    }
+                  }
+
+                  matchedBooks += bookUpdates.size;
 
                   await updateBookRecords({
                     ctx,
@@ -474,11 +512,26 @@ export class Server {
               stageProgress: {
                 current: matchedBooks,
                 total: totalBooks,
-                message: `Import complete! Successfully imported ${matchedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
+                message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
               },
-              failedBooks: unmatchedBooks.map((b) => ({
+              failedBooks: Array.from(
+                new Map(
+                  unmatchedBooks.map((b) => [
+                    `${normalizeStr(b.title)}::${normalizeStr(b.author)}`,
+                    { title: b.title, author: b.author },
+                  ]),
+                ).values(),
+              ),
+              // Send full failed book payloads so client can retry with minimal server state
+              failedBookDetails: unmatchedBooks.map((b) => ({
                 title: b.title,
                 author: b.author,
+                isbn10: b.isbn || undefined,
+                isbn13: b.isbn13 || undefined,
+                stars: b.myRating ? b.myRating * 2 : undefined,
+                review: b.myReview || undefined,
+                finishedAt: b.dateRead ? b.dateRead.toISOString() : undefined,
+                status: b.dateRead ? "buzz.bookhive.defs#finished" : undefined,
               })),
               id: id++,
             }),
@@ -512,11 +565,15 @@ export class Server {
 
         const { export: exportFile } = c.req.valid("form");
         return streamSSE(c, async (stream) => {
+          const normalizeStr = (s: string) =>
+            s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
           const parser = getStorygraphCsvParser();
           let id = 0;
           let totalBooks = 0;
-          let matchedBooks = 0;
+          let matchedBooks = 0; // processed (matched to Hive)
+          let uploadedBooks = 0; // newly created (not alreadyExists)
           const unmatchedBooks: StorygraphBook[] = [];
+          const unmatchedSet = new Set<string>();
 
           // Send initial event
           await stream.writeSSE({
@@ -552,6 +609,9 @@ export class Server {
             ctx,
             agent,
           });
+          const existingHiveIdsPromise = bookRecords.then(
+            (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
+          );
 
           // Send event before starting uploads
           await stream.writeSSE({
@@ -576,7 +636,10 @@ export class Server {
                 ): Promise<
                   Map<
                     HiveId,
-                    Partial<BookRecord.Record> & { coverImage?: string }
+                    Partial<BookRecord.Record> & {
+                      coverImage?: string;
+                      alreadyExists?: boolean;
+                    }
                   >
                 > => {
                   return new Map(
@@ -620,7 +683,11 @@ export class Server {
                               .executeTakeFirst();
 
                             if (!hiveBook) {
-                              unmatchedBooks.push(book);
+                              const key = `${normalizeStr(book.title)}::${normalizeStr(book.authors)}`;
+                              if (!unmatchedSet.has(key)) {
+                                unmatchedSet.add(key);
+                                unmatchedBooks.push(book);
+                              }
                               return null;
                             }
 
@@ -639,6 +706,8 @@ export class Server {
                                 break;
                             }
 
+                            const existingHiveIds =
+                              await existingHiveIdsPromise;
                             // update the book record asynchronously
                             return [
                               hiveBook.id as HiveId,
@@ -654,6 +723,7 @@ export class Server {
                                   ? book.starRating * 2 // Convert 0-5 to 0-10 scale
                                   : undefined,
                                 review: book.review || undefined,
+                                alreadyExists: existingHiveIds.has(hiveBook.id),
                               },
                             ] as const;
                           } catch (e) {
@@ -674,32 +744,47 @@ export class Server {
             .pipeTo(
               new WritableStream({
                 async write(bookUpdates) {
-                  matchedBooks += bookUpdates.size;
-                  // Only send one book at a time to the client
-                  const book = bookUpdates.values().next().value;
-
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      title: book?.["title"],
-                      author: book?.["authors"],
-                      uploaded: bookUpdates.size,
-                      processed: matchedBooks,
-                      failed: unmatchedBooks.length,
-                      failedBooks: unmatchedBooks.map((b) => ({
-                        title: b.title,
-                        author: b.authors,
-                      })),
-                      total: totalBooks,
-                      event: "book-upload",
-                      stage: "uploading",
-                      stageProgress: {
-                        current: matchedBooks,
+                  const startProcessed = matchedBooks;
+                  let idx = 0;
+                  for (const book of bookUpdates.values()) {
+                    const processed = startProcessed + ++idx;
+                    await stream.writeSSE({
+                      data: JSON.stringify({
+                        title: book?.["title"],
+                        author: book?.["authors"],
+                        uploaded: 1,
+                        processed,
+                        failed: unmatchedBooks.length,
                         total: totalBooks,
-                        message: `Uploading books to your library (${matchedBooks}/${totalBooks})`,
-                      },
-                      id: id++,
-                    }),
-                  });
+                        event: "book-upload",
+                        stage: "uploading",
+                        stageProgress: {
+                          current: processed,
+                          total: totalBooks,
+                          message: `Uploading books to your library (${processed}/${totalBooks})`,
+                        },
+                        book: book
+                          ? {
+                              hiveId: book["hiveId"],
+                              title: book["title"],
+                              authors: book["authors"],
+                              coverImage: book["coverImage"],
+                              status: book["status"],
+                              finishedAt: book["finishedAt"],
+                              stars: book["stars"],
+                              review: book["review"],
+                              alreadyExists: book["alreadyExists"],
+                            }
+                          : undefined,
+                        id: id++,
+                      }),
+                    });
+                    if (book && !(book as any)["alreadyExists"]) {
+                      uploadedBooks++;
+                    }
+                  }
+
+                  matchedBooks += bookUpdates.size;
 
                   await updateBookRecords({
                     ctx,
@@ -720,11 +805,31 @@ export class Server {
               stageProgress: {
                 current: matchedBooks,
                 total: totalBooks,
-                message: `Import complete! Successfully imported ${matchedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
+                message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
               },
-              failedBooks: unmatchedBooks.map((b) => ({
+              failedBooks: Array.from(
+                new Map(
+                  unmatchedBooks.map((b) => [
+                    `${normalizeStr(b.title)}::${normalizeStr(b.authors)}`,
+                    { title: b.title, author: b.authors },
+                  ]),
+                ).values(),
+              ),
+              failedBookDetails: unmatchedBooks.map((b) => ({
                 title: b.title,
                 author: b.authors,
+                isbn13: b.isbn || undefined,
+                stars: b.starRating ? b.starRating * 2 : undefined,
+                review: b.review || undefined,
+                finishedAt: b.lastDateRead
+                  ? b.lastDateRead.toISOString()
+                  : undefined,
+                status:
+                  b.readStatus?.toLowerCase() === "read"
+                    ? "buzz.bookhive.defs#finished"
+                    : b.readStatus?.toLowerCase() === "currently-reading"
+                      ? "buzz.bookhive.defs#reading"
+                      : undefined,
               })),
               id: id++,
             }),

@@ -8,7 +8,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "update:staging": "eas update --branch staging",
+    "update:production": "eas update --branch production",
+    "update:development": "eas update --branch development"
   },
   "jest": {
     "preset": "jest-expo"
@@ -22,7 +25,9 @@
     "@tanstack/query-async-storage-persister": "^5.83.1",
     "@tanstack/react-query": "^5.84.1",
     "@tanstack/react-query-persist-client": "^5.84.1",
+    "date-fns": "^3.6.0",
     "expo": "~52.0.47",
+    "expo-application": "~6.0.2",
     "expo-blur": "~14.0.3",
     "expo-constants": "~17.0.8",
     "expo-font": "~13.0.4",
@@ -34,6 +39,7 @@
     "expo-status-bar": "~2.0.1",
     "expo-symbols": "~0.2.2",
     "expo-system-ui": "~4.0.9",
+    "expo-updates": "0.27.4",
     "expo-web-browser": "~14.0.2",
     "ofetch": "1.4.1",
     "react": "18.3.1",
@@ -44,17 +50,18 @@
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.4.0",
     "react-native-web": "~0.19.13",
-    "react-native-webview": "13.12.5"
+    "react-native-webview": "13.12.5",
+    "typescript": "^5.9.2"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",
     "@types/jest": "^30.0.0",
     "@types/react": "^18.3.23",
     "@types/react-test-renderer": "^19.1.0",
+    "eas-cli": "16.17.4",
     "jest": "~29.7.0",
     "jest-expo": "~52.0.6",
-    "react-test-renderer": "^19.1.1",
-    "typescript": "^5.9.2"
+    "react-test-renderer": "^19.1.1"
   },
   "private": true
 }

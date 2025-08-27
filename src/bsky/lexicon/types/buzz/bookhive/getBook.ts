@@ -49,6 +49,8 @@ export interface OutputSchema {
   reviews: BuzzBookhiveDefs.Review[];
   /** Comments on the book */
   comments: BuzzBookhiveDefs.Comment[];
+  /** Other users' activity on the book */
+  activity?: BuzzBookhiveDefs.Activity[];
 }
 
 export type HandlerInput = undefined;
