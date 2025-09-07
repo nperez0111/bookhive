@@ -1,3 +1,4 @@
+import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { BookActionCard } from "@/components/BookActionCard";
 import { CommentsSection } from "@/components/CommentsSection";
 import { DeleteConfirmationModal } from "@/components/DeleteConfirmationModal";
@@ -180,6 +181,9 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
     <View
       style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
     >
+      {/* Back Navigation Header */}
+      <BackNavigationHeader />
+      
       {/* Blurred Background */}
       <ImageBackground
         source={{
@@ -555,7 +559,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingTop: 36,
+    paddingTop: 0, // Remove top padding since we have header now
   },
   contentContainer: {
     padding: 16,
