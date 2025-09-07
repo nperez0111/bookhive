@@ -50,6 +50,11 @@ export type ReadThroughCacheOptions = {
    * Number of requests allowed per second. If not provided, no rate limiting is applied.
    */
   requestsPerSecond?: number;
+  /**
+   * Time to live for cache in milliseconds.
+   * @default 86400000 (1 day in ms)
+   */
+  ttl?: number;
 };
 
 /**
@@ -69,19 +74,31 @@ export async function readThroughCache<T extends StorageValue>(
     ? new RateLimiter(options.requestsPerSecond)
     : null;
 
+  // TTL in ms, default to 1 day
+  const ttl = options.ttl ?? 24 * 60 * 60 * 1000;
+
   // Dedupe requests for the same key.
   if (dupeRequestsCache.has(key)) {
     logger.trace({ key }, "readThroughCache dupeRequest");
     return dupeRequestsCache.get(key) as Promise<T>;
   }
 
-  const unresolvedPromise = kv.get<T>(key).then(async (cached) => {
-    if (cached) {
+  const unresolvedPromise = Promise.all([
+    kv.get<T>(key),
+    kv.getMeta?.(key) ?? Promise.resolve(undefined),
+  ]).then(async ([cached, meta]) => {
+    const now = Date.now();
+    let isExpired = false;
+    if (cached && meta && typeof meta['timestamp'] === 'number') {
+      isExpired = now - meta['timestamp'] > ttl;
+    }
+
+    if (cached && !isExpired) {
       logger.trace({ key, cached }, "readThroughCache hit");
       return cached;
     }
 
-    logger.trace({ key }, "readThroughCache miss");
+    logger.trace({ key }, isExpired ? "readThroughCache expired" : "readThroughCache miss");
 
     // Apply rate limiting before fetch if enabled
     if (rateLimiter) {
@@ -92,6 +109,9 @@ export async function readThroughCache<T extends StorageValue>(
       .then((fresh) => {
         logger.trace({ key, fresh }, "readThroughCache set");
         kv.set(key, fresh);
+        if (kv.setMeta) {
+          kv.setMeta(key, { timestamp: now });
+        }
         return fresh;
       })
       .catch((err) => {
