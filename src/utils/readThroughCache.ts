@@ -86,7 +86,7 @@ export async function readThroughCache<T extends StorageValue>(
   const unresolvedPromise = Promise.all([kv.get<T>(key), kv.getMeta(key)]).then(
     async ([cached, meta]) => {
       const now = Date.now();
-      let isExpired = meta
+      const isExpired = meta
         ? cached && typeof meta["timestamp"] === "number"
           ? now - meta["timestamp"] > ttl
           : true
