@@ -83,42 +83,43 @@ export async function readThroughCache<T extends StorageValue>(
     return dupeRequestsCache.get(key) as Promise<T>;
   }
 
-  const unresolvedPromise = Promise.all([
-    kv.get<T>(key),
-    kv.getMeta?.(key) ?? Promise.resolve(undefined),
-  ]).then(async ([cached, meta]) => {
-    const now = Date.now();
-    let isExpired = false;
-    if (cached && meta && typeof meta['timestamp'] === 'number') {
-      isExpired = now - meta['timestamp'] > ttl;
-    }
+  const unresolvedPromise = Promise.all([kv.get<T>(key), kv.getMeta(key)]).then(
+    async ([cached, meta]) => {
+      const now = Date.now();
+      let isExpired = meta
+        ? cached && typeof meta["timestamp"] === "number"
+          ? now - meta["timestamp"] > ttl
+          : true
+        : true;
 
-    if (cached && !isExpired) {
-      logger.trace({ key, cached }, "readThroughCache hit");
-      return cached;
-    }
+      if (cached && !isExpired) {
+        logger.trace({ key, cached }, "readThroughCache hit");
+        return cached;
+      }
 
-    logger.trace({ key }, isExpired ? "readThroughCache expired" : "readThroughCache miss");
+      logger.trace(
+        { key },
+        isExpired ? "readThroughCache expired" : "readThroughCache miss",
+      );
 
-    // Apply rate limiting before fetch if enabled
-    if (rateLimiter) {
-      await rateLimiter.acquireToken();
-    }
+      // Apply rate limiting before fetch if enabled
+      if (rateLimiter) {
+        await rateLimiter.acquireToken();
+      }
 
-    return fetch({ key })
-      .then((fresh) => {
-        logger.trace({ key, fresh }, "readThroughCache set");
-        kv.set(key, fresh);
-        if (kv.setMeta) {
+      return fetch({ key })
+        .then((fresh) => {
+          logger.trace({ key, fresh }, "readThroughCache set");
+          kv.set(key, fresh);
           kv.setMeta(key, { timestamp: now });
-        }
-        return fresh;
-      })
-      .catch((err) => {
-        logger.error({ err }, "readThroughCache error");
-        return defaultValue as T;
-      });
-  });
+          return fresh;
+        })
+        .catch((err) => {
+          logger.error({ err }, "readThroughCache error");
+          return defaultValue as T;
+        });
+    },
+  );
 
   dupeRequestsCache.set(key, unresolvedPromise);
 
