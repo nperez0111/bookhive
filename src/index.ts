@@ -24,6 +24,7 @@ import lruCacheDriver from "unstorage/drivers/lru-cache";
 import { z } from "zod";
 
 import { createClient } from "./auth/client";
+import { getSessionConfig } from "./auth/router";
 import {
   createBidirectionalResolver,
   createIdResolver,
@@ -84,10 +85,7 @@ export async function getSessionAgent(
   res: Response,
   ctx: AppContext,
 ) {
-  const session = await getIronSession<Session>(req, res, {
-    cookieName: "sid",
-    password: env.COOKIE_SECRET,
-  });
+  const session = await getIronSession<Session>(req, res, getSessionConfig());
 
   if (!session.did) {
     return null;
@@ -98,11 +96,7 @@ export async function getSessionAgent(
     // Use "auto" to automatically refresh tokens when needed
     await oauthSession.getTokenInfo("auto");
     // Keep session TTL fixed at 24 hours, independent of token expiration
-    session.updateConfig({
-      cookieName: "sid",
-      password: env.COOKIE_SECRET,
-      ttl: 60 * 60 * 24, // 24 hours
-    });
+    session.updateConfig(getSessionConfig());
     await session.save();
     return oauthSession ? new Agent(oauthSession) : null;
   } catch (err) {
