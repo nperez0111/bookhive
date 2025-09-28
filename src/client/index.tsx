@@ -52,4 +52,29 @@ document.addEventListener("DOMContentLoaded", () => {
       importTable,
     );
   }
+
+  // Update page title based on active tab on home page
+  const tabInputs = document.querySelectorAll('input[name="tabs"]');
+  if (tabInputs.length > 0) {
+    const updateTitle = () => {
+      const activeTab = document.querySelector('input[name="tabs"]:checked') as HTMLInputElement;
+      if (!activeTab) return;
+
+      const baseTitle = "BookHive";
+
+      // Find the corresponding label for this tab input
+      const tabLabel = document.querySelector(`label[for="${activeTab.id}"]`) as HTMLLabelElement;
+      const tabTitle = tabLabel ? tabLabel.textContent?.trim() || "Home" : "Home";
+
+      document.title = `${baseTitle} | ${tabTitle}`;
+    };
+
+    // Set initial title based on checked tab
+    updateTitle();
+
+    // Listen for tab changes
+    tabInputs.forEach(input => {
+      input.addEventListener('change', updateTitle);
+    });
+  }
 });
