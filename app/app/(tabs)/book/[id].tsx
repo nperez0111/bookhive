@@ -182,8 +182,8 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
       style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
     >
       {/* Back Navigation Header */}
-      <BackNavigationHeader />
-      
+      <BackNavigationHeader title="Book Info" />
+
       {/* Blurred Background */}
       <ImageBackground
         source={{

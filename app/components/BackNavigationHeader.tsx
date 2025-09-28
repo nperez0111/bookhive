@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { ThemedText } from "./ThemedText";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type BackNavigationHeaderProps = {
@@ -23,6 +23,7 @@ export function BackNavigationHeader({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const { top } = useSafeAreaInsets();
+  const router = useRouter();
 
   const handleBackPress = () => {
     if (onBackPress) {
@@ -37,9 +38,9 @@ export function BackNavigationHeader({
       style={[
         styles.container,
         {
-          paddingTop: Platform.OS === "ios" ? top : top + 8,
-          backgroundColor: colors.background,
-          borderBottomColor: colors.cardBorder,
+          paddingTop: 8,
+          paddingBottom: 8,
+          backgroundColor: "transparent",
         },
         style,
       ]}
@@ -50,29 +51,36 @@ export function BackNavigationHeader({
           style={[
             styles.backButton,
             {
-              backgroundColor:
-                colorScheme === "dark"
-                  ? "rgba(255, 255, 255, 0.1)"
-                  : "rgba(0, 0, 0, 0.05)",
+              backgroundColor: "rgba(0, 0, 0, 0.4)",
+              borderWidth: 1,
+              borderColor: "rgba(255, 255, 255, 0.2)",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 4,
+              elevation: 4,
             },
           ]}
-          hitSlop={8}
+          hitSlop={12}
+          pressRetentionOffset={12}
         >
           <Ionicons
             name="chevron-back"
-            size={24}
-            color={colors.primaryText}
+            size={20}
+            color={colorScheme === "dark" ? "white" : "white"}
           />
         </Pressable>
 
         {title && (
-          <ThemedText
-            style={[styles.title, { color: colors.primaryText }]}
-            type="heading"
-            numberOfLines={1}
-          >
-            {title}
-          </ThemedText>
+          <View style={styles.titleContainer}>
+            <ThemedText
+              style={[styles.title, { color: "white" }]}
+              type="heading"
+              numberOfLines={1}
+            >
+              {title}
+            </ThemedText>
+          </View>
         )}
 
         <View style={styles.rightContainer}>{rightElement}</View>
@@ -83,28 +91,42 @@ export function BackNavigationHeader({
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 1,
-    paddingBottom: 12,
     zIndex: 1000,
   },
   content: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    height: 44,
+    paddingVertical: 4,
+    height: 36,
+    position: "relative",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 8,
+    zIndex: 10,
+  },
+  titleContainer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 5,
   },
   title: {
-    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     fontSize: 18,
     fontWeight: "600",
+    textAlign: "center",
+    overflow: "hidden",
   },
   rightContainer: {
     minWidth: 40,
