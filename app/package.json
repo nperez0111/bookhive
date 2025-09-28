@@ -1,5 +1,5 @@
 {
-  "name": "bookhive",
+  "name": "bookhive-app",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
@@ -11,7 +11,9 @@
     "lint": "expo lint",
     "update:staging": "eas update --branch staging",
     "update:production": "eas update --branch production",
-    "update:development": "eas update --branch development"
+    "update:development": "eas update --branch development",
+    "ios:build": "eas build --platform ios",
+    "ios:submit": "eas submit --platform ios"
   },
   "jest": {
     "preset": "jest-expo"

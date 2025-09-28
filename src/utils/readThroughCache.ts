@@ -50,6 +50,11 @@ export type ReadThroughCacheOptions = {
    * Number of requests allowed per second. If not provided, no rate limiting is applied.
    */
   requestsPerSecond?: number;
+  /**
+   * Time to live for cache in milliseconds.
+   * @default 86400000 (1 day in ms)
+   */
+  ttl?: number;
 };
 
 /**
@@ -69,36 +74,52 @@ export async function readThroughCache<T extends StorageValue>(
     ? new RateLimiter(options.requestsPerSecond)
     : null;
 
+  // TTL in ms, default to 1 day
+  const ttl = options.ttl ?? 24 * 60 * 60 * 1000;
+
   // Dedupe requests for the same key.
   if (dupeRequestsCache.has(key)) {
     logger.trace({ key }, "readThroughCache dupeRequest");
     return dupeRequestsCache.get(key) as Promise<T>;
   }
 
-  const unresolvedPromise = kv.get<T>(key).then(async (cached) => {
-    if (cached) {
-      logger.trace({ key, cached }, "readThroughCache hit");
-      return cached;
-    }
+  const unresolvedPromise = Promise.all([kv.get<T>(key), kv.getMeta(key)]).then(
+    async ([cached, meta]) => {
+      const now = Date.now();
+      const isExpired = meta
+        ? cached && typeof meta["timestamp"] === "number"
+          ? now - meta["timestamp"] > ttl
+          : true
+        : true;
 
-    logger.trace({ key }, "readThroughCache miss");
+      if (cached && !isExpired) {
+        logger.trace({ key, cached }, "readThroughCache hit");
+        return cached;
+      }
 
-    // Apply rate limiting before fetch if enabled
-    if (rateLimiter) {
-      await rateLimiter.acquireToken();
-    }
+      logger.trace(
+        { key },
+        isExpired ? "readThroughCache expired" : "readThroughCache miss",
+      );
 
-    return fetch({ key })
-      .then((fresh) => {
-        logger.trace({ key, fresh }, "readThroughCache set");
-        kv.set(key, fresh);
-        return fresh;
-      })
-      .catch((err) => {
-        logger.error({ err }, "readThroughCache error");
-        return defaultValue as T;
-      });
-  });
+      // Apply rate limiting before fetch if enabled
+      if (rateLimiter) {
+        await rateLimiter.acquireToken();
+      }
+
+      return fetch({ key })
+        .then((fresh) => {
+          logger.trace({ key, fresh }, "readThroughCache set");
+          kv.set(key, fresh);
+          kv.setMeta(key, { timestamp: now });
+          return fresh;
+        })
+        .catch((err) => {
+          logger.error({ err }, "readThroughCache error");
+          return defaultValue as T;
+        });
+    },
+  );
 
   dupeRequestsCache.set(key, unresolvedPromise);
 
