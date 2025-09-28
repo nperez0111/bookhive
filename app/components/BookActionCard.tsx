@@ -104,13 +104,6 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               starSize={28}
               style={styles.starRating}
             />
-            {rating && (
-              <ThemedText
-                style={[styles.ratingText, { color: colors.secondaryText }]}
-              >
-                {rating / 2} out of 5 stars
-              </ThemedText>
-            )}
           </View>
         );
 
