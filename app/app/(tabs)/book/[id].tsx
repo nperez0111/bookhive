@@ -29,6 +29,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  Share,
 } from "react-native";
 import Animated, {
   FadeInDown,
@@ -149,6 +150,14 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
     if (bookQuery.data?.book.sourceUrl) {
       Linking.openURL(bookQuery.data.book.sourceUrl);
     }
+  };
+
+  const handleShare = () => {
+    const shareUrl = `${getBaseUrl()}/books/${hiveId}`;
+    Share.share({
+      url: shareUrl,
+      title: book.title,
+    });
   };
 
   if (bookQuery.isLoading) {
@@ -273,18 +282,36 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
             entering={FadeInDown.delay(80).duration(220)}
             layout={LinearTransition.springify().damping(18).stiffness(180)}
           >
-            {/* <Pressable
-              style={styles.actionButton}
-              onPress={() => setModalVisible(true)}
+            <Pressable
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? "rgba(255, 255, 255, 0.1)"
+                      : "rgba(0, 0, 0, 0.1)",
+                  borderColor:
+                    colorScheme === "dark"
+                      ? "rgba(255, 255, 255, 0.2)"
+                      : "rgba(0, 0, 0, 0.2)",
+                },
+              ]}
+              onPress={handleShare}
             >
-              <Ionicons name="add" size={20} color="white" />
-              <ThemedText style={styles.actionButtonText}>Add</ThemedText>
+              <Ionicons
+                name="share-outline"
+                size={20}
+                color={colorScheme === "dark" ? "white" : colors.text}
+              />
+              <ThemedText
+                style={[
+                  styles.actionButtonText,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Share
+              </ThemedText>
             </Pressable>
-
-            <Pressable style={styles.actionButton} onPress={handleShare}>
-              <Ionicons name="share-outline" size={20} color="white" />
-              <ThemedText style={styles.actionButtonText}>Share</ThemedText>
-            </Pressable> */}
 
             <Pressable
               style={[
