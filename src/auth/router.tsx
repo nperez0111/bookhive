@@ -1,5 +1,5 @@
 import { isValidHandle } from "@atproto/syntax";
-import { getIronSession, sealData } from "iron-session";
+import { getIronSession, sealData, type IronSessionOptions } from "iron-session";
 
 
 import { OAuthResolverError } from "@atproto/oauth-client-node";
@@ -10,6 +10,23 @@ import { Layout } from "../pages/layout";
 import { Agent } from "@atproto/api";
 import { Error } from "../pages/error";
 import { Login } from "../pages/login";
+
+// Helper function to get consistent session configuration
+export function getSessionConfig(): IronSessionOptions {
+  return {
+    cookieName: "sid",
+    password: env.COOKIE_SECRET,
+    ttl: 60 * 60 * 24, // 24 hours
+    cookieOptions: {
+      // For localhost development, we need to disable secure flag
+      secure: env.NODE_ENV === "production",
+      // Ensure SameSite is set to Lax for cross-origin redirects
+      sameSite: "lax",
+      // Allow cookies to work across localhost ports
+      httpOnly: true,
+    },
+  };
+}
 
 export function loginRouter(
   app: HonoServer,
@@ -34,13 +51,7 @@ export function loginRouter(
         .get("ctx")
         .oauthClient.callback(params);
 
-      const clientSession = await getIronSession<Session>(c.req.raw, c.res, {
-        cookieName: "sid",
-        password: env.COOKIE_SECRET,
-        // Set session TTL to 24 hours, independent of token expiration
-        // Tokens will be refreshed automatically before they expire
-        ttl: 60 * 60 * 24, // 24 hours
-      });
+      const clientSession = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
 
       // assert(!clientSession.did, "session already exists");
       clientSession.did = session.did;
@@ -149,20 +160,13 @@ export function loginRouter(
 
   app.get("/mobile/refresh-token", async (c) => {
     try {
-      const session = await getIronSession<Session>(c.req.raw, c.res, {
-        cookieName: "sid",
-        password: env.COOKIE_SECRET,
-      });
+      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
 
       const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
       // Use "auto" to automatically refresh tokens when needed
       await oauthSession.getTokenInfo("auto");
       // Keep session TTL fixed at 24 hours for mobile sessions too
-      session.updateConfig({
-        cookieName: "sid",
-        password: env.COOKIE_SECRET,
-        ttl: 60 * 60 * 24, // 24 hours
-      });
+      session.updateConfig(getSessionConfig());
       await session.save();
 
       return c.json({
@@ -225,10 +229,7 @@ export function loginRouter(
 
   // Logout handler
   app.post("/logout", async (c) => {
-    const session = await getIronSession<Session>(c.req.raw, c.res, {
-      cookieName: "sid",
-      password: env.COOKIE_SECRET,
-    });
+    const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
     const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
     const agent = oauthSession ? new Agent(oauthSession) : null;
     await onLogout({ agent, ctx: c.get("ctx") });
