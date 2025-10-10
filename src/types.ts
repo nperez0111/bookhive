@@ -127,10 +127,6 @@ export type HiveBook = {
   createdAt: string;
   updatedAt: string;
   rawTitle: string | null;
-  genres: string | null;
-  series: string | null;
-  meta: string | null;
-  enrichedAt: string | null;
 };
 
 export type UserFollow = {
@@ -159,6 +155,8 @@ export type UserFollow = {
    */
   isActive: number;
 };
+
+
 
 type Simplify<T> = {
   [K in keyof T]: T[K];
