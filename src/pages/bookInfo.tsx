@@ -6,7 +6,6 @@ import { Script } from "./utils/script";
 import type { HiveBook } from "../types";
 import type { UserBook } from "../types";
 import { BOOK_STATUS_MAP } from "../constants";
-import { decode } from "html-entities";
 import { sql } from "kysely";
 import { CommentsSection } from "./comments";
 
@@ -387,9 +386,125 @@ export const BookInfo: FC<{
                 )}
               </div>
 
-              <p className="mb-6 leading-relaxed text-gray-700 dark:text-gray-300">
-                {decode(book.description || "No description available")}
-              </p>
+              <div
+                className="prose prose-sm dark:prose-invert mb-6 max-w-none leading-relaxed text-gray-700 dark:text-gray-300"
+                dangerouslySetInnerHTML={{
+                  __html: book.description || "No description available",
+                }}
+              />
+
+              {book.genres && (
+                <div className="mb-4">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                    Genres
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {JSON.parse(book.genres).map(
+                      (genre: string, index: number) => (
+                        <span
+                          key={index}
+                          className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                        >
+                          {genre}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {book.series && (
+                <div className="mb-4">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                    Series
+                  </h3>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {(() => {
+                      const seriesData = JSON.parse(book.series);
+                      return (
+                        <span>
+                          {seriesData.title}
+                          {seriesData.position &&
+                            ` (Book ${seriesData.position})`}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {book.meta && (
+                <div className="mb-4">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                    Publication Details
+                  </h3>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {(() => {
+                      const meta = JSON.parse(book.meta);
+                      const details = [];
+                      if (meta.publicationYear && meta.publicationYear > 0) {
+                        details.push(meta.publicationYear);
+                      }
+                      if (meta.publisher) {
+                        details.push(meta.publisher);
+                      }
+                      if (meta.language) {
+                        details.push(meta.language);
+                      }
+                      return details.length > 0
+                        ? details.join(" • ")
+                        : "No publication details available";
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {book.meta &&
+                (() => {
+                  const meta = JSON.parse(book.meta);
+                  return (
+                    meta.authorBio && (
+                      <div className="mb-4">
+                        <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                          About the Author
+                        </h3>
+                        <div
+                          className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-gray-700 dark:text-gray-300"
+                          dangerouslySetInnerHTML={{
+                            __html: meta.authorBio,
+                          }}
+                        />
+                      </div>
+                    )
+                  );
+                })()}
+
+              {book.meta &&
+                (() => {
+                  const meta = JSON.parse(book.meta);
+                  return (
+                    meta.secondaryAuthors &&
+                    meta.secondaryAuthors.length > 0 && (
+                      <div className="mb-4">
+                        <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                          Additional Authors
+                        </h3>
+                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                          {meta.secondaryAuthors.map(
+                            (author: any, index: number) => (
+                              <span key={index}>
+                                {author.name}
+                                {index < meta.secondaryAuthors.length - 1 &&
+                                  ", "}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    )
+                  );
+                })()}
+
               {book.sourceUrl && (
                 <div className="mt-4 flex items-center">
                   <a

@@ -19,7 +19,6 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { decode } from "html-entities";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -38,6 +37,8 @@ import Animated, {
 } from "react-native-reanimated";
 import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
+
+import { HtmlToText } from "@/utils/htmlToText";
 
 function BookInfoContent({
   hiveId,
@@ -375,14 +376,13 @@ function BookInfoContent({
             >
               Description
             </ThemedText>
-            <ThemedText
+            <HtmlToText
+              html={book.description || "No description available"}
               style={[
                 styles.description,
                 { color: colorScheme === "dark" ? "#E5E7EB" : colors.text },
               ]}
-            >
-              {decode(book.description || "No description available")}
-            </ThemedText>
+            />
           </Animated.View>
 
           {/* Interactive Book Actions */}

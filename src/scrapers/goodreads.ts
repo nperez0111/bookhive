@@ -114,6 +114,10 @@ class Goodreads {
       ratingsCount: parseInt(result.ratingsCount.toString()),
       createdAt: now,
       updatedAt: now,
+      genres: null,
+      series: null,
+      meta: null,
+      enrichedAt: null,
     };
   }
 
