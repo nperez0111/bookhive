@@ -2,35 +2,33 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
-  StyleSheet,
-  View,
   RefreshControl,
   ScrollView,
-  ImageBackground,
+  StyleSheet,
+  View,
 } from "react-native";
 
-import { HelloWave } from "@/components/HelloWave";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { GradientView } from "@/components/GradientView";
-import { getBaseUrl } from "@/context/auth";
-import { useProfile } from "@/hooks/useBookhiveQuery";
-import { router } from "expo-router";
-import { useState, useCallback } from "react";
-import { BOOK_STATUS } from "@/constants";
-import { UserBook } from "../../../src/bsky/lexicon/types/buzz/bookhive/defs";
-import { QueryErrorHandler } from "@/components/QueryErrorHandler";
-import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
-import { useThemeColor } from "@/hooks/useThemeColor";
-import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { AnimatedListItem } from "@/components/AnimatedListItem";
-import { FadeInImage } from "@/components/FadeInImage";
+import { BookCard } from "@/components/BookCard";
+import { GradientView } from "@/components/GradientView";
+import { HelloWave } from "@/components/HelloWave";
+import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { QuickAction } from "@/components/QuickAction";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatsCard } from "@/components/StatsCard";
-import { BookCard } from "@/components/BookCard";
-import { QuickAction } from "@/components/QuickAction";
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { BOOK_STATUS } from "@/constants";
+import { Colors } from "@/constants/Colors";
+import { getBaseUrl } from "@/context/auth";
+import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { useThemeColor } from "@/hooks/useThemeColor";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useCallback, useState } from "react";
+import { UserBook } from "../../../src/bsky/lexicon/types/buzz/bookhive/defs";
 
 interface BookSectionProps {
   books: UserBook[];
@@ -40,6 +38,7 @@ interface BookSectionProps {
   emptySubtitle: string;
   colorScheme: string;
   colors: any;
+  status: string;
 }
 
 function BookSection({
@@ -49,6 +48,7 @@ function BookSection({
   emptyMessage,
   emptySubtitle,
   colors,
+  status,
 }: BookSectionProps) {
   if (books.length === 0) {
     return (
@@ -112,20 +112,41 @@ function BookSection({
 
   return (
     <View style={styles.section}>
-      <SectionHeader
-        icon={icon as any}
-        title={title}
-        right={
-          <ThemedText
-            style={[styles.bookCount, { color: colors.secondaryText }]}
-            type="caption"
-            numberOfLines={1}
-          >
-            {books.length} {books.length === 1 ? "book" : "books"}
-          </ThemedText>
-        }
-        style={{ marginBottom: 16 }}
-      />
+      <Pressable
+        onPress={() => {
+          const statusMap: Record<string, string> = {
+            [BOOK_STATUS.READING]: "reading",
+            [BOOK_STATUS.WANTTOREAD]: "wantToRead",
+            [BOOK_STATUS.FINISHED]: "finished",
+            [BOOK_STATUS.ABANDONED]: "abandoned",
+            [BOOK_STATUS.OWNED]: "owned",
+          };
+          router.push(`/books/${statusMap[status]}` as any);
+        }}
+      >
+        <SectionHeader
+          icon={icon as any}
+          title={title}
+          right={
+            <View style={styles.headerRight}>
+              <ThemedText
+                style={[styles.bookCount, { color: colors.secondaryText }]}
+                type="caption"
+                numberOfLines={1}
+              >
+                {books.length} {books.length === 1 ? "book" : "books"}
+              </ThemedText>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.secondaryText}
+                style={styles.chevron}
+              />
+            </View>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      </Pressable>
 
       <FlatList
         data={books}
@@ -300,6 +321,7 @@ export default function HomeScreen() {
           emptySubtitle="Start reading a book to see it here"
           colorScheme={colorScheme ?? "light"}
           colors={colors}
+          status={BOOK_STATUS.READING}
         />
 
         <BookSection
@@ -310,6 +332,7 @@ export default function HomeScreen() {
           emptySubtitle="Add books to your reading list"
           colorScheme={colorScheme ?? "light"}
           colors={colors}
+          status={BOOK_STATUS.WANTTOREAD}
         />
 
         <BookSection
@@ -320,6 +343,7 @@ export default function HomeScreen() {
           emptySubtitle="Complete a book to see it here"
           colorScheme={colorScheme ?? "light"}
           colors={colors}
+          status={BOOK_STATUS.FINISHED}
         />
 
         {/* Friend Activity */}
@@ -599,5 +623,12 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 20,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  chevron: {
+    marginLeft: 4,
   },
 });

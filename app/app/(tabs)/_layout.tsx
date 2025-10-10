@@ -97,6 +97,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="books/[status]"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="profile/[did]"
         options={{
           href: null,

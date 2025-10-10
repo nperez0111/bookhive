@@ -39,7 +39,13 @@ import Animated, {
 import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 
-function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
+function BookInfoContent({
+  hiveId,
+  fromStatus,
+}: {
+  hiveId: HiveId;
+  fromStatus?: string;
+}) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const textColor = useThemeColor({}, "text");
@@ -191,7 +197,17 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
       style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
     >
       {/* Back Navigation Header */}
-      <BackNavigationHeader title="Book Info" />
+      <BackNavigationHeader
+        title="Book Info"
+        onBackPress={
+          fromStatus
+            ? () => {
+                // Navigate back to the specific filtered books page
+                router.push(`/books/${fromStatus}` as any);
+              }
+            : undefined
+        }
+      />
 
       {/* Blurred Background */}
       <ImageBackground
@@ -522,9 +538,16 @@ function BookInfoContent({ hiveId }: { hiveId: HiveId }) {
 }
 
 export default function BookInfo() {
-  const { id: hiveId } = useLocalSearchParams<{ id: HiveId }>();
+  const { id: hiveId, status: fromStatusParam } = useLocalSearchParams<{
+    id: HiveId;
+    status?: string;
+  }>();
   return (
-    <BookInfoContent key={(hiveId as string) ?? ""} hiveId={hiveId as HiveId} />
+    <BookInfoContent
+      key={(hiveId as string) ?? ""}
+      hiveId={hiveId as HiveId}
+      fromStatus={fromStatusParam}
+    />
   );
 }
 
