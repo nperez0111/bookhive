@@ -40,6 +40,7 @@ import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
 import { LibraryImport } from "./pages/import";
+import { enrichBookWithDetailedData } from "./utils/enrichBookData";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -67,18 +68,18 @@ export async function searchBooks({
   ctx,
 }: {
   query: string;
-  ctx: Pick<AppContext, "db" | "kv">;
+  ctx: Pick<AppContext, "db" | "kv" | "logger">;
 }) {
   return await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
     () =>
-      findBookDetails(query).then((res) => {
+      findBookDetails(query).then(async (res) => {
         if (!res.success) {
           return [];
         }
 
-        return ctx.db
+        const bookIds = await ctx.db
           .insertInto("hive_book")
           .values(res.data)
           .onConflict((oc) =>
@@ -95,6 +96,21 @@ export async function searchBooks({
           .then(() => {
             return res.data.map((book) => book.id);
           });
+
+        // Trigger background enrichment for all books
+        const enrichmentPromises = res.data.map((book) =>
+          enrichBookWithDetailedData(book, ctx as AppContext).catch((error) => {
+            ctx.logger.error("Background enrichment failed", {
+              bookId: book.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }),
+        );
+
+        // Fire and forget - don't await enrichment
+        Promise.allSettled(enrichmentPromises);
+
+        return bookIds;
       }),
     [] as HiveId[],
     {
@@ -629,6 +645,25 @@ export function createRouter(app: HonoServer) {
         </Layout>,
         404,
       );
+    }
+
+    // Trigger background enrichment if needed
+    const needsEnrichment =
+      !book.enrichedAt ||
+      new Date(book.enrichedAt) <
+        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    if (needsEnrichment) {
+      // Fire and forget - don't await
+      enrichBookWithDetailedData(book, c.get("ctx")).catch((error) => {
+        c.get("ctx").logger?.error(
+          "Background enrichment failed on book view",
+          {
+            bookId: book.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      });
     }
 
     return c.render(<BookInfo book={book} />, {

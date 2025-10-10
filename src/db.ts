@@ -14,7 +14,6 @@ export type DatabaseSchema = {
   user_book: UserBook;
   buzz: Buzz;
   user_follows: UserFollow;
-
 };
 
 export const BookFields = [
@@ -133,22 +132,20 @@ migrations["004"] = {
       .addColumn("lastSeenAt", "text", (col) => col.notNull())
       .addColumn("isActive", "integer", (col) => col.notNull().defaultTo(1))
       .execute();
-    
 
-    
     await db.schema
       .createIndex("idx_user_follows_primary")
       .on("user_follows")
       .columns(["userDid", "followsDid"])
       .unique()
       .execute();
-    
+
     await db.schema
       .createIndex("idx_user_follows_user")
       .on("user_follows")
       .column("userDid")
       .execute();
-    
+
     await db.schema
       .createIndex("idx_user_follows_synced")
       .on("user_follows")
@@ -157,6 +154,27 @@ migrations["004"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("user_follows").execute();
+  },
+};
+
+migrations["005"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .addColumn("genres", "text")
+      .addColumn("series", "text")
+      .addColumn("meta", "text")
+      .addColumn("enrichedAt", "text")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .dropColumn("genres")
+      .dropColumn("series")
+      .dropColumn("meta")
+      .dropColumn("enrichedAt")
+      .execute();
   },
 };
 
