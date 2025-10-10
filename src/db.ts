@@ -162,19 +162,28 @@ migrations["005"] = {
     await db.schema
       .alterTable("hive_book")
       .addColumn("genres", "text")
+      .execute();
+
+    await db.schema
+      .alterTable("hive_book")
       .addColumn("series", "text")
-      .addColumn("meta", "text")
+      .execute();
+
+    await db.schema.alterTable("hive_book").addColumn("meta", "text").execute();
+
+    await db.schema
+      .alterTable("hive_book")
       .addColumn("enrichedAt", "text")
       .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .dropColumn("genres")
-      .dropColumn("series")
-      .dropColumn("meta")
-      .dropColumn("enrichedAt")
-      .execute();
+    await db.schema.alterTable("hive_book").dropColumn("genres").execute();
+
+    await db.schema.alterTable("hive_book").dropColumn("series").execute();
+
+    await db.schema.alterTable("hive_book").dropColumn("meta").execute();
+
+    await db.schema.alterTable("hive_book").dropColumn("enrichedAt").execute();
   },
 };
 
