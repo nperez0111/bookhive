@@ -72,7 +72,6 @@ function Comment({
 
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
 
-  console.log(comment);
   return (
     <div class="mb-3">
       <div class="mb-2 flex items-center justify-between">
