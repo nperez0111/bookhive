@@ -72,6 +72,7 @@ function Comment({
 
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
 
+  console.log(comment);
   return (
     <div class="mb-3">
       <div class="mb-2 flex items-center justify-between">
@@ -97,7 +98,12 @@ function Comment({
         class="peer hidden"
       />
       <p class="mb-2 text-gray-900 peer-checked:invisible peer-checked:h-0 peer-checked:opacity-0 dark:text-white">
-        {comment.comment}
+        {comment.comment.split("\r\n").map((line, index, array) => (
+          <>
+            {line}
+            {index < array.length - 1 && <br />}
+          </>
+        ))}
       </p>
 
       <div class="relative inline">
