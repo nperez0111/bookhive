@@ -837,6 +837,40 @@ export class Server {
     // Routes
     createRouter(app);
 
+    app.use("/robots.txt", serveStatic({ root: "./public" }));
+
+    // Sitemap
+    app.get("/sitemap.xml", async (c) => {
+      const baseUrl = new URL(c.req.url).origin;
+      const currentDate = new Date().toISOString();
+
+      const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${currentDate}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/app</loc>
+    <lastmod>${currentDate}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/privacy-policy</loc>
+    <lastmod>${currentDate}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>`;
+
+      return c.text(sitemap, 200, {
+        "Content-Type": "application/xml",
+      });
+    });
+
     app.use(
       "/public/*",
       serveStatic({

@@ -1,6 +1,9 @@
 {
-  "name": "Bookhive",
-  "short_name": "Bookhive",
+  "name": "BookHive - Goodreads Alternative",
+  "short_name": "BookHive",
+  "description": "Goodreads but better. Built on top of Blue Sky.",
+  "start_url": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/public/android-chrome-192x192.png",
@@ -13,7 +16,9 @@
       "type": "image/png"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
-  "display": "standalone"
+  "theme_color": "#030712",
+  "background_color": "#030712",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["books", "reading", "social"]
 }

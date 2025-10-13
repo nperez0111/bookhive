@@ -1,0 +1,21 @@
+User-agent: *
+Disallow: /books/
+Disallow: /profile/
+Allow: /
+
+# Allow access to static assets
+Allow: /images/
+Allow: /js/
+Allow: /screenshots/
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.gif
+Allow: /*.svg
+Allow: /*.ico
+Allow: /*.css
+Allow: /*.js
+Allow: /*.map
+
+# Sitemap
+Sitemap: https://bookhive.buzz/sitemap.xml

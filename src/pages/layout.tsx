@@ -59,7 +59,38 @@ export const Layout: FC<
         />
         <link rel="manifest" href="/public/site.webmanifest" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="${description}" />
+        <meta name="robots" content="index, follow" />
+        <meta name="author" content="BookHive" />
+        <meta name="theme-color" content="#030712" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <link rel="canonical" href="${url}" />
         <title>${title}</title>
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "BookHive",
+            "description": "${description}",
+            "url": "${url}",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "${url}/search?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "BookHive",
+              "url": "https://bookhive.buzz"
+            }
+          }
+        </script>
         <style>
           ${
             // Inlining the CSS saves a network request
