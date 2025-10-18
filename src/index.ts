@@ -47,7 +47,11 @@ import {
   type GoodreadsBook,
   type StorygraphBook,
 } from "./utils/csv.ts";
-import { getUserRepoRecords, updateBookRecords } from "./utils/getBook.ts";
+import {
+  getUserRepoRecords,
+  updateBookRecords,
+  updateBookRecord,
+} from "./utils/getBook.ts";
 
 import { lazy } from "./utils/lazy.ts";
 import { readThroughCache } from "./utils/readThroughCache.ts";
@@ -487,13 +491,101 @@ export class Server {
 
                   matchedBooks += bookUpdates.size;
 
-                  await updateBookRecords({
-                    ctx,
-                    agent,
-                    updates: bookUpdates,
-                    // overwrite: true,
-                    bookRecords,
-                  });
+                  try {
+                    await updateBookRecords({
+                      ctx,
+                      agent,
+                      updates: bookUpdates,
+                      // overwrite: true,
+                      bookRecords,
+                    });
+                  } catch (error) {
+                    ctx.logger.error(
+                      "Failed to update book records in batch, trying individually",
+                      {
+                        error,
+                        bookCount: bookUpdates.size,
+                      },
+                    );
+
+                    // Fallback: try to save each book individually
+                    let individualSuccesses = 0;
+                    let individualFailures = 0;
+
+                    for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
+                      try {
+                        await updateBookRecord({
+                          ctx,
+                          agent,
+                          hiveId,
+                          updates: bookUpdate,
+                        });
+                        individualSuccesses++;
+
+                        // Update the uploaded count for successful individual saves
+                        if (!(bookUpdate as any)["alreadyExists"]) {
+                          uploadedBooks++;
+                        }
+                      } catch (individualError) {
+                        individualFailures++;
+                        ctx.logger.error(
+                          "Failed to update individual book record",
+                          {
+                            error: individualError,
+                            hiveId,
+                            bookUpdate,
+                          },
+                        );
+
+                        // Add to unmatched books for individual failures
+                        unmatchedBooks.push({
+                          bookId: "",
+                          title: bookUpdate.title || "Unknown",
+                          author: bookUpdate.authors || "Unknown",
+                          authorLastFirst: "",
+                          additionalAuthors: [],
+                          isbn: "",
+                          isbn13: "",
+                          myRating: bookUpdate.stars ? bookUpdate.stars / 2 : 0,
+                          averageRating: 0,
+                          publisher: "",
+                          binding: "",
+                          numberOfPages: 0,
+                          yearPublished: 0,
+                          originalPublicationYear: 0,
+                          dateRead: bookUpdate.finishedAt
+                            ? new Date(bookUpdate.finishedAt)
+                            : null,
+                          dateAdded: new Date(),
+                          bookshelves: [],
+                          bookshelvesWithPositions: "",
+                          exclusiveShelf: "",
+                          myReview: bookUpdate.review || "",
+                          spoiler: false,
+                          privateNotes: "",
+                          readCount: 0,
+                          ownedCopies: 0,
+                        });
+                      }
+                    }
+
+                    // Send final status of individual attempts
+                    if (individualFailures > 0) {
+                      await stream.writeSSE({
+                        data: JSON.stringify({
+                          event: "import-error",
+                          stage: "uploading",
+                          stageProgress: {
+                            current: matchedBooks,
+                            total: totalBooks,
+                            message: `Individual save completed: ${individualSuccesses} succeeded, ${individualFailures} failed`,
+                          },
+                          error: `Individual save: ${individualSuccesses} succeeded, ${individualFailures} failed`,
+                          id: id++,
+                        }),
+                      });
+                    }
+                  }
                 },
               }),
             );
@@ -780,13 +872,102 @@ export class Server {
 
                   matchedBooks += bookUpdates.size;
 
-                  await updateBookRecords({
-                    ctx,
-                    agent,
-                    updates: bookUpdates,
-                    // overwrite: true,
-                    bookRecords,
-                  });
+                  try {
+                    await updateBookRecords({
+                      ctx,
+                      agent,
+                      updates: bookUpdates,
+                      // overwrite: true,
+                      bookRecords,
+                    });
+                  } catch (error) {
+                    ctx.logger.error(
+                      "Failed to update book records in batch, trying individually",
+                      {
+                        error,
+                        bookCount: bookUpdates.size,
+                      },
+                    );
+
+                    // Fallback: try to save each book individually
+                    let individualSuccesses = 0;
+                    let individualFailures = 0;
+
+                    for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
+                      try {
+                        await updateBookRecord({
+                          ctx,
+                          agent,
+                          hiveId,
+                          updates: bookUpdate,
+                        });
+                        individualSuccesses++;
+
+                        // Update the uploaded count for successful individual saves
+                        if (!(bookUpdate as any)["alreadyExists"]) {
+                          uploadedBooks++;
+                        }
+                      } catch (individualError) {
+                        individualFailures++;
+                        ctx.logger.error(
+                          "Failed to update individual book record",
+                          {
+                            error: individualError,
+                            hiveId,
+                            bookUpdate,
+                          },
+                        );
+
+                        // Add to unmatched books for individual failures
+                        unmatchedBooks.push({
+                          title: bookUpdate.title || "Unknown",
+                          authors: bookUpdate.authors || "Unknown",
+                          contributors: "",
+                          isbn: "",
+                          format: "",
+                          readStatus: "",
+                          dateAdded: null,
+                          lastDateRead: bookUpdate.finishedAt
+                            ? new Date(bookUpdate.finishedAt)
+                            : null,
+                          datesRead: "",
+                          readCount: 0,
+                          moods: "",
+                          pace: "",
+                          characterOrPlot: "",
+                          strongCharacterDevelopment: "",
+                          loveableCharacters: "",
+                          diverseCharacters: "",
+                          flawedCharacters: "",
+                          starRating: bookUpdate.stars
+                            ? bookUpdate.stars / 2
+                            : 0,
+                          review: bookUpdate.review || "",
+                          contentWarnings: "",
+                          contentWarningDescription: "",
+                          tags: "",
+                          owned: false,
+                        });
+                      }
+                    }
+
+                    // Send final status of individual attempts
+                    if (individualFailures > 0) {
+                      await stream.writeSSE({
+                        data: JSON.stringify({
+                          event: "import-error",
+                          stage: "uploading",
+                          stageProgress: {
+                            current: matchedBooks,
+                            total: totalBooks,
+                            message: `Individual save completed: ${individualSuccesses} succeeded, ${individualFailures} failed`,
+                          },
+                          error: `Individual save: ${individualSuccesses} succeeded, ${individualFailures} failed`,
+                          id: id++,
+                        }),
+                      });
+                    }
+                  }
                 },
               }),
             );
