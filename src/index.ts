@@ -714,7 +714,7 @@ export class Server {
                                 finishedAt:
                                   book.lastDateRead?.toISOString() ?? undefined,
                                 stars: book.starRating
-                                  ? book.starRating * 2 // Convert 0-5 to 0-10 scale
+                                  ? parseInt(String(book.starRating * 2)) // Convert 0-5 to 0-10 scale (floor to an int)
                                   : undefined,
                                 review: book.review || undefined,
                                 alreadyExists: existingHiveIds.has(hiveBook.id),
