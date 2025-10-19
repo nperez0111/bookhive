@@ -41,6 +41,8 @@ import { getProfile } from "./utils/getProfile";
 import { readThroughCache } from "./utils/readThroughCache";
 import { LibraryImport } from "./pages/import";
 import { enrichBookWithDetailedData } from "./utils/enrichBookData";
+import { GenresDirectory } from "./pages/genres";
+import { GenreBooks, getBooksByGenre } from "./pages/genreBooks";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -522,6 +524,48 @@ export function createRouter(app: HonoServer) {
       description:
         "Learn how BookHive uses cookies for login and only processes public ATProto data.",
     });
+  });
+
+  app.get("/genres", async (c) => {
+    return c.render(<GenresDirectory />, {
+      title: "BookHive | Explore Genres",
+      description: "Explore books by genre on BookHive",
+    });
+  });
+
+  app.get("/genres/:genre", async (c) => {
+    const genre = decodeURIComponent(c.req.param("genre"));
+    const page = parseInt(c.req.query("page") || "1", 10);
+    const sortBy =
+      (c.req.query("sort") as "popularity" | "relevance" | "reviews") ||
+      "popularity";
+    const pageSize = 100;
+
+    // Validate page number
+    const validPage = Math.max(1, page);
+
+    const result = await getBooksByGenre(
+      genre,
+      c.get("ctx"),
+      validPage,
+      pageSize,
+      sortBy,
+    );
+
+    return c.render(
+      <GenreBooks
+        genre={genre}
+        books={result.books}
+        currentPage={result.currentPage}
+        totalPages={result.totalPages}
+        totalBooks={result.totalBooks}
+        sortBy={sortBy}
+      />,
+      {
+        title: `BookHive | ${genre} Books`,
+        description: `Discover ${genre} books on BookHive`,
+      },
+    );
   });
 
   app.get("/profile/:handle/image", async (c) => {

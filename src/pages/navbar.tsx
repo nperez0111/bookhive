@@ -70,20 +70,14 @@ export const Navbar: FC<{
                 BookHive
               </div>
             </a>
-            {/* <div class="hidden items-center space-x-4 sm:ml-6 sm:flex">
+            <div class="hidden items-center space-x-4 sm:ml-6 sm:flex">
               <a
-                href="/"
-                class={
-                  "rounded-md py-2 text-sm font-medium" +
-                  (tab === "home"
-                    ? " bg-zinc-900 text-white"
-                    : " text-gray-300 hover:bg-zinc-700 hover:text-white")
-                }
-                aria-current="page"
+                href="/genres"
+                class="rounded-md py-2 text-sm font-medium text-gray-300 hover:bg-yellow-900 hover:text-white"
               >
-                Home
+                Genres
               </a>
-            </div> */}
+            </div>
           </div>
           <div class="absolute inset-y-0 right-0 left-12 flex items-center pr-2 sm:static sm:inset-auto sm:left-auto sm:ml-6 sm:pr-0">
             {Boolean(profile) && <div id="mount-search-box" />}
@@ -228,6 +222,14 @@ export const Navbar: FC<{
             tabindex={-1}
           >
             Home
+          </a>
+          <a
+            href="/genres"
+            class="block border-b border-gray-200 p-4 text-sm text-white"
+            role="menuitem"
+            tabindex={-1}
+          >
+            Genres
           </a>
           <a
             href="/profile"
