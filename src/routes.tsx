@@ -1076,8 +1076,32 @@ export function createRouter(app: HonoServer) {
         status: z.optional(z.string()),
         review: z.optional(z.string()),
         stars: z.optional(z.number()),
-        startedAt: z.optional(z.string().datetime()),
-        finishedAt: z.optional(z.string().datetime()),
+        startedAt: z.optional(
+          z
+            .string()
+            .transform((val) => {
+              if (!val || val === "") return "";
+              // If it's just a date (YYYY-MM-DD), convert to ISO-8601 at start of day
+              if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                return new Date(val + "T00:00:00.000Z").toISOString();
+              }
+              return val;
+            })
+            .pipe(z.string().datetime().or(z.literal(""))),
+        ),
+        finishedAt: z.optional(
+          z
+            .string()
+            .transform((val) => {
+              if (!val || val === "") return "";
+              // If it's just a date (YYYY-MM-DD), convert to ISO-8601 at start of day
+              if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                return new Date(val + "T00:00:00.000Z").toISOString();
+              }
+              return val;
+            })
+            .pipe(z.string().datetime().or(z.literal(""))),
+        ),
       }),
     ),
     async (c) => {
@@ -1086,7 +1110,7 @@ export function createRouter(app: HonoServer) {
         console.log("No agent");
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
-      const { hiveId, ...rest } = c.req.valid("json");
+      const { hiveId, ...updates } = c.req.valid("json");
 
       if (!hiveId) {
         return c.json({ success: false, message: "Invalid ID" }, 400);
@@ -1098,9 +1122,7 @@ export function createRouter(app: HonoServer) {
           ctx: c.get("ctx"),
           agent,
           hiveId: hiveId as HiveId,
-          updates: {
-            ...rest,
-          },
+          updates: updates,
         });
         return c.json({ success: true, message: "Book updated" });
       } catch (e) {

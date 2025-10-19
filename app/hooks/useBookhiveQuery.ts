@@ -102,10 +102,13 @@ export const useBookInfo = (id: HiveId | undefined | null) => {
 export const useProfile = (did?: string) => {
   return useQuery({
     queryKey: ["profile", did] as const,
-    queryFn: async ({ queryKey: [, id] }) => {
-      return await enhancedAuthFetch<GetProfile.OutputSchema>(
+    queryFn: async ({ queryKey: [, id], client }) => {
+      const data = await enhancedAuthFetch<GetProfile.OutputSchema>(
         `/xrpc/buzz.bookhive.getProfile?did=${id || ""}`,
       );
+      // Invalidate all getBook queries when profile is fetched
+      client.invalidateQueries({ queryKey: ["getBook"] });
+      return data;
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {

@@ -82,7 +82,7 @@ function BookInfoContent({
     try {
       await updateBook.mutateAsync({
         hiveId: hiveId,
-        status: status,
+        status,
       });
     } catch (error) {
       console.error("Failed to update status:", error);
@@ -111,6 +111,20 @@ function BookInfoContent({
     await updateBook.mutateAsync({
       hiveId: hiveId,
       stars: newRating,
+    });
+  };
+
+  const handleStartedAtUpdate = async (date: string | null) => {
+    await updateBook.mutateAsync({
+      hiveId: hiveId,
+      startedAt: date,
+    });
+  };
+
+  const handleFinishedAtUpdate = async (date: string | null) => {
+    await updateBook.mutateAsync({
+      hiveId: hiveId,
+      finishedAt: date,
     });
   };
 
@@ -414,6 +428,20 @@ function BookInfoContent({
                 ) : null
               }
             />
+
+            {/* Only show dates card if user has this book in their library */}
+            {(userBook.status || userBook.stars || userBook.review) && (
+              <BookActionCard
+                type="dates"
+                title="Reading Dates"
+                icon="calendar-outline"
+                startedAt={userBook.startedAt}
+                finishedAt={userBook.finishedAt}
+                onStartedAtChange={handleStartedAtUpdate}
+                onFinishedAtChange={handleFinishedAtUpdate}
+                isPending={updateBook.isPending}
+              />
+            )}
 
             <BookActionCard
               type="rating"

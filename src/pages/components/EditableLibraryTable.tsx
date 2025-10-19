@@ -216,7 +216,10 @@ export const EditableLibraryTable: FC<{
               Rating
             </th>
             <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">
-              Added
+              Started
+            </th>
+            <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">
+              Finished
             </th>
             <th
               class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
@@ -246,7 +249,7 @@ export const EditableLibraryTable: FC<{
                         target.nextElementSibling?.classList.remove("hidden");
                       }}
                     />
-                    <div class="flex hidden h-full w-full items-center justify-center bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700">
+                    <div class="hidden h-full w-full items-center justify-center bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700">
                       <svg
                         class="h-6 w-6 text-yellow-600 dark:text-yellow-400"
                         fill="currentColor"
@@ -293,18 +296,22 @@ export const EditableLibraryTable: FC<{
                 </div>
               </td>
               <td class="px-4 py-2 whitespace-nowrap">
-                <div class="flex items-center space-x-2">
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {formatDistanceToNow(new Date(book.createdAt), {
-                      addSuffix: true,
-                    })}
-                  </p>
-                  {book.review && (
-                    <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                      Reviewed
-                    </span>
-                  )}
-                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {book.startedAt
+                    ? formatDistanceToNow(new Date(book.startedAt), {
+                        addSuffix: true,
+                      })
+                    : "-"}
+                </p>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {book.finishedAt
+                    ? formatDistanceToNow(new Date(book.finishedAt), {
+                        addSuffix: true,
+                      })
+                    : "-"}
+                </p>
               </td>
               <td class="px-4 py-2" onclick="event.stopPropagation()">
                 <form action={`/books/${book.hiveId}`} method="post">

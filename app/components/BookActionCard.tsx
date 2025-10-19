@@ -1,23 +1,29 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Pressable, TextInput, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { format } from "date-fns";
 import { ThemedText } from "./ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { StarRating } from "./StarRating";
+import { DatePickerModal } from "./DatePickerModal";
 import { BOOK_STATUS_MAP, type BookStatus } from "@/constants/index";
 
 interface BookActionCardProps {
-  type: "status" | "rating" | "review";
+  type: "status" | "rating" | "review" | "dates";
   title: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   status?: BookStatus | null;
   rating?: number;
   review?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   onStatusPress?: () => void;
   onRatingChange?: (rating: number) => void;
   onReviewChange?: (text: string) => void;
   onReviewSave?: () => void;
+  onStartedAtChange?: (date: string | null) => void;
+  onFinishedAtChange?: (date: string | null) => void;
   isPending?: boolean;
   reviewText?: string;
   onReviewTextChange?: (text: string) => void;
@@ -31,10 +37,14 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   status,
   rating,
   review,
+  startedAt,
+  finishedAt,
   onStatusPress,
   onRatingChange,
   onReviewChange,
   onReviewSave,
+  onStartedAtChange,
+  onFinishedAtChange,
   isPending = false,
   reviewText = "",
   onReviewTextChange,
@@ -42,6 +52,49 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
 }) => {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+
+  // Date picker state
+  const [showStartedPicker, setShowStartedPicker] = useState(false);
+  const [showFinishedPicker, setShowFinishedPicker] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
+
+  // Date handling functions
+  const handleStartedDateConfirm = (date: Date) => {
+    // Set time to start of day (00:00:00)
+    const dateAtStartOfDay = new Date(date);
+    dateAtStartOfDay.setHours(0, 0, 0, 0);
+    const dateString = dateAtStartOfDay.toISOString();
+    onStartedAtChange?.(dateString);
+
+    // Validate that finishedAt is after startedAt
+    if (finishedAt && new Date(finishedAt) <= dateAtStartOfDay) {
+      setDateError("Finished date must be after started date");
+    } else {
+      setDateError(null);
+    }
+    setShowStartedPicker(false);
+  };
+
+  const handleFinishedDateConfirm = (date: Date) => {
+    // Set time to start of day (00:00:00)
+    const dateAtStartOfDay = new Date(date);
+    dateAtStartOfDay.setHours(0, 0, 0, 0);
+    const dateString = dateAtStartOfDay.toISOString();
+    onFinishedAtChange?.(dateString);
+
+    // Validate that finishedAt is after startedAt
+    if (startedAt && dateAtStartOfDay <= new Date(startedAt)) {
+      setDateError("Finished date must be after started date");
+    } else {
+      setDateError(null);
+    }
+    setShowFinishedPicker(false);
+  };
+
+  const showDatePicker = (type: "started" | "finished") => {
+    setShowStartedPicker(type === "started");
+    setShowFinishedPicker(type === "finished");
+  };
 
   const cardStyle = {
     backgroundColor: colors.cardBackground,
@@ -148,6 +201,120 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               </Pressable>
             )}
           </>
+        );
+
+      case "dates":
+        return (
+          <View style={styles.datesContainer}>
+            {/* Started Date */}
+            <View style={styles.dateField}>
+              <ThemedText
+                style={[styles.dateLabel, { color: colors.primaryText }]}
+                type="body"
+              >
+                Started Reading
+              </ThemedText>
+              <Pressable
+                style={[
+                  styles.dateButton,
+                  {
+                    backgroundColor: colors.buttonBackground,
+                    borderColor: colors.buttonBorder,
+                  },
+                ]}
+                onPress={() => showDatePicker("started")}
+              >
+                <ThemedText
+                  style={[
+                    styles.dateButtonText,
+                    {
+                      color: startedAt
+                        ? colors.primaryText
+                        : colors.placeholderText,
+                    },
+                  ]}
+                >
+                  {startedAt
+                    ? format(new Date(startedAt), "MMM d, yyyy")
+                    : "Select date"}
+                </ThemedText>
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={colors.secondaryText}
+                />
+              </Pressable>
+            </View>
+
+            {/* Finished Date */}
+            <View style={styles.dateField}>
+              <ThemedText
+                style={[styles.dateLabel, { color: colors.primaryText }]}
+                type="body"
+              >
+                Finished Reading
+              </ThemedText>
+              <Pressable
+                style={[
+                  styles.dateButton,
+                  {
+                    backgroundColor: colors.buttonBackground,
+                    borderColor: colors.buttonBorder,
+                  },
+                ]}
+                onPress={() => showDatePicker("finished")}
+              >
+                <ThemedText
+                  style={[
+                    styles.dateButtonText,
+                    {
+                      color: finishedAt
+                        ? colors.primaryText
+                        : colors.placeholderText,
+                    },
+                  ]}
+                >
+                  {finishedAt
+                    ? format(new Date(finishedAt), "MMM d, yyyy")
+                    : "Select date"}
+                </ThemedText>
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={colors.secondaryText}
+                />
+              </Pressable>
+            </View>
+
+            {/* Error Message */}
+            {dateError && (
+              <ThemedText
+                style={[styles.dateError, { color: colors.error || "#ef4444" }]}
+                type="caption"
+              >
+                {dateError}
+              </ThemedText>
+            )}
+
+            {/* Date Picker Modals */}
+            <DatePickerModal
+              visible={showStartedPicker}
+              title="Select Started Date"
+              initialDate={startedAt ? new Date(startedAt) : undefined}
+              maximumDate={finishedAt ? new Date(finishedAt) : undefined}
+              onConfirm={handleStartedDateConfirm}
+              onCancel={() => setShowStartedPicker(false)}
+            />
+
+            <DatePickerModal
+              visible={showFinishedPicker}
+              title="Select Finished Date"
+              initialDate={finishedAt ? new Date(finishedAt) : undefined}
+              minimumDate={startedAt ? new Date(startedAt) : undefined}
+              onConfirm={handleFinishedDateConfirm}
+              onCancel={() => setShowFinishedPicker(false)}
+            />
+          </View>
         );
 
       default:
@@ -267,5 +434,32 @@ const styles = StyleSheet.create({
   saveReviewButtonText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  datesContainer: {
+    gap: 16,
+  },
+  dateField: {
+    gap: 8,
+  },
+  dateLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  dateButtonText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  dateError: {
+    fontSize: 12,
+    marginTop: 4,
   },
 });

@@ -1,6 +1,7 @@
 import { iterateAtpRepo } from "@atcute/car";
 import { Agent, jsonToLex } from "@atproto/api";
 import { TID } from "@atproto/common";
+import { parseISO, isValid, startOfDay } from "date-fns";
 
 import type { AppContext } from "..";
 import { ids } from "../bsky/lexicon/lexicons";
@@ -8,6 +9,36 @@ import * as BookRecord from "../bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "../bsky/lexicon/types/buzz/bookhive/buzz";
 import type { HiveId, UserBook } from "../types";
 import { uploadImageBlob } from "./uploadImageBlob";
+
+/**
+ * Normalize a date string to ISO format at start of day
+ * Handles various input formats and ensures consistent output
+ */
+function normalizeDate(dateString: string | undefined): string | undefined {
+  if (!dateString || dateString === "") {
+    return undefined;
+  }
+
+  try {
+    // Try to parse the date string
+    const date = parseISO(dateString);
+
+    if (!isValid(date)) {
+      // If parseISO fails, try creating a new Date
+      const fallbackDate = new Date(dateString);
+      if (!isValid(fallbackDate)) {
+        return undefined;
+      }
+      // Set to start of day and return ISO string
+      return startOfDay(fallbackDate).toISOString();
+    }
+
+    // Set to start of day and return ISO string
+    return startOfDay(date).toISOString();
+  } catch {
+    return undefined;
+  }
+}
 
 export async function getUserBook({
   ctx,
@@ -123,7 +154,36 @@ export async function updateBookRecord({
     }
   }
 
-  const book = BookRecord.validateRecord({
+  // Auto-set dates based on status if not already provided
+  let autoStartedAt = updates.startedAt;
+  let autoFinishedAt = updates.finishedAt;
+
+  if (updates.status === "buzz.bookhive.defs#reading" && !updates.startedAt) {
+    // Auto-set startedAt to current date at start of day
+    autoStartedAt = startOfDay(new Date()).toISOString();
+  } else if (
+    updates.status === "buzz.bookhive.defs#finished" &&
+    !updates.finishedAt
+  ) {
+    // Auto-set finishedAt to current date at start of day
+    autoFinishedAt = startOfDay(new Date()).toISOString();
+  }
+
+  // Normalize dates to ISO format at start of day
+  autoStartedAt = normalizeDate(autoStartedAt);
+  autoFinishedAt = normalizeDate(autoFinishedAt);
+
+  // Validate that finishedAt is after startedAt if both are provided
+  if (autoStartedAt && autoFinishedAt) {
+    const startedDate = parseISO(autoStartedAt);
+    const finishedDate = parseISO(autoFinishedAt);
+
+    if (finishedDate <= startedDate) {
+      throw new Error("Finished date must be after started date");
+    }
+  }
+
+  const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
     title: originalBook?.title || updates.title,
@@ -134,11 +194,23 @@ export async function updateBookRecord({
       originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
     // Always prefer new values
     status: updates.status || originalBook?.status,
-    startedAt: updates.startedAt || originalBook?.startedAt,
-    finishedAt: updates.finishedAt || originalBook?.finishedAt,
+    startedAt:
+      autoStartedAt !== undefined
+        ? autoStartedAt === ""
+          ? undefined
+          : autoStartedAt
+        : originalBook?.startedAt,
+    finishedAt:
+      autoFinishedAt !== undefined
+        ? autoFinishedAt === ""
+          ? undefined
+          : autoFinishedAt
+        : originalBook?.finishedAt,
     review: updates.review || originalBook?.review,
     stars: updates.stars || originalBook?.stars,
-  });
+  };
+
+  const book = BookRecord.validateRecord(bookData);
 
   if (!book.success) {
     throw new Error("Book incomplete or invalid: " + book.error.message);
@@ -231,6 +303,35 @@ export async function updateBookRecords({
       continue;
     }
 
+    // Auto-set dates based on status if not already provided
+    let autoStartedAt = update.startedAt;
+    let autoFinishedAt = update.finishedAt;
+
+    if (update.status === "buzz.bookhive.defs#reading" && !update.startedAt) {
+      // Auto-set startedAt to current date at start of day
+      autoStartedAt = startOfDay(new Date()).toISOString();
+    } else if (
+      update.status === "buzz.bookhive.defs#finished" &&
+      !update.finishedAt
+    ) {
+      // Auto-set finishedAt to current date at start of day
+      autoFinishedAt = startOfDay(new Date()).toISOString();
+    }
+
+    // Normalize dates to ISO format at start of day
+    autoStartedAt = normalizeDate(autoStartedAt);
+    autoFinishedAt = normalizeDate(autoFinishedAt);
+
+    // Validate that finishedAt is after startedAt if both are provided
+    if (autoStartedAt && autoFinishedAt) {
+      const startedDate = parseISO(autoStartedAt);
+      const finishedDate = parseISO(autoFinishedAt);
+
+      if (finishedDate <= startedDate) {
+        throw new Error("Finished date must be after started date");
+      }
+    }
+
     const book = BookRecord.validateRecord({
       $type: ids.BuzzBookhiveBook,
       // Always prefer original values
@@ -241,8 +342,18 @@ export async function updateBookRecords({
       cover: originalBook?.cover,
       // Always prefer new values
       status: update.status || originalBook?.status,
-      startedAt: update.startedAt || originalBook?.startedAt,
-      finishedAt: update.finishedAt || originalBook?.finishedAt,
+      startedAt:
+        autoStartedAt !== undefined
+          ? autoStartedAt === ""
+            ? undefined
+            : autoStartedAt
+          : originalBook?.startedAt,
+      finishedAt:
+        autoFinishedAt !== undefined
+          ? autoFinishedAt === ""
+            ? undefined
+            : autoFinishedAt
+          : originalBook?.finishedAt,
       review: update.review || originalBook?.review,
       stars: update.stars || originalBook?.stars,
     });

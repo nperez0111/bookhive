@@ -93,12 +93,16 @@ const UpdateBookForm: FC<
       {book.cover && (
         <input type="hidden" name="coverImage" value={book.cover} />
       )}
-      {userBook?.startedAt && editing !== "startedAt" && (
-        <input type="hidden" name="startedAt" value={userBook.startedAt} />
-      )}
-      {userBook?.finishedAt && editing !== "finishedAt" && (
-        <input type="hidden" name="finishedAt" value={userBook.finishedAt} />
-      )}
+      {userBook?.startedAt &&
+        editing !== "startedAt" &&
+        editing !== "status" && (
+          <input type="hidden" name="startedAt" value={userBook.startedAt} />
+        )}
+      {userBook?.finishedAt &&
+        editing !== "finishedAt" &&
+        editing !== "status" && (
+          <input type="hidden" name="finishedAt" value={userBook.finishedAt} />
+        )}
       {userBook?.stars && editing !== "stars" && (
         <input type="hidden" name="stars" value={String(userBook.stars)} />
       )}
@@ -107,6 +111,17 @@ const UpdateBookForm: FC<
       )}
       {userBook?.status && editing !== "status" && (
         <input type="hidden" name="status" value={userBook.status} />
+      )}
+      {editing === "status" && (
+        <>
+          <input type="hidden" name="startedAt" id="auto-started-at" value="" />
+          <input
+            type="hidden"
+            name="finishedAt"
+            id="auto-finished-at"
+            value=""
+          />
+        </>
       )}
       {children}
     </form>
@@ -593,6 +608,78 @@ export const BookInfo: FC<{
                     <button
                       type="submit"
                       class="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                    >
+                      Save
+                    </button>
+                  </UpdateBookForm>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reading Dates Section */}
+          {did && usersBook && (
+            <div className="mt-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md dark:border-gray-700 dark:bg-zinc-900">
+              <h2 className="mb-4 text-xl font-bold">Reading Dates</h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Started Date */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Started Reading
+                  </label>
+                  <UpdateBookForm
+                    book={book}
+                    userBook={usersBook}
+                    editing="startedAt"
+                    formId="started-date-form"
+                  >
+                    <input
+                      type="date"
+                      name="startedAt"
+                      value={
+                        usersBook.startedAt
+                          ? new Date(usersBook.startedAt)
+                              .toISOString()
+                              .slice(0, 10)
+                          : ""
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                    >
+                      Save
+                    </button>
+                  </UpdateBookForm>
+                </div>
+
+                {/* Finished Date */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Finished Reading
+                  </label>
+                  <UpdateBookForm
+                    book={book}
+                    userBook={usersBook}
+                    editing="finishedAt"
+                    formId="finished-date-form"
+                  >
+                    <input
+                      type="date"
+                      name="finishedAt"
+                      value={
+                        usersBook.finishedAt
+                          ? new Date(usersBook.finishedAt)
+                              .toISOString()
+                              .slice(0, 10)
+                          : ""
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
                     >
                       Save
                     </button>
