@@ -3,6 +3,8 @@ import { sql } from "kysely";
 import type { HiveBook } from "../types";
 import { BookListItem } from "./components/book";
 import { endTime, startTime } from "hono/timing";
+import type { AppContext } from "..";
+import type { Context } from "hono";
 
 type SortOption = "popularity" | "relevance" | "reviews";
 
@@ -225,10 +227,11 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 
 export async function getBooksByGenre(
   genre: string,
-  ctx: any,
+  ctx: AppContext,
   page: number = 1,
   pageSize: number = 20,
   sortBy: SortOption = "popularity",
+  c: Context,
 ): Promise<{
   books: HiveBook[];
   totalBooks: number;
@@ -237,7 +240,7 @@ export async function getBooksByGenre(
 }> {
   const offset = (page - 1) * pageSize;
 
-  startTime(ctx, "genre-books-count-query");
+  startTime(c, "genre-books-count-query");
   // First, get the total count
   const totalCountResult = await ctx.db
     .selectFrom("hive_book")
@@ -247,15 +250,15 @@ export async function getBooksByGenre(
       sql`EXISTS (
         SELECT 1 FROM json_each(hive_book.genres) 
         WHERE value = ${genre}
-      )`,
+      )` as any,
     )
     .executeTakeFirst();
-  endTime(ctx, "genre-books-count-query");
+  endTime(c, "genre-books-count-query");
 
   const totalBooks = totalCountResult?.count || 0;
   const totalPages = Math.ceil(totalBooks / pageSize);
 
-  startTime(ctx, "genre-books-data-query");
+  startTime(c, "genre-books-data-query");
   // Then get the paginated books with appropriate sorting
   let query = ctx.db
     .selectFrom("hive_book")
@@ -265,7 +268,7 @@ export async function getBooksByGenre(
       sql`EXISTS (
         SELECT 1 FROM json_each(hive_book.genres) 
         WHERE value = ${genre}
-      )`,
+      )` as any,
     );
 
   // Apply sorting based on sortBy parameter
@@ -291,7 +294,7 @@ export async function getBooksByGenre(
   }
 
   const books = await query.limit(pageSize).offset(offset).execute();
-  endTime(ctx, "genre-books-data-query");
+  endTime(c, "genre-books-data-query");
 
   return {
     books,

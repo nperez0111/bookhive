@@ -550,6 +550,7 @@ export function createRouter(app: HonoServer) {
       validPage,
       pageSize,
       sortBy,
+      c,
     );
 
     return c.render(
