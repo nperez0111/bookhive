@@ -2,6 +2,7 @@ import { type FC } from "hono/jsx";
 import { sql } from "kysely";
 import type { HiveBook } from "../types";
 import { BookListItem } from "./components/book";
+import { endTime, startTime } from "hono/timing";
 
 type SortOption = "popularity" | "relevance" | "reviews";
 
@@ -236,6 +237,7 @@ export async function getBooksByGenre(
 }> {
   const offset = (page - 1) * pageSize;
 
+  startTime(ctx, "genre-books-count-query");
   // First, get the total count
   const totalCountResult = await ctx.db
     .selectFrom("hive_book")
@@ -248,10 +250,12 @@ export async function getBooksByGenre(
       )`,
     )
     .executeTakeFirst();
+  endTime(ctx, "genre-books-count-query");
 
   const totalBooks = totalCountResult?.count || 0;
   const totalPages = Math.ceil(totalBooks / pageSize);
 
+  startTime(ctx, "genre-books-data-query");
   // Then get the paginated books with appropriate sorting
   let query = ctx.db
     .selectFrom("hive_book")
@@ -287,6 +291,7 @@ export async function getBooksByGenre(
   }
 
   const books = await query.limit(pageSize).offset(offset).execute();
+  endTime(ctx, "genre-books-data-query");
 
   return {
     books,

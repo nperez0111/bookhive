@@ -1,6 +1,7 @@
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { sql } from "kysely";
+import { endTime, startTime } from "hono/timing";
 
 interface GenreWithCount {
   genre: string;
@@ -25,6 +26,7 @@ function formatCount(count: number): string {
 export const GenresDirectory: FC = async () => {
   const c = useRequestContext();
 
+  startTime(c, "genres-query");
   // Query all unique genres with their counts
   const genres: GenreWithCount[] = await (
     c
@@ -44,6 +46,7 @@ export const GenresDirectory: FC = async () => {
     .groupBy(sql`value`)
     .orderBy(sql`COUNT(*)`, "desc")
     .execute();
+  endTime(c, "genres-query");
 
   return (
     <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
