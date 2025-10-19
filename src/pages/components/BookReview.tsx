@@ -12,13 +12,17 @@ export const BookReview: FC<{
           <img
             src={`${book.cover || book.thumbnail || ""}`}
             alt=""
-            class="h-36 w-24 rounded-lg object-cover shadow-sm"
+            class="book-cover h-36 w-24 rounded-lg object-cover shadow-sm"
+            style={`--book-cover-name: book-cover-${book.hiveId}`}
           />
         ) : (
-          <FallbackCover className="h-36 w-24" />
+          <FallbackCover 
+            className="book-cover h-36 w-24" 
+            style={`--book-cover-name: book-cover-${book.hiveId}`}
+          />
         )}
         <span class="flex flex-col gap-1">
-          <span class="text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400">
+          <span class="book-title text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400" style={`--book-title-name: book-title-${book.hiveId}`}>
             {book.title}
           </span>
           <span class="text-sm text-slate-600 dark:text-slate-400">

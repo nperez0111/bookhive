@@ -1,10 +1,11 @@
-export const FallbackCover = ({ className }: { className?: string }) => {
+export const FallbackCover = ({ className, style }: { className?: string; style?: string }) => {
   return (
     <div
       class={
         "flex items-center justify-center rounded-lg bg-zinc-300 dark:bg-zinc-700 " +
         (className || "")
       }
+      style={style}
     >
       <svg
         class="h-10 w-10 text-gray-200 dark:text-gray-600"

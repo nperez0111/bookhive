@@ -48,10 +48,14 @@ export const BuzzBook: FC<{
           <img
             src={`${book.cover || book.thumbnail || ""}`}
             alt={book.title}
-            className="h-full w-full rounded-lg object-cover"
+            className="book-cover h-full w-full rounded-lg object-cover"
+            style={`--book-cover-name: book-cover-${book.hiveId}`}
           />
         ) : (
-          <FallbackCover className="h-full w-full" />
+          <FallbackCover 
+            className="book-cover h-full w-full" 
+            style={`--book-cover-name: book-cover-${book.hiveId}`}
+          />
         )}
       </a>
 
@@ -60,7 +64,7 @@ export const BuzzBook: FC<{
         class="cursor-pointer"
       >
         <div class="mt-5 px-3 pb-5">
-          <h5 class="line-clamp-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+          <h5 class="book-title line-clamp-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white" style={`--book-title-name: book-title-${book.hiveId}`}>
             {book.title}
           </h5>
           <div className="flex items-center">

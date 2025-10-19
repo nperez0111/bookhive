@@ -9,10 +9,13 @@ const NO_BOOKS_FOUND = (
   <p className="text-center text-lg">No books in this list</p>
 );
 
-export const BookList: FC<{
+export async function BookList({
+  books: booksFromProps,
+  fallback,
+}: {
   books?: Book[];
   fallback?: Child;
-}> = async ({ books: booksFromProps, fallback }) => {
+}) {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
   const books =
@@ -142,7 +145,7 @@ export const BookList: FC<{
       </div>
     </div>
   );
-};
+}
 
 export const BookListItem: FC<{
   book: Book;
@@ -157,11 +160,15 @@ export const BookListItem: FC<{
           src={`${book.cover || book.thumbnail || ""}`}
           // src={`/images/w_300/${book.cover || book.thumbnail || ""}`}
           alt={book.title}
-          className="h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
+          className="book-cover h-full w-full rounded-lg object-cover shadow-lg transition-all duration-300 group-hover:saturate-60"
+          style={`--book-cover-name: book-cover-${book.hiveId}`}
           loading="lazy"
         />
       ) : (
-        <FallbackCover className="h-full w-full transition-all duration-300 group-hover:saturate-60" />
+        <FallbackCover
+          className="book-cover h-full w-full transition-all duration-300 group-hover:saturate-60"
+          style={`--book-cover-name: book-cover-${book.hiveId}`}
+        />
       )}
       <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <div className="absolute bottom-0 p-4 text-white">
@@ -225,7 +232,10 @@ export const BookListItem: FC<{
         </div>
       </div>
 
-      <h3 className="text-md mt-2 line-clamp-2 max-w-[12rem] text-center leading-tight font-semibold text-slate-600 dark:text-white">
+      <h3
+        className="book-title text-md mt-2 line-clamp-2 max-w-[12rem] text-center leading-tight font-semibold text-slate-600 dark:text-white"
+        style={`--book-title-name: book-title-${book.hiveId}`}
+      >
         {book.title}
       </h3>
     </a>

@@ -242,7 +242,8 @@ export const EditableLibraryTable: FC<{
                     <img
                       src={book.cover || book.thumbnail || ""}
                       alt={`Cover of ${book.title}`}
-                      class="h-full w-full object-cover"
+                      class="book-cover h-full w-full object-cover"
+                      style={`--book-cover-name: book-cover-${book.hiveId}`}
                       onError={(e: any) => {
                         const target = e.target as HTMLImageElement;
                         target.style.display = "none";
@@ -260,7 +261,7 @@ export const EditableLibraryTable: FC<{
                     </div>
                   </div>
                   <div class="min-w-0 flex-1">
-                    <h3 class="line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white">
+                    <h3 class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white" style={`--book-title-name: book-title-${book.hiveId}`}>
                       {book.title}
                     </h3>
                   </div>

@@ -343,7 +343,8 @@ export const BookInfo: FC<{
                       src={`${book.cover || book.thumbnail}`}
                       // src={`/images/w_300/${book.cover || book.thumbnail}`}
                       alt={`Cover of ${book.title}`}
-                      className="col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
+                      className="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
+                      style={`--book-cover-name: book-cover-${book.id}`}
                     />
 
                     {/* Light effect overlay */}
@@ -358,7 +359,7 @@ export const BookInfo: FC<{
             </div>
 
             <div className="flex-1">
-              <h1 className="mt-4 mb-1 text-3xl font-bold dark:text-gray-100">
+              <h1 className="book-title mt-4 mb-1 text-3xl font-bold dark:text-gray-100" style={`--book-title-name: book-title-${book.id}`}>
                 {book.title}
               </h1>
               <p className="mb-4 text-xl dark:text-gray-400">

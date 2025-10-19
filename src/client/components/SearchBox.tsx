@@ -133,14 +133,20 @@ export const SearchBox: FC = () => {
                 >
                   <div className="flex items-center justify-between space-x-4">
                     <img
-                      className="aspect-2/3 h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
+                      className="book-cover aspect-2/3 h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
                       src={`${book.thumbnail || book.cover || ""}`}
                       // src={`/images/w_300/${book.thumbnail || book.cover || ""}`}
                       alt={`Cover of ${book.title}`}
+                      style={`--book-cover-name: book-cover-${book.id}`}
                       loading="lazy"
                     />
                     <div>
-                      <p className="text-sm font-semibold">{book.title}</p>
+                      <p
+                        className="book-title text-sm font-semibold"
+                        style={`--book-title-name: book-title-${book.id}`}
+                      >
+                        {book.title}
+                      </p>
                       <p className="text-xs text-gray-700 dark:text-gray-200">
                         by {book.authors.split("\t").join(", ")}
                       </p>

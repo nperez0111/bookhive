@@ -34,3 +34,38 @@ body {
     width: 0%;
   }
 }
+
+/* View Transitions - Cross-document transitions */
+@view-transition {
+  navigation: auto;
+}
+
+/* Book cover view transitions */
+.book-cover {
+  view-transition-name: var(--book-cover-name);
+}
+
+.book-title {
+  view-transition-name: var(--book-title-name);
+}
+
+/* Smooth transitions for common elements */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-timing-function: ease-in-out;
+}
+
+/* Book cover specific transitions */
+::view-transition-old(book-cover),
+::view-transition-new(book-cover) {
+  animation-duration: 0.4s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Book title specific transitions */
+::view-transition-old(book-title),
+::view-transition-new(book-title) {
+  animation-duration: 0.3s;
+  animation-timing-function: ease-out;
+}
