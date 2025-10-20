@@ -28,24 +28,26 @@ export const GenresDirectory: FC = async () => {
 
   startTime(c, "genres-query");
   // Query all unique genres with their counts
-  const genres: GenreWithCount[] = await (
-    c
-      .get("ctx")
-      .db.selectFrom("hive_book")
-      .select([
-        sql<string>`value`.as("genre"),
-        sql<number>`COUNT(*)`.as("count"),
-      ])
-      .innerJoin(
-        sql`json_each(hive_book.genres)` as any,
-        sql`1` as any,
-        sql`1` as any,
-      ) as any
-  )
-    .where("hive_book.genres", "is not", null)
-    .groupBy(sql`value`)
-    .orderBy(sql`COUNT(*)`, "desc")
-    .execute();
+  const genres: GenreWithCount[] = (
+    await (
+      c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .select([
+          sql<string>`value`.as("genre"),
+          sql<number>`COUNT(*)`.as("count"),
+        ])
+        .innerJoin(
+          sql`json_each(hive_book.genres)` as any,
+          sql`1` as any,
+          sql`1` as any,
+        ) as any
+    )
+      .where("hive_book.genres", "is not", null)
+      .groupBy(sql`value`)
+      .orderBy(sql`COUNT(*)`, "desc")
+      .execute()
+  ).filter((g) => g.count > 10);
   endTime(c, "genres-query");
 
   return (
