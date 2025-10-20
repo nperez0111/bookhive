@@ -9,13 +9,10 @@ const NO_BOOKS_FOUND = (
   <p className="text-center text-lg">No books in this list</p>
 );
 
-export async function BookList({
-  books: booksFromProps,
-  fallback,
-}: {
+export const BookList: FC<{
   books?: Book[];
   fallback?: Child;
-}) {
+}> = async ({ books: booksFromProps, fallback }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
   const books =
@@ -40,7 +37,7 @@ export async function BookList({
   }
 
   if (!books.length) {
-    return fallback || NO_BOOKS_FOUND;
+    return (fallback || NO_BOOKS_FOUND) as any;
   }
 
   return (
@@ -145,7 +142,7 @@ export async function BookList({
       </div>
     </div>
   );
-}
+};
 
 export const BookListItem: FC<{
   book: Book | HiveBook;
