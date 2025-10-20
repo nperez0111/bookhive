@@ -35,6 +35,7 @@ export const Login: FC<{
           ) : undefined}
           <div class="mt-2">
             <input
+              autofocus
               id="handle"
               type="text"
               name="handle"
