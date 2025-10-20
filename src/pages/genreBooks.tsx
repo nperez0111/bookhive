@@ -38,7 +38,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 }) => {
   return (
     <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
-      <div class="flex flex-col gap-2 px-4 pt-16 lg:px-8">
+      <div class="flex flex-col gap-2 px-4 py-16 lg:px-8">
         {/* Breadcrumb navigation */}
         <nav class="mb-4">
           <ol class="flex items-center space-x-2 text-sm">

@@ -50,7 +50,7 @@ export const GenresDirectory: FC = async () => {
 
   return (
     <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
-      <div class="flex flex-col gap-2 px-4 pt-16 lg:px-8">
+      <div class="flex flex-col gap-2 px-4 py-16 lg:px-8">
         <h1 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
           Explore Genres
         </h1>

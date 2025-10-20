@@ -73,7 +73,7 @@ export const Navbar: FC<{
             <div class="hidden items-center space-x-4 sm:ml-6 sm:flex">
               <a
                 href="/genres"
-                class="rounded-md py-2 text-sm font-medium text-gray-300 hover:bg-yellow-900 hover:text-white"
+                class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 transition-colors duration-200 hover:bg-yellow-900 hover:text-white"
               >
                 Genres
               </a>
