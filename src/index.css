@@ -49,6 +49,10 @@ body {
   view-transition-name: var(--book-title-name);
 }
 
+.genre-name {
+  view-transition-name: var(--genre-name);
+}
+
 /* Smooth transitions for common elements */
 ::view-transition-old(root),
 ::view-transition-new(root) {

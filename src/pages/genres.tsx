@@ -67,7 +67,10 @@ export const GenresDirectory: FC = async () => {
                 class="group relative overflow-hidden rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 hover:border-yellow-400 hover:shadow-md dark:border-gray-700 dark:bg-zinc-800 dark:hover:border-yellow-500"
               >
                 <div class="flex flex-col items-center text-center">
-                  <h3 class="text-lg font-semibold text-gray-900 group-hover:text-yellow-600 dark:text-white dark:group-hover:text-yellow-400">
+                  <h3
+                    class="genre-name text-lg font-semibold text-gray-900 group-hover:text-yellow-600 dark:text-white dark:group-hover:text-yellow-400"
+                    style={`--genre-name: genre-${genre.genre}`}
+                  >
                     {genre.genre}
                   </h3>
                   <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">

@@ -359,7 +359,10 @@ export const BookInfo: FC<{
             </div>
 
             <div className="flex-1">
-              <h1 className="book-title mt-4 mb-1 text-3xl font-bold dark:text-gray-100" style={`--book-title-name: book-title-${book.id}`}>
+              <h1
+                className="book-title mt-4 mb-1 text-3xl font-bold dark:text-gray-100"
+                style={`--book-title-name: book-title-${book.id}`}
+              >
                 {book.title}
               </h1>
               <p className="mb-4 text-xl dark:text-gray-400">
@@ -417,12 +420,14 @@ export const BookInfo: FC<{
                   <div className="flex flex-wrap gap-2">
                     {JSON.parse(book.genres).map(
                       (genre: string, index: number) => (
-                        <span
+                        <a
                           key={index}
-                          className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                          href={`/genres/${encodeURIComponent(genre)}`}
+                          className="genre-name rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 transition-colors hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 dark:hover:bg-yellow-800"
+                          style={`--genre-name: genre-${genre}`}
                         >
                           {genre}
-                        </span>
+                        </a>
                       ),
                     )}
                   </div>

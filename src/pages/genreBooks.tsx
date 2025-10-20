@@ -58,7 +58,10 @@ export const GenreBooks: FC<GenreBooksProps> = ({
         {/* Header with title and sort options */}
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div class="flex-1">
-            <h1 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
+            <h1
+              class="genre-name text-4xl font-bold lg:text-5xl lg:tracking-tight"
+              style={`--genre-name: genre-${genre}`}
+            >
               {genre}
             </h1>
             <p class="mt-4 text-lg text-slate-600 dark:text-slate-400">
