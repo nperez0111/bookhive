@@ -47,7 +47,7 @@ export const GenresDirectory: FC = async () => {
       .groupBy(sql`value`)
       .orderBy(sql`COUNT(*)`, "desc")
       .execute()
-  ).filter((g) => g.count > 10);
+  ).filter((g: GenreWithCount) => g.count > 10);
   endTime(c, "genres-query");
 
   return (
