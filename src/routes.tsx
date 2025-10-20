@@ -735,18 +735,18 @@ export function createRouter(app: HonoServer) {
       );
     }
 
-    const bookId = c.req.param("hiveId") as HiveId;
+    const hiveId = c.req.param("hiveId") as HiveId;
 
     const book = await c
       .get("ctx")
       .db.selectFrom("user_book")
       .selectAll()
       .where("userDid", "=", agent.assertDid)
-      .where("hiveId", "=", bookId)
+      .where("hiveId", "=", hiveId)
       .execute();
 
     if (book.length === 0) {
-      return c.json({ success: false, bookId, book: null });
+      return c.json({ success: false, hiveId, book: null });
     }
     try {
       await agent.com.atproto.repo.deleteRecord({
@@ -763,14 +763,10 @@ export function createRouter(app: HonoServer) {
         .execute();
 
       if (c.req.header()["accept"] === "application/json") {
-        return c.json({ success: true, bookId, book: book[0] });
+        return c.json({ success: true, hiveId, book: book[0] });
       }
 
-      // Redirect back to the user's profile page
-      const handle = await c
-        .get("ctx")
-        .resolver.resolveDidToHandle(agent.assertDid);
-      return c.redirect(`/profile/${handle}`);
+      return c.redirect(`/books/${hiveId}`);
     } catch (e) {
       console.error("Failed to delete book", e);
       throw e;

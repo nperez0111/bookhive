@@ -251,7 +251,7 @@ export const useDeleteBook = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ hiveId }: { hiveId: HiveId }) => {
-      return await enhancedAuthFetch<{ success: boolean; bookId: string }>(
+      return await enhancedAuthFetch<{ success: boolean; hiveId: string }>(
         `/books/${hiveId}`,
         {
           method: "DELETE",

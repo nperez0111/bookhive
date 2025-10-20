@@ -10,10 +10,10 @@ export const navigateToProfile = (did: string) => {
 
 /**
  * Navigate to a book's detail page
- * @param bookId The book's Hive ID
+ * @param hiveId The book's Hive ID
  */
-export const navigateToBook = (bookId: string) => {
-  router.push(`/book/${bookId}`);
+export const navigateToBook = (hiveId: string) => {
+  router.push(`/book/${hiveId}`);
 };
 
 /**
