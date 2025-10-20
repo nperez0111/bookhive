@@ -9,6 +9,7 @@ import * as BookRecord from "../bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "../bsky/lexicon/types/buzz/bookhive/buzz";
 import type { HiveId, UserBook } from "../types";
 import { uploadImageBlob } from "./uploadImageBlob";
+import { BOOK_STATUS } from "../constants";
 
 /**
  * Normalize a date string to ISO format at start of day
@@ -38,6 +39,60 @@ function normalizeDate(dateString: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Infers book status and auto-sets dates based on user input
+ */
+function inferBookStatusAndDates(updates: {
+  status?: string;
+  startedAt?: string;
+  finishedAt?: string;
+}): {
+  status: string | undefined;
+  startedAt: string | undefined;
+  finishedAt: string | undefined;
+} {
+  let autoStartedAt = updates.startedAt;
+  let autoFinishedAt = updates.finishedAt;
+  let autoStatus = updates.status;
+
+  // If user sets startedAt and status is "want to read" or unset, infer they're reading
+  if (
+    updates.startedAt &&
+    (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)
+  ) {
+    autoStatus = BOOK_STATUS.READING;
+  }
+
+  // If user sets finishedAt and status is "want to read", "reading", or unset, infer they're finished
+  if (
+    updates.finishedAt &&
+    (!updates.status ||
+      updates.status === BOOK_STATUS.WANTTOREAD ||
+      updates.status === BOOK_STATUS.READING)
+  ) {
+    autoStatus = BOOK_STATUS.FINISHED;
+  }
+
+  // Auto-set dates based on status if not already provided
+  if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
+    // Auto-set startedAt to current date at start of day
+    autoStartedAt = startOfDay(new Date()).toISOString();
+  } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
+    // Auto-set finishedAt to current date at start of day
+    autoFinishedAt = startOfDay(new Date()).toISOString();
+  }
+
+  // Normalize dates to ISO format at start of day
+  autoStartedAt = normalizeDate(autoStartedAt);
+  autoFinishedAt = normalizeDate(autoFinishedAt);
+
+  return {
+    status: autoStatus,
+    startedAt: autoStartedAt,
+    finishedAt: autoFinishedAt,
+  };
 }
 
 export async function getUserBook({
@@ -154,24 +209,16 @@ export async function updateBookRecord({
     }
   }
 
-  // Auto-set dates based on status if not already provided
-  let autoStartedAt = updates.startedAt;
-  let autoFinishedAt = updates.finishedAt;
-
-  if (updates.status === "buzz.bookhive.defs#reading" && !updates.startedAt) {
-    // Auto-set startedAt to current date at start of day
-    autoStartedAt = startOfDay(new Date()).toISOString();
-  } else if (
-    updates.status === "buzz.bookhive.defs#finished" &&
-    !updates.finishedAt
-  ) {
-    // Auto-set finishedAt to current date at start of day
-    autoFinishedAt = startOfDay(new Date()).toISOString();
-  }
-
-  // Normalize dates to ISO format at start of day
-  autoStartedAt = normalizeDate(autoStartedAt);
-  autoFinishedAt = normalizeDate(autoFinishedAt);
+  // Infer status and auto-set dates based on user input
+  const {
+    status: autoStatus,
+    startedAt: autoStartedAt,
+    finishedAt: autoFinishedAt,
+  } = inferBookStatusAndDates({
+    status: updates.status,
+    startedAt: updates.startedAt,
+    finishedAt: updates.finishedAt,
+  });
 
   // Validate that finishedAt is after startedAt if both are provided
   if (autoStartedAt && autoFinishedAt) {
@@ -192,8 +239,8 @@ export async function updateBookRecord({
     createdAt: originalBook?.createdAt || new Date().toISOString(),
     cover:
       originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
-    // Always prefer new values
-    status: updates.status || originalBook?.status,
+    // Always prefer new values (including auto-inferred status)
+    status: autoStatus || originalBook?.status,
     startedAt:
       autoStartedAt !== undefined
         ? autoStartedAt === ""
@@ -303,24 +350,16 @@ export async function updateBookRecords({
       continue;
     }
 
-    // Auto-set dates based on status if not already provided
-    let autoStartedAt = update.startedAt;
-    let autoFinishedAt = update.finishedAt;
-
-    if (update.status === "buzz.bookhive.defs#reading" && !update.startedAt) {
-      // Auto-set startedAt to current date at start of day
-      autoStartedAt = startOfDay(new Date()).toISOString();
-    } else if (
-      update.status === "buzz.bookhive.defs#finished" &&
-      !update.finishedAt
-    ) {
-      // Auto-set finishedAt to current date at start of day
-      autoFinishedAt = startOfDay(new Date()).toISOString();
-    }
-
-    // Normalize dates to ISO format at start of day
-    autoStartedAt = normalizeDate(autoStartedAt);
-    autoFinishedAt = normalizeDate(autoFinishedAt);
+    // Infer status and auto-set dates based on user input
+    const {
+      status: autoStatus,
+      startedAt: autoStartedAt,
+      finishedAt: autoFinishedAt,
+    } = inferBookStatusAndDates({
+      status: update.status,
+      startedAt: update.startedAt,
+      finishedAt: update.finishedAt,
+    });
 
     // Validate that finishedAt is after startedAt if both are provided
     if (autoStartedAt && autoFinishedAt) {
@@ -340,8 +379,8 @@ export async function updateBookRecords({
       hiveId: originalBook?.hiveId || hiveId,
       createdAt: originalBook?.createdAt || new Date().toISOString(),
       cover: originalBook?.cover,
-      // Always prefer new values
-      status: update.status || originalBook?.status,
+      // Always prefer new values (including auto-inferred status)
+      status: autoStatus || originalBook?.status,
       startedAt:
         autoStartedAt !== undefined
           ? autoStartedAt === ""
