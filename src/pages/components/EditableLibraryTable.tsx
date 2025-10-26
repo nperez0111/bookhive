@@ -188,8 +188,8 @@ export const EditableLibraryTable: FC<{
 
   // Sort books: finished books by finishedAt DESC, others by createdAt DESC
   const sortedBooks = [...books].sort((a, b) => {
-    const aIsFinished = a.status === "buzz.bookhive.defs#finished";
-    const bIsFinished = b.status === "buzz.bookhive.defs#finished";
+    const aIsFinished = a.status === BookStatus.FINISHED;
+    const bIsFinished = b.status === BookStatus.FINISHED;
 
     // If both are finished, sort by finishedAt (most recent first)
     if (aIsFinished && bIsFinished) {
