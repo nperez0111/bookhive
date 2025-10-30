@@ -108,6 +108,14 @@ export const BookList: FC<{
           {orNoResults(
             books
               .filter((book) => book.status === BookStatus.FINISHED)
+              .sort((a, b) => {
+                // Sort by finishedAt date, most recent first
+                // If finishedAt is null, put those books at the end
+                if (!a.finishedAt && !b.finishedAt) return 0;
+                if (!a.finishedAt) return 1;
+                if (!b.finishedAt) return -1;
+                return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+              })
               .map((book) => <BookListItem book={book} />),
           )}
         </ul>
