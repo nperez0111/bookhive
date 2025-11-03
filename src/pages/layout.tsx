@@ -30,7 +30,7 @@ export const Layout: FC<
         <meta charset="UTF-8" />
         <meta property="og:url" content="${url}" />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="BookHive" />
+        <meta property="og:title" content="${title}" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
         <meta property="og:logo" content="/public/icon.svg" />
