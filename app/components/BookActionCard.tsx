@@ -60,15 +60,19 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
 
   // Date handling functions
   const handleStartedDateConfirm = (date: Date) => {
-    // Set time to start of day (00:00:00)
-    const dateAtStartOfDay = new Date(date);
-    dateAtStartOfDay.setHours(0, 0, 0, 0);
-    const dateString = dateAtStartOfDay.toISOString();
+    // Create date string at midnight UTC for the selected date
+    // Extract year, month, day from the date (in local timezone)
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    // Create a new Date at midnight UTC for this date
+    const dateAtStartOfDayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    const dateString = dateAtStartOfDayUTC.toISOString();
     onStartedAtChange?.(dateString);
 
-    // Validate that finishedAt is after startedAt
-    if (finishedAt && new Date(finishedAt) <= dateAtStartOfDay) {
-      setDateError("Finished date must be after started date");
+    // Validate that finishedAt is after startedAt (allow same day)
+    if (finishedAt && new Date(finishedAt) < dateAtStartOfDayUTC) {
+      setDateError("Finished date must be on or after started date");
     } else {
       setDateError(null);
     }
@@ -76,15 +80,19 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   };
 
   const handleFinishedDateConfirm = (date: Date) => {
-    // Set time to start of day (00:00:00)
-    const dateAtStartOfDay = new Date(date);
-    dateAtStartOfDay.setHours(0, 0, 0, 0);
-    const dateString = dateAtStartOfDay.toISOString();
+    // Create date string at midnight UTC for the selected date
+    // Extract year, month, day from the date (in local timezone)
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    // Create a new Date at midnight UTC for this date
+    const dateAtStartOfDayUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    const dateString = dateAtStartOfDayUTC.toISOString();
     onFinishedAtChange?.(dateString);
 
-    // Validate that finishedAt is after startedAt
-    if (startedAt && dateAtStartOfDay <= new Date(startedAt)) {
-      setDateError("Finished date must be after started date");
+    // Validate that finishedAt is after startedAt (allow same day)
+    if (startedAt && dateAtStartOfDayUTC < new Date(startedAt)) {
+      setDateError("Finished date must be on or after started date");
     } else {
       setDateError(null);
     }

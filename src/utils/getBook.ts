@@ -220,13 +220,13 @@ export async function updateBookRecord({
     finishedAt: updates.finishedAt,
   });
 
-  // Validate that finishedAt is after startedAt if both are provided
+  // Validate that finishedAt is on or after startedAt if both are provided
   if (autoStartedAt && autoFinishedAt) {
     const startedDate = parseISO(autoStartedAt);
     const finishedDate = parseISO(autoFinishedAt);
 
-    if (finishedDate <= startedDate) {
-      throw new Error("Finished date must be after started date");
+    if (finishedDate < startedDate) {
+      throw new Error("Finished date must be on or after started date");
     }
   }
 
@@ -361,13 +361,13 @@ export async function updateBookRecords({
       finishedAt: update.finishedAt,
     });
 
-    // Validate that finishedAt is after startedAt if both are provided
+    // Validate that finishedAt is on or after startedAt if both are provided
     if (autoStartedAt && autoFinishedAt) {
       const startedDate = parseISO(autoStartedAt);
       const finishedDate = parseISO(autoFinishedAt);
 
-      if (finishedDate <= startedDate) {
-        throw new Error("Finished date must be after started date");
+      if (finishedDate < startedDate) {
+        throw new Error("Finished date must be on or after started date");
       }
     }
 
