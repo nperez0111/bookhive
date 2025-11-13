@@ -1,4 +1,5 @@
 import { type FC } from "hono/jsx";
+import { Script } from "./utils/script";
 
 export const Login: FC<{
   error?: string;
@@ -20,7 +21,7 @@ export const Login: FC<{
     </div>
 
     <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-      <form action="/login" method="post" class="space-y-6">
+      <form action="/login" method="post" class="space-y-6" id="login-form">
         <div>
           <label
             for="handle"
@@ -71,5 +72,42 @@ export const Login: FC<{
         to create one now!
       </p>
     </div>
+    <Script
+      script={(document) => {
+        const STORAGE_KEY = "bookhive_last_handle";
+        const handleInput = document.getElementById(
+          "handle",
+        ) as HTMLInputElement;
+        const loginForm = document.getElementById(
+          "login-form",
+        ) as HTMLFormElement;
+
+        // Load stored handle on page load
+        if (handleInput && !handleInput.value) {
+          try {
+            const storedHandle = localStorage.getItem(STORAGE_KEY);
+            if (storedHandle) {
+              handleInput.value = storedHandle;
+            }
+          } catch (error) {
+            console.error("Failed to load stored handle:", error);
+          }
+        }
+
+        // Save handle on form submit
+        if (loginForm && handleInput) {
+          loginForm.addEventListener("submit", function () {
+            try {
+              const handleValue = handleInput.value.trim();
+              if (handleValue) {
+                localStorage.setItem(STORAGE_KEY, handleValue);
+              }
+            } catch (error) {
+              console.error("Failed to save handle:", error);
+            }
+          });
+        }
+      }}
+    />
   </div>
 );

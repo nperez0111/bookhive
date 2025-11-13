@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { Colors } from "@/constants/Colors";
@@ -16,6 +17,8 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+
+const STORED_HANDLE_KEY = "bookhive_last_handle";
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -36,6 +39,21 @@ export default function LoginScreen() {
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
+
+  // Load stored handle on mount
+  useEffect(() => {
+    const loadStoredHandle = async () => {
+      try {
+        const storedHandle = await AsyncStorage.getItem(STORED_HANDLE_KEY);
+        if (storedHandle) {
+          setHandle(storedHandle);
+        }
+      } catch (error) {
+        console.error("Failed to load stored handle:", error);
+      }
+    };
+    loadStoredHandle();
+  }, []);
 
   // Entrance animations
   useEffect(() => {
@@ -70,6 +88,13 @@ export default function LoginScreen() {
   const handleSubmit = async () => {
     if (!handle) return;
     setIsLoading(true);
+
+    // Save handle to storage
+    try {
+      await AsyncStorage.setItem(STORED_HANDLE_KEY, handle);
+    } catch (error) {
+      console.error("Failed to save handle:", error);
+    }
 
     // Start loading animation
     Animated.loop(
