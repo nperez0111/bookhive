@@ -217,8 +217,12 @@ export default class ActorTypeahead extends HTMLElement {
         break;
 
       case "Enter":
-        evt.preventDefault();
-        this.#shadow.querySelectorAll("button")[this.#index]?.click();
+        // Only handle Enter if there are actors and a valid selection
+        if (this.#actors.length > 0 && this.#index >= 0) {
+          evt.preventDefault();
+          this.#shadow.querySelectorAll("button")[this.#index]?.click();
+        }
+        // Otherwise, let Enter propagate to submit the form
         break;
     }
   }
