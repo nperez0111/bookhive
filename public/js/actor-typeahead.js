@@ -175,6 +175,10 @@ export default class ActorTypeahead extends HTMLElement {
       case "pointerup":
         this.#onpointerup(/** @type {PointerEvent & { target: HTMLElement }} */ (evt));
         break;
+
+      case "click":
+        this.#onclick(/** @type {MouseEvent & { target: HTMLElement }} */ (evt));
+        break;
     }
   }
 
@@ -242,11 +246,14 @@ export default class ActorTypeahead extends HTMLElement {
 
   /** @param {Event} evt */
   async #onfocusout(evt) {
-    if (this.#pressed) return;
-
-    this.#actors = [];
-    this.#index = -1;
-    this.#render();
+    // Small delay to allow click events on mobile Safari
+    setTimeout(() => {
+      if (!this.#pressed && document.activeElement !== this.querySelector("input")) {
+        this.#actors = [];
+        this.#index = -1;
+        this.#render();
+      }
+    }, 150);
   }
 
   #render() {
@@ -282,14 +289,32 @@ export default class ActorTypeahead extends HTMLElement {
   #onpointerup(evt) {
     this.#pressed = false;
 
-    this.querySelector("input")?.focus();
-
     const button = evt.target?.closest("button");
     const input = this.querySelector("input");
     if (!input || !button) return;
 
-    input.value = button.dataset.handle || "";
+    // Clear menu and set value
     this.#actors = [];
+    this.#index = -1;
     this.#render();
+    input.value = button.dataset.handle || "";
+    input.focus();
+  }
+
+  /** @param {MouseEvent & { target: HTMLElement }} evt */
+  #onclick(evt) {
+    const button = evt.target?.closest("button");
+    const input = this.querySelector("input");
+    if (!input || !button) return;
+
+    evt.preventDefault();
+    evt.stopPropagation();
+    
+    // Clear menu and set value
+    this.#actors = [];
+    this.#index = -1;
+    this.#render();
+    input.value = button.dataset.handle || "";
+    input.focus();
   }
 }

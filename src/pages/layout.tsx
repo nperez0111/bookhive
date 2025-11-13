@@ -97,7 +97,7 @@ export const Layout: FC<
             raw(cssFileContent)
           }
           
-          /* Actor Typeahead theme variables for light mode */
+          /* Actor Typeahead theme variables - light mode (default) */
           actor-typeahead {
             --color-background: #ffffff;
             --color-border: #d1d5db;
@@ -108,7 +108,7 @@ export const Layout: FC<
             --padding-menu: 4px;
           }
 
-          /* Actor Typeahead theme variables for dark mode (media query for system preference) */
+          /* Actor Typeahead theme variables for dark mode (media query) */
           @media (prefers-color-scheme: dark) {
             actor-typeahead {
               --color-background: #27272a;
@@ -119,15 +119,34 @@ export const Layout: FC<
             }
           }
 
-          /* Actor Typeahead theme variables for dark mode (class-based - takes precedence) */
-          .dark actor-typeahead,
+          /* Actor Typeahead theme variables for light mode (media query override) */
+          @media (prefers-color-scheme: light) {
+            actor-typeahead {
+              --color-background: #ffffff;
+              --color-border: #d1d5db;
+              --color-shadow: #000000;
+              --color-hover: #f3f4f6;
+              --color-avatar-fallback: #e5e7eb;
+            }
+          }
+
+          /* Optional: Class-based overrides (takes precedence over media queries) */
           html.dark actor-typeahead,
-          [class*="dark"] actor-typeahead {
+          .dark actor-typeahead {
             --color-background: #27272a;
             --color-border: #3f3f46;
             --color-shadow: #000000;
             --color-hover: #3f3f46;
             --color-avatar-fallback: #52525b;
+          }
+
+          html.light actor-typeahead,
+          .light actor-typeahead {
+            --color-background: #ffffff;
+            --color-border: #d1d5db;
+            --color-shadow: #000000;
+            --color-hover: #f3f4f6;
+            --color-avatar-fallback: #e5e7eb;
           }
         </style>
         ${env.isDevelopment
