@@ -60,15 +60,25 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
 
   // Date handling functions
   const handleStartedDateConfirm = (date: Date) => {
-    // Set time to start of day (00:00:00)
-    const dateAtStartOfDay = new Date(date);
-    dateAtStartOfDay.setHours(0, 0, 0, 0);
-    const dateString = dateAtStartOfDay.toISOString();
+    // Extract year, month, day from the selected date (in local timezone)
+    // Format as YYYY-MM-DD - backend will convert to UTC
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateString = `${year}-${month}-${day}`;
     onStartedAtChange?.(dateString);
 
-    // Validate that finishedAt is after startedAt
-    if (finishedAt && new Date(finishedAt) <= dateAtStartOfDay) {
-      setDateError("Finished date must be after started date");
+    // Validate that finishedAt is on or after startedAt (allow same day)
+    // Compare date strings directly (handle both YYYY-MM-DD and ISO formats)
+    if (finishedAt) {
+      const finishedDateStr = finishedAt.includes("T")
+        ? finishedAt.split("T")[0]
+        : finishedAt;
+      if (finishedDateStr < dateString) {
+        setDateError("Finished date must be on or after started date");
+      } else {
+        setDateError(null);
+      }
     } else {
       setDateError(null);
     }
@@ -76,15 +86,25 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
   };
 
   const handleFinishedDateConfirm = (date: Date) => {
-    // Set time to start of day (00:00:00)
-    const dateAtStartOfDay = new Date(date);
-    dateAtStartOfDay.setHours(0, 0, 0, 0);
-    const dateString = dateAtStartOfDay.toISOString();
+    // Extract year, month, day from the selected date (in local timezone)
+    // Format as YYYY-MM-DD - backend will convert to UTC
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dateString = `${year}-${month}-${day}`;
     onFinishedAtChange?.(dateString);
 
-    // Validate that finishedAt is after startedAt
-    if (startedAt && dateAtStartOfDay <= new Date(startedAt)) {
-      setDateError("Finished date must be after started date");
+    // Validate that finishedAt is on or after startedAt (allow same day)
+    // Compare date strings directly (handle both YYYY-MM-DD and ISO formats)
+    if (startedAt) {
+      const startedDateStr = startedAt.includes("T")
+        ? startedAt.split("T")[0]
+        : startedAt;
+      if (dateString < startedDateStr) {
+        setDateError("Finished date must be on or after started date");
+      } else {
+        setDateError(null);
+      }
     } else {
       setDateError(null);
     }

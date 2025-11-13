@@ -12,8 +12,8 @@ import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 
 /**
- * Normalize a date string to ISO format at start of day
- * Handles various input formats and ensures consistent output
+ * Normalize a date string to ISO format at midnight UTC
+ * Handles YYYY-MM-DD format and ISO strings, always returns UTC midnight
  */
 function normalizeDate(dateString: string | undefined): string | undefined {
   if (!dateString || dateString === "") {
@@ -21,21 +21,28 @@ function normalizeDate(dateString: string | undefined): string | undefined {
   }
 
   try {
-    // Try to parse the date string
-    const date = parseISO(dateString);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return new Date(dateString + "T00:00:00.000Z").toISOString();
+    }
 
+    const date = parseISO(dateString);
     if (!isValid(date)) {
       // If parseISO fails, try creating a new Date
       const fallbackDate = new Date(dateString);
       if (!isValid(fallbackDate)) {
         return undefined;
       }
-      // Set to start of day and return ISO string
-      return startOfDay(fallbackDate).toISOString();
+
+      const year = fallbackDate.getUTCFullYear();
+      const month = fallbackDate.getUTCMonth();
+      const day = fallbackDate.getUTCDate();
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
     }
 
-    // Set to start of day and return ISO string
-    return startOfDay(date).toISOString();
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const day = date.getUTCDate();
+    return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
   } catch {
     return undefined;
   }
@@ -220,13 +227,12 @@ export async function updateBookRecord({
     finishedAt: updates.finishedAt,
   });
 
-  // Validate that finishedAt is after startedAt if both are provided
   if (autoStartedAt && autoFinishedAt) {
-    const startedDate = parseISO(autoStartedAt);
-    const finishedDate = parseISO(autoFinishedAt);
+    const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
+    const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
 
-    if (finishedDate <= startedDate) {
-      throw new Error("Finished date must be after started date");
+    if (finishedDateStr < startedDateStr) {
+      throw new Error("Finished date must be on or after started date");
     }
   }
 
@@ -361,13 +367,12 @@ export async function updateBookRecords({
       finishedAt: update.finishedAt,
     });
 
-    // Validate that finishedAt is after startedAt if both are provided
     if (autoStartedAt && autoFinishedAt) {
-      const startedDate = parseISO(autoStartedAt);
-      const finishedDate = parseISO(autoFinishedAt);
+      const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
+      const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
 
-      if (finishedDate <= startedDate) {
-        throw new Error("Finished date must be after started date");
+      if (finishedDateStr < startedDateStr) {
+        throw new Error("Finished date must be on or after started date");
       }
     }
 
