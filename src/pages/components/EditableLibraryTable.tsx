@@ -196,7 +196,9 @@ export const EditableLibraryTable: FC<{
       if (!a.finishedAt && !b.finishedAt) return 0;
       if (!a.finishedAt) return 1;
       if (!b.finishedAt) return -1;
-      return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+      return (
+        new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()
+      );
     }
 
     // If only one is finished, prioritize based on general creation date
@@ -279,7 +281,10 @@ export const EditableLibraryTable: FC<{
                     </div>
                   </div>
                   <div class="min-w-0 flex-1">
-                    <h3 class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white" style={`--book-title-name: book-title-${book.hiveId}`}>
+                    <h3
+                      class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white"
+                      style={`--book-title-name: book-title-${book.hiveId}`}
+                    >
                       {book.title}
                     </h3>
                   </div>

@@ -127,6 +127,43 @@ export const Layout: FC<
       </head>
       <body>
         ${children}
+        <script type="text/javascript">
+          ${raw(`
+            // Disable submit buttons when forms are submitted
+            document.addEventListener("DOMContentLoaded", function () {
+              const forms = document.querySelectorAll("form");
+              forms.forEach((form) => {
+                form.addEventListener("submit", () => {
+                  const submitButtons = form.querySelectorAll('button[type="submit"]');
+                  submitButtons.forEach((button) => {
+                    const btn = button;
+                    btn.disabled = true;
+                    const currentText = btn.textContent || "";
+                    // Update button text for common actions
+                    if (currentText.includes("Save")) {
+                      btn.textContent = currentText.replace("Save", "Saving...");
+                    } else if (currentText.includes("Delete")) {
+                      btn.textContent = currentText.replace("Delete", "Deleting...");
+                    } else if (currentText.includes("Reply")) {
+                      btn.textContent = currentText.replace("Reply", "Replying...");
+                    } else if (currentText.includes("Buzz in")) {
+                      btn.textContent = "Signing in...";
+                    } else if (currentText.includes("Sign out")) {
+                      btn.textContent = "Signing out...";
+                    } else if (currentText.includes("Refresh")) {
+                      btn.textContent = "Refreshing...";
+                    } else if (currentText.includes("Follow")) {
+                      btn.textContent = "Following...";
+                    }
+                    // Visual feedback
+                    btn.style.opacity = "0.6";
+                    btn.style.cursor = "not-allowed";
+                  });
+                });
+              });
+            });
+          `)};
+        </script>
       </body>
     </html>`;
 };
