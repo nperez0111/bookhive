@@ -46,7 +46,10 @@ export const ProfilePage: FC<{
                 </h2>
               </div>
               {isOwnProfile ? (
-                <EditableLibraryTable books={books} />
+                <EditableLibraryTable
+                  books={books}
+                  redirectUrl={`/profile/${handle}`}
+                />
               ) : (
                 <BookList books={books} />
               )}

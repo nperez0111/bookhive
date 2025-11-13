@@ -175,7 +175,8 @@ const StatusDropdown: FC<{
 
 export const EditableLibraryTable: FC<{
   books: Book[];
-}> = ({ books }) => {
+  redirectUrl?: string;
+}> = ({ books, redirectUrl }) => {
   if (!books.length) {
     return (
       <div class="rounded-xl border border-gray-200 bg-yellow-50 px-6 py-8 text-center dark:border-gray-700 dark:bg-zinc-900">
@@ -196,7 +197,9 @@ export const EditableLibraryTable: FC<{
       if (!a.finishedAt && !b.finishedAt) return 0;
       if (!a.finishedAt) return 1;
       if (!b.finishedAt) return -1;
-      return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+      return (
+        new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()
+      );
     }
 
     // If only one is finished, prioritize based on general creation date
@@ -279,7 +282,10 @@ export const EditableLibraryTable: FC<{
                     </div>
                   </div>
                   <div class="min-w-0 flex-1">
-                    <h3 class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white" style={`--book-title-name: book-title-${book.hiveId}`}>
+                    <h3
+                      class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white"
+                      style={`--book-title-name: book-title-${book.hiveId}`}
+                    >
                       {book.title}
                     </h3>
                   </div>
@@ -333,7 +339,10 @@ export const EditableLibraryTable: FC<{
                 </p>
               </td>
               <td class="px-4 py-2" onclick="event.stopPropagation()">
-                <form action={`/books/${book.hiveId}`} method="post">
+                <form
+                  action={`/books/${book.hiveId}${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
+                  method="post"
+                >
                   <input type="hidden" name="_method" value="DELETE" />
                   <button
                     type="submit"

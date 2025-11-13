@@ -766,7 +766,9 @@ export function createRouter(app: HonoServer) {
         return c.json({ success: true, hiveId, book: book[0] });
       }
 
-      return c.redirect(`/books/${hiveId}`);
+      // Check for redirect query parameter, default to book page
+      const redirectTo = c.req.query("redirect") || `/books/${hiveId}`;
+      return c.redirect(redirectTo);
     } catch (e) {
       console.error("Failed to delete book", e);
       throw e;
