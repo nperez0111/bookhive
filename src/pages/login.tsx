@@ -34,16 +34,18 @@ export const Login: FC<{
             </p>
           ) : undefined}
           <div class="mt-2">
-            <input
-              autofocus
-              id="handle"
-              type="text"
-              name="handle"
-              value={handle}
-              placeholder="Enter your handle (eg buzzer.bsky.social)"
-              required
-              class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-yellow-800 focus:ring-inset sm:text-sm/6 dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
-            />
+            <actor-typeahead>
+              <input
+                autofocus
+                id="handle"
+                type="text"
+                name="handle"
+                value={handle}
+                placeholder="Enter your handle (eg buzzer.bsky.social)"
+                required
+                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-yellow-800 focus:ring-inset sm:text-sm/6 dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
+              />
+            </actor-typeahead>
           </div>
         </div>
 

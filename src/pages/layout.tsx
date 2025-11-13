@@ -96,6 +96,39 @@ export const Layout: FC<
             // Inlining the CSS saves a network request
             raw(cssFileContent)
           }
+          
+          /* Actor Typeahead theme variables for light mode */
+          actor-typeahead {
+            --color-background: #ffffff;
+            --color-border: #d1d5db;
+            --color-shadow: #000000;
+            --color-hover: #f3f4f6;
+            --color-avatar-fallback: #e5e7eb;
+            --radius: 8px;
+            --padding-menu: 4px;
+          }
+
+          /* Actor Typeahead theme variables for dark mode (media query for system preference) */
+          @media (prefers-color-scheme: dark) {
+            actor-typeahead {
+              --color-background: #27272a;
+              --color-border: #3f3f46;
+              --color-shadow: #000000;
+              --color-hover: #3f3f46;
+              --color-avatar-fallback: #52525b;
+            }
+          }
+
+          /* Actor Typeahead theme variables for dark mode (class-based - takes precedence) */
+          .dark actor-typeahead,
+          html.dark actor-typeahead,
+          [class*="dark"] actor-typeahead {
+            --color-background: #27272a;
+            --color-border: #3f3f46;
+            --color-shadow: #000000;
+            --color-hover: #3f3f46;
+            --color-avatar-fallback: #52525b;
+          }
         </style>
         ${env.isDevelopment
           ? // This feels like a hack, but it's a good way to get the page to reload only in development
@@ -124,6 +157,10 @@ export const Layout: FC<
             </script>`
           : ""}
         <script type="module" src="/public/js/client.js?v=${now}"></script>
+        <script
+          type="module"
+          src="/public/js/actor-typeahead.js?v=${now}"
+        ></script>
       </head>
       <body>
         ${children}
