@@ -152,7 +152,7 @@ export const BookListItem: FC<{
     "stars" in book && book.stars !== null
       ? book.stars / 2
       : "rating" in book
-        ? book.rating || 0
+        ? (book.rating || 0) / 1000
         : 0;
   return (
     <li className="group relative flex justify-center">
@@ -198,7 +198,7 @@ export const BookListItem: FC<{
                       style={{
                         clipPath: `inset(0 ${
                           100 -
-                          Math.min(100, Math.max(0, rating - (star - 1) * 100))
+                          Math.min(100, Math.max(0, (rating - (star - 1)) * 100))
                         }% 0 0)`,
                       }}
                       class="fill-current text-yellow-400"
