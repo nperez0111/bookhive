@@ -298,124 +298,152 @@ export const LibraryImport: FC = () => {
                     .pipeThrough(new TextDecoderStream())
                     .getReader();
 
+                  // Helper function to process an SSE event
+                  const processEvent = (event: any) => {
+                    // Update popup progress UI
+                    if (
+                      progressBar &&
+                      progressText &&
+                      progressCount &&
+                      currentBook &&
+                      stageMessage
+                    ) {
+                      switch (event.event) {
+                        case "import-start": {
+                          progressText.textContent = "Starting import...";
+                          stageMessage.textContent =
+                            event.stageProgress.message;
+                          progressBar.style.width = "0%";
+                          break;
+                        }
+                        case "book-load": {
+                          progressText.textContent = "Processing books...";
+                          stageMessage.textContent =
+                            event.stageProgress.message;
+                          progressCount.textContent = `${event.stageProgress.current} books processed`;
+                          currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+                          break;
+                        }
+                        case "upload-start": {
+                          progressText.textContent = "Uploading books...";
+                          stageMessage.textContent =
+                            event.stageProgress.message;
+                          progressCount.textContent =
+                            "0/" + event.stageProgress.total;
+                          progressBar.style.width = "0%";
+                          break;
+                        }
+                        case "book-upload": {
+                          const progress =
+                            (event.processed / event.total) * 100;
+                          progressBar.style.width = `${progress}%`;
+                          progressText.textContent = "Uploading books...";
+                          stageMessage.textContent =
+                            event.stageProgress.message;
+                          progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
+                          currentBook.textContent = `Current: ${event.title} by ${event.author}`;
+                          break;
+                        }
+                        case "import-complete": {
+                          progressBar.style.width = "100%";
+                          progressText.textContent = "Import complete!";
+                          stageMessage.textContent =
+                            event.stageProgress.message;
+                          progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
+                          currentBook.textContent = "";
+                          break;
+                        }
+                      }
+                    }
+
+                    // Dispatch a normalized event for the client ImportTableApp
+                    if (
+                      event.event === "book-upload" &&
+                      event.title &&
+                      event.author
+                    ) {
+                      const book = {
+                        hiveId: event.hiveId || event.book?.hiveId,
+                        title: event.title || event.book?.title,
+                        authors: event.author || event.book?.authors,
+                        coverImage: event.coverImage || event.book?.coverImage,
+                        status: event.status || event.book?.status,
+                        finishedAt: event.finishedAt || event.book?.finishedAt,
+                        stars: event.stars ?? event.book?.stars,
+                        review: event.review ?? event.book?.review,
+                        alreadyExists:
+                          event.alreadyExists ?? event.book?.alreadyExists,
+                      };
+                      dispatchImportEvent({
+                        event: "book-upload",
+                        processed: event.processed,
+                        total: event.total,
+                        uploaded: event.uploaded,
+                        stage: event.stage,
+                        stageProgress: event.stageProgress,
+                        book,
+                      });
+                    } else if (
+                      event.event === "import-start" ||
+                      event.event === "upload-start"
+                    ) {
+                      dispatchImportEvent(event);
+                    } else if (event.event === "import-complete") {
+                      dispatchImportEvent(event);
+                      if (event.failedBooks?.length) {
+                        // Emit individual failure rows at completion to avoid duplicates
+                        for (let i = 0; i < event.failedBooks.length; i++) {
+                          const fb = event.failedBooks[i];
+                          const details = event.failedBookDetails?.[i] || {};
+                          dispatchImportEvent({
+                            event: "book-failed",
+                            failedBook: { ...fb, ...details },
+                          });
+                        }
+                      }
+                    }
+                  };
+
+                  let buffer = "";
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (done) break;
+                    if (done) {
+                      // Process any remaining data in buffer
+                      if (buffer.trim()) {
+                        const data = buffer.replace(/^data: /, "").trim();
+                        if (data) {
+                          try {
+                            const event = JSON.parse(data);
+                            processEvent(event);
+                          } catch (e) {
+                            console.error(
+                              "Failed to parse final SSE message:",
+                              e,
+                            );
+                          }
+                        }
+                      }
+                      break;
+                    }
 
-                    // Each SSE message is prefixed with "data: " and ends with two newlines
-                    const messages = value.split("\n\n");
+                    // Accumulate chunks in buffer
+                    buffer += value;
+
+                    // Process complete messages (ending with \n\n)
+                    const messages = buffer.split("\n\n");
+                    // Keep the last incomplete message in buffer
+                    buffer = messages.pop() || "";
+
                     for (const message of messages) {
                       if (!message.trim()) continue;
 
                       // Parse the SSE data
-                      const data = message.replace(/^data: /, "");
+                      const data = message.replace(/^data: /, "").trim();
+                      if (!data) continue;
+
                       try {
                         const event = JSON.parse(data);
-                        // Update popup progress UI
-                        if (
-                          progressBar &&
-                          progressText &&
-                          progressCount &&
-                          currentBook &&
-                          stageMessage
-                        ) {
-                          switch (event.event) {
-                            case "import-start": {
-                              progressText.textContent = "Starting import...";
-                              stageMessage.textContent =
-                                event.stageProgress.message;
-                              progressBar.style.width = "0%";
-                              break;
-                            }
-                            case "book-load": {
-                              progressText.textContent = "Processing books...";
-                              stageMessage.textContent =
-                                event.stageProgress.message;
-                              progressCount.textContent = `${event.stageProgress.current} books processed`;
-                              currentBook.textContent = `Current: ${event.title} by ${event.author}`;
-                              break;
-                            }
-                            case "upload-start": {
-                              progressText.textContent = "Uploading books...";
-                              stageMessage.textContent =
-                                event.stageProgress.message;
-                              progressCount.textContent =
-                                "0/" + event.stageProgress.total;
-                              progressBar.style.width = "0%";
-                              break;
-                            }
-                            case "book-upload": {
-                              const progress =
-                                (event.processed / event.total) * 100;
-                              progressBar.style.width = `${progress}%`;
-                              progressText.textContent = "Uploading books...";
-                              stageMessage.textContent =
-                                event.stageProgress.message;
-                              progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
-                              currentBook.textContent = `Current: ${event.title} by ${event.author}`;
-                              break;
-                            }
-                            case "import-complete": {
-                              progressBar.style.width = "100%";
-                              progressText.textContent = "Import complete!";
-                              stageMessage.textContent =
-                                event.stageProgress.message;
-                              progressCount.textContent = `${event.stageProgress.current}/${event.stageProgress.total}`;
-                              currentBook.textContent = "";
-                              break;
-                            }
-                          }
-                        }
-
-                        // Dispatch a normalized event for the client ImportTableApp
-                        if (
-                          event.event === "book-upload" &&
-                          event.title &&
-                          event.author
-                        ) {
-                          const book = {
-                            hiveId: event.hiveId || event.book?.hiveId,
-                            title: event.title || event.book?.title,
-                            authors: event.author || event.book?.authors,
-                            coverImage:
-                              event.coverImage || event.book?.coverImage,
-                            status: event.status || event.book?.status,
-                            finishedAt:
-                              event.finishedAt || event.book?.finishedAt,
-                            stars: event.stars ?? event.book?.stars,
-                            review: event.review ?? event.book?.review,
-                            alreadyExists:
-                              event.alreadyExists ?? event.book?.alreadyExists,
-                          };
-                          dispatchImportEvent({
-                            event: "book-upload",
-                            processed: event.processed,
-                            total: event.total,
-                            uploaded: event.uploaded,
-                            stage: event.stage,
-                            stageProgress: event.stageProgress,
-                            book,
-                          });
-                        } else if (
-                          event.event === "import-start" ||
-                          event.event === "upload-start"
-                        ) {
-                          dispatchImportEvent(event);
-                        } else if (event.event === "import-complete") {
-                          dispatchImportEvent(event);
-                          if (event.failedBooks?.length) {
-                            // Emit individual failure rows at completion to avoid duplicates
-                            for (let i = 0; i < event.failedBooks.length; i++) {
-                              const fb = event.failedBooks[i];
-                              const details =
-                                event.failedBookDetails?.[i] || {};
-                              dispatchImportEvent({
-                                event: "book-failed",
-                                failedBook: { ...fb, ...details },
-                              });
-                            }
-                          }
-                        }
+                        processEvent(event);
                       } catch (e) {
                         console.error("Failed to parse SSE message:", e);
                       }

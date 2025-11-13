@@ -34,12 +34,25 @@ const FailedRow: FC<{
     finishedAt?: string;
     stars?: number;
     review?: string;
+    reason?: string;
   };
   onResolved: (
     success: Extract<ImportRow, { success: true }>,
     failedKey: string,
   ) => void;
 }> = ({ row, onResolved }) => {
+  const getReasonText = (reason?: string): string | null => {
+    if (!reason || reason === "no_match") return null;
+    switch (reason) {
+      case "processing_error":
+        return "Processing error";
+      case "update_error":
+        return "Update error";
+      default:
+        return reason;
+    }
+  };
+  const reasonText = getReasonText(row.reason);
   const query = encodeURIComponent(`${row.title} ${row.author}`);
   const [isOpen, setOpen] = useState(false);
   const [results, setResults] = useState<any[]>([]);
@@ -135,6 +148,11 @@ const FailedRow: FC<{
                 <div className="text-gray-600 dark:text-gray-300">
                   {row.author}
                 </div>
+                {reasonText && (
+                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {reasonText}
+                  </div>
+                )}
               </div>
             </div>
             <button

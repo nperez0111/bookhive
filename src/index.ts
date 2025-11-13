@@ -287,7 +287,8 @@ export class Server {
           let totalBooks = 0;
           let matchedBooks = 0; // processed (matched to Hive)
           let uploadedBooks = 0; // newly created (not alreadyExists)
-          const unmatchedBooks: GoodreadsBook[] = [];
+          const unmatchedBooks: Array<{ book: GoodreadsBook; reason: string }> =
+            [];
           const unmatchedSet = new Set<string>();
 
           // Send initial event
@@ -369,8 +370,8 @@ export class Server {
                                 processed: matchedBooks,
                                 failed: unmatchedBooks.length,
                                 failedBooks: unmatchedBooks.map((b) => ({
-                                  title: b.title,
-                                  author: b.author,
+                                  title: b.book.title,
+                                  author: b.book.author,
                                 })),
                                 total: totalBooks,
                                 event: "book-load",
@@ -401,7 +402,10 @@ export class Server {
                               const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
                               if (!unmatchedSet.has(key)) {
                                 unmatchedSet.add(key);
-                                unmatchedBooks.push(book);
+                                unmatchedBooks.push({
+                                  book,
+                                  reason: "no_match",
+                                });
                               }
                               return null;
                             }
@@ -435,7 +439,10 @@ export class Server {
                               error: e,
                               book,
                             });
-                            unmatchedBooks.push(book);
+                            unmatchedBooks.push({
+                              book,
+                              reason: "processing_error",
+                            });
                             return null;
                           }
                         }),
@@ -539,32 +546,37 @@ export class Server {
 
                         // Add to unmatched books for individual failures
                         unmatchedBooks.push({
-                          bookId: "",
-                          title: bookUpdate.title || "Unknown",
-                          author: bookUpdate.authors || "Unknown",
-                          authorLastFirst: "",
-                          additionalAuthors: [],
-                          isbn: "",
-                          isbn13: "",
-                          myRating: bookUpdate.stars ? bookUpdate.stars / 2 : 0,
-                          averageRating: 0,
-                          publisher: "",
-                          binding: "",
-                          numberOfPages: 0,
-                          yearPublished: 0,
-                          originalPublicationYear: 0,
-                          dateRead: bookUpdate.finishedAt
-                            ? new Date(bookUpdate.finishedAt)
-                            : null,
-                          dateAdded: new Date(),
-                          bookshelves: [],
-                          bookshelvesWithPositions: "",
-                          exclusiveShelf: "",
-                          myReview: bookUpdate.review || "",
-                          spoiler: false,
-                          privateNotes: "",
-                          readCount: 0,
-                          ownedCopies: 0,
+                          book: {
+                            bookId: "",
+                            title: bookUpdate.title || "Unknown",
+                            author: bookUpdate.authors || "Unknown",
+                            authorLastFirst: "",
+                            additionalAuthors: [],
+                            isbn: "",
+                            isbn13: "",
+                            myRating: bookUpdate.stars
+                              ? bookUpdate.stars / 2
+                              : 0,
+                            averageRating: 0,
+                            publisher: "",
+                            binding: "",
+                            numberOfPages: 0,
+                            yearPublished: 0,
+                            originalPublicationYear: 0,
+                            dateRead: bookUpdate.finishedAt
+                              ? new Date(bookUpdate.finishedAt)
+                              : null,
+                            dateAdded: new Date(),
+                            bookshelves: [],
+                            bookshelvesWithPositions: "",
+                            exclusiveShelf: "",
+                            myReview: bookUpdate.review || "",
+                            spoiler: false,
+                            privateNotes: "",
+                            readCount: 0,
+                            ownedCopies: 0,
+                          },
+                          reason: "update_error",
                         });
                       }
                     }
@@ -603,21 +615,26 @@ export class Server {
               failedBooks: Array.from(
                 new Map(
                   unmatchedBooks.map((b) => [
-                    `${normalizeStr(b.title)}::${normalizeStr(b.author)}`,
-                    { title: b.title, author: b.author },
+                    `${normalizeStr(b.book.title)}::${normalizeStr(b.book.author)}`,
+                    { title: b.book.title, author: b.book.author },
                   ]),
                 ).values(),
               ),
               // Send full failed book payloads so client can retry with minimal server state
               failedBookDetails: unmatchedBooks.map((b) => ({
-                title: b.title,
-                author: b.author,
-                isbn10: b.isbn || undefined,
-                isbn13: b.isbn13 || undefined,
-                stars: b.myRating ? b.myRating * 2 : undefined,
-                review: b.myReview || undefined,
-                finishedAt: b.dateRead ? b.dateRead.toISOString() : undefined,
-                status: b.dateRead ? "buzz.bookhive.defs#finished" : undefined,
+                title: b.book.title,
+                author: b.book.author,
+                isbn10: b.book.isbn || undefined,
+                isbn13: b.book.isbn13 || undefined,
+                stars: b.book.myRating ? b.book.myRating * 2 : undefined,
+                review: b.book.myReview || undefined,
+                finishedAt: b.book.dateRead
+                  ? b.book.dateRead.toISOString()
+                  : undefined,
+                status: b.book.dateRead
+                  ? "buzz.bookhive.defs#finished"
+                  : undefined,
+                reason: b.reason,
               })),
               id: id++,
             }),
@@ -658,7 +675,10 @@ export class Server {
           let totalBooks = 0;
           let matchedBooks = 0; // processed (matched to Hive)
           let uploadedBooks = 0; // newly created (not alreadyExists)
-          const unmatchedBooks: StorygraphBook[] = [];
+          const unmatchedBooks: Array<{
+            book: StorygraphBook;
+            reason: string;
+          }> = [];
           const unmatchedSet = new Set<string>();
 
           // Send initial event
@@ -740,8 +760,8 @@ export class Server {
                                 processed: matchedBooks,
                                 failed: unmatchedBooks.length,
                                 failedBooks: unmatchedBooks.map((b) => ({
-                                  title: b.title,
-                                  author: b.authors,
+                                  title: b.book.title,
+                                  author: b.book.authors,
                                 })),
                                 total: totalBooks,
                                 event: "book-load",
@@ -772,7 +792,10 @@ export class Server {
                               const key = `${normalizeStr(book.title)}::${normalizeStr(book.authors)}`;
                               if (!unmatchedSet.has(key)) {
                                 unmatchedSet.add(key);
-                                unmatchedBooks.push(book);
+                                unmatchedBooks.push({
+                                  book,
+                                  reason: "no_match",
+                                });
                               }
                               return null;
                             }
@@ -817,7 +840,10 @@ export class Server {
                               error: e,
                               book,
                             });
-                            unmatchedBooks.push(book);
+                            unmatchedBooks.push({
+                              book,
+                              reason: "processing_error",
+                            });
                             return null;
                           }
                         }),
@@ -920,33 +946,36 @@ export class Server {
 
                         // Add to unmatched books for individual failures
                         unmatchedBooks.push({
-                          title: bookUpdate.title || "Unknown",
-                          authors: bookUpdate.authors || "Unknown",
-                          contributors: "",
-                          isbn: "",
-                          format: "",
-                          readStatus: "",
-                          dateAdded: null,
-                          lastDateRead: bookUpdate.finishedAt
-                            ? new Date(bookUpdate.finishedAt)
-                            : null,
-                          datesRead: "",
-                          readCount: 0,
-                          moods: "",
-                          pace: "",
-                          characterOrPlot: "",
-                          strongCharacterDevelopment: "",
-                          loveableCharacters: "",
-                          diverseCharacters: "",
-                          flawedCharacters: "",
-                          starRating: bookUpdate.stars
-                            ? bookUpdate.stars / 2
-                            : 0,
-                          review: bookUpdate.review || "",
-                          contentWarnings: "",
-                          contentWarningDescription: "",
-                          tags: "",
-                          owned: false,
+                          book: {
+                            title: bookUpdate.title || "Unknown",
+                            authors: bookUpdate.authors || "Unknown",
+                            contributors: "",
+                            isbn: "",
+                            format: "",
+                            readStatus: "",
+                            dateAdded: null,
+                            lastDateRead: bookUpdate.finishedAt
+                              ? new Date(bookUpdate.finishedAt)
+                              : null,
+                            datesRead: "",
+                            readCount: 0,
+                            moods: "",
+                            pace: "",
+                            characterOrPlot: "",
+                            strongCharacterDevelopment: "",
+                            loveableCharacters: "",
+                            diverseCharacters: "",
+                            flawedCharacters: "",
+                            starRating: bookUpdate.stars
+                              ? bookUpdate.stars / 2
+                              : 0,
+                            review: bookUpdate.review || "",
+                            contentWarnings: "",
+                            contentWarningDescription: "",
+                            tags: "",
+                            owned: false,
+                          },
+                          reason: "update_error",
                         });
                       }
                     }
@@ -985,26 +1014,27 @@ export class Server {
               failedBooks: Array.from(
                 new Map(
                   unmatchedBooks.map((b) => [
-                    `${normalizeStr(b.title)}::${normalizeStr(b.authors)}`,
-                    { title: b.title, author: b.authors },
+                    `${normalizeStr(b.book.title)}::${normalizeStr(b.book.authors)}`,
+                    { title: b.book.title, author: b.book.authors },
                   ]),
                 ).values(),
               ),
               failedBookDetails: unmatchedBooks.map((b) => ({
-                title: b.title,
-                author: b.authors,
-                isbn13: b.isbn || undefined,
-                stars: b.starRating ? b.starRating * 2 : undefined,
-                review: b.review || undefined,
-                finishedAt: b.lastDateRead
-                  ? b.lastDateRead.toISOString()
+                title: b.book.title,
+                author: b.book.authors,
+                isbn13: b.book.isbn || undefined,
+                stars: b.book.starRating ? b.book.starRating * 2 : undefined,
+                review: b.book.review || undefined,
+                finishedAt: b.book.lastDateRead
+                  ? b.book.lastDateRead.toISOString()
                   : undefined,
                 status:
-                  b.readStatus?.toLowerCase() === "read"
+                  b.book.readStatus?.toLowerCase() === "read"
                     ? "buzz.bookhive.defs#finished"
-                    : b.readStatus?.toLowerCase() === "currently-reading"
+                    : b.book.readStatus?.toLowerCase() === "currently-reading"
                       ? "buzz.bookhive.defs#reading"
                       : undefined,
+                reason: b.reason,
               })),
               id: id++,
             }),

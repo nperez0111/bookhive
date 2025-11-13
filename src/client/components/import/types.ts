@@ -28,6 +28,7 @@ export type ImportBookFailure = {
   finishedAt?: string;
   stars?: number;
   review?: string;
+  reason?: string;
 };
 
 export type ImportEventBase = {
@@ -75,6 +76,7 @@ export type ImportCompleteEvent = ImportEventBase & {
   event: "import-complete";
   stageProgress: { current: number; total: number; message: string };
   failedBooks?: ImportBookFailure[];
+  failedBookDetails?: ImportBookFailure[];
 };
 
 export type ImportEvent =
