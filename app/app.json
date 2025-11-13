@@ -9,7 +9,6 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "githubUrl": "https://github.com/nperez0111/bookhive",
-    "appStoreUrl": "https://apps.apple.com/us/app/bookhive-a-better-goodreads/id6749799032",
     "ios": {
       "icon": {
         "light": "./assets/images/icon.png"
