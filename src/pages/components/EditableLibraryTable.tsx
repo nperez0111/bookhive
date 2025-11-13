@@ -186,6 +186,24 @@ export const EditableLibraryTable: FC<{
     );
   }
 
+  // Sort books: finished books by finishedAt DESC, others by createdAt DESC
+  const sortedBooks = [...books].sort((a, b) => {
+    const aIsFinished = a.status === BookStatus.FINISHED;
+    const bIsFinished = b.status === BookStatus.FINISHED;
+
+    // If both are finished, sort by finishedAt (most recent first)
+    if (aIsFinished && bIsFinished) {
+      if (!a.finishedAt && !b.finishedAt) return 0;
+      if (!a.finishedAt) return 1;
+      if (!b.finishedAt) return -1;
+      return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+    }
+
+    // If only one is finished, prioritize based on general creation date
+    // This keeps the overall list in a sensible order
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
   return (
     <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800">
       <table class="w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -230,7 +248,7 @@ export const EditableLibraryTable: FC<{
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-zinc-800">
-          {books.map((book, index) => (
+          {sortedBooks.map((book, index) => (
             <tr
               key={book.hiveId}
               class="cursor-pointer transition-colors duration-150 hover:bg-yellow-50/50 dark:hover:bg-zinc-700/50"
