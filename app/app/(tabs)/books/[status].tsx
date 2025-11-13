@@ -18,6 +18,8 @@ import {
   StyleSheet,
   View,
   Dimensions,
+  Pressable,
+  ScrollView,
 } from "react-native";
 import { UserBook } from "../../../../src/bsky/lexicon/types/buzz/bookhive/defs";
 
@@ -59,12 +61,68 @@ const STATUS_CONFIG = {
   },
 };
 
+type SortBy = "dateAdded" | "dateRead" | "title" | "author";
+type SortOrder = "asc" | "desc";
+
+const sortBooks = (
+  books: UserBook[],
+  sortBy: SortBy,
+  sortOrder: SortOrder,
+  bookStatus: string
+): UserBook[] => {
+  const sorted = [...books].sort((a, b) => {
+    let aValue: string | number | null = null;
+    let bValue: string | number | null = null;
+
+    switch (sortBy) {
+      case "dateAdded":
+        aValue = a.createdAt ? new Date(a.createdAt).getTime() : null;
+        bValue = b.createdAt ? new Date(b.createdAt).getTime() : null;
+        break;
+      case "dateRead":
+        // For finished books, use finishedAt; for reading books, use startedAt
+        if (bookStatus === BOOK_STATUS.FINISHED) {
+          aValue = a.finishedAt ? new Date(a.finishedAt).getTime() : null;
+          bValue = b.finishedAt ? new Date(b.finishedAt).getTime() : null;
+        } else {
+          aValue = a.startedAt ? new Date(a.startedAt).getTime() : null;
+          bValue = b.startedAt ? new Date(b.startedAt).getTime() : null;
+        }
+        break;
+      case "title":
+        aValue = a.title?.toLowerCase() || "";
+        bValue = b.title?.toLowerCase() || "";
+        break;
+      case "author":
+        aValue = a.authors?.toLowerCase() || "";
+        bValue = b.authors?.toLowerCase() || "";
+        break;
+    }
+
+    // Handle null values - put them at the end
+    if (aValue === null && bValue === null) return 0;
+    if (aValue === null) return 1;
+    if (bValue === null) return -1;
+
+    // Compare values
+    let comparison = 0;
+    if (aValue < bValue) comparison = -1;
+    if (aValue > bValue) comparison = 1;
+
+    return sortOrder === "asc" ? comparison : -comparison;
+  });
+
+  return sorted;
+};
+
 function FilteredBooksContent({ status }: { status: string }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const [numColumns, setNumColumns] = useState(2);
+  const [sortBy, setSortBy] = useState<SortBy>("dateAdded");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   const profile = useProfile();
 
@@ -72,8 +130,9 @@ function FilteredBooksContent({ status }: { status: string }) {
 
   const filteredBooks = useMemo(() => {
     if (!profile.data) return [];
-    return profile.data.books.filter((book) => book.status === config.status);
-  }, [profile.data, config]);
+    const filtered = profile.data.books.filter((book) => book.status === config.status);
+    return sortBooks(filtered, sortBy, sortOrder, config.status);
+  }, [profile.data, config.status, sortBy, sortOrder]);
 
   // Calculate responsive number of columns
   useEffect(() => {
@@ -203,11 +262,81 @@ function FilteredBooksContent({ status }: { status: string }) {
     <BookGridItem book={item} status={status} numColumns={numColumns} />
   );
 
+  const handleSortChange = (newSortBy: SortBy) => {
+    if (sortBy === newSortBy) {
+      // Toggle order if clicking the same sort option
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new sort and default to desc for dates, asc for text
+      setSortBy(newSortBy);
+      setSortOrder(newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc");
+    }
+  };
+
+  const sortOptions: { key: SortBy; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
+    { key: "dateAdded", label: "Date Added", icon: "calendar-outline" },
+    { key: "dateRead", label: "Date Read", icon: "book-outline" },
+    { key: "title", label: "Title", icon: "text-outline" },
+    { key: "author", label: "Author", icon: "person-outline" },
+  ];
+
   return (
     <View
       style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
     >
       <BackNavigationHeader title={config.title} />
+
+      <View style={styles.sortContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sortButtonsContainer}
+        >
+          {sortOptions.map((option) => {
+            const isActive = sortBy === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => handleSortChange(option.key)}
+                style={[
+                  styles.sortButton,
+                  {
+                    backgroundColor: isActive
+                      ? colors.primary
+                      : colors.buttonBackground,
+                    borderColor: isActive ? colors.primary : colors.buttonBorder,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={option.icon}
+                  size={16}
+                  color={isActive ? colors.background : colors.primary}
+                />
+                <ThemedText
+                  style={[
+                    styles.sortButtonText,
+                    {
+                      color: isActive ? colors.background : colors.primaryText,
+                    },
+                  ]}
+                  type="label"
+                >
+                  {option.label}
+                </ThemedText>
+                {isActive && (
+                  <Ionicons
+                    name={sortOrder === "asc" ? "arrow-up" : "arrow-down"}
+                    size={14}
+                    color={colors.background}
+                    style={styles.sortOrderIcon}
+                  />
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <View style={styles.header}>
         <ThemedText
@@ -296,6 +425,30 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     textAlign: "center",
+  },
+  sortContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  sortButtonsContainer: {
+    gap: 8,
+    paddingRight: 16,
+  },
+  sortButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  sortButtonText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  sortOrderIcon: {
+    marginLeft: 2,
   },
   header: {
     paddingHorizontal: 16,
