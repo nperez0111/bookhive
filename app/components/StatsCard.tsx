@@ -1,5 +1,5 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -7,9 +7,10 @@ import { Colors } from "@/constants/Colors";
 type StatsCardProps = {
   items: Array<{ label: string; value: string | number }>; // exactly 3 looks best
   style?: any;
+  onItemPress?: (label: string) => void;
 };
 
-export function StatsCard({ items, style }: StatsCardProps) {
+export function StatsCard({ items, style, onItemPress }: StatsCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -27,14 +28,21 @@ export function StatsCard({ items, style }: StatsCardProps) {
     >
       {items.map((it, idx) => (
         <React.Fragment key={idx}>
-          <View style={styles.item}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.item,
+              onItemPress && pressed && styles.itemPressed,
+            ]}
+            onPress={() => onItemPress?.(it.label)}
+            disabled={!onItemPress}
+          >
             <ThemedText type="title" style={{ color: colors.primary }}>
               {it.value}
             </ThemedText>
             <ThemedText type="caption" style={{ color: colors.secondaryText }}>
               {it.label}
             </ThemedText>
-          </View>
+          </Pressable>
           {idx < items.length - 1 ? (
             <View
               style={[styles.divider, { backgroundColor: colors.cardBorder }]}
@@ -63,6 +71,9 @@ const styles = StyleSheet.create({
   item: {
     alignItems: "center",
     paddingHorizontal: 10,
+  },
+  itemPressed: {
+    opacity: 0.6,
   },
   divider: {
     width: 1,

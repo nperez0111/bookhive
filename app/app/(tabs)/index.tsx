@@ -21,7 +21,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
-import { getBaseUrl } from "@/context/auth";
+import { getBaseUrl, useAuth } from "@/context/auth";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
@@ -178,6 +178,7 @@ function BookSection({
 
 export default function HomeScreen() {
   const profile = useProfile();
+  const { authState } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -188,6 +189,16 @@ export default function HomeScreen() {
     setIsRefreshing(true);
     profile.refetch().finally(() => setIsRefreshing(false));
   }, [profile.refetch]);
+
+  const handleStatPress = useCallback((label: string) => {
+    if (label === "Currently Reading") {
+      router.push("/books/reading" as any);
+    } else if (label === "Finished") {
+      router.push("/books/finished" as any);
+    } else if (label === "Total Books" && authState?.did) {
+      router.push(`/profile/${authState.did}` as any);
+    }
+  }, [authState?.did]);
 
   if (profile.isLoading && !isRefreshing && !profile.data) {
     return (
@@ -310,6 +321,7 @@ export default function HomeScreen() {
             { label: "Currently Reading", value: readingBooks.length },
             { label: "Finished", value: finishedBooks.length },
           ]}
+          onItemPress={handleStatPress}
         />
 
         {/* Book Sections */}
