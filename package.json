@@ -86,6 +86,7 @@
     "@typescript-eslint/parser": "^8.38.0",
     "@vitest/ui": "^3.2.4",
     "concurrently": "^9.2.0",
+    "cosmiconfig": "5.2.1",
     "esbuild": "0.24.0",
     "eslint": "^9.32.0",
     "nodemon": "^3.1.10",
