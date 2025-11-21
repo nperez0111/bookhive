@@ -10,9 +10,7 @@
     "newArchEnabled": true,
     "githubUrl": "https://github.com/nperez0111/bookhive",
     "ios": {
-      "icon": {
-        "light": "./assets/images/icon.png"
-      },
+      "icon": "./assets/images/icon.icon",
       "supportsTablet": true,
       "bundleIdentifier": "buzz.bookhive.app",
       "infoPlist": {
@@ -45,7 +43,8 @@
             "backgroundColor": "#0f1419"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "splash": {
       "image": "./assets/images/splash-icon.png",
