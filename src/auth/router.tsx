@@ -1,6 +1,5 @@
 import { isValidHandle } from "@atproto/syntax";
-import { getIronSession, sealData, type IronSessionOptions } from "iron-session";
-
+import { getIronSession, sealData, type SessionOptions } from "iron-session";
 
 import { OAuthResolverError } from "@atproto/oauth-client-node";
 import { env } from "../env";
@@ -12,7 +11,7 @@ import { Error } from "../pages/error";
 import { Login } from "../pages/login";
 
 // Helper function to get consistent session configuration
-export function getSessionConfig(): IronSessionOptions {
+export function getSessionConfig(): SessionOptions {
   return {
     cookieName: "sid",
     password: env.COOKIE_SECRET,
@@ -38,8 +37,13 @@ export function loginRouter(
     onLogout?: (ctx: { agent: Agent | null; ctx: AppContext }) => Promise<void>;
   } = {},
 ) {
-  // OAuth metadata
+  // OAuth metadata (deprecated)
   app.get("/client-metadata.json", async (c) => {
+    return c.json(c.get("ctx").oauthClient.clientMetadata);
+  });
+
+  // OAuth metadata
+  app.get("/oauth-client-metadata.json", async (c) => {
     return c.json(c.get("ctx").oauthClient.clientMetadata);
   });
 
@@ -51,7 +55,11 @@ export function loginRouter(
         .get("ctx")
         .oauthClient.callback(params);
 
-      const clientSession = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+      const clientSession = await getIronSession<Session>(
+        c.req.raw,
+        c.res,
+        getSessionConfig(),
+      );
 
       // assert(!clientSession.did, "session already exists");
       clientSession.did = session.did;
@@ -160,7 +168,11 @@ export function loginRouter(
 
   app.get("/mobile/refresh-token", async (c) => {
     try {
-      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+      const session = await getIronSession<Session>(
+        c.req.raw,
+        c.res,
+        getSessionConfig(),
+      );
 
       const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
       // Use "auto" to automatically refresh tokens when needed
@@ -229,7 +241,11 @@ export function loginRouter(
 
   // Logout handler
   app.post("/logout", async (c) => {
-    const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+    const session = await getIronSession<Session>(
+      c.req.raw,
+      c.res,
+      getSessionConfig(),
+    );
     const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
     const agent = oauthSession ? new Agent(oauthSession) : null;
     await onLogout({ agent, ctx: c.get("ctx") });
