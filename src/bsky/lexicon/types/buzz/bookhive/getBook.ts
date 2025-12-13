@@ -11,8 +11,8 @@ import {
   type OmitKey,
 } from "../../../util";
 import { HandlerAuth, HandlerPipeThrough } from "@atproto/xrpc-server";
-import type * as BuzzBookhiveHiveBook from "./hiveBook.js";
 import type * as BuzzBookhiveDefs from "./defs.js";
+import type * as BuzzBookhiveHiveBook from "./hiveBook.js";
 
 const is$typed = _is$typed,
   validate = _validate;
@@ -44,6 +44,7 @@ export interface OutputSchema {
   stars?: number;
   /** The book's review */
   review?: string;
+  bookProgress?: BuzzBookhiveDefs.BookProgress;
   book: BuzzBookhiveHiveBook.Record;
   /** Reviews of the book */
   reviews: BuzzBookhiveDefs.Review[];

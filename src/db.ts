@@ -6,12 +6,12 @@ import {
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import type { Buzz, HiveBook, UserBook, UserFollow } from "./types";
+import type { Buzz, HiveBook, UserBookRow, UserFollow } from "./types";
 
 // Types
 export type DatabaseSchema = {
   hive_book: HiveBook;
-  user_book: UserBook;
+  user_book: UserBookRow;
   buzz: Buzz;
   user_follows: UserFollow;
 };
@@ -30,6 +30,7 @@ export const BookFields = [
   "user_book.title",
   "user_book.uri",
   "user_book.userDid",
+  "user_book.bookProgress",
   "hive_book.cover",
   "hive_book.thumbnail",
   "hive_book.description",
@@ -184,6 +185,21 @@ migrations["005"] = {
     await db.schema.alterTable("hive_book").dropColumn("meta").execute();
 
     await db.schema.alterTable("hive_book").dropColumn("enrichedAt").execute();
+  },
+};
+
+migrations["006"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("user_book")
+      .addColumn("bookProgress", "text")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("user_book")
+      .dropColumn("bookProgress")
+      .execute();
   },
 };
 

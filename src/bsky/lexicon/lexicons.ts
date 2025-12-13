@@ -81,6 +81,11 @@ export const schemaDict = {
               description: "The book's review",
               maxGraphemes: 15000,
             },
+            bookProgress: {
+              description: "Progress tracking details for the book",
+              type: "ref",
+              ref: "lex:buzz.bookhive.defs#bookProgress",
+            },
           },
         },
       },
@@ -366,6 +371,49 @@ export const schemaDict = {
             description: "The book's review",
             maxGraphemes: 15000,
           },
+          bookProgress: {
+            description: "Progress tracking information for the book",
+            type: "ref",
+            ref: "lex:buzz.bookhive.defs#bookProgress",
+          },
+        },
+      },
+      bookProgress: {
+        type: "object",
+        description: "Reading progress tracking data",
+        required: ["updatedAt"],
+        properties: {
+          percent: {
+            type: "integer",
+            minimum: 0,
+            maximum: 100,
+            description: "How far through the book the reader is (0-100)",
+          },
+          totalPages: {
+            type: "integer",
+            minimum: 1,
+            description: "Total number of pages in the book",
+          },
+          currentPage: {
+            type: "integer",
+            minimum: 1,
+            description: "Current page the user is on",
+          },
+          totalChapters: {
+            type: "integer",
+            minimum: 1,
+            description: "Total number of chapters in the book",
+          },
+          currentChapter: {
+            type: "integer",
+            minimum: 1,
+            description: "Current chapter the user is on",
+          },
+          updatedAt: {
+            type: "string",
+            format: "datetime",
+            description: "When the progress was last updated",
+          },
         },
       },
     },
@@ -434,6 +482,11 @@ export const schemaDict = {
                 type: "string",
                 description: "The book's review",
                 maxGraphemes: 15000,
+              },
+              bookProgress: {
+                description: "Reading progress for the user",
+                type: "ref",
+                ref: "lex:buzz.bookhive.defs#bookProgress",
               },
               book: {
                 description: "The hive book's info",

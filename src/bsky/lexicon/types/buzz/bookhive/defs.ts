@@ -155,6 +155,7 @@ export interface UserBook {
   stars?: number;
   /** The book's review */
   review?: string;
+  bookProgress?: BookProgress;
 }
 
 const hashUserBook = "userBook";
@@ -165,4 +166,31 @@ export function isUserBook<V>(v: V) {
 
 export function validateUserBook<V>(v: V) {
   return validate<UserBook & V>(v, id, hashUserBook);
+}
+
+/** Reading progress tracking data */
+export interface BookProgress {
+  $type?: "buzz.bookhive.defs#bookProgress";
+  /** How far through the book the reader is (0-100) */
+  percent?: number;
+  /** Total number of pages in the book */
+  totalPages?: number;
+  /** Current page the user is on */
+  currentPage?: number;
+  /** Total number of chapters in the book */
+  totalChapters?: number;
+  /** Current chapter the user is on */
+  currentChapter?: number;
+  /** When the progress was last updated */
+  updatedAt: string;
+}
+
+const hashBookProgress = "bookProgress";
+
+export function isBookProgress<V>(v: V) {
+  return is$typed(v, id, hashBookProgress);
+}
+
+export function validateBookProgress<V>(v: V) {
+  return validate<BookProgress & V>(v, id, hashBookProgress);
 }

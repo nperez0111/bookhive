@@ -1,13 +1,13 @@
+import { formatDistanceToNow } from "date-fns";
 import { type FC, type PropsWithChildren, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
-import { formatDistanceToNow } from "date-fns";
-import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
-import { Script } from "./utils/script";
-import type { HiveBook } from "../types";
-import type { UserBook } from "../types";
-import { BOOK_STATUS_MAP } from "../constants";
 import { sql } from "kysely";
+import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
+import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
+import type { HiveBook, UserBook } from "../types";
+import { hydrateUserBook } from "../utils/bookProgress";
 import { CommentsSection } from "./comments";
+import { Script } from "./utils/script";
 
 async function Recommendations({
   book,
@@ -290,7 +290,7 @@ export const BookInfo: FC<{
   const c = useRequestContext();
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
 
-  const usersBook = did
+  const rawUserBook = did
     ? await c
         .get("ctx")
         .db.selectFrom("user_book")
@@ -299,6 +299,7 @@ export const BookInfo: FC<{
         .where("hiveId", "==", book.id)
         .executeTakeFirst()
     : undefined;
+  const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
 
   const reviewsOfThisBook = await c
     .get("ctx")
@@ -620,6 +621,201 @@ export const BookInfo: FC<{
                   </UpdateBookForm>
                 </div>
               </div>
+            </div>
+          )}
+
+          {did && usersBook?.status !== BOOK_STATUS.FINISHED && (
+            <div className="mt-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md dark:border-gray-700 dark:bg-zinc-900">
+              <h2 className="mb-2 text-xl font-bold">Reading Progress</h2>
+              {usersBook?.bookProgress && (
+                <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
+                  {[
+                    usersBook.bookProgress.percent !== undefined
+                      ? `${usersBook.bookProgress.percent}% complete`
+                      : null,
+                    usersBook.bookProgress.currentPage &&
+                    usersBook.bookProgress.totalPages
+                      ? `${usersBook.bookProgress.currentPage}/${usersBook.bookProgress.totalPages} pages`
+                      : usersBook.bookProgress.currentPage
+                        ? `${usersBook.bookProgress.currentPage} pages`
+                        : null,
+                    usersBook.bookProgress.updatedAt
+                      ? `Updated ${formatDistanceToNow(
+                          usersBook.bookProgress.updatedAt,
+                          { addSuffix: true },
+                        )}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+              <UpdateBookForm book={book} userBook={usersBook}>
+                <div className="flex flex-col gap-4">
+                  {/* Pages */}
+                  <div className="flex-1">
+                    <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Pages read <span className="font-normal">/</span> Total
+                      pages
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        id="progress-pages-current"
+                        name="currentPage"
+                        value={usersBook?.bookProgress?.currentPage ?? ""}
+                        min={0}
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        placeholder="Current"
+                      />
+                      <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                        /
+                      </span>
+                      <input
+                        type="number"
+                        id="progress-pages-total"
+                        name="totalPages"
+                        value={
+                          usersBook?.bookProgress?.totalPages ??
+                          (() => {
+                            if (!book.meta) return "";
+                            try {
+                              const meta = JSON.parse(book.meta);
+                              return meta?.numPages ? meta.numPages : "";
+                            } catch {
+                              return "";
+                            }
+                          })()
+                        }
+                        min={1}
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        placeholder="Total"
+                      />
+                    </div>
+                  </div>
+                  {/* Chapters */}
+                  <div className="flex-1">
+                    <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Chapters read <span className="font-normal">/</span> Total
+                      chapters
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        id="progress-chapters-current"
+                        name="currentChapter"
+                        value={usersBook?.bookProgress?.currentChapter ?? ""}
+                        min={1}
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        placeholder="Current"
+                      />
+                      <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                        /
+                      </span>
+                      <input
+                        type="number"
+                        id="progress-chapters-total"
+                        name="totalChapters"
+                        value={usersBook?.bookProgress?.totalChapters ?? ""}
+                        min={1}
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        placeholder="Total"
+                      />
+                    </div>
+                  </div>
+                  {/* Percent */}
+                  <div className="flex flex-1 flex-col justify-between">
+                    <div>
+                      <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Percent
+                      </label>
+                      <input
+                        type="number"
+                        id="progress-percent"
+                        name="percent"
+                        value={usersBook?.bookProgress?.percent ?? ""}
+                        min={0}
+                        max={100}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        placeholder="Auto-calculated"
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Percent auto-fills from pages or chapters but can be
+                      overridden.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                >
+                  Save progress
+                </button>
+              </UpdateBookForm>
+              <Script
+                script={(document) => {
+                  const pageCurrent = document.getElementById(
+                    "progress-pages-current",
+                  ) as HTMLInputElement;
+                  const pageTotal = document.getElementById(
+                    "progress-pages-total",
+                  ) as HTMLInputElement;
+                  const chapterCurrent = document.getElementById(
+                    "progress-chapters-current",
+                  ) as HTMLInputElement;
+                  const chapterTotal = document.getElementById(
+                    "progress-chapters-total",
+                  ) as HTMLInputElement;
+                  const percentInput = document.getElementById(
+                    "progress-percent",
+                  ) as HTMLInputElement;
+                  function parseNumber(value: string | null) {
+                    const parsed = Number(value);
+                    return Number.isFinite(parsed) ? parsed : null;
+                  }
+                  function updatePercent() {
+                    if (!percentInput) return;
+                    const currentPage = parseNumber(pageCurrent?.value);
+                    const totalPages = parseNumber(pageTotal?.value);
+                    const currentChapter = parseNumber(chapterCurrent?.value);
+                    const totalChapters = parseNumber(chapterTotal?.value);
+                    let percent = null;
+                    if (currentPage !== null && totalPages && totalPages > 0) {
+                      percent = Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          Math.round((currentPage / totalPages) * 100),
+                        ),
+                      );
+                    } else if (
+                      currentChapter !== null &&
+                      totalChapters &&
+                      totalChapters > 0
+                    ) {
+                      percent = Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          Math.round((currentChapter / totalChapters) * 100),
+                        ),
+                      );
+                    }
+                    if (percent !== null) {
+                      percentInput.value = percent.toString();
+                    }
+                  }
+                  [
+                    pageCurrent,
+                    pageTotal,
+                    chapterCurrent,
+                    chapterTotal,
+                  ].forEach((input) => {
+                    input?.addEventListener("input", updatePercent);
+                  });
+                }}
+              />
             </div>
           )}
 

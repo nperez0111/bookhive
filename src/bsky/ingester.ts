@@ -1,14 +1,15 @@
 import { IdResolver } from "@atproto/identity";
 import { Firehose } from "@atproto/sync";
+import type { Storage } from "unstorage";
 import type { Database } from "../db";
-import type { HiveId, UserBook, Buzz as BuzzRecord } from "../types";
+import { getLogger } from "../logger";
+import { searchBooks } from "../routes";
+import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
+import { serializeUserBook } from "../utils/bookProgress";
+import { createBidirectionalResolver } from "./id-resolver";
+import { ids } from "./lexicon/lexicons";
 import * as Book from "./lexicon/types/buzz/bookhive/book";
 import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
-import { ids } from "./lexicon/lexicons";
-import { getLogger } from "../logger";
-import { createBidirectionalResolver } from "./id-resolver";
-import { searchBooks } from "../routes";
-import type { Storage } from "unstorage";
 const logger = getLogger({ name: "firehose-ingestion" });
 
 export function createIngester(
@@ -46,27 +47,30 @@ export function createIngester(
           )?.id;
           if (!hiveId) {
             // Try to index the book into the hive, async
-            searchBooks({ query: book.title, ctx: { db, kv } });
+            searchBooks({ query: book.title, ctx: { db, kv, logger } });
             logger.error("Trying to index book into hive", { record });
           }
           // Store the book in our SQLite
           await db
             .insertInto("user_book")
-            .values({
-              uri: evt.uri.toString(),
-              cid: evt.cid.toString(),
-              userDid: evt.did,
-              hiveId: book.hiveId as HiveId,
-              createdAt: book.createdAt,
-              indexedAt: now.toISOString(),
-              title: book.title,
-              authors: book.authors,
-              startedAt: book.startedAt ?? null,
-              finishedAt: book.finishedAt ?? null,
-              status: book.status ?? null,
-              review: book.review ?? null,
-              stars: book.stars ?? null,
-            } satisfies UserBook)
+            .values(
+              serializeUserBook({
+                uri: evt.uri.toString(),
+                cid: evt.cid.toString(),
+                userDid: evt.did,
+                hiveId: book.hiveId as HiveId,
+                createdAt: book.createdAt,
+                indexedAt: now.toISOString(),
+                title: book.title,
+                authors: book.authors,
+                startedAt: book.startedAt ?? null,
+                finishedAt: book.finishedAt ?? null,
+                status: book.status ?? null,
+                review: book.review ?? null,
+                stars: book.stars ?? null,
+                bookProgress: book.bookProgress ?? null,
+              } satisfies UserBook),
+            )
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
                 indexedAt: c.ref("excluded.indexedAt"),
@@ -81,6 +85,7 @@ export function createIngester(
                 authors: c.ref("excluded.authors"),
                 userDid: c.ref("excluded.userDid"),
                 createdAt: c.ref("excluded.createdAt"),
+                bookProgress: c.ref("excluded.bookProgress"),
               })),
             )
             .execute();

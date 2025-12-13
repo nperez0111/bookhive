@@ -66,6 +66,11 @@
             "type": "string",
             "description": "The book's review",
             "maxGraphemes": 15000
+          },
+          "bookProgress": {
+            "description": "Progress tracking details for the book",
+            "type": "ref",
+            "ref": "buzz.bookhive.defs#bookProgress"
           }
         }
       }
