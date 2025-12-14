@@ -22,7 +22,7 @@ import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
 import type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
-import { BOOK_STATUS_MAP } from "./constants";
+import { BOOK_STATUS, BOOK_STATUS_MAP } from "./constants";
 import { BookFields } from "./db";
 import { BookInfo } from "./pages/bookInfo";
 import { CommentsSection } from "./pages/comments";
@@ -1281,6 +1281,9 @@ export function createRouter(app: HonoServer) {
 
       if (normalizedProgress !== undefined) {
         (updates as any).bookProgress = normalizedProgress;
+        if (!updates.status) {
+          updates.status = BOOK_STATUS.READING;
+        }
       }
 
       if (!hiveId) {
