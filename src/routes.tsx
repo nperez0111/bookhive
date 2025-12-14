@@ -34,7 +34,7 @@ import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { PrivacyPolicy } from "./pages/privacy-policy";
 import { findBookDetails } from "./scrapers";
-import { type HiveId } from "./types";
+import { type BookProgress, type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
 import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
@@ -43,6 +43,7 @@ import { LibraryImport } from "./pages/import";
 import { enrichBookWithDetailedData } from "./utils/enrichBookData";
 import { GenresDirectory } from "./pages/genres";
 import { GenreBooks, getBooksByGenre } from "./pages/genreBooks";
+import { hydrateUserBook, serializeUserBook } from "./utils/bookProgress";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -318,21 +319,24 @@ async function refetchBooks({
 
     await ctx.db
       .insertInto("user_book")
-      .values({
-        uri: record.uri,
-        cid: record.cid,
-        userDid: agent.assertDid,
-        createdAt: book.createdAt,
-        title: book.title,
-        authors: book.authors,
-        indexedAt: new Date().toISOString(),
-        hiveId: book.hiveId as HiveId,
-        status: book.status,
-        startedAt: book.startedAt,
-        finishedAt: book.finishedAt,
-        review: book.review,
-        stars: book.stars,
-      })
+      .values(
+        serializeUserBook({
+          uri: record.uri,
+          cid: record.cid,
+          userDid: agent.assertDid,
+          createdAt: book.createdAt,
+          title: book.title,
+          authors: book.authors,
+          indexedAt: new Date().toISOString(),
+          hiveId: book.hiveId as HiveId,
+          status: book.status,
+          startedAt: book.startedAt,
+          finishedAt: book.finishedAt,
+          review: book.review,
+          stars: book.stars,
+          bookProgress: book.bookProgress ?? null,
+        }),
+      )
       .onConflict((oc) =>
         oc.column("uri").doUpdateSet((c) => ({
           cid: c.ref("excluded.cid"),
@@ -347,6 +351,7 @@ async function refetchBooks({
           hiveId: c.ref("excluded.hiveId"),
           review: c.ref("excluded.review"),
           stars: c.ref("excluded.stars"),
+          bookProgress: c.ref("excluded.bookProgress"),
         })),
       )
       .execute();
@@ -635,6 +640,7 @@ export function createRouter(app: HonoServer) {
           .limit(10_000)
           .execute()
       : [];
+    const parsedBooks = books.map((book) => hydrateUserBook(book));
 
     const sessionAgent = await c.get("ctx").getSessionAgent();
     const isFollowing =
@@ -656,7 +662,7 @@ export function createRouter(app: HonoServer) {
         isBuzzer={isBuzzer}
         handle={handle}
         did={did}
-        books={books}
+        books={parsedBooks}
         profile={profile}
         isFollowing={isFollowing}
         canFollow={Boolean(sessionAgent) && sessionAgent?.assertDid !== did}
@@ -664,7 +670,7 @@ export function createRouter(app: HonoServer) {
       />,
       {
         title: "BookHive | @" + handle,
-        description: `@${handle}'s BookHive Profile page with ${books.length} books`,
+        description: `@${handle}'s BookHive Profile page with ${parsedBooks.length} books`,
         image: profile?.avatar,
       },
     );
@@ -789,6 +795,23 @@ export function createRouter(app: HonoServer) {
         finishedAt: z.string().optional(),
         stars: z.coerce.number().optional(),
         review: z.string().optional(),
+        percent: z.coerce.number().int().min(0).max(100).optional(),
+        totalPages: z.preprocess(
+          (val) => (val === "" ? undefined : val),
+          z.coerce.number().int().min(1).optional(),
+        ),
+        currentPage: z.preprocess(
+          (val) => (val === "" ? undefined : val),
+          z.coerce.number().int().min(1).optional(),
+        ),
+        totalChapters: z.preprocess(
+          (val) => (val === "" ? undefined : val),
+          z.coerce.number().int().min(1).optional(),
+        ),
+        currentChapter: z.preprocess(
+          (val) => (val === "" ? undefined : val),
+          z.coerce.number().int().min(1).optional(),
+        ),
       }),
     ),
     async (c) => {
@@ -817,7 +840,41 @@ export function createRouter(app: HonoServer) {
           finishedAt,
           stars,
           review,
+          currentPage,
+          totalPages,
+          currentChapter,
+          totalChapters,
+          percent,
         } = await c.req.valid("form");
+
+        let bookProgress;
+        if (
+          currentPage ||
+          totalPages ||
+          currentChapter ||
+          totalChapters ||
+          percent !== undefined
+        ) {
+          if (currentPage && totalPages && currentPage > totalPages) {
+            throw new Error("Current page cannot exceed total pages");
+          }
+          if (
+            currentChapter &&
+            totalChapters &&
+            currentChapter > totalChapters
+          ) {
+            throw new Error("Current chapter cannot exceed total chapters");
+          }
+
+          bookProgress = {
+            percent: percent ?? undefined,
+            totalPages: totalPages ?? undefined,
+            currentPage: currentPage ?? undefined,
+            totalChapters: totalChapters ?? undefined,
+            currentChapter: currentChapter ?? undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }
 
         const bookLock = await c.get("ctx").kv.get(bookLockKey);
         if (bookLock) {
@@ -848,6 +905,7 @@ export function createRouter(app: HonoServer) {
               finishedAt,
               stars,
               review,
+              ...(bookProgress ? { bookProgress } : {}),
             },
           });
         } catch (e) {
@@ -1145,6 +1203,43 @@ export function createRouter(app: HonoServer) {
             })
             .pipe(z.string().datetime().or(z.literal(""))),
         ),
+        bookProgress: z
+          .union([
+            z
+              .object({
+                percent: z.coerce.number().int().min(0).max(100).optional(),
+                totalPages: z
+                  .preprocess(
+                    (val) => (val === "" ? undefined : val),
+                    z.coerce.number().int().min(1),
+                  )
+                  .optional(),
+                currentPage: z
+                  .preprocess(
+                    (val) => (val === "" ? undefined : val),
+                    z.coerce.number().int().min(1),
+                  )
+                  .optional(),
+                totalChapters: z
+                  .preprocess(
+                    (val) => (val === "" ? undefined : val),
+                    z.coerce.number().int().min(1),
+                  )
+                  .optional(),
+                currentChapter: z
+                  .preprocess(
+                    (val) => (val === "" ? undefined : val),
+                    z.coerce.number().int().min(1),
+                  )
+                  .optional(),
+              })
+              .partial()
+              .refine((value) => Object.keys(value).length > 0, {
+                message: "bookProgress must include at least one value",
+              }),
+            z.null(),
+          ])
+          .optional(),
       }),
     ),
     async (c) => {
@@ -1153,7 +1248,36 @@ export function createRouter(app: HonoServer) {
         console.log("No agent");
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
-      const { hiveId, ...updates } = c.req.valid("json");
+      const payload = c.req.valid("json");
+      const { hiveId, bookProgress, ...updates } = payload;
+
+      let normalizedProgress: BookProgress | undefined | null =
+        bookProgress as any;
+      if (bookProgress && bookProgress !== null) {
+        normalizedProgress = {
+          ...bookProgress,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (
+          normalizedProgress.currentPage &&
+          normalizedProgress.totalPages &&
+          normalizedProgress.currentPage > normalizedProgress.totalPages
+        ) {
+          throw new Error("Current page cannot exceed total pages");
+        }
+        if (
+          normalizedProgress.currentChapter &&
+          normalizedProgress.totalChapters &&
+          normalizedProgress.currentChapter > normalizedProgress.totalChapters
+        ) {
+          throw new Error("Current chapter cannot exceed total chapters");
+        }
+      }
+
+      if (normalizedProgress !== undefined) {
+        (updates as any).bookProgress = normalizedProgress;
+      }
 
       if (!hiveId) {
         return c.json({ success: false, message: "Invalid ID" }, 400);
@@ -1581,13 +1705,14 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
 
-      const userBook = await c
+      const rawUserBook = await c
         .get("ctx")
         .db.selectFrom("user_book")
         .selectAll()
         .where("user_book.hiveId", "=", book.id)
         .where("user_book.userDid", "=", agent.assertDid)
         .executeTakeFirst();
+      const userBook = rawUserBook ? hydrateUserBook(rawUserBook) : null;
 
       const peerBooks = await c
         .get("ctx")
@@ -1616,6 +1741,7 @@ export function createRouter(app: HonoServer) {
         status: userBook?.status ?? undefined,
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
+        bookProgress: userBook?.bookProgress ?? undefined,
         userBookUri: userBook?.uri ?? undefined,
         userBookCid: userBook?.cid ?? undefined,
         book: {
@@ -1742,6 +1868,10 @@ export function createRouter(app: HonoServer) {
         .orderBy("user_book.createdAt", "desc")
         .limit(50)
         .execute();
+      const parsedBooks = books.map((book) => hydrateUserBook(book));
+      const parsedFriendsBuzzes = friendsBuzzes.map((book) =>
+        hydrateUserBook(book),
+      );
 
       const didToHandle = await c
         .get("ctx")
@@ -1785,7 +1915,7 @@ export function createRouter(app: HonoServer) {
           reviews: books.filter((b) => b.review).length,
           isFollowing,
         },
-        friendActivity: friendsBuzzes.map((b) => ({
+        friendActivity: parsedFriendsBuzzes.map((b) => ({
           userDid: b.userDid,
           userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
@@ -1801,8 +1931,9 @@ export function createRouter(app: HonoServer) {
           description: b.description ?? undefined,
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
+          bookProgress: b.bookProgress ?? undefined,
         })),
-        books: books.map((b) => ({
+        books: parsedBooks.map((b) => ({
           userDid: b.userDid,
           userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
@@ -1818,6 +1949,7 @@ export function createRouter(app: HonoServer) {
           description: b.description ?? undefined,
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
+          bookProgress: b.bookProgress ?? undefined,
         })),
         activity: books
           .reduce(

@@ -7,9 +7,10 @@ import type { AppContext } from "..";
 import { ids } from "../bsky/lexicon/lexicons";
 import * as BookRecord from "../bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "../bsky/lexicon/types/buzz/bookhive/buzz";
-import type { HiveId, UserBook } from "../types";
+import type { HiveId, UserBook, UserBookRow } from "../types";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
+import { hydrateUserBook, serializeUserBook } from "./bookProgress";
 
 /**
  * Normalize a date string to ISO format at midnight UTC
@@ -111,14 +112,18 @@ export async function getUserBook({
   agent: Agent;
   hiveId: HiveId;
 }): Promise<UserBook | null> {
-  return (
-    (await ctx.db
-      .selectFrom("user_book")
-      .selectAll()
-      .where("userDid", "=", agent.assertDid)
-      .where("hiveId", "=", hiveId)
-      .executeTakeFirst()) || null
-  );
+  const rawUserBook = await ctx.db
+    .selectFrom("user_book")
+    .selectAll()
+    .where("userDid", "=", agent.assertDid)
+    .where("hiveId", "=", hiveId)
+    .executeTakeFirst();
+
+  if (!rawUserBook) {
+    return null;
+  }
+
+  return hydrateUserBook(rawUserBook);
 }
 
 export async function updateUserBook({
@@ -128,9 +133,10 @@ export async function updateUserBook({
   ctx: AppContext;
   userBook: UserBook;
 }): Promise<void> {
+  const row: UserBookRow = serializeUserBook(userBook);
   await ctx.db
     .insertInto("user_book")
-    .values(userBook)
+    .values(row)
     .onConflict((oc) =>
       oc.column("uri").doUpdateSet((c) => ({
         indexedAt: c.ref("excluded.indexedAt"),
@@ -143,6 +149,7 @@ export async function updateUserBook({
         finishedAt: c.ref("excluded.finishedAt"),
         review: c.ref("excluded.review"),
         stars: c.ref("excluded.stars"),
+        bookProgress: c.ref("excluded.bookProgress"),
       })),
     )
     .execute();
@@ -236,6 +243,9 @@ export async function updateBookRecord({
     }
   }
 
+  // Determine the final status (use auto-inferred status or original status)
+  const finalStatus = autoStatus || originalBook?.status;
+
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -246,7 +256,7 @@ export async function updateBookRecord({
     cover:
       originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
     // Always prefer new values (including auto-inferred status)
-    status: autoStatus || originalBook?.status,
+    status: finalStatus,
     startedAt:
       autoStartedAt !== undefined
         ? autoStartedAt === ""
@@ -261,6 +271,13 @@ export async function updateBookRecord({
         : originalBook?.finishedAt,
     review: updates.review || originalBook?.review,
     stars: updates.stars || originalBook?.stars,
+    // Clear bookProgress when marking as finished
+    bookProgress:
+      finalStatus === BOOK_STATUS.FINISHED
+        ? undefined
+        : updates.bookProgress !== undefined
+          ? updates.bookProgress
+          : originalBook?.bookProgress,
   };
 
   const book = BookRecord.validateRecord(bookData);
@@ -312,6 +329,7 @@ export async function updateBookRecord({
     finishedAt: record.finishedAt || null,
     review: record.review || null,
     stars: record.stars || null,
+    bookProgress: record.bookProgress ?? null,
   };
 
   await updateUserBook({ ctx, userBook: nextUserBook });
@@ -376,6 +394,9 @@ export async function updateBookRecords({
       }
     }
 
+    // Determine the final status (use auto-inferred status or original status)
+    const finalStatus = autoStatus || originalBook?.status;
+
     const book = BookRecord.validateRecord({
       $type: ids.BuzzBookhiveBook,
       // Always prefer original values
@@ -385,7 +406,7 @@ export async function updateBookRecords({
       createdAt: originalBook?.createdAt || new Date().toISOString(),
       cover: originalBook?.cover,
       // Always prefer new values (including auto-inferred status)
-      status: autoStatus || originalBook?.status,
+      status: finalStatus,
       startedAt:
         autoStartedAt !== undefined
           ? autoStartedAt === ""
@@ -400,6 +421,13 @@ export async function updateBookRecords({
           : originalBook?.finishedAt,
       review: update.review || originalBook?.review,
       stars: update.stars || originalBook?.stars,
+      // Clear bookProgress when marking as finished
+      bookProgress:
+        finalStatus === BOOK_STATUS.FINISHED
+          ? undefined
+          : update.bookProgress !== undefined
+            ? update.bookProgress
+            : originalBook?.bookProgress,
     });
 
     if (!book.success) {
@@ -424,6 +452,7 @@ export async function updateBookRecords({
         finishedAt: record.finishedAt || null,
         review: record.review || null,
         stars: record.stars || null,
+        bookProgress: record.bookProgress ?? null,
       },
       originalUpdate: update,
     });

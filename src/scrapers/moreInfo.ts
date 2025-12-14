@@ -18,6 +18,7 @@ interface ParsedGoodreadsData {
       language: string;
       isbn?: string;
       isbn13?: string;
+      numPages?: number;
     };
     primaryAuthor: {
       id: string;
@@ -110,6 +111,7 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
           language: bookData.details?.language?.name || "",
           isbn: bookData.details?.isbn || undefined,
           isbn13: bookData.details?.isbn13 || undefined,
+          numPages: bookData.details?.numPages || undefined,
         },
         primaryAuthor: {
           id: authorData?.id || "",

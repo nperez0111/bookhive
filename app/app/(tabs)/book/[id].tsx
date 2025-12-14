@@ -19,16 +19,17 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
   Linking,
   Pressable,
   ScrollView,
-  StyleSheet,
-  View,
   Share,
+  StyleSheet,
+  TextInput,
+  View,
 } from "react-native";
 import Animated, {
   FadeInDown,
@@ -39,6 +40,9 @@ import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 
 import { HtmlToText } from "@/utils/htmlToText";
+import { formatDistanceToNow } from "date-fns";
+import type { BookProgress } from "../../../../src/types";
+import { calculatePercentFromProgressValues } from "@/utils/calculatePercentFromProgressValues";
 
 function BookInfoContent({
   hiveId,
@@ -59,6 +63,79 @@ function BookInfoContent({
   const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
+  const bookData = bookQuery.data;
+  const [currentPageInput, setCurrentPageInput] = useState("");
+  const [totalPagesInput, setTotalPagesInput] = useState("");
+  const [currentChapterInput, setCurrentChapterInput] = useState("");
+  const [totalChaptersInput, setTotalChaptersInput] = useState("");
+  const [percentInput, setPercentInput] = useState("");
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [progressSuccess, setProgressSuccess] = useState<string | null>(null);
+  const [isProgressSaving, setIsProgressSaving] = useState(false);
+  const autoPercentRef = useRef(false);
+
+  useEffect(() => {
+    if (!bookData) {
+      return;
+    }
+    const storedProgress = bookData.bookProgress ?? null;
+    const meta =
+      bookData.book?.meta &&
+      (() => {
+        try {
+          return JSON.parse(bookData.book.meta as any);
+        } catch {
+          return null;
+        }
+      })();
+
+    setCurrentPageInput(storedProgress?.currentPage?.toString() ?? "");
+    setCurrentChapterInput(storedProgress?.currentChapter?.toString() ?? "");
+    setTotalChaptersInput(storedProgress?.totalChapters?.toString() ?? "");
+    setTotalPagesInput(
+      storedProgress?.totalPages?.toString() ??
+        (meta?.numPages ? String(meta.numPages) : ""),
+    );
+
+    const autoPercent = calculatePercentFromProgressValues({
+      currentPage: storedProgress?.currentPage,
+      totalPages: storedProgress?.totalPages,
+      currentChapter: storedProgress?.currentChapter,
+      totalChapters: storedProgress?.totalChapters,
+    });
+    setPercentInput(
+      storedProgress?.percent !== undefined
+        ? String(storedProgress.percent)
+        : autoPercent !== null
+          ? String(autoPercent)
+          : "",
+    );
+  }, [bookData]);
+
+  const parseNumberInput = (value: string) => {
+    const parsed = Number(value === "" ? undefined : value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const currentPageValue = parseNumberInput(currentPageInput);
+  const totalPagesValue = parseNumberInput(totalPagesInput);
+  const currentChapterValue = parseNumberInput(currentChapterInput);
+  const totalChaptersValue = parseNumberInput(totalChaptersInput);
+  const autoPercent = calculatePercentFromProgressValues({
+    currentPage: currentPageValue,
+    totalPages: totalPagesValue,
+    currentChapter: currentChapterValue,
+    totalChapters: totalChaptersValue,
+  });
+
+  useEffect(() => {
+    if (!autoPercentRef.current) {
+      autoPercentRef.current = true;
+      return;
+    }
+    if (autoPercent !== null) {
+      setPercentInput(String(autoPercent));
+    }
+  }, [autoPercent]);
 
   // Combine comments and reviews from the API response
   const comments = bookQuery.data
@@ -112,6 +189,52 @@ function BookInfoContent({
       hiveId: hiveId,
       stars: newRating,
     });
+  };
+
+  const handleSaveProgress = async () => {
+    setProgressError(null);
+    setProgressSuccess(null);
+    const payload: BookProgress = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (percentInput.trim()) {
+      const percentValue = Number(percentInput);
+      if (Number.isFinite(percentValue)) {
+        payload.percent = Math.min(100, Math.max(0, Math.round(percentValue)));
+      }
+    }
+    if (typeof currentPageValue === "number") {
+      payload.currentPage = currentPageValue;
+    }
+    if (typeof totalPagesValue === "number") {
+      payload.totalPages = totalPagesValue;
+    }
+    if (typeof currentChapterValue === "number") {
+      payload.currentChapter = currentChapterValue;
+    }
+    if (typeof totalChaptersValue === "number") {
+      payload.totalChapters = totalChaptersValue;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setProgressError("Enter at least one progress metric before saving.");
+      return;
+    }
+
+    try {
+      setIsProgressSaving(true);
+      await updateBook.mutateAsync({
+        hiveId,
+        bookProgress: payload,
+      });
+      setProgressSuccess("Progress saved");
+      setTimeout(() => setProgressSuccess(null), 3000);
+    } catch (error) {
+      console.error("Failed to save progress:", error);
+      setProgressError("Failed to save progress.");
+    } finally {
+      setIsProgressSaving(false);
+    }
   };
 
   const handleStartedAtUpdate = async (date: string | null) => {
@@ -206,6 +329,39 @@ function BookInfoContent({
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;
   const review = userReviewText || userBook.review;
+  const existingProgress =
+    (userBook.bookProgress as BookProgress | undefined) ?? undefined;
+  const percentDisplay =
+    existingProgress?.percent ??
+    (autoPercent !== null ? autoPercent : undefined);
+  const progressTicks: string[] = [];
+  if (existingProgress?.currentPage) {
+    progressTicks.push(
+      `${existingProgress.currentPage}${
+        existingProgress.totalPages ? `/${existingProgress.totalPages}` : ""
+      } pages`,
+    );
+  }
+  if (existingProgress?.currentChapter) {
+    progressTicks.push(
+      `${existingProgress.currentChapter}${
+        existingProgress.totalChapters
+          ? `/${existingProgress.totalChapters}`
+          : ""
+      } chapters`,
+    );
+  }
+  const progressUpdatedAt = existingProgress?.updatedAt
+    ? formatDistanceToNow(new Date(existingProgress.updatedAt), {
+        addSuffix: true,
+      })
+    : null;
+  const progressSummary =
+    progressTicks.length || progressUpdatedAt
+      ? `${progressTicks.join(" • ")}${
+          progressTicks.length && progressUpdatedAt ? " • " : ""
+        }${progressUpdatedAt ? `Updated ${progressUpdatedAt}` : ""}`
+      : null;
 
   return (
     <View
@@ -466,6 +622,154 @@ function BookInfoContent({
               reviewText={review}
               onReviewTextChange={setUserReviewText}
             />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.progressCard,
+              {
+                backgroundColor: colorScheme === "dark" ? "#111" : "#fffdf5",
+              },
+            ]}
+            entering={FadeInDown.delay(130).duration(220)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+          >
+            <View style={styles.progressHeader}>
+              <ThemedText style={styles.progressTitle}>
+                Reading Progress
+              </ThemedText>
+              {percentDisplay !== undefined && (
+                <ThemedText style={styles.progressPercent}>
+                  {percentDisplay}% complete
+                </ThemedText>
+              )}
+            </View>
+            {progressSummary && (
+              <ThemedText style={styles.progressSubtitle}>
+                {progressSummary}
+              </ThemedText>
+            )}
+            <View style={styles.progressRow}>
+              <View style={styles.progressField}>
+                <ThemedText style={styles.progressLabel}>Pages read</ThemedText>
+                <TextInput
+                  value={currentPageInput}
+                  onChangeText={setCurrentPageInput}
+                  keyboardType="numeric"
+                  placeholder="Current"
+                  placeholderTextColor={
+                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
+                  }
+                  style={[
+                    styles.progressInput,
+                    { color: colorScheme === "dark" ? "#fff" : "#111" },
+                  ]}
+                />
+              </View>
+              <View style={styles.progressField}>
+                <ThemedText style={styles.progressLabel}>
+                  Total pages
+                </ThemedText>
+                <TextInput
+                  value={totalPagesInput}
+                  onChangeText={setTotalPagesInput}
+                  keyboardType="numeric"
+                  placeholder="Total"
+                  placeholderTextColor={
+                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
+                  }
+                  style={[
+                    styles.progressInput,
+                    { color: colorScheme === "dark" ? "#fff" : "#111" },
+                  ]}
+                />
+              </View>
+            </View>
+            <View style={styles.progressRow}>
+              <View style={styles.progressField}>
+                <ThemedText style={styles.progressLabel}>
+                  Chapters read
+                </ThemedText>
+                <TextInput
+                  value={currentChapterInput}
+                  onChangeText={setCurrentChapterInput}
+                  keyboardType="numeric"
+                  placeholder="Current"
+                  placeholderTextColor={
+                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
+                  }
+                  style={[
+                    styles.progressInput,
+                    { color: colorScheme === "dark" ? "#fff" : "#111" },
+                  ]}
+                />
+              </View>
+              <View style={styles.progressField}>
+                <ThemedText style={styles.progressLabel}>
+                  Total chapters
+                </ThemedText>
+                <TextInput
+                  value={totalChaptersInput}
+                  onChangeText={setTotalChaptersInput}
+                  keyboardType="numeric"
+                  placeholder="Total"
+                  placeholderTextColor={
+                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
+                  }
+                  style={[
+                    styles.progressInput,
+                    { color: colorScheme === "dark" ? "#fff" : "#111" },
+                  ]}
+                />
+              </View>
+            </View>
+            <View style={styles.progressField}>
+              <ThemedText style={styles.progressLabel}>Percent</ThemedText>
+              <TextInput
+                value={percentInput}
+                onChangeText={setPercentInput}
+                keyboardType="numeric"
+                placeholder="Auto-calculated"
+                placeholderTextColor={
+                  colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
+                }
+                style={[
+                  styles.progressInput,
+                  { color: colorScheme === "dark" ? "#fff" : "#111" },
+                ]}
+              />
+            </View>
+            <ThemedText style={styles.progressHint}>
+              Percent auto-updates when pages or chapters change.
+            </ThemedText>
+            {progressError && (
+              <ThemedText style={styles.progressError}>
+                {progressError}
+              </ThemedText>
+            )}
+            {progressSuccess && (
+              <ThemedText style={styles.progressSuccess}>
+                {progressSuccess}
+              </ThemedText>
+            )}
+            <View style={styles.progressButtonContainer}>
+              <Pressable
+                style={[
+                  styles.progressButton,
+                  isProgressSaving && styles.progressButtonDisabled,
+                ]}
+                onPress={handleSaveProgress}
+                disabled={isProgressSaving}
+              >
+                {isProgressSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <ThemedText style={styles.progressButtonText}>
+                    Save progress
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
           </Animated.View>
 
           {/* Activity from other users */}
@@ -786,5 +1090,85 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9CA3AF",
     textAlign: "right",
+  },
+  progressCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(156, 163, 175, 0.3)",
+    padding: 16,
+    marginBottom: 16,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  progressTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  progressPercent: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#34D399",
+  },
+  progressSubtitle: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 6,
+  },
+  progressRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  progressField: {
+    flex: 1,
+    marginTop: 10,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  progressInput: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 6,
+    fontSize: 16,
+    backgroundColor: "transparent",
+  },
+  progressHint: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 10,
+  },
+  progressError: {
+    fontSize: 12,
+    color: "#F87171",
+    marginTop: 6,
+  },
+  progressSuccess: {
+    fontSize: 12,
+    color: "#34D399",
+    marginTop: 6,
+  },
+  progressButtonContainer: {
+    marginTop: 12,
+  },
+  progressButton: {
+    backgroundColor: "#FBBF24",
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  progressButtonDisabled: {
+    opacity: 0.6,
+  },
+  progressButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111",
   },
 });

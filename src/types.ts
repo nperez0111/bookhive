@@ -7,6 +7,15 @@ export type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile"
  */
 export type HiveId = `bk_${string}`;
 
+export type BookProgress = {
+  percent?: number;
+  totalPages?: number;
+  currentPage?: number;
+  totalChapters?: number;
+  currentChapter?: number;
+  updatedAt: string;
+};
+
 export type UserBook = {
   /**
    * Most recent time the book was indexed
@@ -60,6 +69,14 @@ export type UserBook = {
    * Review of the book
    */
   review: string | null;
+  /**
+   * Reading progress information
+   */
+  bookProgress: BookProgress | null;
+};
+
+export type UserBookRow = Omit<UserBook, "bookProgress"> & {
+  bookProgress: string | null;
 };
 
 export type Buzz = {

@@ -9,6 +9,7 @@ import {
   is$typed as _is$typed,
   type OmitKey,
 } from "../../../util";
+import type * as BuzzBookhiveDefs from "./defs.js";
 
 const is$typed = _is$typed,
   validate = _validate;
@@ -40,6 +41,7 @@ export interface Record {
   stars?: number;
   /** The book's review */
   review?: string;
+  bookProgress?: BuzzBookhiveDefs.BookProgress;
   [k: string]: unknown;
 }
 

@@ -8,6 +8,7 @@ interface BookMeta {
   language: string;
   isbn?: string;
   isbn13?: string;
+  numPages?: number;
   authorBio: string;
   secondaryAuthors: Array<{
     name: string;
@@ -84,6 +85,7 @@ export async function enrichBookWithDetailedData(
       authorBio: detailedData.book.primaryAuthor.description || "",
       secondaryAuthors: detailedData.book.secondaryContributors || [],
       ratingsDistribution: detailedData.work.ratingsDistribution || [],
+      numPages: detailedData.book.details.numPages,
     };
 
     // Update the book record with enriched data
