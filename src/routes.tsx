@@ -103,10 +103,13 @@ export async function searchBooks({
         // Trigger background enrichment for all books
         const enrichmentPromises = res.data.map((book) =>
           enrichBookWithDetailedData(book, ctx as AppContext).catch((error) => {
-            ctx.logger.error("Background enrichment failed", {
-              bookId: book.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
+            ctx.logger.error(
+              {
+                bookId: book.id,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Background enrichment failed",
+            );
           }),
         );
 
@@ -187,7 +190,7 @@ async function refetchBuzzes({
       )?.hiveId;
 
       if (!hiveId) {
-        ctx.logger.error("hiveId not found for book", { record });
+        ctx.logger.error({ record }, "hiveId not found for book");
         return;
       }
 
@@ -284,7 +287,7 @@ async function refetchBooks({
   // Delete duplicate records
   Array.from(duplicatesByHiveId.values()).map(async (records) => {
     if (records.length > 1) {
-      ctx.logger.info("Duplicate book found", { records });
+      ctx.logger.info({ records }, "Duplicate book found");
       const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
         a.value.createdAt.localeCompare(b.value.createdAt),
       );
@@ -708,11 +711,12 @@ export function createRouter(app: HonoServer) {
       // Fire and forget - don't await
       enrichBookWithDetailedData(book, c.get("ctx")).catch((error) => {
         c.get("ctx").logger?.error(
-          "Background enrichment failed on book view",
           {
             bookId: book.id,
-            error: error instanceof Error ? error.message : String(error),
+            error:
+              error instanceof Error ? error.message : (String(error) as any),
           },
+          "Background enrichment failed on book view",
         );
       });
     }

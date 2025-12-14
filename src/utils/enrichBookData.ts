@@ -29,7 +29,7 @@ export async function enrichBookWithDetailedData(
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       if (enrichedDate > thirtyDaysAgo) {
-        ctx.logger.debug("Book already enriched recently", { bookId: book.id });
+        ctx.logger.debug({ bookId: book.id }, "Book already enriched recently");
         return;
       }
     }
@@ -37,28 +37,31 @@ export async function enrichBookWithDetailedData(
     // Only enrich Goodreads books with sourceUrl
     if (book.source !== "Goodreads" || !book.sourceUrl) {
       ctx.logger.debug(
-        "Skipping enrichment - not a Goodreads book or no sourceUrl",
         {
           bookId: book.id,
           source: book.source,
           hasSourceUrl: !!book.sourceUrl,
         },
+        "Skipping enrichment - not a Goodreads book or no sourceUrl",
       );
       return;
     }
 
-    ctx.logger.info("Starting book enrichment", {
-      bookId: book.id,
-      sourceUrl: book.sourceUrl,
-    });
+    ctx.logger.info(
+      { bookId: book.id, sourceUrl: book.sourceUrl },
+      "Starting book enrichment",
+    );
 
     const detailedData = await getBookDetailedInfo(book.sourceUrl);
 
     if (!detailedData) {
-      ctx.logger.warn("Failed to fetch detailed data", {
-        bookId: book.id,
-        sourceUrl: book.sourceUrl,
-      });
+      ctx.logger.warn(
+        {
+          bookId: book.id,
+          sourceUrl: book.sourceUrl,
+        },
+        "Failed to fetch detailed data",
+      );
       return;
     }
 
@@ -104,17 +107,23 @@ export async function enrichBookWithDetailedData(
       .where("id", "=", book.id)
       .execute();
 
-    ctx.logger.info("Successfully enriched book", {
-      bookId: book.id,
-      genres: detailedData.book.genres.length,
-      hasSeries: !!detailedData.book.series,
-      hasAuthorBio: !!detailedData.book.primaryAuthor.description,
-    });
+    ctx.logger.info(
+      {
+        bookId: book.id,
+        genres: detailedData.book.genres.length,
+        hasSeries: !!detailedData.book.series,
+        hasAuthorBio: !!detailedData.book.primaryAuthor.description,
+      },
+      "Successfully enriched book data",
+    );
   } catch (error) {
-    ctx.logger.error("Error enriching book data", {
-      bookId: book.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    ctx.logger.error(
+      {
+        bookId: book.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Error enriching book data",
+    );
     // Don't throw - enrichment failures shouldn't break the app
   }
 }

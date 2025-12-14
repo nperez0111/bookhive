@@ -63,7 +63,6 @@
     "html-entities": "2.5.2",
     "ipx": "3.0.1",
     "iron-session": "^8.0.4",
-    "jiti": "2.4.0",
     "kysely": "^0.28.9",
     "multiformats": "^13.4.2",
     "ohash": "1.1.4",

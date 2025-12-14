@@ -18,7 +18,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import { timing } from "hono/timing";
 import { getIronSession } from "iron-session";
-import { pino } from "pino";
+import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
 import { z } from "zod";
@@ -61,7 +61,7 @@ export type AppContext = {
   db: Database;
   kv: Storage;
   ingester: Firehose;
-  logger: pino.Logger;
+  logger: Logger;
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
   baseIdResolver: ReturnType<typeof createIdResolver>;
@@ -114,7 +114,7 @@ export class Server {
   constructor(
     public app: HonoServer,
     public server: ServerType,
-    public logger: pino.Logger,
+    public logger: Logger,
   ) {}
 
   static async create() {
@@ -435,10 +435,13 @@ export class Server {
                               },
                             ] as const;
                           } catch (e) {
-                            ctx.logger.error("Failed to update book record", {
-                              error: e,
-                              book,
-                            });
+                            ctx.logger.error(
+                              {
+                                error: e,
+                                book,
+                              },
+                              "Failed to update book record",
+                            );
                             unmatchedBooks.push({
                               book,
                               reason: "processing_error",
@@ -508,11 +511,11 @@ export class Server {
                     });
                   } catch (error) {
                     ctx.logger.error(
-                      "Failed to update book records in batch, trying individually",
                       {
                         error,
                         bookCount: bookUpdates.size,
                       },
+                      "Failed to update book records in batch, trying individually",
                     );
 
                     // Fallback: try to save each book individually
@@ -536,12 +539,12 @@ export class Server {
                       } catch (individualError) {
                         individualFailures++;
                         ctx.logger.error(
-                          "Failed to update individual book record",
                           {
                             error: individualError,
                             hiveId,
-                            bookUpdate,
+                            bookUpdate: bookUpdate as any,
                           },
+                          "Failed to update individual book record",
                         );
 
                         // Add to unmatched books for individual failures
@@ -836,10 +839,13 @@ export class Server {
                               },
                             ] as const;
                           } catch (e) {
-                            ctx.logger.error("Failed to update book record", {
-                              error: e,
-                              book,
-                            });
+                            ctx.logger.error(
+                              {
+                                error: e,
+                                book,
+                              },
+                              "Failed to update book record",
+                            );
                             unmatchedBooks.push({
                               book,
                               reason: "processing_error",
@@ -908,11 +914,11 @@ export class Server {
                     });
                   } catch (error) {
                     ctx.logger.error(
-                      "Failed to update book records in batch, trying individually",
                       {
                         error,
-                        bookCount: bookUpdates.size,
+                        bookCount: bookUpdates.size as number,
                       },
+                      "Failed to update book records in batch, trying individually",
                     );
 
                     // Fallback: try to save each book individually
@@ -936,12 +942,12 @@ export class Server {
                       } catch (individualError) {
                         individualFailures++;
                         ctx.logger.error(
-                          "Failed to update individual book record",
                           {
                             error: individualError,
                             hiveId,
-                            bookUpdate,
+                            bookUpdate: bookUpdate as any,
                           },
+                          "Failed to update individual book record",
                         );
 
                         // Add to unmatched books for individual failures

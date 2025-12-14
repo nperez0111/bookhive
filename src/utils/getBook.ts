@@ -507,9 +507,13 @@ export async function updateBookRecords({
     }
   }, Promise.resolve());
 
-  ctx.logger.info(`Wrote ${updatesToApply.length} books to PDS & DB`, {
-    userDid: agent.assertDid,
-  });
+  ctx.logger.info(
+    {
+      userDid: agent.assertDid,
+      bookCount: updatesToApply.length,
+    },
+    "Wrote books to PDS & DB",
+  );
 
   return;
 }
@@ -569,9 +573,14 @@ export async function getUserRepoRecords({
     }
   }
 
-  ctx.logger.info(`Fetched ${books.size} books & ${buzzes.size} buzzes`, {
-    userDid: did,
-  });
+  ctx.logger.info(
+    {
+      userDid: did,
+      bookCount: books.size,
+      buzzCount: buzzes.size,
+    },
+    "Fetched books & buzzes",
+  );
 
   return { books, buzzes };
 }
