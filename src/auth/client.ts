@@ -5,6 +5,14 @@ import type { Storage } from "unstorage";
 
 const time = Date.now();
 
+// OAuth scopes required for BookHive operations:
+// - atproto: Base scope required for AT Protocol authentication
+// - blob:*/*: Required for uploading book cover images
+// - repo:buzz.bookhive.book: CRUD operations on book records (create, read, update, delete)
+// - repo:buzz.bookhive.buzz: CRUD operations on comment records (create, read, update, delete)
+export const OAUTH_SCOPES =
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create repo:buzz.bookhive.book?action=read repo:buzz.bookhive.book?action=update repo:buzz.bookhive.book?action=delete repo:buzz.bookhive.buzz?action=create repo:buzz.bookhive.buzz?action=read repo:buzz.bookhive.buzz?action=update repo:buzz.bookhive.buzz?action=delete";
+
 export const createClient = async (kv: Storage) => {
   const publicUrl = env.PUBLIC_URL;
   const url = publicUrl || `http://127.0.0.1:${env.PORT}`;
@@ -14,10 +22,10 @@ export const createClient = async (kv: Storage) => {
       client_name: "BookHive",
       client_id: publicUrl
         ? `${url}/oauth-client-metadata.json`
-        : `http://localhost?redirect_uri=${enc(`${url}/oauth/callback`)}&scope=${enc("atproto transition:generic")}`,
+        : `http://localhost?redirect_uri=${enc(`${url}/oauth/callback`)}&scope=${enc(OAUTH_SCOPES)}`,
       client_uri: url,
       redirect_uris: [`${url}/oauth/callback`],
-      scope: "atproto transition:generic",
+      scope: OAUTH_SCOPES,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       application_type: "web",

@@ -9,6 +9,7 @@ import { Layout } from "../pages/layout";
 import { Agent } from "@atproto/api";
 import { Error } from "../pages/error";
 import { Login } from "../pages/login";
+import { OAUTH_SCOPES } from "./client";
 
 // Helper function to get consistent session configuration
 export function getSessionConfig(): SessionOptions {
@@ -142,7 +143,7 @@ export function loginRouter(
 
     try {
       const url = await c.get("ctx").oauthClient.authorize(handle, {
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPES,
         state: JSON.stringify({ redirectUri, handle }),
       });
       return c.redirect(url.toString());
@@ -217,7 +218,7 @@ export function loginRouter(
 
     try {
       const url = await c.get("ctx").oauthClient.authorize(handle, {
-        scope: "atproto transition:generic",
+        scope: OAUTH_SCOPES,
       });
       return c.redirect(url.toString());
     } catch (err) {
