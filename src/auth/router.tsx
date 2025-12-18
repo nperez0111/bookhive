@@ -152,6 +152,16 @@ export function loginRouter(
   app.get("/login", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (agent) {
+      try {
+        // try using the profile to see if the user actually has valid permissions
+        await c.get("ctx").getProfile();
+      } catch {
+        return c.html(
+          <Layout>
+            <Login handle={c.req.query("handle")} />
+          </Layout>,
+        );
+      }
       return c.redirect("/");
     }
     return c.html(
