@@ -8,10 +8,14 @@ const time = Date.now();
 // OAuth scopes required for BookHive operations:
 // - atproto: Base scope required for AT Protocol authentication
 // - blob:*/*: Required for uploading book cover images
-// - repo:buzz.bookhive.book: CRUD operations on book records (create, read, update, delete)
-// - repo:buzz.bookhive.buzz: CRUD operations on comment records (create, read, update, delete)
+// - repo:buzz.bookhive.book: Write operations on book records (create, update, delete)
+//   Note: Reading records doesn't require a permission per AT Protocol spec
+// - repo:buzz.bookhive.buzz: Write operations on comment records (create, update, delete)
+// - repo:app.bsky.graph.follow: Create follow records (for following users)
+// - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
+// - rpc:app.bsky.actor.getProfile: Required for fetching user profile information from any Audience
 export const OAUTH_SCOPES =
-  "atproto blob:*/* repo:buzz.bookhive.book?action=create repo:buzz.bookhive.book?action=read repo:buzz.bookhive.book?action=update repo:buzz.bookhive.book?action=delete repo:buzz.bookhive.buzz?action=create repo:buzz.bookhive.buzz?action=read repo:buzz.bookhive.buzz?action=update repo:buzz.bookhive.buzz?action=delete";
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=*";
 
 export const createClient = async (kv: Storage) => {
   const publicUrl = env.PUBLIC_URL;

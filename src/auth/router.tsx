@@ -67,6 +67,37 @@ export function loginRouter(
       await clientSession.save();
 
       const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
+
+      // // Log granted scopes vs requested scopes
+      // if (oauthSession) {
+      //   try {
+      //     const tokenInfo = await oauthSession.getTokenInfo("auto");
+      //     const requestedScopes = OAUTH_SCOPES.split(" ");
+      //     const grantedScopes = tokenInfo.scope?.split(" ") || [];
+
+      //     const missingScopes = requestedScopes.filter(
+      //       (scope) => !grantedScopes.includes(scope),
+      //     );
+
+      //     c.get("ctx").logger.info(
+      //       {
+      //         did: session.did,
+      //         requestedScopes,
+      //         grantedScopes,
+      //         missingScopes,
+      //         grantedScopeString: tokenInfo.scope,
+      //         requestedScopeString: OAUTH_SCOPES,
+      //       },
+      //       "OAuth scopes comparison - requested vs granted",
+      //     );
+      //   } catch (err) {
+      //     c.get("ctx").logger.warn(
+      //       { err, did: session.did },
+      //       "Could not retrieve token info to check granted scopes",
+      //     );
+      //   }
+      // }
+
       const agent = oauthSession ? new Agent(oauthSession) : null;
       await onLogin({ agent, ctx: c.get("ctx") });
 
