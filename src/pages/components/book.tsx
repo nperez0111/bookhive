@@ -47,7 +47,6 @@ export const BookList: FC<{
         id="tab-read"
         name="tabs"
         class="peer/read hidden"
-        checked
       />
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
       <input
@@ -55,6 +54,7 @@ export const BookList: FC<{
         id="tab-reading"
         name="tabs"
         class="peer/reading hidden"
+        checked
       />
 
       <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
@@ -64,20 +64,9 @@ export const BookList: FC<{
         >
           <li class="me-2" role="presentation">
             <label
-              for="tab-read"
-              role="tab"
-              aria-selected="true"
-              aria-controls="tab-read-panel"
-              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
-            >
-              Read
-            </label>
-          </li>
-          <li class="me-2" role="presentation">
-            <label
               for="tab-reading"
               role="tab"
-              aria-selected="false"
+              aria-selected="true"
               aria-controls="tab-reading-panel"
               class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
             >
@@ -93,6 +82,17 @@ export const BookList: FC<{
               class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
             >
               Want to Read
+            </label>
+          </li>
+          <li class="me-2" role="presentation">
+            <label
+              for="tab-read"
+              role="tab"
+              aria-selected="false"
+              aria-controls="tab-read-panel"
+              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              Read
             </label>
           </li>
         </ul>
