@@ -15,7 +15,7 @@ const time = Date.now();
 // - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
 // - rpc:app.bsky.actor.getProfile: Required for fetching user profile information from any Audience
 export const OAUTH_SCOPES =
-  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=*";
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
 
 export const createClient = async (kv: Storage) => {
   const publicUrl = env.PUBLIC_URL;
