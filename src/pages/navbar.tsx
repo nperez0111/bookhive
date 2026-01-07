@@ -245,7 +245,7 @@ export const Navbar: FC<{
             role="menuitem"
             tabindex={-1}
           >
-            Import from Goodreads
+            Import books
           </a>
           <form action="/logout" method="post">
             <button
