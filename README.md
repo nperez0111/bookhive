@@ -79,3 +79,16 @@ pnpm test:ui
 - **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
 - **Frontend**: Mostly static HTML, with some Hono JSX for dynamic content (Fast as possible)
 - **Database**: SQLite, with Kyesly as the ORM
+
+## 🗄️ Weekly database export (GitHub Actions artifact)
+
+This repo includes a workflow that can fetch a **sanitized SQLite export** from your running BookHive instance and upload it as a GitHub Actions artifact (weekly cron + manual trigger).
+
+- **Server endpoint**: `GET /admin/export`
+  - Requires `EXPORT_SHARED_SECRET` to be set
+  - Request header: `Authorization: Bearer <EXPORT_SHARED_SECRET>`
+  - Returns a `.tgz` containing `db.sqlite`, `kv.sqlite` (with auth tables excluded), and `manifest.json`
+- **Workflow**: `.github/workflows/database-export.yml`
+  - Configure GitHub repo secrets:
+    - `BOOKHIVE_EXPORT_URL` (e.g. `https://bookhive.example.com/admin/export`)
+    - `BOOKHIVE_EXPORT_SHARED_SECRET`
