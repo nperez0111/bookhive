@@ -1,0 +1,43 @@
+name: Publish database export artifact
+
+on:
+  schedule:
+    # Weekly (Sunday 02:15 UTC)
+    - cron: "15 2 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: database-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set export filename date
+        run: echo "EXPORT_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+
+      - name: Download export from BookHive instance
+        env:
+          EXPORT_URL: ${{ secrets.BOOKHIVE_EXPORT_URL }}
+          EXPORT_SECRET: ${{ secrets.BOOKHIVE_EXPORT_SHARED_SECRET }}
+        run: |
+          test -n "$EXPORT_URL"
+          test -n "$EXPORT_SECRET"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer $EXPORT_SECRET" \
+            "$EXPORT_URL" \
+            -o "bookhive-export.tgz"
+          ls -lh "bookhive-export.tgz"
+
+      - name: Upload export as GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookhive-export-${{ env.EXPORT_DATE }}
+          path: bookhive-export.tgz
+          retention-days: 30
+

@@ -42,6 +42,12 @@ import sqliteKv from "./sqlite-kv.ts";
 import type { HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
 import {
+  cleanupExportPaths,
+  createExportReadStream,
+  createSanitizedExportArchive,
+  isAuthorizedExportRequest,
+} from "./utils/dbExport.ts";
+import {
   getGoodreadsCsvParser,
   getStorygraphCsvParser,
   type GoodreadsBook,
@@ -55,6 +61,8 @@ import {
 
 import { lazy } from "./utils/lazy.ts";
 import { readThroughCache } from "./utils/readThroughCache.ts";
+import fs from "node:fs";
+import path from "node:path";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -254,6 +262,62 @@ export class Server {
     const { printMetrics, registerMetrics } = prometheus();
     app.use("*", registerMetrics);
     app.get("/metrics", printMetrics);
+
+    // Download a sanitized SQLite export bundle (db + kv without auth tables)
+    app.get("/admin/export", async (c) => {
+      // Hide endpoint if not configured
+      if (!env.EXPORT_SHARED_SECRET) {
+        return c.json({ message: "Not Found" }, 404);
+      }
+      const authorization = c.req.header("authorization");
+      if (
+        !isAuthorizedExportRequest({
+          authorizationHeader: authorization,
+          sharedSecret: env.EXPORT_SHARED_SECRET,
+        })
+      ) {
+        return c.json({ message: "Not Found" }, 404);
+      }
+
+      if (!env.DB_PATH || env.DB_PATH === ":memory:") {
+        return c.json(
+          { message: "DB exports require DB_PATH to be a file path" },
+          400,
+        );
+      }
+
+      const exportDir =
+        env.DB_EXPORT_DIR?.trim() ||
+        path.join(path.dirname(env.DB_PATH), "exports");
+      await fs.promises.mkdir(exportDir, { recursive: true });
+
+      const includeKv =
+        Boolean(env.KV_DB_PATH) &&
+        env.KV_DB_PATH !== ":memory:" &&
+        fs.existsSync(env.KV_DB_PATH);
+
+      const result = await createSanitizedExportArchive({
+        dbPath: env.DB_PATH,
+        kvPath: includeKv ? env.KV_DB_PATH : undefined,
+        exportDir,
+        includeKv,
+      });
+
+      const { nodeStream, webStream } = createExportReadStream(result.archivePath);
+      nodeStream.on("close", () => {
+        cleanupExportPaths({ archivePath: result.archivePath, tmpDir: result.tmpDir });
+      });
+      nodeStream.on("error", () => {
+        cleanupExportPaths({ archivePath: result.archivePath, tmpDir: result.tmpDir });
+      });
+
+      return c.body(webStream as any, 200, {
+        "Content-Type": "application/gzip",
+        "Content-Encoding": "gzip",
+        "Content-Disposition": `attachment; filename="${result.filename}"`,
+        "Cache-Control": "no-store",
+      });
+    });
 
     // This is to import a Goodreads CSV export
     // It is here because we don't want it behind the etag middleware
