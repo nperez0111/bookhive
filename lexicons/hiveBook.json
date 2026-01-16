@@ -75,6 +75,11 @@
           "updatedAt": {
             "type": "string",
             "format": "datetime"
+          },
+          "identifiers": {
+            "type": "ref",
+            "ref": "buzz.bookhive.defs#bookIdentifiers",
+            "description": "External identifiers for the book"
           }
         }
       }

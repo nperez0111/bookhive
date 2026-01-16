@@ -1,4 +1,4 @@
-import type { HiveBook } from "../types";
+import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "..";
 
@@ -91,6 +91,18 @@ export async function enrichBookWithDetailedData(
       numPages: detailedData.book.details.numPages,
     };
 
+    // Merge identifiers with existing ones
+    const existingIdentifiers: BookIdentifiers = book.identifiers
+      ? JSON.parse(book.identifiers)
+      : {};
+    const updatedIdentifiers: BookIdentifiers = {
+      ...existingIdentifiers,
+      hiveId: book.id,
+      goodreadsId: book.sourceId || existingIdentifiers.goodreadsId,
+      isbn10: detailedData.book.details.isbn || existingIdentifiers.isbn10,
+      isbn13: detailedData.book.details.isbn13 || existingIdentifiers.isbn13,
+    };
+
     // Update the book record with enriched data
     await ctx.db
       .updateTable("hive_book")
@@ -98,6 +110,7 @@ export async function enrichBookWithDetailedData(
         genres,
         series,
         meta: JSON.stringify(meta),
+        identifiers: JSON.stringify(updatedIdentifiers),
         description: detailedData.book.description || book.description, // Use better description if available
         rating: Math.round(detailedData.work.averageRating * 1000), // Convert to our rating format
         ratingsCount: detailedData.work.ratingsCount,
