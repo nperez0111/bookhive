@@ -43,6 +43,7 @@ import { LibraryImport } from "./pages/import";
 import { enrichBookWithDetailedData } from "./utils/enrichBookData";
 import { GenresDirectory } from "./pages/genres";
 import { GenreBooks, getBooksByGenre } from "./pages/genreBooks";
+import { AuthorBooks, getBooksByAuthor } from "./pages/authorBooks";
 import { hydrateUserBook, serializeUserBook } from "./utils/bookProgress";
 
 declare module "hono" {
@@ -573,6 +574,41 @@ export function createRouter(app: HonoServer) {
       {
         title: `BookHive | ${genre} Books`,
         description: `Discover ${genre} books on BookHive`,
+      },
+    );
+  });
+
+  app.get("/authors/:author", async (c) => {
+    const author = decodeURIComponent(c.req.param("author"));
+    const page = parseInt(c.req.query("page") || "1", 10);
+    const sortBy =
+      (c.req.query("sort") as "popularity" | "reviews") || "popularity";
+    const pageSize = 100;
+
+    // Validate page number
+    const validPage = Math.max(1, page);
+
+    const result = await getBooksByAuthor(
+      author,
+      c.get("ctx"),
+      validPage,
+      pageSize,
+      sortBy,
+      c,
+    );
+
+    return c.render(
+      <AuthorBooks
+        author={author}
+        books={result.books}
+        currentPage={result.currentPage}
+        totalPages={result.totalPages}
+        totalBooks={result.totalBooks}
+        sortBy={sortBy}
+      />,
+      {
+        title: `BookHive | Books by ${author}`,
+        description: `Discover books by ${author} on BookHive`,
       },
     );
   });
