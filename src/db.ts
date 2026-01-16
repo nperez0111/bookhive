@@ -203,6 +203,18 @@ migrations["006"] = {
   },
 };
 
+migrations["007"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .addColumn("identifiers", "text")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("hive_book").dropColumn("identifiers").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): Database => {

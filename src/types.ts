@@ -16,6 +16,16 @@ export type BookProgress = {
   updatedAt: string;
 };
 
+export type BookIdentifiers = {
+  hiveId?: string;
+  isbn10?: string;
+  isbn13?: string;
+  goodreadsId?: string;
+  amazonAsin?: string;
+  googleBooksId?: string;
+  openLibraryId?: string;
+};
+
 export type UserBook = {
   /**
    * Most recent time the book was indexed
@@ -148,6 +158,10 @@ export type HiveBook = {
   series: string | null;
   meta: string | null;
   enrichedAt: string | null;
+  /**
+   * External identifiers stored as JSON string
+   */
+  identifiers: string | null;
 };
 
 export type UserFollow = {

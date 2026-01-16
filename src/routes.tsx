@@ -34,7 +34,7 @@ import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { PrivacyPolicy } from "./pages/privacy-policy";
 import { findBookDetails } from "./scrapers";
-import { type BookProgress, type HiveId } from "./types";
+import { type BookIdentifiers, type BookProgress, type HiveId } from "./types";
 import { updateBookRecord } from "./utils/getBook";
 import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
@@ -123,6 +123,22 @@ export async function searchBooks({
       requestsPerSecond: 5,
     },
   );
+}
+
+/**
+ * Transform a HiveBook database row to include parsed identifiers with hiveId always included
+ */
+function transformBookWithIdentifiers<T extends { id: string; identifiers: string | null }>(
+  book: T,
+): Omit<T, "identifiers"> & { identifiers: BookIdentifiers } {
+  const { identifiers, ...rest } = book;
+  return {
+    ...rest,
+    identifiers: {
+      hiveId: book.id,
+      ...(identifiers ? (JSON.parse(identifiers) as BookIdentifiers) : {}),
+    },
+  };
 }
 
 async function syncFollowsIfNeeded({
@@ -1618,7 +1634,9 @@ export function createRouter(app: HonoServer) {
           .limit(1)
           .executeTakeFirst();
 
-        return c.json([book].filter(Boolean));
+        return c.json(
+          [book].filter(Boolean).map(transformBookWithIdentifiers),
+        );
       }
 
       const bookIds = await searchBooks({ query: q, ctx: c.get("ctx") });
@@ -1639,7 +1657,9 @@ export function createRouter(app: HonoServer) {
         return bookIds.indexOf(a.id) - bookIds.indexOf(b.id);
       });
 
-      return c.json(books.slice(offset, offset + limit));
+      return c.json(
+        books.slice(offset, offset + limit).map(transformBookWithIdentifiers),
+      );
     },
   );
 
@@ -1767,6 +1787,12 @@ export function createRouter(app: HonoServer) {
           source: book.source ?? undefined,
           sourceId: book.sourceId ?? undefined,
           sourceUrl: book.sourceUrl ?? undefined,
+          identifiers: {
+            hiveId: book.id,
+            ...(book.identifiers
+              ? (JSON.parse(book.identifiers) as BookIdentifiers)
+              : {}),
+          },
         },
         comments: comments.map((c) => ({
           book: {

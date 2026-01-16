@@ -416,6 +416,40 @@ export const schemaDict = {
           },
         },
       },
+      bookIdentifiers: {
+        type: "object",
+        description: "External identifiers for a book",
+        properties: {
+          hiveId: {
+            type: "string",
+            description: "BookHive's internal ID",
+          },
+          isbn10: {
+            type: "string",
+            description: "10-digit ISBN",
+          },
+          isbn13: {
+            type: "string",
+            description: "13-digit ISBN",
+          },
+          goodreadsId: {
+            type: "string",
+            description: "Goodreads book ID",
+          },
+          amazonAsin: {
+            type: "string",
+            description: "Amazon ASIN",
+          },
+          googleBooksId: {
+            type: "string",
+            description: "Google Books ID",
+          },
+          openLibraryId: {
+            type: "string",
+            description: "Open Library ID",
+          },
+        },
+      },
     },
   },
   BuzzBookhiveGetBook: {
@@ -662,6 +696,11 @@ export const schemaDict = {
             updatedAt: {
               type: "string",
               format: "datetime",
+            },
+            identifiers: {
+              type: "ref",
+              ref: "lex:buzz.bookhive.defs#bookIdentifiers",
+              description: "External identifiers for the book",
             },
           },
         },
