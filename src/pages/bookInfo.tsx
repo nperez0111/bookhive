@@ -367,7 +367,18 @@ export const BookInfo: FC<{
                 {book.title}
               </h1>
               <p className="mb-4 text-xl dark:text-gray-400">
-                by {book.authors.split("\t").join(", ")}
+                by{" "}
+                {book.authors.split("\t").map((author, index, array) => (
+                  <Fragment key={author}>
+                    <a
+                      href={`/authors/${encodeURIComponent(author)}`}
+                      className="text-yellow-600 hover:text-yellow-700 hover:underline dark:text-yellow-400 dark:hover:text-yellow-300"
+                    >
+                      {author}
+                    </a>
+                    {index < array.length - 1 && ", "}
+                  </Fragment>
+                ))}
               </p>
 
               <div className="mb-8 flex items-center gap-1">
