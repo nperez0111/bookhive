@@ -4,6 +4,7 @@ import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
 import { FallbackCover } from "./fallbackCover";
+import { hydrateUserBook } from "../../utils/bookProgress";
 
 const NO_BOOKS_FOUND = (
   <p className="text-center text-lg">No books in this list</p>
@@ -27,6 +28,7 @@ export const BookList: FC<{
           .orderBy("user_book.createdAt", "desc")
           .limit(10_000)
           .execute()
+          .then((books) => books.map((book) => hydrateUserBook(book)))
       : []);
 
   function orNoResults(arr: any[]) {
@@ -130,6 +132,17 @@ export const BookList: FC<{
           {orNoResults(
             books
               .filter((book) => book.status === BookStatus.READING)
+              .sort((a, b) => {
+                // Sort by most recent progress update first
+                // Fall back to startedAt, then createdAt for books without progress
+                const aDate =
+                  a.bookProgress?.updatedAt || a.startedAt || a.createdAt;
+                const bDate =
+                  b.bookProgress?.updatedAt || b.startedAt || b.createdAt;
+                return (
+                  new Date(bDate).getTime() - new Date(aDate).getTime()
+                );
+              })
               .map((book) => <BookListItem book={book} />),
           )}
         </ul>
