@@ -665,7 +665,7 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
                         placeholder="Current"
                       />
                       <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
@@ -688,7 +688,7 @@ export const BookInfo: FC<{
                           })()
                         }
                         min={1}
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
                         placeholder="Total"
                       />
                     </div>
@@ -706,7 +706,7 @@ export const BookInfo: FC<{
                         name="currentChapter"
                         value={usersBook?.bookProgress?.currentChapter ?? ""}
                         min={1}
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
                         placeholder="Current"
                       />
                       <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
@@ -718,7 +718,7 @@ export const BookInfo: FC<{
                         name="totalChapters"
                         value={usersBook?.bookProgress?.totalChapters ?? ""}
                         min={1}
-                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
                         placeholder="Total"
                       />
                     </div>
