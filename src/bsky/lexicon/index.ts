@@ -10,6 +10,7 @@ import {
 } from "@atproto/xrpc-server";
 import { schemas } from "./lexicons.js";
 import * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook.js";
+import * as BuzzBookhiveGetBookIdMap from "./types/buzz/bookhive/getBookIdMap.js";
 import * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
 import * as BuzzBookhiveSearchBooks from "./types/buzz/bookhive/searchBooks.js";
 
@@ -62,6 +63,17 @@ export class BuzzBookhiveNS {
     >,
   ) {
     const nsid = "buzz.bookhive.getBook"; // @ts-ignore
+    return this._server.xrpc.method(nsid, cfg);
+  }
+
+  getBookIdMap<AV extends AuthVerifier>(
+    cfg: ConfigOf<
+      AV,
+      BuzzBookhiveGetBookIdMap.Handler<ExtractAuth<AV>>,
+      BuzzBookhiveGetBookIdMap.HandlerReqCtx<ExtractAuth<AV>>
+    >,
+  ) {
+    const nsid = "buzz.bookhive.getBookIdMap"; // @ts-ignore
     return this._server.xrpc.method(nsid, cfg);
   }
 

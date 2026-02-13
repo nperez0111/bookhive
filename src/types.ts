@@ -1,4 +1,5 @@
 export type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+export type * as GetBookIdMap from "./bsky/lexicon/types/buzz/bookhive/getBookIdMap";
 export type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
 
 /**
@@ -148,6 +149,14 @@ export type HiveBook = {
   series: string | null;
   meta: string | null;
   enrichedAt: string | null;
+};
+
+export type BookIdMap = {
+  hiveId: HiveId;
+  isbn: string | null;
+  isbn13: string | null;
+  goodreadsId: string | null;
+  updatedAt: string;
 };
 
 export type UserFollow = {

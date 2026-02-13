@@ -194,3 +194,25 @@ export function isBookProgress<V>(v: V) {
 export function validateBookProgress<V>(v: V) {
   return validate<BookProgress & V>(v, id, hashBookProgress);
 }
+
+export interface BookIdMap {
+  $type?: "buzz.bookhive.defs#bookIdMap";
+  /** The hive ID for the book */
+  hiveId: string;
+  /** The book ISBN identifier */
+  isbn?: string;
+  /** The book ISBN-13 identifier */
+  isbn13?: string;
+  /** The Goodreads identifier for the book */
+  goodreadsId?: string;
+}
+
+const hashBookIdMap = "bookIdMap";
+
+export function isBookIdMap<V>(v: V) {
+  return is$typed(v, id, hashBookIdMap);
+}
+
+export function validateBookIdMap<V>(v: V) {
+  return validate<BookIdMap & V>(v, id, hashBookIdMap);
+}
