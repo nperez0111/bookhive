@@ -13,13 +13,14 @@ import {
   ipxFSStorage,
   ipxHttpStorage,
 } from "ipx";
-import type { NotNull } from "kysely";
+import { sql, type NotNull } from "kysely";
 import type { AppContext, HonoServer } from ".";
 import { loginRouter } from "./auth/router";
 import { ids } from "./bsky/lexicon/lexicons";
 import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
 import * as BuzzRecord from "./bsky/lexicon/types/buzz/bookhive/buzz";
 import type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+import type * as GetBookIdentifiers from "./bsky/lexicon/types/buzz/bookhive/getBookIdentifiers";
 import type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
 import { validateMain } from "./bsky/lexicon/types/com/atproto/repo/strongRef";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "./constants";
@@ -34,7 +35,12 @@ import { Navbar } from "./pages/navbar";
 import { ProfilePage } from "./pages/profile";
 import { PrivacyPolicy } from "./pages/privacy-policy";
 import { findBookDetails } from "./scrapers";
-import { type BookProgress, type HiveId } from "./types";
+import {
+  type BookIdentifiers,
+  type BookProgress,
+  type HiveBook,
+  type HiveId,
+} from "./types";
 import { updateBookRecord } from "./utils/getBook";
 import { syncUserFollows, shouldSyncFollows } from "./utils/getFollows";
 import { getProfile } from "./utils/getProfile";
@@ -45,6 +51,16 @@ import { GenresDirectory } from "./pages/genres";
 import { GenreBooks, getBooksByGenre } from "./pages/genreBooks";
 import { AuthorBooks, getBooksByAuthor } from "./pages/authorBooks";
 import { hydrateUserBook, serializeUserBook } from "./utils/bookProgress";
+import {
+  deriveBookIdentifiers,
+  normalizeGoodreadsId,
+  normalizeHiveId,
+  normalizeIsbn,
+  normalizeIsbn13,
+  toBookIdentifiersOutput,
+  upsertBookIdentifiers,
+  upsertBookIdentifiersBatch,
+} from "./utils/bookIdentifiers";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -101,6 +117,17 @@ export async function searchBooks({
             return res.data.map((book) => book.id);
           });
 
+        try {
+          await upsertBookIdentifiersBatch(ctx.db, res.data);
+        } catch (error) {
+          ctx.logger.warn(
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to persist book id mappings during search",
+          );
+        }
+
         // Trigger background enrichment for all books
         const enrichmentPromises = res.data.map((book) =>
           enrichBookWithDetailedData(book, ctx as AppContext).catch((error) => {
@@ -124,6 +151,157 @@ export async function searchBooks({
       requestsPerSecond: 5,
     },
   );
+}
+
+/**
+ * Transform a HiveBook database row to include parsed identifiers with hiveId always included
+ */
+function transformBookWithIdentifiers<
+  T extends { id: string; identifiers: string | null | undefined },
+>(book: T): Omit<T, "identifiers"> & { identifiers: BookIdentifiers } {
+  const { identifiers, ...rest } = book;
+  return {
+    ...rest,
+    identifiers: {
+      hiveId: book.id,
+      ...(identifiers ? (JSON.parse(identifiers) as BookIdentifiers) : {}),
+    },
+  };
+}
+
+async function findBookIdentifiersByLookup({
+  ctx,
+  hiveId,
+  isbn,
+  isbn13,
+  goodreadsId,
+}: {
+  ctx: Pick<AppContext, "db">;
+  hiveId?: HiveId | null;
+  isbn?: string | null;
+  isbn13?: string | null;
+  goodreadsId?: string | null;
+}) {
+  let query = ctx.db.selectFrom("book_id_map").selectAll();
+
+  if (hiveId) {
+    query = query.where("hiveId", "=", hiveId);
+  }
+  if (isbn) {
+    query = query.where("isbn", "=", isbn);
+  }
+  if (isbn13) {
+    query = query.where("isbn13", "=", isbn13);
+  }
+  if (goodreadsId) {
+    query = query.where("goodreadsId", "=", goodreadsId);
+  }
+
+  return query.executeTakeFirst();
+}
+
+async function findHiveBookByBookIdentifiersLookup({
+  ctx,
+  hiveId,
+  isbn,
+  isbn13,
+  goodreadsId,
+}: {
+  ctx: Pick<AppContext, "db">;
+  hiveId: HiveId | null;
+  isbn: string | null;
+  isbn13: string | null;
+  goodreadsId: string | null;
+}): Promise<HiveBook | undefined> {
+  if (hiveId) {
+    const byHiveId = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", hiveId)
+      .executeTakeFirst();
+    if (byHiveId) {
+      return byHiveId;
+    }
+  }
+
+  if (goodreadsId) {
+    const byGoodreadsId = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where("source", "=", "Goodreads")
+      .where((eb) =>
+        eb.or([
+          eb("sourceId", "=", goodreadsId),
+          eb("sourceUrl", "like", `%/book/show/${goodreadsId}%`),
+        ]),
+      )
+      .executeTakeFirst();
+    if (byGoodreadsId) {
+      return byGoodreadsId;
+    }
+  }
+
+  if (isbn) {
+    const byIsbn = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where(
+        sql<
+          string | null
+        >`NULLIF(REPLACE(REPLACE(UPPER(CAST(json_extract(meta, '$.isbn') AS TEXT)), '-', ''), ' ', ''), '')`,
+        "=",
+        isbn,
+      )
+      .executeTakeFirst();
+    if (byIsbn) {
+      return byIsbn;
+    }
+  }
+
+  if (isbn13) {
+    const byIsbn13 = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where(
+        sql<
+          string | null
+        >`NULLIF(REPLACE(REPLACE(CAST(json_extract(meta, '$.isbn13') AS TEXT), '-', ''), ' ', ''), '')`,
+        "=",
+        isbn13,
+      )
+      .executeTakeFirst();
+    if (byIsbn13) {
+      return byIsbn13;
+    }
+  }
+
+  return undefined;
+}
+
+async function ensureBookIdentifiersCurrent({
+  ctx,
+  book,
+}: {
+  ctx: AppContext;
+  book: HiveBook;
+}): Promise<void> {
+  let latestBook = book;
+
+  if (!latestBook.enrichedAt) {
+    await enrichBookWithDetailedData(latestBook, ctx);
+
+    const refreshedBook = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", latestBook.id)
+      .executeTakeFirst();
+
+    if (refreshedBook) {
+      latestBook = refreshedBook;
+    }
+  }
+
+  await upsertBookIdentifiers(ctx.db, latestBook);
 }
 
 async function syncFollowsIfNeeded({
@@ -1285,7 +1463,6 @@ export function createRouter(app: HonoServer) {
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        console.log("No agent");
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
       const payload = c.req.valid("json");
@@ -1638,10 +1815,6 @@ export function createRouter(app: HonoServer) {
       }),
     ),
     async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
-      }
       const { q, limit, offset, id } = c.req.valid("query");
 
       if (id) {
@@ -1654,7 +1827,11 @@ export function createRouter(app: HonoServer) {
           .limit(1)
           .executeTakeFirst();
 
-        return c.json([book].filter(Boolean));
+        return c.json(
+          [book]
+            .filter((a) => a !== undefined)
+            .map(transformBookWithIdentifiers),
+        );
       }
 
       const bookIds = await searchBooks({ query: q, ctx: c.get("ctx") });
@@ -1675,7 +1852,106 @@ export function createRouter(app: HonoServer) {
         return bookIds.indexOf(a.id) - bookIds.indexOf(b.id);
       });
 
-      return c.json(books.slice(offset, offset + limit));
+      return c.json(
+        books.slice(offset, offset + limit).map(transformBookWithIdentifiers),
+      );
+    },
+  );
+
+  app.get(
+    "/xrpc/" + ids.BuzzBookhiveGetBookIdentifiers,
+    zValidator(
+      "query",
+      z
+        .object({
+          hiveId: z.string().optional(),
+          isbn: z.string().optional(),
+          isbn13: z.string().optional(),
+          goodreadsId: z.string().optional(),
+        })
+        .refine(
+          ({ hiveId, isbn, isbn13, goodreadsId }) =>
+            Boolean(hiveId || isbn || isbn13 || goodreadsId),
+          {
+            message:
+              "At least one identifier is required: hiveId, isbn, isbn13, or goodreadsId",
+          },
+        ),
+    ),
+    async (c) => {
+      const ctx = c.get("ctx");
+      const query = c.req.valid("query");
+
+      const hiveId = normalizeHiveId(query.hiveId);
+      const isbn = normalizeIsbn(query.isbn);
+      const isbn13 = normalizeIsbn13(query.isbn13);
+      const goodreadsId = normalizeGoodreadsId(query.goodreadsId);
+
+      if (!hiveId && !isbn && !isbn13 && !goodreadsId) {
+        return c.json(
+          {
+            success: false,
+            message:
+              "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
+          },
+          400,
+        );
+      }
+
+      let bookIdentifiersRow = await findBookIdentifiersByLookup({
+        ctx,
+        hiveId,
+        isbn,
+        isbn13,
+        goodreadsId,
+      });
+
+      let hiveBook: HiveBook | undefined;
+      if (bookIdentifiersRow) {
+        hiveBook = await ctx.db
+          .selectFrom("hive_book")
+          .selectAll()
+          .where("id", "=", bookIdentifiersRow.hiveId)
+          .executeTakeFirst();
+      } else {
+        hiveBook = await findHiveBookByBookIdentifiersLookup({
+          ctx,
+          hiveId,
+          isbn,
+          isbn13,
+          goodreadsId,
+        });
+      }
+
+      if (!bookIdentifiersRow && !hiveBook) {
+        return c.json({ success: false, message: "Book not found" }, 404);
+      }
+
+      if (hiveBook) {
+        await ensureBookIdentifiersCurrent({ ctx, book: hiveBook });
+        bookIdentifiersRow = await ctx.db
+          .selectFrom("book_id_map")
+          .selectAll()
+          .where("hiveId", "=", hiveBook.id)
+          .executeTakeFirst();
+      }
+
+      if (!bookIdentifiersRow) {
+        if (!hiveBook) {
+          return c.json({ success: false, message: "Book not found" }, 404);
+        }
+        const response = {
+          bookIdentifiers: toBookIdentifiersOutput(
+            deriveBookIdentifiers(hiveBook),
+          ),
+        } satisfies GetBookIdentifiers.OutputSchema;
+        return c.json(response);
+      }
+
+      const response = {
+        bookIdentifiers: toBookIdentifiersOutput(bookIdentifiersRow),
+      } satisfies GetBookIdentifiers.OutputSchema;
+      return c.json(response);
     },
   );
 
@@ -1684,18 +1960,30 @@ export function createRouter(app: HonoServer) {
     zValidator(
       "query",
       z.object({
-        id: z.string(),
+        id: z.string().optional(),
+        isbn: z.string().optional(),
+        isbn13: z.string().optional(),
+        goodreadsId: z.string().optional(),
       }),
     ),
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
-      }
-      const { id } = c.req.valid("query");
+      const { id, isbn, isbn13, goodreadsId } = c.req.valid("query");
+      let hiveId = id as HiveId | undefined;
 
       if (!id) {
-        return c.json({ success: false, message: "Invalid ID" }, 400);
+        hiveId = (
+          await findBookIdentifiersByLookup({
+            ctx: c.get("ctx"),
+            isbn,
+            isbn13,
+            goodreadsId,
+          })
+        )?.hiveId;
+      }
+
+      if (!hiveId) {
+        return c.json({ success: false, message: "Book not found" }, 400);
       }
 
       // short-circuit if we have an ID to look up
@@ -1703,7 +1991,7 @@ export function createRouter(app: HonoServer) {
         .get("ctx")
         .db.selectFrom("hive_book")
         .selectAll()
-        .where("hive_book.id", "=", id as HiveId)
+        .where("hive_book.id", "=", hiveId)
         .limit(1)
         .executeTakeFirst();
 
@@ -1748,13 +2036,15 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
 
-      const rawUserBook = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("user_book.hiveId", "=", book.id)
-        .where("user_book.userDid", "=", agent.assertDid)
-        .executeTakeFirst();
+      const rawUserBook = agent
+        ? await c
+            .get("ctx")
+            .db.selectFrom("user_book")
+            .selectAll()
+            .where("user_book.hiveId", "=", book.id)
+            .where("user_book.userDid", "=", agent.assertDid)
+            .executeTakeFirst()
+        : null;
       const userBook = rawUserBook ? hydrateUserBook(rawUserBook) : null;
 
       const peerBooks = await c
@@ -1803,6 +2093,17 @@ export function createRouter(app: HonoServer) {
           source: book.source ?? undefined,
           sourceId: book.sourceId ?? undefined,
           sourceUrl: book.sourceUrl ?? undefined,
+          identifiers: {
+            hiveId: book.id,
+            ...(book.identifiers
+              ? (JSON.parse(book.identifiers) as BookIdentifiers)
+              : toBookIdentifiersOutput(
+                  await findBookIdentifiersByLookup({
+                    ctx: c.get("ctx"),
+                    hiveId: book.id,
+                  }),
+                )),
+          },
         },
         comments: comments.map((c) => ({
           book: {
@@ -1883,8 +2184,10 @@ export function createRouter(app: HonoServer) {
       if (handle && !did) {
         did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
       }
-      did = did as string;
-      console.log("did2", did);
+
+      if (!did) {
+        return c.json({ success: false, message: "User not found" }, 404);
+      }
 
       const books = await c
         .get("ctx")

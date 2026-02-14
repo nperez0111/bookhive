@@ -416,6 +416,28 @@ export const schemaDict = {
           },
         },
       },
+      bookIdentifiers: {
+        type: "object",
+        description: "External identifiers for a book",
+        properties: {
+          hiveId: {
+            type: "string",
+            description: "BookHive's internal ID",
+          },
+          isbn10: {
+            type: "string",
+            description: "10-digit ISBN",
+          },
+          isbn13: {
+            type: "string",
+            description: "13-digit ISBN",
+          },
+          goodreadsId: {
+            type: "string",
+            description: "Goodreads book ID",
+          },
+        },
+      },
     },
   },
   BuzzBookhiveGetBook: {
@@ -424,7 +446,7 @@ export const schemaDict = {
     defs: {
       main: {
         type: "query",
-        description: "Get a book's info. Requires authentication.",
+        description: "Get a book's info. Does not require authentication.",
         parameters: {
           type: "params",
           required: ["id"],
@@ -432,6 +454,18 @@ export const schemaDict = {
             id: {
               type: "string",
               description: "The book's hive ID",
+            },
+            isbn: {
+              type: "string",
+              description: "The book ISBN identifier",
+            },
+            isbn13: {
+              type: "string",
+              description: "The book ISBN-13 identifier",
+            },
+            goodreadsId: {
+              type: "string",
+              description: "The Goodreads identifier for the book",
             },
           },
         },
@@ -516,6 +550,51 @@ export const schemaDict = {
                   type: "ref",
                   ref: "lex:buzz.bookhive.defs#activity",
                 },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  BuzzBookhiveGetBookIdentifiers: {
+    lexicon: 1,
+    id: "buzz.bookhive.getBookIdentifiers",
+    defs: {
+      main: {
+        type: "query",
+        description:
+          "Resolve book identifiers by hiveId, isbn, isbn13, or goodreadsId. Does not require authentication.",
+        parameters: {
+          type: "params",
+          properties: {
+            hiveId: {
+              type: "string",
+              description: "The book hive ID",
+            },
+            isbn: {
+              type: "string",
+              description: "The book ISBN identifier",
+            },
+            isbn13: {
+              type: "string",
+              description: "The book ISBN-13 identifier",
+            },
+            goodreadsId: {
+              type: "string",
+              description: "The Goodreads identifier for the book",
+            },
+          },
+        },
+        output: {
+          encoding: "application/json",
+          schema: {
+            type: "object",
+            required: ["bookIdentifiers"],
+            properties: {
+              bookIdentifiers: {
+                type: "ref",
+                ref: "lex:buzz.bookhive.defs#bookIdentifiers",
               },
             },
           },
@@ -663,6 +742,11 @@ export const schemaDict = {
               type: "string",
               format: "datetime",
             },
+            identifiers: {
+              type: "ref",
+              ref: "lex:buzz.bookhive.defs#bookIdentifiers",
+              description: "External identifiers for the book",
+            },
           },
         },
       },
@@ -783,6 +867,7 @@ export const ids = {
   BuzzBookhiveBuzz: "buzz.bookhive.buzz",
   BuzzBookhiveDefs: "buzz.bookhive.defs",
   BuzzBookhiveGetBook: "buzz.bookhive.getBook",
+  BuzzBookhiveGetBookIdentifiers: "buzz.bookhive.getBookIdentifiers",
   BuzzBookhiveGetProfile: "buzz.bookhive.getProfile",
   BuzzBookhiveHiveBook: "buzz.bookhive.hiveBook",
   BuzzBookhiveSearchBooks: "buzz.bookhive.searchBooks",

@@ -25,7 +25,8 @@
     "ios": "pnpm run --prefix=app ios",
     "android": "pnpm run --prefix=app android",
     "ios:build": "pnpm run --prefix=app ios:build",
-    "ios:submit": "pnpm run --prefix=app ios:submit"
+    "ios:submit": "pnpm run --prefix=app ios:submit",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@atcute/car": "3.0.5",

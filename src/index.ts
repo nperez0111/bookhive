@@ -39,8 +39,14 @@ import { getLogger } from "./logger/index.ts";
 import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
-import type { HiveId } from "./types.ts";
+import type { BookIdentifiers, HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
+import {
+  cleanupExportPaths,
+  createExportReadStream,
+  createSanitizedExportArchive,
+  isAuthorizedExportRequest,
+} from "./utils/dbExport.ts";
 import {
   getGoodreadsCsvParser,
   getStorygraphCsvParser,
@@ -55,6 +61,8 @@ import {
 
 import { lazy } from "./utils/lazy.ts";
 import { readThroughCache } from "./utils/readThroughCache.ts";
+import fs from "node:fs";
+import path from "node:path";
 
 // Application state passed to the router and elsewhere
 export type AppContext = {
@@ -255,6 +263,133 @@ export class Server {
     app.use("*", registerMetrics);
     app.get("/metrics", printMetrics);
 
+    // Download a sanitized SQLite export bundle (db + kv without auth tables)
+    app.get("/admin/export", async (c) => {
+      const ctx = c.get("ctx");
+      const clientIp =
+        c.req.header("x-forwarded-for")?.split(",")[0].trim() ||
+        c.req.header("x-real-ip") ||
+        "unknown";
+
+      try {
+        // Hide endpoint if not configured
+        if (!env.EXPORT_SHARED_SECRET) {
+          ctx.logger.warn(
+            { ip: clientIp, reason: "endpoint_not_configured" },
+            "export endpoint access attempt - endpoint disabled",
+          );
+          return c.json({ message: "Not Found" }, 404);
+        }
+
+        // Check authorization
+        const authorization = c.req.header("authorization");
+        if (
+          !isAuthorizedExportRequest({
+            authorizationHeader: authorization,
+            sharedSecret: env.EXPORT_SHARED_SECRET,
+          })
+        ) {
+          ctx.logger.warn(
+            { ip: clientIp, reason: "invalid_authorization" },
+            "export endpoint unauthorized access attempt",
+          );
+          return c.json({ message: "Not Found" }, 404);
+        }
+
+        // Validate database path
+        if (!env.DB_PATH || env.DB_PATH === ":memory:") {
+          ctx.logger.error(
+            { ip: clientIp, dbPath: env.DB_PATH },
+            "export endpoint called but DB_PATH is not a file path",
+          );
+          return c.json(
+            { message: "DB exports require DB_PATH to be a file path" },
+            400,
+          );
+        }
+
+        const exportDir =
+          env.DB_EXPORT_DIR?.trim() ||
+          path.join(path.dirname(env.DB_PATH), "exports");
+
+        ctx.logger.info(
+          { ip: clientIp, exportDir },
+          "starting database export",
+        );
+
+        const startTime = Date.now();
+        let result;
+
+        try {
+          await fs.promises.mkdir(exportDir, { recursive: true });
+
+          const includeKv =
+            Boolean(env.KV_DB_PATH) &&
+            env.KV_DB_PATH !== ":memory:" &&
+            fs.existsSync(env.KV_DB_PATH);
+
+          result = await createSanitizedExportArchive({
+            dbPath: env.DB_PATH,
+            kvPath: includeKv ? env.KV_DB_PATH : undefined,
+            exportDir,
+            includeKv,
+          });
+        } catch (err) {
+          const duration = Date.now() - startTime;
+          ctx.logger.error(
+            {
+              ip: clientIp,
+              duration,
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            },
+            "database export failed",
+          );
+          return c.json({ message: "Failed to create export archive" }, 500);
+        }
+
+        const duration = Date.now() - startTime;
+        const stream = createExportReadStream(result.archivePath, {
+          onClose: () => {
+            ctx.logger.info(
+              { ip: clientIp, filename: result.filename, duration },
+              "database export completed successfully",
+            );
+            cleanupExportPaths({
+              archivePath: result.archivePath,
+              tmpDir: result.tmpDir,
+            });
+          },
+          onError: (err) => {
+            ctx.logger.error(
+              { ip: clientIp, filename: result.filename, error: err.message },
+              "error streaming export file",
+            );
+            cleanupExportPaths({
+              archivePath: result.archivePath,
+              tmpDir: result.tmpDir,
+            });
+          },
+        });
+
+        return c.body(stream, 200, {
+          "Content-Type": "application/gzip",
+          "Content-Encoding": "gzip",
+          "Content-Disposition": `attachment; filename="${result.filename}"`,
+          "Cache-Control": "no-store",
+        });
+      } catch (err) {
+        ctx.logger.error(
+          {
+            ip: clientIp,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "unexpected error in export endpoint",
+        );
+        return c.json({ message: "Internal server error" }, 500);
+      }
+    });
+
     // This is to import a Goodreads CSV export
     // It is here because we don't want it behind the etag middleware
     app.post(
@@ -392,6 +527,7 @@ export class Server {
                               .select("id")
                               .select("title")
                               .select("cover")
+                              .select("identifiers")
                               // rawTitle is the title from the Goodreads export
                               .where("hive_book.rawTitle", "=", book.title)
                               // authors is the author from the Goodreads export
@@ -408,6 +544,31 @@ export class Server {
                                 });
                               }
                               return null;
+                            }
+
+                            // Update identifiers with data from CSV
+                            const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                              ? JSON.parse(hiveBook.identifiers)
+                              : {};
+                            const newIdentifiers: BookIdentifiers = {
+                              ...existingIdentifiers,
+                              hiveId: hiveBook.id,
+                              goodreadsId: book.bookId || existingIdentifiers.goodreadsId,
+                              isbn10: book.isbn || existingIdentifiers.isbn10,
+                              isbn13: book.isbn13 || existingIdentifiers.isbn13,
+                            };
+                            // Only update if we have new data
+                            if (
+                              newIdentifiers.goodreadsId !== existingIdentifiers.goodreadsId ||
+                              newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                              newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                              !existingIdentifiers.hiveId
+                            ) {
+                              await ctx.db
+                                .updateTable("hive_book")
+                                .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                .where("id", "=", hiveBook.id)
+                                .execute();
                             }
 
                             const existingHiveIds =
@@ -785,6 +946,7 @@ export class Server {
                               .select("id")
                               .select("title")
                               .select("cover")
+                              .select("identifiers")
                               // rawTitle is the title from the StoryGraph export
                               .where("hive_book.rawTitle", "=", book.title)
                               // authors is the author from the StoryGraph export
@@ -801,6 +963,36 @@ export class Server {
                                 });
                               }
                               return null;
+                            }
+
+                            // Update identifiers with data from CSV
+                            if (book.isbn) {
+                              const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                                ? JSON.parse(hiveBook.identifiers)
+                                : {};
+                              // StoryGraph ISBN can be ISBN-10 or ISBN-13, check length
+                              const cleanIsbn = book.isbn.replace(/[-\s]/g, "");
+                              const newIdentifiers: BookIdentifiers = {
+                                ...existingIdentifiers,
+                                hiveId: hiveBook.id,
+                                ...(cleanIsbn.length === 13
+                                  ? { isbn13: cleanIsbn }
+                                  : cleanIsbn.length === 10
+                                    ? { isbn10: cleanIsbn }
+                                    : {}),
+                              };
+                              // Only update if we have new data
+                              if (
+                                newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                                newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                                !existingIdentifiers.hiveId
+                              ) {
+                                await ctx.db
+                                  .updateTable("hive_book")
+                                  .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                  .where("id", "=", hiveBook.id)
+                                  .execute();
+                              }
                             }
 
                             // Map StoryGraph read status to BookHive status

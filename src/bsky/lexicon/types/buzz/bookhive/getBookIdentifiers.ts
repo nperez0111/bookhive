@@ -12,15 +12,14 @@ import {
 } from "../../../util";
 import { HandlerAuth, HandlerPipeThrough } from "@atproto/xrpc-server";
 import type * as BuzzBookhiveDefs from "./defs.js";
-import type * as BuzzBookhiveHiveBook from "./hiveBook.js";
 
 const is$typed = _is$typed,
   validate = _validate;
-const id = "buzz.bookhive.getBook";
+const id = "buzz.bookhive.getBookIdentifiers";
 
 export interface QueryParams {
-  /** The book's hive ID */
-  id: string;
+  /** The book hive ID */
+  hiveId?: string;
   /** The book ISBN identifier */
   isbn?: string;
   /** The book ISBN-13 identifier */
@@ -32,32 +31,7 @@ export interface QueryParams {
 export type InputSchema = undefined;
 
 export interface OutputSchema {
-  createdAt?: string;
-  /** The date the user started reading the book */
-  startedAt?: string;
-  /** The date the user finished reading the book */
-  finishedAt?: string;
-  /** Cover image of the book */
-  cover?: BlobRef;
-  status?:
-    | "buzz.bookhive.defs#finished"
-    | "buzz.bookhive.defs#reading"
-    | "buzz.bookhive.defs#wantToRead"
-    | "buzz.bookhive.defs#abandoned"
-    | "buzz.bookhive.defs#owned"
-    | (string & {});
-  /** Number of stars given to the book (1-10) which will be mapped to 1-5 stars */
-  stars?: number;
-  /** The book's review */
-  review?: string;
-  bookProgress?: BuzzBookhiveDefs.BookProgress;
-  book: BuzzBookhiveHiveBook.Record;
-  /** Reviews of the book */
-  reviews: BuzzBookhiveDefs.Review[];
-  /** Comments on the book */
-  comments: BuzzBookhiveDefs.Comment[];
-  /** Other users' activity on the book */
-  activity?: BuzzBookhiveDefs.Activity[];
+  bookIdentifiers: BuzzBookhiveDefs.BookIdentifiers;
 }
 
 export type HandlerInput = undefined;

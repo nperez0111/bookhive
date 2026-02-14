@@ -282,6 +282,28 @@
           "description": "When the progress was last updated"
         }
       }
+    },
+    "bookIdentifiers": {
+      "type": "object",
+      "description": "External identifiers for a book",
+      "properties": {
+        "hiveId": {
+          "type": "string",
+          "description": "BookHive's internal ID"
+        },
+        "isbn10": {
+          "type": "string",
+          "description": "10-digit ISBN"
+        },
+        "isbn13": {
+          "type": "string",
+          "description": "13-digit ISBN"
+        },
+        "goodreadsId": {
+          "type": "string",
+          "description": "Goodreads book ID"
+        }
+      }
     }
   }
 }

@@ -1,4 +1,5 @@
 export type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
+export type * as GetBookIdentifiers from "./bsky/lexicon/types/buzz/bookhive/getBookIdentifiers";
 export type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
 
 /**
@@ -14,6 +15,16 @@ export type BookProgress = {
   totalChapters?: number;
   currentChapter?: number;
   updatedAt: string;
+};
+
+export type BookIdentifiers = {
+  hiveId?: string;
+  isbn10?: string;
+  isbn13?: string;
+  goodreadsId?: string;
+  amazonAsin?: string;
+  googleBooksId?: string;
+  openLibraryId?: string;
 };
 
 export type UserBook = {
@@ -148,6 +159,19 @@ export type HiveBook = {
   series: string | null;
   meta: string | null;
   enrichedAt: string | null;
+  /**
+   * External identifiers stored as JSON string
+   */
+  identifiers: string | null;
+};
+
+/** Row shape for the book_id_map table (indexed book identifiers). */
+export type BookIdentifiersRow = {
+  hiveId: HiveId;
+  isbn: string | null;
+  isbn13: string | null;
+  goodreadsId: string | null;
+  updatedAt: string;
 };
 
 export type UserFollow = {
