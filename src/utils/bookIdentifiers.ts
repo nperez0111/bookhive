@@ -117,8 +117,11 @@ export function deriveBookIdentifiers(
  * Map a book_id_map row (or derived identifiers) to the bookIdentifiers lexicon shape for API output.
  */
 export function toBookIdentifiersOutput(
-  row: Omit<BookIdentifiersRow, "updatedAt">,
+  row: Omit<BookIdentifiersRow, "updatedAt"> | undefined,
 ): BookIdentifiers {
+  if (!row) {
+    return {};
+  }
   return {
     hiveId: row.hiveId,
     isbn10: row.isbn ?? undefined,

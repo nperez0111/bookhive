@@ -8,7 +8,10 @@
       "parameters": {
         "type": "params",
         "properties": {
-          "hiveId": { "type": "string", "description": "The book hive ID" },
+          "hiveId": {
+            "type": "string",
+            "description": "The book hive ID"
+          },
           "isbn": {
             "type": "string",
             "description": "The book ISBN identifier"

@@ -21,6 +21,12 @@ const id = "buzz.bookhive.getBook";
 export interface QueryParams {
   /** The book's hive ID */
   id: string;
+  /** The book ISBN identifier */
+  isbn?: string;
+  /** The book ISBN-13 identifier */
+  isbn13?: string;
+  /** The Goodreads identifier for the book */
+  goodreadsId?: string;
 }
 
 export type InputSchema = undefined;

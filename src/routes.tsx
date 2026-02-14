@@ -176,10 +176,10 @@ async function findBookIdentifiersByLookup({
   goodreadsId,
 }: {
   ctx: Pick<AppContext, "db">;
-  hiveId: HiveId | null;
-  isbn: string | null;
-  isbn13: string | null;
-  goodreadsId: string | null;
+  hiveId?: HiveId | null;
+  isbn?: string | null;
+  isbn13?: string | null;
+  goodreadsId?: string | null;
 }) {
   let query = ctx.db.selectFrom("book_id_map").selectAll();
 
@@ -1780,10 +1780,6 @@ export function createRouter(app: HonoServer) {
       }),
     ),
     async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
-      }
       const { q, limit, offset, id } = c.req.valid("query");
 
       if (id) {
@@ -1929,18 +1925,43 @@ export function createRouter(app: HonoServer) {
     zValidator(
       "query",
       z.object({
-        id: z.string(),
+        id: z.string().optional(),
+        isbn: z.string().optional(),
+        isbn13: z.string().optional(),
+        goodreadsId: z.string().optional(),
       }),
     ),
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
-      }
-      const { id } = c.req.valid("query");
+      const { id, isbn, isbn13, goodreadsId } = c.req.valid("query");
+      let hiveId = id as HiveId | undefined;
 
       if (!id) {
-        return c.json({ success: false, message: "Invalid ID" }, 400);
+        console.log(
+          {
+            isbn,
+            isbn13,
+            goodreadsId,
+          },
+          await findBookIdentifiersByLookup({
+            ctx: c.get("ctx"),
+            isbn,
+            isbn13,
+            goodreadsId,
+          }),
+        );
+        hiveId = (
+          await findBookIdentifiersByLookup({
+            ctx: c.get("ctx"),
+            isbn,
+            isbn13,
+            goodreadsId,
+          })
+        )?.hiveId;
+      }
+
+      if (!hiveId) {
+        return c.json({ success: false, message: "Book not found" }, 400);
       }
 
       // short-circuit if we have an ID to look up
@@ -1948,7 +1969,7 @@ export function createRouter(app: HonoServer) {
         .get("ctx")
         .db.selectFrom("hive_book")
         .selectAll()
-        .where("hive_book.id", "=", id as HiveId)
+        .where("hive_book.id", "=", hiveId)
         .limit(1)
         .executeTakeFirst();
 
@@ -1993,13 +2014,15 @@ export function createRouter(app: HonoServer) {
         .limit(1000)
         .execute();
 
-      const rawUserBook = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("user_book.hiveId", "=", book.id)
-        .where("user_book.userDid", "=", agent.assertDid)
-        .executeTakeFirst();
+      const rawUserBook = agent
+        ? await c
+            .get("ctx")
+            .db.selectFrom("user_book")
+            .selectAll()
+            .where("user_book.hiveId", "=", book.id)
+            .where("user_book.userDid", "=", agent.assertDid)
+            .executeTakeFirst()
+        : null;
       const userBook = rawUserBook ? hydrateUserBook(rawUserBook) : null;
 
       const peerBooks = await c
@@ -2052,7 +2075,12 @@ export function createRouter(app: HonoServer) {
             hiveId: book.id,
             ...(book.identifiers
               ? (JSON.parse(book.identifiers) as BookIdentifiers)
-              : {}),
+              : toBookIdentifiersOutput(
+                  await findBookIdentifiersByLookup({
+                    ctx: c.get("ctx"),
+                    hiveId: book.id,
+                  }),
+                )),
           },
         },
         comments: comments.map((c) => ({

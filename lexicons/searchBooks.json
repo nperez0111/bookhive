@@ -4,7 +4,7 @@
   "defs": {
     "main": {
       "type": "query",
-      "description": "Find books matching the search criteria. Requires authentication.",
+      "description": "Find books matching the search criteria. Does not require authentication.",
       "parameters": {
         "type": "params",
         "required": ["q"],

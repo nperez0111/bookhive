@@ -446,7 +446,7 @@ export const schemaDict = {
     defs: {
       main: {
         type: "query",
-        description: "Get a book's info. Requires authentication.",
+        description: "Get a book's info. Does not require authentication.",
         parameters: {
           type: "params",
           required: ["id"],
@@ -454,6 +454,18 @@ export const schemaDict = {
             id: {
               type: "string",
               description: "The book's hive ID",
+            },
+            isbn: {
+              type: "string",
+              description: "The book ISBN identifier",
+            },
+            isbn13: {
+              type: "string",
+              description: "The book ISBN-13 identifier",
+            },
+            goodreadsId: {
+              type: "string",
+              description: "The Goodreads identifier for the book",
             },
           },
         },
