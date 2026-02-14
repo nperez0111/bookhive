@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
-import { useQuery } from "@tanstack/react-query";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
-import type { HiveBook } from "../../types";
+import { useSearchBooks } from "./utils/useSearchBooks";
 
 export const SearchBox: FC = () => {
   const [isOpened, setIsOpened] = useState(false);
@@ -12,28 +11,7 @@ export const SearchBox: FC = () => {
   const searchRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(query, 300);
 
-  const bookResults = useQuery<HiveBook[]>({
-    staleTime: 10000,
-    enabled: query.length > 2,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    placeholderData(previousData) {
-      return previousData || [];
-    },
-    queryKey: ["searchBooks", debouncedQuery],
-    queryFn: async ({ signal }) => {
-      const res = await fetch(
-        `/xrpc/buzz.bookhive.searchBooks?q=${debouncedQuery}&limit=10`,
-        { signal },
-      );
-
-      if (!res.ok) {
-        throw new Error("Search failed");
-      }
-
-      return res.json();
-    },
-  });
+  const bookResults = useSearchBooks(debouncedQuery, query.length > 2);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -118,7 +96,7 @@ export const SearchBox: FC = () => {
           {bookResults.isError && (
             <li className="px-4 py-2 text-red-500">Failed to search books</li>
           )}
-          {bookResults.status === "success" &&
+          {(bookResults.status === "success" || bookResults.status === "loading") &&
             bookResults.data.map((book, index) => (
               <li
                 key={book.id}

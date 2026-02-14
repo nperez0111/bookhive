@@ -1,4 +1,4 @@
-import { wrapNodeSqliteForKysely } from "./node-sqlite-kysely.js";
+import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import {
   Kysely,
   Migrator,
@@ -7,7 +7,7 @@ import {
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import { DatabaseSync } from "node:sqlite";
+import { Database as DatabaseSync } from "bun:sqlite";
 import type {
   BookIdentifiersRow,
   Buzz,
@@ -333,7 +333,7 @@ export const createDb = (location: string): Database => {
 
   return new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
-      database: wrapNodeSqliteForKysely(sqlite),
+      database: wrapBunSqliteForKysely(sqlite),
     }),
   });
 };

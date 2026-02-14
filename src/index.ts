@@ -1,39 +1,14 @@
-import { serve } from "@hono/node-server";
-
-import { env } from "./env";
 import { instrument } from "./middleware/index.ts";
+import app from "./server";
+import { env } from "./env";
 
-import app, { logger } from "./server";
+import entryHtml from "./entry.html";
 
-// Re-export for backwards compatibility
-export type { AppContext, HonoServer, Session } from "./context";
-export { getSessionAgent } from "./context";
-
-const server = serve(
-  {
-    fetch: instrument(app).fetch,
-    port: env.PORT,
+Bun.serve({
+  port: env.PORT,
+  development: env.isDevelopment,
+  routes: {
+    "/_bundle": entryHtml,
   },
-  ({ port }) => {
-    logger.info(
-      `Server (${env.NODE_ENV}) running on port http://localhost:${port}`,
-    );
-  },
-);
-
-const onCloseSignal = () => {
-  setTimeout(() => process.exit(1), 10000).unref();
-  server.close(() => {
-    logger.info("server closed");
-    process.exit();
-  });
-};
-
-process.on("SIGINT", () => {
-  logger.info("sigint received, shutting down");
-  onCloseSignal();
-});
-process.on("SIGTERM", () => {
-  logger.info("sigterm received, shutting down");
-  onCloseSignal();
+  fetch: instrument(app).fetch,
 });

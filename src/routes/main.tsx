@@ -81,7 +81,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
       const profileData = await c.get("ctx").getProfile();
       endTime(c, "layout_get_profile");
       return (
-        <Layout {...props}>
+        <Layout
+          {...props}
+          assetUrls={c.get("assetUrls") ?? undefined}
+          url={c.req.url}
+        >
           <Navbar profile={profileData} />
           <div class="relative">{children}</div>
         </Layout>

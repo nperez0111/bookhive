@@ -1,7 +1,6 @@
-import dotenv from "dotenv";
 import { cleanEnv, port, str, testOnly } from "envalid";
 
-dotenv.config();
+// Bun loads .env automatically; envalid reads process.env
 
 export const env = cleanEnv(process.env, {
   NODE_ENV: str({

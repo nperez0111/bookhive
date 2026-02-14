@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "bun:test";
 import { getGoodreadsCsvParser, getStorygraphCsvParser } from "./csv";
 
 describe("CSV Parsers", () => {

@@ -46,15 +46,19 @@ export type AppContext = {
   getProfile: () => Promise<ProfileViewDetailed | null>;
 };
 
+import type { BundleAssetUrls } from "./bundle-assets";
+
 declare module "hono" {
   interface ContextVariableMap {
     ctx: AppContext;
+    assetUrls: BundleAssetUrls | null;
   }
 }
 
 export type AppEnv = {
   Variables: {
     ctx: AppContext;
+    assetUrls: BundleAssetUrls | null;
   } & Env["Variables"];
 };
 

@@ -1,8 +1,8 @@
 /**
- * Wraps Node's built-in `node:sqlite` DatabaseSync so it can be used with
+ * Wraps Bun's built-in `bun:sqlite` Database so it can be used with
  * Kysely's built-in SqliteDialect (which expects a better-sqlite3-like interface).
  */
-import type { DatabaseSync } from "node:sqlite";
+import { Database as DatabaseSync } from "bun:sqlite";
 
 export interface KyselySqliteDatabase {
   close(): void;
@@ -24,9 +24,9 @@ function isReaderStatement(sql: string): boolean {
 }
 
 /**
- * Wraps node:sqlite's DatabaseSync to match the interface Kysely's SqliteDialect expects.
+ * Wraps bun:sqlite's Database to match the interface Kysely's SqliteDialect expects.
  */
-export function wrapNodeSqliteForKysely(
+export function wrapBunSqliteForKysely(
   db: DatabaseSync,
 ): KyselySqliteDatabase {
   return {

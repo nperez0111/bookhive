@@ -1,16 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { createSessionStore, createStateStore } from "./storage";
 
 // Mock unstorage (get, set, del)
 const mockKv = {
-  get: vi.fn(),
-  set: vi.fn(),
-  del: vi.fn(),
+  get: mock(),
+  set: mock(),
+  del: mock(),
 };
 
 describe("Auth Storage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockKv.get.mockClear();
+    mockKv.set.mockClear();
+    mockKv.del.mockClear();
   });
 
   describe("StateStore", () => {
@@ -25,7 +27,7 @@ describe("Auth Storage", () => {
         expiresAt: Date.now() + 6e4,
       };
 
-      mockKv.get.mockResolvedValue(testState);
+      mockKv.get.mockResolvedValueOnce(testState);
 
       await stateStore.set("test-key", testState);
       expect(mockKv.set).toHaveBeenCalledWith("auth_state:test-key", testState);
@@ -44,7 +46,7 @@ describe("Auth Storage", () => {
 
     it("should return undefined for non-existent state", async () => {
       const stateStore = createStateStore(mockKv as any);
-      mockKv.get.mockResolvedValue(null);
+      mockKv.get.mockResolvedValueOnce(null);
 
       const result = await stateStore.get("non-existent-key");
       expect(result).toBeUndefined();
@@ -68,7 +70,7 @@ describe("Auth Storage", () => {
         } as any,
       };
 
-      mockKv.get.mockResolvedValue(testSession);
+      mockKv.get.mockResolvedValueOnce(testSession);
 
       await sessionStore.set("did:plc:test123" as any, testSession);
       expect(mockKv.set).toHaveBeenCalledWith(
@@ -90,7 +92,7 @@ describe("Auth Storage", () => {
 
     it("should return undefined for non-existent session", async () => {
       const sessionStore = createSessionStore(mockKv as any);
-      mockKv.get.mockResolvedValue(null);
+      mockKv.get.mockResolvedValueOnce(null);
 
       const result = await sessionStore.get("did:plc:missing" as any);
       expect(result).toBeUndefined();

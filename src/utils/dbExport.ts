@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { Database as DatabaseSync } from "bun:sqlite";
 import { Readable } from "node:stream";
 
 type ExportResult = { archivePath: string; filename: string; tmpDir: string };
@@ -75,7 +75,7 @@ async function createSanitizedKvCopy({
   sourcePath: string;
   destPath: string;
 }) {
-  const src = new DatabaseSync(sourcePath, { readOnly: true });
+  const src = new DatabaseSync(sourcePath, { readonly: true });
   const dest = new DatabaseSync(destPath);
 
   try {
@@ -266,7 +266,7 @@ export async function createSanitizedExportArchive(opts: {
 
     // Extract schema info from main database
     try {
-      const db = new DatabaseSync(dbOut, { readOnly: true });
+      const db = new DatabaseSync(dbOut, { readonly: true });
       try {
         const schemaObjects = db
           .prepare(

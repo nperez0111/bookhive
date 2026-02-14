@@ -1,7 +1,7 @@
-import { wrapNodeSqliteForKysely } from "./node-sqlite-kysely.js";
+import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import { defineDriver } from "unstorage";
 import { Kysely, SqliteDialect } from "kysely";
-import { DatabaseSync } from "node:sqlite";
+import { Database as DatabaseSync } from "bun:sqlite";
 
 interface TableSchema {
   [k: string]: {
@@ -44,7 +44,7 @@ export default defineDriver<
 
         _db = new Kysely<TableSchema>({
           dialect: new SqliteDialect({
-            database: wrapNodeSqliteForKysely(sqlite),
+            database: wrapBunSqliteForKysely(sqlite),
           }),
         });
 

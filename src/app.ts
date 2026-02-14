@@ -1,4 +1,4 @@
-import { serveStatic } from "@hono/node-server/serve-static";
+import { serveStatic } from "hono/bun";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
 import { pinoLogger } from "hono-pino";
@@ -10,6 +10,7 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { timing } from "hono/timing";
 
+import { getBundleAssetUrls } from "./bundle-assets";
 import {
   createContextMiddleware,
   type AppDeps,
@@ -37,6 +38,10 @@ export function createApp({
   const app = new Hono<AppEnv>();
 
   app.use("*", createContextMiddleware(deps));
+  app.use("*", async (c, next) => {
+    c.set("assetUrls", await getBundleAssetUrls());
+    await next();
+  });
   app.use(requestId());
   app.use(timing());
   if (env.isDevelopment) {

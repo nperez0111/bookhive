@@ -1,24 +1,13 @@
 import { render } from "hono/jsx/dom";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SearchBox } from "./components/SearchBox";
 import { StarRating } from "./components/StarRating";
 import { ImportTableApp } from "./components/import/ImportTableApp";
 
-const queryClient = new QueryClient();
-const ClientProvider = ({ children }: { children: any }): any =>
-  QueryClientProvider({ client: queryClient, children });
-
 document.addEventListener("DOMContentLoaded", () => {
   const mountSearchBox = document.getElementById("mount-search-box");
   if (mountSearchBox) {
-    render(
-      // Provide the client to your App
-      <ClientProvider>
-        <SearchBox />
-      </ClientProvider>,
-      mountSearchBox,
-    );
+    render(<SearchBox />, mountSearchBox);
   }
 
   const starRating = document.getElementById("star-rating");
@@ -45,12 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const importTable = document.getElementById("import-table");
   if (importTable) {
-    render(
-      <ClientProvider>
-        <ImportTableApp />
-      </ClientProvider>,
-      importTable,
-    );
+    render(<ImportTableApp />, importTable);
   }
 
   // Update page title based on active tab on home page
