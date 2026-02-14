@@ -39,7 +39,7 @@ import { getLogger } from "./logger/index.ts";
 import { instrument, opentelemetryMiddleware } from "./middleware/index.ts";
 import { createRouter, searchBooks } from "./routes.tsx";
 import sqliteKv from "./sqlite-kv.ts";
-import type { HiveId } from "./types.ts";
+import type { BookIdentifiers, HiveId } from "./types.ts";
 import { createBatchTransform } from "./utils/batchTransform.ts";
 import {
   cleanupExportPaths,
@@ -527,6 +527,7 @@ export class Server {
                               .select("id")
                               .select("title")
                               .select("cover")
+                              .select("identifiers")
                               // rawTitle is the title from the Goodreads export
                               .where("hive_book.rawTitle", "=", book.title)
                               // authors is the author from the Goodreads export
@@ -543,6 +544,31 @@ export class Server {
                                 });
                               }
                               return null;
+                            }
+
+                            // Update identifiers with data from CSV
+                            const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                              ? JSON.parse(hiveBook.identifiers)
+                              : {};
+                            const newIdentifiers: BookIdentifiers = {
+                              ...existingIdentifiers,
+                              hiveId: hiveBook.id,
+                              goodreadsId: book.bookId || existingIdentifiers.goodreadsId,
+                              isbn10: book.isbn || existingIdentifiers.isbn10,
+                              isbn13: book.isbn13 || existingIdentifiers.isbn13,
+                            };
+                            // Only update if we have new data
+                            if (
+                              newIdentifiers.goodreadsId !== existingIdentifiers.goodreadsId ||
+                              newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                              newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                              !existingIdentifiers.hiveId
+                            ) {
+                              await ctx.db
+                                .updateTable("hive_book")
+                                .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                .where("id", "=", hiveBook.id)
+                                .execute();
                             }
 
                             const existingHiveIds =
@@ -920,6 +946,7 @@ export class Server {
                               .select("id")
                               .select("title")
                               .select("cover")
+                              .select("identifiers")
                               // rawTitle is the title from the StoryGraph export
                               .where("hive_book.rawTitle", "=", book.title)
                               // authors is the author from the StoryGraph export
@@ -936,6 +963,36 @@ export class Server {
                                 });
                               }
                               return null;
+                            }
+
+                            // Update identifiers with data from CSV
+                            if (book.isbn) {
+                              const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                                ? JSON.parse(hiveBook.identifiers)
+                                : {};
+                              // StoryGraph ISBN can be ISBN-10 or ISBN-13, check length
+                              const cleanIsbn = book.isbn.replace(/[-\s]/g, "");
+                              const newIdentifiers: BookIdentifiers = {
+                                ...existingIdentifiers,
+                                hiveId: hiveBook.id,
+                                ...(cleanIsbn.length === 13
+                                  ? { isbn13: cleanIsbn }
+                                  : cleanIsbn.length === 10
+                                    ? { isbn10: cleanIsbn }
+                                    : {}),
+                              };
+                              // Only update if we have new data
+                              if (
+                                newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                                newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                                !existingIdentifiers.hiveId
+                              ) {
+                                await ctx.db
+                                  .updateTable("hive_book")
+                                  .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                  .where("id", "=", hiveBook.id)
+                                  .execute();
+                              }
                             }
 
                             // Map StoryGraph read status to BookHive status

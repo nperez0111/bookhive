@@ -194,3 +194,26 @@ export function isBookProgress<V>(v: V) {
 export function validateBookProgress<V>(v: V) {
   return validate<BookProgress & V>(v, id, hashBookProgress);
 }
+
+/** External identifiers for a book */
+export interface BookIdentifiers {
+  $type?: "buzz.bookhive.defs#bookIdentifiers";
+  /** BookHive's internal ID */
+  hiveId?: string;
+  /** 10-digit ISBN */
+  isbn10?: string;
+  /** 13-digit ISBN */
+  isbn13?: string;
+  /** Goodreads book ID */
+  goodreadsId?: string;
+}
+
+const hashBookIdentifiers = "bookIdentifiers";
+
+export function isBookIdentifiers<V>(v: V) {
+  return is$typed(v, id, hashBookIdentifiers);
+}
+
+export function validateBookIdentifiers<V>(v: V) {
+  return validate<BookIdentifiers & V>(v, id, hashBookIdentifiers);
+}

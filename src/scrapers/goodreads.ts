@@ -96,11 +96,13 @@ class Goodreads {
     // Unfortunately, the Goodreads API does not provide a list of authors
     const authors = result.author.name;
 
+    const hiveId = getHiveId({
+      title: result.bookTitleBare,
+      authors,
+    });
+
     return {
-      id: getHiveId({
-        title: result.bookTitleBare,
-        authors,
-      }),
+      id: hiveId,
       title: result.bookTitleBare,
       rawTitle: result.title,
       authors,
@@ -118,6 +120,10 @@ class Goodreads {
       series: null,
       meta: null,
       enrichedAt: null,
+      identifiers: JSON.stringify({
+        hiveId,
+        goodreadsId: result.bookId,
+      }),
     };
   }
 
