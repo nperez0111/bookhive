@@ -1,6 +1,6 @@
 import { type FC } from "hono/jsx";
 import { type Book } from "../types";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";

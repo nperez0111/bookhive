@@ -1,5 +1,5 @@
 import { type FC } from "hono/jsx";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../../types";
 import { formatDistanceToNow } from "date-fns";
 import type { Book } from "../../types";
 
@@ -35,7 +35,7 @@ export const ProfileHeader: FC<{
                 <input type="hidden" name="did" value={did} />
                 <button
                   type="submit"
-                  class="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  class="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400 focus:outline-none dark:bg-blue-500 dark:hover:bg-blue-600"
                 >
                   Follow
                 </button>

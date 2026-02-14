@@ -2,7 +2,6 @@ import { formatDistanceToNow } from "date-fns";
 import { type FC, type PropsWithChildren, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { sql } from "kysely";
-import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import type { HiveBook, UserBook } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
@@ -65,7 +64,7 @@ async function Recommendations({
                 ? BOOK_STATUS_MAP[
                     related.status as keyof typeof BOOK_STATUS_MAP
                   ]
-                : related.status || BOOK_STATUS_MAP[BookStatus.READING]}{" "}
+                : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
               {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
               {related.stars && <span> - rated {related.stars / 2}</span>}
               {related.review && <span> - reviewed</span>}
@@ -189,19 +188,19 @@ const BookStatusButton: FC<{
             <div className="p-1">
               {[
                 {
-                  value: BookStatus.FINISHED,
+                  value: BOOK_STATUS.FINISHED,
                   label: "Read",
                 },
                 {
-                  value: BookStatus.READING,
+                  value: BOOK_STATUS.READING,
                   label: "Reading",
                 },
                 {
-                  value: BookStatus.WANTTOREAD,
+                  value: BOOK_STATUS.WANTTOREAD,
                   label: "Want to Read",
                 },
                 {
-                  value: BookStatus.ABANDONED,
+                  value: BOOK_STATUS.ABANDONED,
                   label: "Abandoned",
                 },
               ].map((status) => (

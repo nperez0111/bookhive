@@ -371,5 +371,5 @@ export function createExportReadStream(
   const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
   stream.on("close", () => callbacks?.onClose?.());
   stream.on("error", (err) => callbacks?.onError?.(err));
-  return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+  return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
 }

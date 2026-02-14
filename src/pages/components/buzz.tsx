@@ -1,7 +1,6 @@
 import { type FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
-import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
-import { BOOK_STATUS_PAST_TENSE_MAP } from "../../constants";
+import { BOOK_STATUS, BOOK_STATUS_PAST_TENSE_MAP } from "../../constants";
 import { FallbackCover } from "./fallbackCover";
 import type { Book } from "../../types";
 
@@ -23,10 +22,10 @@ export const BuzzSection: FC<{
       </div>
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {books.map((book) => (
-          <BuzzBook 
+          <BuzzBook
             key={`${book.userDid}-${book.hiveId}`}
-            book={book} 
-            userHandle={didHandleMap[book.userDid] || book.userDid} 
+            book={book}
+            userHandle={didHandleMap[book.userDid] || book.userDid}
           />
         ))}
       </div>
@@ -52,19 +51,19 @@ export const BuzzBook: FC<{
             style={`--book-cover-name: book-cover-${book.hiveId}`}
           />
         ) : (
-          <FallbackCover 
-            className="book-cover h-full w-full" 
+          <FallbackCover
+            className="book-cover h-full w-full"
             style={`--book-cover-name: book-cover-${book.hiveId}`}
           />
         )}
       </a>
 
-      <a
-        href={`/profile/${userHandle}`}
-        class="cursor-pointer"
-      >
+      <a href={`/profile/${userHandle}`} class="cursor-pointer">
         <div class="mt-5 px-3 pb-5">
-          <h5 class="book-title line-clamp-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white" style={`--book-title-name: book-title-${book.hiveId}`}>
+          <h5
+            class="book-title line-clamp-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white"
+            style={`--book-title-name: book-title-${book.hiveId}`}
+          >
             {book.title}
           </h5>
           <div className="flex items-center">
@@ -115,7 +114,7 @@ export const BuzzBook: FC<{
                 book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP
               ]
             : book.status ||
-              BOOK_STATUS_PAST_TENSE_MAP[BookStatus.READING]}{" "}
+              BOOK_STATUS_PAST_TENSE_MAP[BOOK_STATUS.READING]}{" "}
           <span class="text-slate-700 dark:text-slate-200">
             {formatDistanceToNow(book.indexedAt, { addSuffix: true })}
           </span>

@@ -81,7 +81,7 @@
             "book": {
               "description": "The hive book's info",
               "type": "ref",
-              "ref": "buzz.bookhive.hiveBook#record"
+              "ref": "buzz.bookhive.hiveBook#main"
             },
             "reviews": {
               "description": "Reviews of the book",

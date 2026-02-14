@@ -19,9 +19,9 @@ export async function findBookDetails(
   const searchService = new Goodreads(logger);
 
   try {
-    logger.trace("searching for results", { query });
+    logger.trace({ query }, "searching for results");
     const results = await searchService.search(query, fallbackCover, locale);
-    logger.trace("found results", { query, numResults: results.length });
+    logger.trace({ query, numResults: results.length }, "found results");
 
     if (results.length === 0) {
       return {
@@ -37,7 +37,7 @@ export async function findBookDetails(
       data: results,
     } as const;
   } catch (error) {
-    logger.error("Error finding book details:", error);
+    logger.error({ error }, "Error finding book details:");
     return {
       success: false,
       message: "Error searching for books",

@@ -1,4 +1,4 @@
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 import { useRequestContext } from "hono/jsx-renderer";
 import type { NotNull } from "kysely";
 import type { HiveBook } from "../types";

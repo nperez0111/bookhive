@@ -1,4 +1,4 @@
-import * as BuzzBookhiveDefs from "@/../src/bsky/lexicon/types/buzz/bookhive/defs";
+import * as BuzzBookhiveDefs from "@/../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
 import { useUpdateComment } from "@/hooks/useBookhiveQuery";

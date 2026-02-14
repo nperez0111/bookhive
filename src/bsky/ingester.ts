@@ -7,9 +7,7 @@ import { searchBooks } from "../routes";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { createBidirectionalResolver } from "./id-resolver";
-import { ids } from "./lexicon/lexicons";
-import * as Book from "./lexicon/types/buzz/bookhive/book";
-import * as Buzz from "./lexicon/types/buzz/bookhive/buzz";
+import { ids, Book, Buzz } from "./lexicon";
 const logger = getLogger({ name: "firehose-ingestion" });
 
 export function createIngester(
@@ -25,7 +23,7 @@ export function createIngester(
       if (evt.event === "create" || evt.event === "update") {
         const now = new Date();
         const record = evt.record;
-        logger.debug("ingesting event", { evt });
+        logger.debug({ evt }, "ingesting event");
 
         // If the write is a valid status update
         if (evt.collection === ids.BuzzBookhiveBook) {
@@ -34,7 +32,7 @@ export function createIngester(
             return;
           }
           const book = asBook.value;
-          logger.debug("valid book", { record });
+          logger.debug({ record }, "valid book");
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
 
@@ -48,7 +46,7 @@ export function createIngester(
           if (!hiveId) {
             // Try to index the book into the hive, async
             searchBooks({ query: book.title, ctx: { db, kv, logger } });
-            logger.error("Trying to index book into hive", { record });
+            logger.error({ record }, "Trying to index book into hive");
           }
           // Store the book in our SQLite
           await db
@@ -96,7 +94,7 @@ export function createIngester(
             return;
           }
           const buzz = asBuzz.value;
-          logger.debug("valid buzz", { record });
+          logger.debug({ record }, "valid buzz");
           // Asynchronously fetch the user's handle
           bidirectionalResolver.resolveDidToHandle(evt.did);
 
@@ -109,7 +107,7 @@ export function createIngester(
           )?.hiveId;
 
           if (!hiveId) {
-            logger.error("hiveId not found for book", { record });
+            logger.error({ record }, "hiveId not found for book");
             return;
           }
 
@@ -148,7 +146,7 @@ export function createIngester(
         }
       } else if (evt.event === "delete") {
         if (evt.collection === ids.BuzzBookhiveBook) {
-          logger.debug("delete book", { evt });
+          logger.debug({ evt }, "delete book");
           // Remove the status from our SQLite
           await db
             .deleteFrom("user_book")
@@ -156,7 +154,7 @@ export function createIngester(
             .execute();
           return;
         } else if (evt.collection === ids.BuzzBookhiveBuzz) {
-          logger.debug("delete buzz", { evt });
+          logger.debug({ evt }, "delete buzz");
           await db
             .deleteFrom("buzz")
             .where("uri", "=", evt.uri.toString())
@@ -166,7 +164,7 @@ export function createIngester(
       }
     },
     onError: (err) => {
-      logger.trace("error on firehose ingestion", { err });
+      logger.trace({ err }, "error on firehose ingestion");
     },
     filterCollections: [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz],
     excludeIdentity: true,

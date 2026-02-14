@@ -1,9 +1,10 @@
 import { type FC, Fragment } from "hono/jsx";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
 import { BookFields } from "../db";
+import type { Book } from "../types";
 import { LibraryImport } from "./import";
 import { BuzzSection } from "./components/buzz";
 
@@ -207,7 +208,7 @@ async function LatestActivity() {
     <BuzzSection
       title="Recent buzzes"
       subtitle="See what others are reading and what they think about it."
-      books={latestBuzzes}
+      books={latestBuzzes as Book[]}
       didHandleMap={didHandleMap}
     />
   );
@@ -249,7 +250,7 @@ async function FriendsBuzzes() {
     <BuzzSection
       title="Recent buzzes from friends"
       subtitle="See what your followers are reading and what they think about it."
-      books={friendsBuzzes}
+      books={friendsBuzzes as Book[]}
       didHandleMap={didHandleMap}
     />
   );

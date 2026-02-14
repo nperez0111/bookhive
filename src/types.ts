@@ -1,6 +1,10 @@
-export type * as GetBook from "./bsky/lexicon/types/buzz/bookhive/getBook";
-export type * as GetBookIdentifiers from "./bsky/lexicon/types/buzz/bookhive/getBookIdentifiers";
-export type * as GetProfile from "./bsky/lexicon/types/buzz/bookhive/getProfile";
+import type { AppBskyActorDefs } from "@atcute/bluesky";
+
+export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
+
+export type * as GetBook from "./bsky/lexicon/generated/types/buzz/bookhive/getBook";
+export type * as GetBookIdentifiers from "./bsky/lexicon/generated/types/buzz/bookhive/getBookIdentifiers";
+export type * as GetProfile from "./bsky/lexicon/generated/types/buzz/bookhive/getProfile";
 
 /**
  * Hive ID is a hash of the book's title & author

@@ -1,7 +1,7 @@
-import { Agent } from "@atproto/api";
+import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import type { SessionClient } from "../auth/client";
 import type { AppContext } from "..";
 import { getLogger } from "../logger";
-
 
 export interface FollowsSync {
   userDid: string;
@@ -12,58 +12,77 @@ export interface FollowsSync {
 
 const logger = getLogger({ name: "follows-sync" });
 
-export async function syncUserFollows(ctx: AppContext, agent: Agent): Promise<void> {
-  const userDid = agent.assertDid;
-  
+export async function syncUserFollows(
+  ctx: AppContext,
+  agent: SessionClient,
+): Promise<void> {
+  const userDid = agent.did;
+
   try {
     const syncType = await determineSyncType(ctx, userDid);
-    
-    if (syncType === 'full') {
+
+    if (syncType === "full") {
       await fullFollowsSync(ctx, agent, userDid);
     } else {
       await incrementalFollowsSync(ctx, agent, userDid);
     }
-    
+
     await updateSyncMetadata(ctx, userDid, syncType);
   } catch (error) {
-    logger.error({ 
-      userDid, 
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      } : error 
-    }, "Failed to sync follows");
+    logger.error(
+      {
+        userDid,
+        error:
+          error instanceof Error
+            ? {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+              }
+            : error,
+      },
+      "Failed to sync follows",
+    );
     throw error;
   }
 }
 
-async function determineSyncType(ctx: AppContext, userDid: string): Promise<'full' | 'incremental'> {
+async function determineSyncType(
+  ctx: AppContext,
+  userDid: string,
+): Promise<"full" | "incremental"> {
   try {
     const syncData = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
-    
+
     logger.info({ userDid, syncData }, "Checking sync type");
-    
+
     if (!syncData?.lastFullSync) {
       logger.info({ userDid }, "No previous full sync found, doing full sync");
-      return 'full';
+      return "full";
     }
-    
+
     const lastFullSync = new Date(syncData.lastFullSync);
-    const daysSinceFullSync = (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
-    
+    const daysSinceFullSync =
+      (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
+
     logger.info({ userDid, daysSinceFullSync }, "Days since last full sync");
-    
-    return daysSinceFullSync > 7 ? 'full' : 'incremental';
+
+    return daysSinceFullSync > 7 ? "full" : "incremental";
   } catch (error) {
-    logger.warn({ userDid, error }, "Error checking sync type, defaulting to full sync");
-    return 'full';
+    logger.warn(
+      { userDid, error },
+      "Error checking sync type, defaulting to full sync",
+    );
+    return "full";
   }
 }
 
-async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): Promise<void> {
+async function fullFollowsSync(
+  ctx: AppContext,
+  agent: SessionClient,
+  userDid: string,
+): Promise<void> {
   logger.info({ userDid }, "Starting full follows sync");
-  
 
   // Mark all existing follows as potentially stale
   try {
@@ -73,37 +92,53 @@ async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): 
       .where("userDid", "=", userDid)
       .execute();
   } catch (error) {
-    logger.error({ userDid, error }, "Failed to mark follows as stale - table may not exist");
+    logger.error(
+      { userDid, error },
+      "Failed to mark follows as stale - table may not exist",
+    );
     throw error;
   }
-  
+
   let cursor: string | undefined;
   let totalSynced = 0;
-  
+
   do {
     let response;
     try {
-      response = await agent.app.bsky.graph.getFollows({
-        actor: userDid,
-        limit: 100,
-        cursor,
+      response = await agent.get("app.bsky.graph.getFollows", {
+        params: {
+          actor: userDid as ActorIdentifier,
+          limit: 100,
+          cursor,
+        },
       });
     } catch (error) {
-      logger.error({ 
-        userDid, 
-        cursor,
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : error 
-      }, "Failed to fetch follows from Bluesky API");
+      logger.error(
+        {
+          userDid,
+          cursor,
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to fetch follows from Bluesky API",
+      );
       throw error;
     }
-    
-    const follows = response.data.follows;
+    if (!response.ok) break;
+    type GetFollowsOut = {
+      follows: Array<{ did: string; createdAt?: string }>;
+      cursor?: string;
+    };
+    const out = response.data as GetFollowsOut;
+    const follows = out.follows;
     const now = new Date().toISOString();
-    
+
     if (follows.length > 0) {
       // Upsert follows
       for (const follow of follows) {
@@ -121,47 +156,61 @@ async function fullFollowsSync(ctx: AppContext, agent: Agent, userDid: string): 
             oc.columns(["userDid", "followsDid"]).doUpdateSet({
               lastSeenAt: now,
               isActive: 1,
-            })
+            }),
           )
           .execute();
       }
-      
+
       totalSynced += follows.length;
     }
-    
-    cursor = response.data.cursor;
+
+    cursor = out.cursor;
   } while (cursor && totalSynced < 1000); // Limit to prevent runaway syncs
-  
+
   // Remove follows that weren't seen (unfollowed)
   const removed = await ctx.db
     .deleteFrom("user_follows")
     .where("userDid", "=", userDid)
     .where("isActive", "=", 0)
     .executeTakeFirst();
-  
-  logger.info({ userDid, totalSynced, removed: removed.numDeletedRows }, "Full follows sync completed");
+
+  logger.info(
+    { userDid, totalSynced, removed: removed.numDeletedRows },
+    "Full follows sync completed",
+  );
 }
 
-async function incrementalFollowsSync(ctx: AppContext, agent: Agent, userDid: string): Promise<void> {
+async function incrementalFollowsSync(
+  ctx: AppContext,
+  agent: SessionClient,
+  userDid: string,
+): Promise<void> {
   logger.trace({ userDid }, "Starting incremental follows sync");
-  
+
   let newFollows = 0;
   let cursor: string | undefined = undefined;
   let foundExisting = false;
-  
+
   // Fetch follows starting from the most recent until we find ones we already have
   do {
-    const response = await agent.app.bsky.graph.getFollows({
-      actor: userDid,
-      limit: 100,
-      cursor,
+    const response = await agent.get("app.bsky.graph.getFollows", {
+      params: {
+        actor: userDid as ActorIdentifier,
+        limit: 100,
+        cursor,
+      },
     });
-    
-    const follows = response.data.follows;
+    if (!response.ok) break;
+    type GetFollowsOut = {
+      follows: Array<{ did: string; createdAt?: string }>;
+      cursor?: string;
+    };
+    const out = response.data as GetFollowsOut;
+    const follows = out.follows;
     const now = new Date().toISOString();
-    
+
     if (follows.length === 0) break;
-    
+
     // Check if we've seen any of these follows before
     for (const follow of follows) {
       const exists = await ctx.db
@@ -170,13 +219,13 @@ async function incrementalFollowsSync(ctx: AppContext, agent: Agent, userDid: st
         .where("userDid", "=", userDid)
         .where("followsDid", "=", follow.did)
         .executeTakeFirst();
-      
+
       if (exists) {
         // We've caught up to existing data
         foundExisting = true;
         break;
       }
-      
+
       // This is a new follow, store it
       await ctx.db
         .insertInto("user_follows")
@@ -192,35 +241,39 @@ async function incrementalFollowsSync(ctx: AppContext, agent: Agent, userDid: st
           oc.columns(["userDid", "followsDid"]).doUpdateSet({
             lastSeenAt: now,
             isActive: 1,
-          })
+          }),
         )
         .execute();
-      
+
       newFollows++;
     }
-    
-    cursor = response.data.cursor;
+
+    cursor = out.cursor;
   } while (cursor && !foundExisting);
-  
+
   logger.info({ userDid, newFollows }, "Incremental follows sync completed");
 }
 
-async function updateSyncMetadata(ctx: AppContext, userDid: string, syncType: 'full' | 'incremental'): Promise<void> {
+async function updateSyncMetadata(
+  ctx: AppContext,
+  userDid: string,
+  syncType: "full" | "incremental",
+): Promise<void> {
   try {
     const now = new Date().toISOString();
     const existing = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
-    
+
     const syncData: FollowsSync = {
       userDid,
-      lastFullSync: syncType === 'full' ? now : existing?.lastFullSync || null,
+      lastFullSync: syncType === "full" ? now : existing?.lastFullSync || null,
       lastIncrementalSync: now,
       cursor: null, // Reset cursor after sync
     };
-    
+
     logger.info({ userDid, syncType, syncData }, "Updating sync metadata");
-    
+
     await ctx.kv.set(`follows_sync:${userDid}`, syncData);
-    
+
     // Verify it was saved
     const saved = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
     logger.info({ userDid, saved }, "Verified saved sync metadata");
@@ -230,7 +283,11 @@ async function updateSyncMetadata(ctx: AppContext, userDid: string, syncType: 'f
   }
 }
 
-export async function getUserFollows(ctx: AppContext, userDid: string, limit = 500): Promise<string[]> {
+export async function getUserFollows(
+  ctx: AppContext,
+  userDid: string,
+  limit = 500,
+): Promise<string[]> {
   const follows = await ctx.db
     .selectFrom("user_follows")
     .select("followsDid")
@@ -239,41 +296,56 @@ export async function getUserFollows(ctx: AppContext, userDid: string, limit = 5
     .orderBy("syncedAt", "desc")
     .limit(limit)
     .execute();
-  
-  return follows.map(f => f.followsDid);
+
+  return follows.map((f) => f.followsDid);
 }
 
-export async function shouldSyncFollows(ctx: AppContext, userDid: string): Promise<boolean> {
+export async function shouldSyncFollows(
+  ctx: AppContext,
+  userDid: string,
+): Promise<boolean> {
   try {
     const syncData = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
-    
+
     if (!syncData?.lastIncrementalSync) {
       return true;
     }
-    
+
     const lastSync = new Date(syncData.lastIncrementalSync);
     const hoursSinceSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
-    
+
     return hoursSinceSync > 6;
   } catch (error) {
-    logger.warn({ userDid, error }, "Error checking sync status, defaulting to sync needed");
+    logger.warn(
+      { userDid, error },
+      "Error checking sync status, defaulting to sync needed",
+    );
     return true;
   }
 }
 
-export async function ensureFollowsAreFresh(ctx: AppContext, agent: Agent): Promise<void> {
+export async function ensureFollowsAreFresh(
+  ctx: AppContext,
+  agent: SessionClient | null,
+): Promise<void> {
   if (!agent?.did) return;
-  
+
   try {
-    const shouldSync = await shouldSyncFollows(ctx, agent.assertDid);
+    const shouldSync = await shouldSyncFollows(ctx, agent.did);
     if (shouldSync) {
       // Trigger async sync (don't block the request)
       syncUserFollows(ctx, agent).catch((error) => {
-        ctx.logger.warn({ userDid: agent.assertDid, error }, "Failed to refresh follows");
+        ctx.logger.warn(
+          { userDid: agent.did, error },
+          "Failed to refresh follows",
+        );
       });
     }
   } catch (error) {
     // Ignore errors - follows freshness is not critical for request success
-    ctx.logger.trace({ userDid: agent.assertDid, error }, "Error checking follows freshness");
+    ctx.logger.trace(
+      { userDid: agent.did, error },
+      "Error checking follows freshness",
+    );
   }
 }

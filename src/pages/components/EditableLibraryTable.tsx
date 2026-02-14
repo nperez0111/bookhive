@@ -1,8 +1,7 @@
 import { type FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { Book } from "../../types";
-import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
-import { BOOK_STATUS_MAP } from "../../constants";
+import { BOOK_STATUS, BOOK_STATUS_MAP } from "../../constants";
 
 const UpdateBookForm: FC<{
   book: Book;
@@ -84,19 +83,19 @@ const StatusDropdown: FC<{
           <div class="p-1">
             {[
               {
-                value: BookStatus.FINISHED,
+                value: BOOK_STATUS.FINISHED,
                 label: "Read",
               },
               {
-                value: BookStatus.READING,
+                value: BOOK_STATUS.READING,
                 label: "Reading",
               },
               {
-                value: BookStatus.WANTTOREAD,
+                value: BOOK_STATUS.WANTTOREAD,
                 label: "Want to Read",
               },
               {
-                value: BookStatus.ABANDONED,
+                value: BOOK_STATUS.ABANDONED,
                 label: "Abandoned",
               },
             ].map((status) => (
@@ -189,8 +188,8 @@ export const EditableLibraryTable: FC<{
 
   // Sort books: finished books by finishedAt DESC, others by createdAt DESC
   const sortedBooks = [...books].sort((a, b) => {
-    const aIsFinished = a.status === BookStatus.FINISHED;
-    const bIsFinished = b.status === BookStatus.FINISHED;
+    const aIsFinished = a.status === BOOK_STATUS.FINISHED;
+    const bIsFinished = b.status === BOOK_STATUS.FINISHED;
 
     // If both are finished, sort by finishedAt (most recent first)
     if (aIsFinished && bIsFinished) {

@@ -1,6 +1,7 @@
-import { Agent } from "@atproto/api";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
-import type { OAuthClient } from "@atproto/oauth-client-node";
+import type { ProfileViewDetailed } from "./types";
+import type { Did } from "@atcute/lexicons";
+import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import type { OAuthClient } from "@atcute/oauth-node-client";
 import { Firehose } from "@atproto/sync";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -23,15 +24,19 @@ import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
 import { z } from "zod";
 
-import { createClient } from "./auth/client";
+import {
+  createOAuthClient,
+  sessionClientFromOAuthSession,
+  type SessionClient,
+} from "./auth/client";
 import { getSessionConfig } from "./auth/router";
 import {
-  createBidirectionalResolver,
+  createBidirectionalResolverAtcute,
   createIdResolver,
   type BidirectionalResolver,
 } from "./bsky/id-resolver";
 import { createIngester } from "./bsky/ingester";
-import * as BookRecord from "./bsky/lexicon/types/buzz/bookhive/book";
+import { Book as BookRecord } from "./bsky/lexicon";
 import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
@@ -73,7 +78,7 @@ export type AppContext = {
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
   baseIdResolver: ReturnType<typeof createIdResolver>;
-  getSessionAgent: () => Promise<Agent | null>;
+  getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
 };
 
@@ -91,12 +96,12 @@ export type HonoServer = Hono<{
 
 export type Session = { did: string };
 
-// Helper function to get the Atproto Agent for the active session
+// Helper function to get the session client for the active session
 export async function getSessionAgent(
   req: Request,
   res: Response,
   ctx: AppContext,
-) {
+): Promise<SessionClient | null> {
   const session = await getIronSession<Session>(req, res, getSessionConfig());
 
   if (!session.did) {
@@ -104,13 +109,13 @@ export async function getSessionAgent(
   }
 
   try {
-    const oauthSession = await ctx.oauthClient.restore(session.did, false);
-    // Use "auto" to automatically refresh tokens when needed
+    const oauthSession = await ctx.oauthClient.restore(session.did as Did, {
+      refresh: "auto",
+    });
     await oauthSession.getTokenInfo("auto");
-    // Keep session TTL fixed at 24 hours, independent of token expiration
     session.updateConfig(getSessionConfig());
     await session.save();
-    return oauthSession ? new Agent(oauthSession) : null;
+    return sessionClientFromOAuthSession(oauthSession);
   } catch (err) {
     ctx.logger.warn({ err }, "oauth restore failed");
     await session.destroy();
@@ -177,10 +182,10 @@ export class Server {
     kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
     // Create the atproto utilities
-    const oauthClient = await createClient(kv);
+    const oauthClient = await createOAuthClient(kv);
     const baseIdResolver = createIdResolver(kv);
     const ingester = createIngester(db, baseIdResolver, kv);
-    const resolver = createBidirectionalResolver(baseIdResolver);
+    const resolver = createBidirectionalResolverAtcute();
 
     const time = new Date().toISOString();
 
@@ -227,30 +232,36 @@ export class Server {
         resolver,
         baseIdResolver,
         kv,
-        getSessionAgent(): Promise<Agent | null> {
+        getSessionAgent(): Promise<SessionClient | null> {
           return lazy(() =>
-            getSessionAgent(c.req.raw, c.res, this).then((agent) => {
-              if (agent) {
-                c.var.logger.assign({ userDid: agent.did });
+            getSessionAgent(c.req.raw, c.res, this).then((client) => {
+              if (client) {
+                c.var.logger.assign({ userDid: client.did });
               }
-              return agent;
+              return client;
             }),
           ).value;
         },
         async getProfile(): Promise<ProfileViewDetailed | null> {
           return lazy(async () => {
-            const agent = await getSessionAgent(c.req.raw, c.res, this);
-            if (!agent || !agent.did) {
+            const client = await getSessionAgent(c.req.raw, c.res, this);
+            if (!client?.did) {
               return Promise.resolve(null);
             }
-            return readThroughCache(kv, "profile:" + agent.did, async () => {
-              return agent
-                .getProfile({
-                  actor: agent.assertDid,
-                })
-                .then((res) => res.data);
-            });
-          }).value;
+            return readThroughCache<ProfileViewDetailed | null>(
+              kv,
+              "profile:" + client.did,
+              async () => {
+                const res = await client.get("app.bsky.actor.getProfile", {
+                  params: {
+                    actor: client.did as ActorIdentifier,
+                  },
+                });
+                if (!res.ok) return null;
+                return res.data as ProfileViewDetailed | null;
+              },
+            );
+          }).value as Promise<ProfileViewDetailed | null>;
         },
       });
       await next();
@@ -547,26 +558,33 @@ export class Server {
                             }
 
                             // Update identifiers with data from CSV
-                            const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-                              ? JSON.parse(hiveBook.identifiers)
-                              : {};
+                            const existingIdentifiers: BookIdentifiers =
+                              hiveBook.identifiers
+                                ? JSON.parse(hiveBook.identifiers)
+                                : {};
                             const newIdentifiers: BookIdentifiers = {
                               ...existingIdentifiers,
                               hiveId: hiveBook.id,
-                              goodreadsId: book.bookId || existingIdentifiers.goodreadsId,
+                              goodreadsId:
+                                book.bookId || existingIdentifiers.goodreadsId,
                               isbn10: book.isbn || existingIdentifiers.isbn10,
                               isbn13: book.isbn13 || existingIdentifiers.isbn13,
                             };
                             // Only update if we have new data
                             if (
-                              newIdentifiers.goodreadsId !== existingIdentifiers.goodreadsId ||
-                              newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
-                              newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                              newIdentifiers.goodreadsId !==
+                                existingIdentifiers.goodreadsId ||
+                              newIdentifiers.isbn10 !==
+                                existingIdentifiers.isbn10 ||
+                              newIdentifiers.isbn13 !==
+                                existingIdentifiers.isbn13 ||
                               !existingIdentifiers.hiveId
                             ) {
                               await ctx.db
                                 .updateTable("hive_book")
-                                .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                .set({
+                                  identifiers: JSON.stringify(newIdentifiers),
+                                })
                                 .where("id", "=", hiveBook.id)
                                 .execute();
                             }
@@ -967,9 +985,10 @@ export class Server {
 
                             // Update identifiers with data from CSV
                             if (book.isbn) {
-                              const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-                                ? JSON.parse(hiveBook.identifiers)
-                                : {};
+                              const existingIdentifiers: BookIdentifiers =
+                                hiveBook.identifiers
+                                  ? JSON.parse(hiveBook.identifiers)
+                                  : {};
                               // StoryGraph ISBN can be ISBN-10 or ISBN-13, check length
                               const cleanIsbn = book.isbn.replace(/[-\s]/g, "");
                               const newIdentifiers: BookIdentifiers = {
@@ -983,13 +1002,17 @@ export class Server {
                               };
                               // Only update if we have new data
                               if (
-                                newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
-                                newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
+                                newIdentifiers.isbn10 !==
+                                  existingIdentifiers.isbn10 ||
+                                newIdentifiers.isbn13 !==
+                                  existingIdentifiers.isbn13 ||
                                 !existingIdentifiers.hiveId
                               ) {
                                 await ctx.db
                                   .updateTable("hive_book")
-                                  .set({ identifiers: JSON.stringify(newIdentifiers) })
+                                  .set({
+                                    identifiers: JSON.stringify(newIdentifiers),
+                                  })
                                   .where("id", "=", hiveBook.id)
                                   .execute();
                               }
