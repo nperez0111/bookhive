@@ -169,6 +169,12 @@ export type HiveBook = {
   identifiers: string | null;
 };
 
+/** Row shape for hive_book_genre (denormalized for fast /genres listing). */
+export type HiveBookGenre = {
+  hiveId: HiveId;
+  genre: string;
+};
+
 /** Row shape for the book_id_map table (indexed book identifiers). */
 export type BookIdentifiersRow = {
   hiveId: HiveId;

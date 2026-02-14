@@ -1,3 +1,4 @@
+import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "..";
@@ -121,6 +122,8 @@ export async function enrichBookWithDetailedData(
       })
       .where("id", "=", book.id)
       .execute();
+
+    await syncHiveBookGenres(ctx.db, book.id, genres);
 
     await upsertBookIdentifiers(ctx.db, {
       ...book,

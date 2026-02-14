@@ -1,5 +1,6 @@
 import { Client } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import { setIdentityCache } from "../bsky/id-resolver";
 import type { ProfileViewDetailed } from "../types";
 import { readThroughCache } from "./readThroughCache";
 import type { AppContext } from "..";
@@ -38,7 +39,11 @@ export async function getProfile({
           : await client.get("app.bsky.actor.getProfile", {
               params: { actor: actorParam },
             });
-        return res.ok ? (res.data as ProfileViewDetailed) : null;
+        const profile = res.ok ? (res.data as ProfileViewDetailed) : null;
+        if (profile?.did && profile?.handle) {
+          await setIdentityCache(ctx.kv, profile.did, profile.handle);
+        }
+        return profile;
       } catch {
         return null;
       }
@@ -100,6 +105,11 @@ export async function getProfiles({
 
     ctx.kv.setItems(
       fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })),
+    );
+    await Promise.all(
+      fetchedProfiles
+        .filter((p) => p.did && p.handle)
+        .map((p) => setIdentityCache(ctx.kv, p.did!, p.handle!)),
     );
   }
 

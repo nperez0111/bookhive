@@ -3,9 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
-
-import Database from "better-sqlite3";
 
 type ExportResult = { archivePath: string; filename: string; tmpDir: string };
 
@@ -50,10 +49,12 @@ async function sqliteBackup({
   sourcePath: string;
   destPath: string;
 }) {
-  const db = new Database(sourcePath, { fileMustExist: true });
+  const db = new DatabaseSync(sourcePath);
   try {
-    db.pragma("busy_timeout = 5000");
-    await db.backup(destPath);
+    db.exec("PRAGMA busy_timeout = 5000");
+    // VACUUM INTO copies the database to a new file (SQLite 3.27+)
+    const escaped = path.resolve(destPath).replace(/'/g, "''");
+    db.exec(`VACUUM INTO '${escaped}'`);
   } finally {
     db.close();
   }
@@ -74,15 +75,12 @@ async function createSanitizedKvCopy({
   sourcePath: string;
   destPath: string;
 }) {
-  const src = new Database(sourcePath, {
-    fileMustExist: true,
-    readonly: true,
-  });
-  const dest = new Database(destPath, { fileMustExist: false });
+  const src = new DatabaseSync(sourcePath, { readOnly: true });
+  const dest = new DatabaseSync(destPath);
 
   try {
-    src.pragma("busy_timeout = 10000");
-    dest.pragma("busy_timeout = 5000");
+    src.exec("PRAGMA busy_timeout = 10000");
+    dest.exec("PRAGMA busy_timeout = 5000");
 
     const objects = src
       .prepare(
@@ -156,7 +154,11 @@ async function createSanitizedKvCopy({
           `INSERT INTO main.${safeName} (${colList}) VALUES (${placeholders})`,
         );
         for (const row of rows) {
-          insert.run(...colNames.map((col) => row[col]));
+          insert.run(
+            ...colNames.map(
+              (col) => row[col] as string | number | bigint | null,
+            ),
+          );
         }
       }
 
@@ -264,7 +266,7 @@ export async function createSanitizedExportArchive(opts: {
 
     // Extract schema info from main database
     try {
-      const db = new Database(dbOut, { fileMustExist: true, readonly: true });
+      const db = new DatabaseSync(dbOut, { readOnly: true });
       try {
         const schemaObjects = db
           .prepare(

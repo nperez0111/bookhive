@@ -3,7 +3,7 @@ import { getIronSession, sealData, type SessionOptions } from "iron-session";
 import type { Did } from "@atcute/lexicons";
 import { OAuthResolverError } from "@atcute/oauth-node-client";
 import { env } from "../env";
-import type { AppContext, HonoServer, Session } from "../index";
+import type { AppContext, HonoServer, Session } from "../context";
 import { Layout } from "../pages/layout";
 
 import { Error } from "../pages/error";

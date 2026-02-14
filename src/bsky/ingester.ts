@@ -2,7 +2,7 @@ import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import { getLogger } from "../logger";
-import { searchBooks } from "../routes";
+import { searchBooks } from "../routes/index";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { createBidirectionalResolverAtcute } from "./id-resolver";

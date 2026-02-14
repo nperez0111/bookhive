@@ -108,10 +108,12 @@ export async function readThroughCache<T extends StorageValue>(
       }
 
       return fetch({ key })
-        .then((fresh) => {
+        .then(async (fresh) => {
           logger.trace({ key, fresh }, "readThroughCache set");
-          kv.set(key, fresh);
-          kv.setMeta(key, { timestamp: now });
+          await Promise.all([
+            kv.set(key, fresh),
+            kv.setMeta(key, { timestamp: now }),
+          ]);
           return fresh;
         })
         .catch((err) => {
