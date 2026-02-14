@@ -1,6 +1,7 @@
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "..";
+import { upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {
   publisher: string;
@@ -103,13 +104,14 @@ export async function enrichBookWithDetailedData(
       isbn13: detailedData.book.details.isbn13 || existingIdentifiers.isbn13,
     };
 
+    const serializedMeta = JSON.stringify(meta);
     // Update the book record with enriched data
     await ctx.db
       .updateTable("hive_book")
       .set({
         genres,
         series,
-        meta: JSON.stringify(meta),
+        meta: serializedMeta,
         identifiers: JSON.stringify(updatedIdentifiers),
         description: detailedData.book.description || book.description, // Use better description if available
         rating: Math.round(detailedData.work.averageRating * 1000), // Convert to our rating format
@@ -119,6 +121,12 @@ export async function enrichBookWithDetailedData(
       })
       .where("id", "=", book.id)
       .execute();
+
+    await upsertBookIdentifiers(ctx.db, {
+      ...book,
+      sourceId: detailedData.book.id || book.sourceId,
+      meta: serializedMeta,
+    });
 
     ctx.logger.info(
       {

@@ -206,12 +206,6 @@ export interface BookIdentifiers {
   isbn13?: string;
   /** Goodreads book ID */
   goodreadsId?: string;
-  /** Amazon ASIN */
-  amazonAsin?: string;
-  /** Google Books ID */
-  googleBooksId?: string;
-  /** Open Library ID */
-  openLibraryId?: string;
 }
 
 const hashBookIdentifiers = "bookIdentifiers";

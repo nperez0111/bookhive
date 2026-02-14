@@ -3,14 +3,22 @@ import {
   Kysely,
   Migrator,
   SqliteDialect,
+  sql,
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import type { Buzz, HiveBook, UserBookRow, UserFollow } from "./types";
+import type {
+  BookIdentifiersRow,
+  Buzz,
+  HiveBook,
+  UserBookRow,
+  UserFollow,
+} from "./types";
 
 // Types
 export type DatabaseSchema = {
   hive_book: HiveBook;
+  book_id_map: BookIdentifiersRow;
   user_book: UserBookRow;
   buzz: Buzz;
   user_follows: UserFollow;
@@ -209,8 +217,56 @@ migrations["007"] = {
       .alterTable("hive_book")
       .addColumn("identifiers", "text")
       .execute();
+
+    await db.schema
+      .createTable("book_id_map")
+      .addColumn("hiveId", "text", (col) => col.primaryKey())
+      .addColumn("isbn", "text")
+      .addColumn("isbn13", "text")
+      .addColumn("goodreadsId", "text")
+      .addColumn("updatedAt", "text", (col) => col.notNull())
+      .execute();
+
+    await db.schema
+      .createIndex("idx_book_id_map_isbn")
+      .on("book_id_map")
+      .column("isbn")
+      .execute();
+
+    await db.schema
+      .createIndex("idx_book_id_map_isbn13")
+      .on("book_id_map")
+      .column("isbn13")
+      .execute();
+
+    await db.schema
+      .createIndex("idx_book_id_map_goodreads_id")
+      .on("book_id_map")
+      .column("goodreadsId")
+      .execute();
+
+    await sql`
+      INSERT INTO book_id_map (hiveId, isbn, isbn13, goodreadsId, updatedAt)
+      SELECT
+        id,
+        NULLIF(REPLACE(REPLACE(UPPER(CAST(json_extract(meta, '$.isbn') AS TEXT)), '-', ''), ' ', ''), ''),
+        NULLIF(REPLACE(REPLACE(CAST(json_extract(meta, '$.isbn13') AS TEXT), '-', ''), ' ', ''), ''),
+        CASE
+          WHEN source = 'Goodreads' THEN NULLIF(
+            CASE
+              WHEN instr(COALESCE(sourceId, ''), '.') > 0 THEN substr(sourceId, 1, instr(sourceId, '.') - 1)
+              ELSE sourceId
+            END,
+            ''
+          )
+          ELSE NULL
+        END,
+        updatedAt
+      FROM hive_book
+    `.execute(db);
   },
   async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("book_id_map").execute();
     await db.schema.alterTable("hive_book").dropColumn("identifiers").execute();
   },
 };

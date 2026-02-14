@@ -302,18 +302,6 @@
         "goodreadsId": {
           "type": "string",
           "description": "Goodreads book ID"
-        },
-        "amazonAsin": {
-          "type": "string",
-          "description": "Amazon ASIN"
-        },
-        "googleBooksId": {
-          "type": "string",
-          "description": "Google Books ID"
-        },
-        "openLibraryId": {
-          "type": "string",
-          "description": "Open Library ID"
         }
       }
     }
