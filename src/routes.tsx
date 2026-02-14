@@ -1427,7 +1427,6 @@ export function createRouter(app: HonoServer) {
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        console.log("No agent");
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
       const payload = c.req.valid("json");
@@ -1937,19 +1936,6 @@ export function createRouter(app: HonoServer) {
       let hiveId = id as HiveId | undefined;
 
       if (!id) {
-        console.log(
-          {
-            isbn,
-            isbn13,
-            goodreadsId,
-          },
-          await findBookIdentifiersByLookup({
-            ctx: c.get("ctx"),
-            isbn,
-            isbn13,
-            goodreadsId,
-          }),
-        );
         hiveId = (
           await findBookIdentifiersByLookup({
             ctx: c.get("ctx"),
@@ -2162,8 +2148,10 @@ export function createRouter(app: HonoServer) {
       if (handle && !did) {
         did = await c.get("ctx").baseIdResolver.handle.resolve(handle);
       }
-      did = did as string;
-      console.log("did2", did);
+
+      if (!did) {
+        return c.json({ success: false, message: "User not found" }, 404);
+      }
 
       const books = await c
         .get("ctx")
