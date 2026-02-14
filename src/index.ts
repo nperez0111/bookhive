@@ -2,7 +2,7 @@ import type { ProfileViewDetailed } from "./types";
 import type { Did } from "@atcute/lexicons";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { OAuthClient } from "@atcute/oauth-node-client";
-import { Firehose } from "@atproto/sync";
+import type { Ingester } from "./bsky/ingester";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { prometheus } from "@hono/prometheus";
@@ -31,8 +31,8 @@ import {
 } from "./auth/client";
 import { getSessionConfig } from "./auth/router";
 import {
+  createBaseIdResolver,
   createBidirectionalResolverAtcute,
-  createIdResolver,
   type BidirectionalResolver,
 } from "./bsky/id-resolver";
 import { createIngester } from "./bsky/ingester";
@@ -73,11 +73,11 @@ import path from "node:path";
 export type AppContext = {
   db: Database;
   kv: Storage;
-  ingester: Firehose;
+  ingester: Ingester;
   logger: Logger;
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
-  baseIdResolver: ReturnType<typeof createIdResolver>;
+  baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
 };
@@ -183,8 +183,8 @@ export class Server {
 
     // Create the atproto utilities
     const oauthClient = await createOAuthClient(kv);
-    const baseIdResolver = createIdResolver(kv);
-    const ingester = createIngester(db, baseIdResolver, kv);
+    const baseIdResolver = createBaseIdResolver();
+    const ingester = createIngester(db, kv);
     const resolver = createBidirectionalResolverAtcute();
 
     const time = new Date().toISOString();

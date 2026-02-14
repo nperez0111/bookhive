@@ -1,7 +1,5 @@
-import { IdResolver } from "@atproto/identity";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { ActorResolver } from "@atcute/identity-resolver";
-import type { Storage } from "unstorage";
 import {
   CompositeDidDocumentResolver,
   CompositeHandleResolver,
@@ -11,7 +9,6 @@ import {
   WellKnownHandleResolver,
 } from "@atcute/identity-resolver";
 import { NodeDnsHandleResolver } from "@atcute/identity-resolver-node";
-import { StorageCache } from "../utils/didUnstorageCache";
 
 /** Create ActorResolver for OAuth (handle/DID resolution). */
 export function createActorResolver(): ActorResolver {
@@ -33,19 +30,21 @@ export function createActorResolver(): ActorResolver {
   });
 }
 
-const HOUR = 60e3 * 60;
-const DAY = HOUR * 24;
-const WEEK = HOUR * 7;
+export type BaseIdResolver = {
+  handle: { resolve(handle: string): Promise<string> };
+};
 
-export function createIdResolver(kv: Storage) {
-  return new IdResolver({
-    didCache: new StorageCache({
-      store: kv,
-      prefix: "didCache:",
-      staleTTL: DAY,
-      maxTTL: WEEK,
-    }),
-  });
+/** Create resolver that resolves handle -> DID (for app routes). */
+export function createBaseIdResolver(): BaseIdResolver {
+  const actorResolver = createActorResolver();
+  return {
+    handle: {
+      resolve: async (handle: string): Promise<string> => {
+        const actor = await actorResolver.resolve(handle as ActorIdentifier);
+        return actor.did;
+      },
+    },
+  };
 }
 
 export interface BidirectionalResolver {
@@ -53,34 +52,7 @@ export interface BidirectionalResolver {
   resolveDidsToHandles(dids: string[]): Promise<Record<string, string>>;
 }
 
-/** Create BidirectionalResolver using @atproto/identity IdResolver (used when passing to Firehose). */
-export function createBidirectionalResolver(resolver: IdResolver) {
-  return {
-    async resolveDidToHandle(did: string): Promise<string> {
-      const didDoc = await resolver.did.resolveAtprotoData(did);
-      resolver.handle.resolve(didDoc.handle).then((resolvedHandle) => {
-        if (resolvedHandle !== did) {
-          resolver.did.ensureResolve(did, true);
-        }
-      });
-      return didDoc?.handle ?? did;
-    },
-    async resolveDidsToHandles(
-      dids: string[],
-    ): Promise<Record<string, string>> {
-      const didHandleMap: Record<string, string> = {};
-      const resolves = await Promise.all(
-        dids.map((did) => this.resolveDidToHandle(did).catch((_) => did)),
-      );
-      for (let i = 0; i < dids.length; i++) {
-        didHandleMap[dids[i]] = resolves[i];
-      }
-      return didHandleMap;
-    },
-  };
-}
-
-/** Create BidirectionalResolver using @atcute/identity-resolver (for app routes; does not require @atproto/identity). */
+/** Create BidirectionalResolver using @atcute/identity-resolver (DID -> handle). */
 export function createBidirectionalResolverAtcute(): BidirectionalResolver {
   const actorResolver = createActorResolver();
 
