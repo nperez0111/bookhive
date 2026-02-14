@@ -1,7 +1,7 @@
 import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import { upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {

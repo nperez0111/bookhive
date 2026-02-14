@@ -115,7 +115,7 @@ const app = new Hono<AppEnv>()
       }
     }
     if (normalizedProgress !== undefined) {
-      (updates as Record<string, unknown>).bookProgress = normalizedProgress;
+      (updates as Record<string, unknown>)["bookProgress"] = normalizedProgress;
       if (!updates.status) {
         updates.status = BOOK_STATUS.READING;
       }

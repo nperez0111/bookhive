@@ -236,7 +236,7 @@ export const Home: FC<Props> = async () => {
     .execute();
   endTime(c, "latestBuzzes");
 
-  let friendsBuzzes: Awaited<ReturnType<typeof latestBuzzes>> = [];
+  let friendsBuzzes: Awaited<typeof latestBuzzes> = [];
   if (profile) {
     startTime(c, "friendsBuzzes");
     friendsBuzzes = await c

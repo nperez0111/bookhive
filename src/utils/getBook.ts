@@ -4,7 +4,7 @@ import * as TID from "@atcute/tid";
 import type { SessionClient } from "../auth/client";
 import { parseISO, isValid, startOfDay } from "date-fns";
 
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
 import type { HiveId, UserBook, UserBookRow } from "../types";
 import { uploadImageBlob } from "./uploadImageBlob";

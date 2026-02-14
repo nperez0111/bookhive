@@ -138,7 +138,7 @@ importApp.post(
                         await searchBooks({ query: book.title, ctx });
                         let hiveBook = await ctx.db
                           .selectFrom("hive_book")
-                          .select("id", "title", "cover", "identifiers")
+                          .select(["id", "title", "cover", "identifiers"])
                           .where("hive_book.rawTitle", "=", book.title)
                           .where("authors", "=", book.author)
                           .executeTakeFirst();
@@ -512,7 +512,7 @@ importApp.post(
                         await searchBooks({ query: book.title, ctx });
                         let hiveBook = await ctx.db
                           .selectFrom("hive_book")
-                          .select("id", "title", "cover", "identifiers")
+                          .select(["id", "title", "cover", "identifiers"])
                           .where("hive_book.rawTitle", "=", book.title)
                           .where("authors", "=", book.authors)
                           .executeTakeFirst();

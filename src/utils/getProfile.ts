@@ -3,7 +3,7 @@ import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import { setIdentityCache } from "../bsky/id-resolver";
 import type { ProfileViewDetailed } from "../types";
 import { readThroughCache } from "./readThroughCache";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import { getLogger } from "../logger";
 
 const logger = getLogger({ name: "kv-cache" });

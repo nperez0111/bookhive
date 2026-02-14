@@ -1,39 +1,39 @@
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+/**
+ * OpenTelemetry tracing setup for Bun. Runs when imported at the top of index.ts.
+ * Uses the base trace SDK (no Node SDK). Spans are created by Hono middleware
+ * (opentelemetryMiddleware + instrument()).
+ */
+import { trace } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { Resource } from "@opentelemetry/resources";
+import {
+  BatchSpanProcessor,
+  BasicTracerProvider,
+} from "@opentelemetry/sdk-trace-base";
+import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { env } from "./env";
-// import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 
-// // For troubleshooting, set the log level to DiagLogLevel.DEBUG
-// diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.VERBOSE);
-
-const authHeader = `Basic ${Buffer.from(
-  `${env.OPEN_OBSERVE_USER}:${env.OPEN_OBSERVE_PASSWORD}`,
-).toString("base64")}`;
-
-const sdk = new NodeSDK({
-  serviceName: "bookhive",
-  traceExporter:
-    env.isDev || !env.OPEN_OBSERVE_URL
-      ? undefined
-      : new OTLPTraceExporter({
-          url: `${env.OPEN_OBSERVE_URL}/api/bookhive/traces`,
-          headers: {
-            Authorization: authHeader,
-          },
-        }),
-  instrumentations: [
-    getNodeAutoInstrumentations({
-      "@opentelemetry/instrumentation-http": {
-        ignoreIncomingRequestHook: (request) => {
-          return Boolean(
-            request.url?.includes("/healthcheck") ||
-              request.url?.includes("/metrics"),
-          );
-        },
-      },
-    }),
-  ],
+const provider = new BasicTracerProvider({
+  resource: new Resource({
+    [SEMRESATTRS_SERVICE_NAME]: "bookhive",
+  }),
 });
 
-sdk.start();
+if (!env.isDev && env.OPEN_OBSERVE_URL && env.OPEN_OBSERVE_USER && env.OPEN_OBSERVE_PASSWORD) {
+  const authHeader = `Basic ${Buffer.from(
+    `${env.OPEN_OBSERVE_USER}:${env.OPEN_OBSERVE_PASSWORD}`,
+  ).toString("base64")}`;
+
+  provider.addSpanProcessor(
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: `${env.OPEN_OBSERVE_URL}/api/bookhive/traces`,
+        headers: {
+          Authorization: authHeader,
+        },
+      }),
+    ),
+  );
+}
+
+trace.setGlobalTracerProvider(provider);

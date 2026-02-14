@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import type { FollowsSync } from "./getFollows";
 
 // Mock logger before getFollows is loaded

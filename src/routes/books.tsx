@@ -8,7 +8,7 @@ import { endTime, startTime } from "hono/timing";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import { ids } from "../bsky/lexicon";
+import { ids, Book as BookRecord } from "../bsky/lexicon";
 import { BookInfo } from "../pages/bookInfo";
 import { CommentsSection } from "../pages/comments";
 import { Error as ErrorPage } from "../pages/error";
@@ -247,7 +247,7 @@ const app = new Hono<AppEnv>()
               stars,
               review,
               ...(bookProgress ? { bookProgress } : {}),
-            },
+            } as Partial<BookRecord.Record> & { coverImage?: string },
           });
         } catch (e) {
           return c.html(

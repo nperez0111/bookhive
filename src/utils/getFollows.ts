@@ -1,6 +1,6 @@
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { SessionClient } from "../auth/client";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import { getLogger } from "../logger";
 
 export interface FollowsSync {

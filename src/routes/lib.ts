@@ -5,15 +5,12 @@
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
-import { BookFields } from "../db";
 import type { HiveBook, HiveId } from "../types";
-import { updateBookRecord } from "../utils/getBook";
 import { syncUserFollows, shouldSyncFollows } from "../utils/getFollows";
-import { getProfile } from "../utils/getProfile";
 import { readThroughCache } from "../utils/readThroughCache";
 import { findBookDetails } from "../scrapers";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
-import { hydrateUserBook, serializeUserBook } from "../utils/bookProgress";
+import { serializeUserBook } from "../utils/bookProgress";
 import {
   upsertBookIdentifiers,
   upsertBookIdentifiersBatch,
