@@ -20,10 +20,11 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
 
   try {
     if (!env.EXPORT_SHARED_SECRET) {
-      ctx.logger.warn(
-        { ip: clientIp, reason: "endpoint_not_configured" },
-        "export endpoint access attempt - endpoint disabled",
-      );
+      ctx.addWideEventContext({
+        admin_export: "rejected",
+        client_ip: clientIp,
+        reason: "endpoint_not_configured",
+      });
       return c.json({ message: "Not Found" }, 404);
     }
 
@@ -34,18 +35,20 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
         sharedSecret: env.EXPORT_SHARED_SECRET,
       })
     ) {
-      ctx.logger.warn(
-        { ip: clientIp, reason: "invalid_authorization" },
-        "export endpoint unauthorized access attempt",
-      );
+      ctx.addWideEventContext({
+        admin_export: "rejected",
+        client_ip: clientIp,
+        reason: "invalid_authorization",
+      });
       return c.json({ message: "Not Found" }, 404);
     }
 
     if (!env.DB_PATH || env.DB_PATH === ":memory:") {
-      ctx.logger.error(
-        { ip: clientIp, dbPath: env.DB_PATH },
-        "export endpoint called but DB_PATH is not a file path",
-      );
+      ctx.addWideEventContext({
+        admin_export: "invalid",
+        client_ip: clientIp,
+        db_path: env.DB_PATH,
+      });
       return c.json(
         { message: "DB exports require DB_PATH to be a file path" },
         400,
@@ -56,7 +59,11 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       env.DB_EXPORT_DIR?.trim() ||
       path.join(path.dirname(env.DB_PATH), "exports");
 
-    ctx.logger.info({ ip: clientIp, exportDir }, "starting database export");
+    ctx.addWideEventContext({
+      admin_export: "started",
+      client_ip: clientIp,
+      export_dir: exportDir,
+    });
 
     const startTimeExport = Date.now();
     let result: {
@@ -81,35 +88,36 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       });
     } catch (err) {
       const duration = Date.now() - startTimeExport;
-      ctx.logger.error(
-        {
-          ip: clientIp,
-          duration,
-          error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-        },
-        "database export failed",
-      );
+      ctx.addWideEventContext({
+        admin_export: "failed",
+        client_ip: clientIp,
+        duration_ms: duration,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return c.json({ message: "Failed to create export archive" }, 500);
     }
 
     const duration = Date.now() - startTimeExport;
     const stream = createExportReadStream(result.archivePath, {
       onClose: () => {
-        ctx.logger.info(
-          { ip: clientIp, filename: result.filename, duration },
-          "database export completed successfully",
-        );
+        ctx.addWideEventContext({
+          admin_export: "completed",
+          client_ip: clientIp,
+          filename: result.filename,
+          duration_ms: duration,
+        });
         cleanupExportPaths({
           archivePath: result.archivePath,
           tmpDir: result.tmpDir,
         });
       },
       onError: (err) => {
-        ctx.logger.error(
-          { ip: clientIp, filename: result.filename, error: err.message },
-          "error streaming export file",
-        );
+        ctx.addWideEventContext({
+          admin_export_stream: "error",
+          client_ip: clientIp,
+          filename: result.filename,
+          error: err.message,
+        });
         cleanupExportPaths({
           archivePath: result.archivePath,
           tmpDir: result.tmpDir,
@@ -124,13 +132,11 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       "Cache-Control": "no-store",
     });
   } catch (err) {
-    ctx.logger.error(
-      {
-        ip: clientIp,
-        error: err instanceof Error ? err.message : String(err),
-      },
-      "unexpected error in export endpoint",
-    );
+    ctx.addWideEventContext({
+      admin_export: "error",
+      client_ip: clientIp,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return c.json({ message: "Internal server error" }, 500);
   }
 });

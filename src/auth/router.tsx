@@ -1,7 +1,6 @@
 import { getIronSession, sealData, type SessionOptions } from "iron-session";
 
 import type { Did } from "@atcute/lexicons";
-import { OAuthResolverError } from "@atcute/oauth-node-client";
 import { env } from "../env";
 import type { AppContext, HonoServer, Session } from "../context";
 import { Layout } from "../pages/layout";
@@ -118,11 +117,18 @@ export function loginRouter(
       }
 
       return c.redirect("/");
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth callback failed");
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : String(err);
+      c.get("ctx").addWideEventContext({
+        oauth_callback: "failed",
+        error: errMsg,
+      });
       return c.html(
         <Layout>
-          <Login error={`Login failed: ${(err as Error).message}`} />
+          <Login error={`Login failed: ${errMsg}`} />
         </Layout>,
       );
     }
@@ -169,17 +175,20 @@ export function loginRouter(
         state: { redirectUri, handle },
       });
       return c.redirect(url.toString());
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth authorize failed");
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Couldn't initiate login";
+      c.get("ctx").addWideEventContext({
+        oauth_authorize: "failed",
+        error: errMsg,
+      });
 
       return c.html(
         <Layout>
           <Error
-            message={
-              err instanceof OAuthResolverError
-                ? err.message
-                : "Couldn't initiate login"
-            }
+            message={errMsg}
             description="Oauth authorization failed"
             statusCode={400}
           />
@@ -247,16 +256,19 @@ export function loginRouter(
         scope: OAUTH_SCOPES,
       });
       return c.redirect(url.toString());
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth authorize failed");
-      const error =
-        err instanceof OAuthResolverError
-          ? err.message
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
           : "Couldn't initiate login";
+      c.get("ctx").addWideEventContext({
+        oauth_authorize: "failed",
+        error: errMsg,
+      });
       return c.html(
         <Layout>
           <Error
-            message={error}
+            message={errMsg}
             description="OAuth authorization failed"
             statusCode={400}
           />

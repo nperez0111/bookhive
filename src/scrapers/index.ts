@@ -1,10 +1,7 @@
 import Goodreads from "./goodreads.ts";
-import { getLogger } from "../logger/index.ts";
 // import IsbnDb from "./isbndb.ts";
 // import Google from "./google.ts";
 // import { env } from "../env.ts";
-
-const logger = getLogger({ name: "scraper" });
 
 export async function findBookDetails(
   query: string,
@@ -16,12 +13,10 @@ export async function findBookDetails(
     locale?: string;
   } = {},
 ) {
-  const searchService = new Goodreads(logger);
+  const searchService = new Goodreads();
 
   try {
-    logger.trace({ query }, "searching for results");
     const results = await searchService.search(query, fallbackCover, locale);
-    logger.trace({ query, numResults: results.length }, "found results");
 
     if (results.length === 0) {
       return {
@@ -36,8 +31,7 @@ export async function findBookDetails(
       message: "Books found",
       data: results,
     } as const;
-  } catch (error) {
-    logger.error({ error }, "Error finding book details:");
+  } catch {
     return {
       success: false,
       message: "Error searching for books",

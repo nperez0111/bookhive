@@ -203,10 +203,11 @@ importApp.post(
                           },
                         ] as const;
                       } catch (e) {
-                        ctx.logger.error(
-                          { error: e, book },
-                          "Failed to update book record",
-                        );
+                        ctx.addWideEventContext({
+                          import_book_record: "failed",
+                          error: e instanceof Error ? e.message : String(e),
+                          book_title: book?.title,
+                        });
                         unmatchedBooks.push({
                           book,
                           reason: "processing_error",
@@ -275,10 +276,11 @@ importApp.post(
                   bookRecords,
                 });
               } catch (error) {
-                ctx.logger.error(
-                  { error, bookCount: bookUpdates.size },
-                  "Failed to update book records in batch, trying individually",
-                );
+                ctx.addWideEventContext({
+                  import_batch_update: "failed",
+                  error: error instanceof Error ? error.message : String(error),
+                  book_count: bookUpdates.size,
+                });
                 let individualSuccesses = 0;
                 let individualFailures = 0;
                 for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
@@ -299,14 +301,14 @@ importApp.post(
                     }
                   } catch (individualError) {
                     individualFailures++;
-                    ctx.logger.error(
-                      {
-                        error: individualError,
-                        hiveId,
-                        bookUpdate: bookUpdate as Record<string, unknown>,
-                      },
-                      "Failed to update individual book record",
-                    );
+                    ctx.addWideEventContext({
+                      import_individual_book: "failed",
+                      error:
+                        individualError instanceof Error
+                          ? individualError.message
+                          : String(individualError),
+                      hiveId,
+                    });
                     unmatchedBooks.push({
                       book: {
                         bookId: "",
@@ -589,10 +591,11 @@ importApp.post(
                           },
                         ] as const;
                       } catch (e) {
-                        ctx.logger.error(
-                          { error: e, book },
-                          "Failed to update book record",
-                        );
+                        ctx.addWideEventContext({
+                          import_book_record: "failed",
+                          error: e instanceof Error ? e.message : String(e),
+                          book_title: book?.title,
+                        });
                         unmatchedBooks.push({
                           book,
                           reason: "processing_error",
@@ -661,10 +664,11 @@ importApp.post(
                   bookRecords,
                 });
               } catch (error) {
-                ctx.logger.error(
-                  { error, bookCount: bookUpdates.size },
-                  "Failed to update book records in batch, trying individually",
-                );
+                ctx.addWideEventContext({
+                  import_batch_update: "failed",
+                  error: error instanceof Error ? error.message : String(error),
+                  book_count: bookUpdates.size,
+                });
                 let individualSuccesses = 0;
                 let individualFailures = 0;
                 for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
@@ -685,14 +689,14 @@ importApp.post(
                     }
                   } catch (individualError) {
                     individualFailures++;
-                    ctx.logger.error(
-                      {
-                        error: individualError,
-                        hiveId,
-                        bookUpdate: bookUpdate as Record<string, unknown>,
-                      },
-                      "Failed to update individual book record",
-                    );
+                    ctx.addWideEventContext({
+                      import_individual_book: "failed",
+                      error:
+                        individualError instanceof Error
+                          ? individualError.message
+                          : String(individualError),
+                      hiveId,
+                    });
                     unmatchedBooks.push({
                       book: {
                         title: bookUpdate.title || "Unknown",

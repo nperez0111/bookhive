@@ -523,13 +523,11 @@ export async function updateBookRecords({
     Promise.resolve(),
   );
 
-  ctx.logger.info(
-    {
-      userDid: agent.did,
-      bookCount: updatesToApply.length,
-    },
-    "Wrote books to PDS & DB",
-  );
+  ctx.addWideEventContext({
+    event: "wrote_books",
+    userDid: agent.did,
+    book_count: updatesToApply.length,
+  });
 
   return;
 }
@@ -593,14 +591,12 @@ export async function getUserRepoRecords({
     }
   }
 
-  ctx.logger.info(
-    {
-      userDid: did,
-      bookCount: books.size,
-      buzzCount: buzzes.size,
-    },
-    "Fetched books & buzzes",
-  );
+  ctx.addWideEventContext({
+    event: "fetched_repo",
+    userDid: did,
+    book_count: books.size,
+    buzz_count: buzzes.size,
+  });
 
   return { books, buzzes };
 }

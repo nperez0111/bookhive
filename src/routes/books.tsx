@@ -49,16 +49,12 @@ const app = new Hono<AppEnv>()
         new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (needsEnrichment) {
       enrichBookWithDetailedData(book, c.get("ctx")).catch((error) => {
-        c.get("ctx").logger?.error(
-          {
-            bookId: book.id,
-            error:
-              error instanceof Error
-                ? error.message
-                : (String(error) as string),
-          },
-          "Background enrichment failed on book view",
-        );
+        c.get("ctx").addWideEventContext({
+          enrichment_failed_book_view: true,
+          bookId: book.id,
+          error:
+            error instanceof Error ? error.message : (String(error) as string),
+        });
       });
     }
 
@@ -265,7 +261,10 @@ const app = new Hono<AppEnv>()
         }
         return c.redirect("/books/" + hiveId);
       } catch (err) {
-        c.get("ctx").logger.warn({ err }, "failed to write book");
+        c.get("ctx").addWideEventContext({
+          write_book: "failed",
+          error: err instanceof Error ? err.message : String(err),
+        });
         await c.get("ctx").kv.del(bookLockKey);
         return c.html(
           <Layout>

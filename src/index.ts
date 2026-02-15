@@ -7,7 +7,7 @@ import { env } from "./env";
 
 import entryHtml from "./entry.html";
 
-Bun.serve({
+const server = Bun.serve({
   port: env.PORT,
   development: env.isDevelopment,
   routes: {
@@ -15,3 +15,5 @@ Bun.serve({
   },
   fetch: instrument(app).fetch,
 });
+
+console.log(`Server is running on ${server.url}`);

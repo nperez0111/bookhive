@@ -30,7 +30,6 @@ import {
   toBookIdentifiersOutput,
 } from "../utils/bookIdentifiers";
 import type { NotNull } from "kysely";
-import type { Logger } from "pino";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
@@ -46,13 +45,13 @@ export type XrpcContext = {
   baseIdResolver: {
     handle: { resolve: (handle: string) => Promise<string | undefined> };
   };
-  logger: Logger;
+  addWideEventContext: (context: Record<string, unknown>) => void;
 };
 
 export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
   searchBooks: (opts: {
     query: string;
-    ctx: Pick<E, "db" | "kv" | "logger">;
+    ctx: Pick<E, "db" | "kv" | "addWideEventContext">;
   }) => Promise<HiveId[]>;
   ensureBookIdentifiersCurrent: (opts: {
     ctx: E;

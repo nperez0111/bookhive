@@ -4,9 +4,6 @@ import { setIdentityCache } from "../bsky/id-resolver";
 import type { ProfileViewDetailed } from "../types";
 import { readThroughCache } from "./readThroughCache";
 import type { AppContext } from "../context";
-import { getLogger } from "../logger";
-
-const logger = getLogger({ name: "kv-cache" });
 
 /** Public fetch handler for unauthenticated XRPC (e.g. appview). */
 const publicHandler = {
@@ -29,7 +26,6 @@ export async function getProfile({
     ctx.kv,
     "profile:" + did,
     async () => {
-      logger.trace({ did }, "getProfile fetch");
       try {
         const actorParam = did as ActorIdentifier;
         const res = sessionClient
@@ -72,16 +68,7 @@ export async function getProfiles({
     .filter((p) => p.value === null)
     .map((p) => p.key.slice("profile:".length));
 
-  logger.trace(
-    {
-      numberFound: profiles.length - missingProfiles.length,
-      numberMissing: missingProfiles.length,
-    },
-    "found profiles",
-  );
-
   if (missingProfiles.length > 0) {
-    logger.trace({ dids: missingProfiles }, "getProfiles fetch");
     const actorsParam = missingProfiles as ActorIdentifier[];
     const res = sessionClient
       ? await sessionClient.get("app.bsky.actor.getProfiles", {

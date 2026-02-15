@@ -1,4 +1,3 @@
-import type { Logger } from "pino";
 import { objectHash, sha256base64 } from "ohash";
 // Type definitions
 export interface MetaSourceInfo {
@@ -65,12 +64,10 @@ export default class IsbnDb {
   private static readonly API_URL = "https://api2.isbndb.com";
 
   private readonly active: boolean;
-  private readonly logger: Logger;
   private readonly apiKey: string;
 
-  constructor(logger: Logger, apiKey: string, active: boolean = true) {
+  constructor(apiKey: string, active: boolean = true) {
     this.active = active;
-    this.logger = logger;
     this.apiKey = apiKey;
   }
 
@@ -89,8 +86,6 @@ export default class IsbnDb {
         language: locale,
       });
 
-      this.logger.trace({ params: params.toString() });
-
       const response = await fetch(
         `${IsbnDb.API_URL}/books/${encodeURIComponent(query)}?${params.toString()}`,
         {
@@ -107,8 +102,7 @@ export default class IsbnDb {
       return data.books.map((result) =>
         this.parseSearchResult(result, genericCover),
       );
-    } catch (error) {
-      this.logger.warn({ message: "Error searching ISBNdb", error });
+    } catch {
       return [];
     }
   }
@@ -166,8 +160,7 @@ export default class IsbnDb {
       const data = (await response.json()) as IsbnDbBook;
 
       return this.parseSearchResult(data, genericCover);
-    } catch (error) {
-      this.logger.warn({ message: "Error looking up ISBN", error });
+    } catch {
       return null;
     }
   }

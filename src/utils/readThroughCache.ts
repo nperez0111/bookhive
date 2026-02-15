@@ -1,7 +1,4 @@
 import type { StorageValue, Storage } from "unstorage";
-import { getLogger } from "../logger";
-
-const logger = getLogger({ name: "kv-cache" });
 
 /**
  * If multiple requests for the same key are made at the same time, we only want
@@ -67,8 +64,6 @@ export async function readThroughCache<T extends StorageValue>(
   defaultValue?: T,
   options: ReadThroughCacheOptions = {},
 ): Promise<T> {
-  logger.trace({ key }, "readThroughCache");
-
   // Create rate limiter if requestsPerSecond is specified
   const rateLimiter = options.requestsPerSecond
     ? new RateLimiter(options.requestsPerSecond)
@@ -79,7 +74,6 @@ export async function readThroughCache<T extends StorageValue>(
 
   // Dedupe requests for the same key.
   if (dupeRequestsCache.has(key)) {
-    logger.trace({ key }, "readThroughCache dupeRequest");
     return dupeRequestsCache.get(key) as Promise<T>;
   }
 
@@ -93,14 +87,8 @@ export async function readThroughCache<T extends StorageValue>(
         : true;
 
       if (cached && !isExpired) {
-        logger.trace({ key, cached }, "readThroughCache hit");
         return cached;
       }
-
-      logger.trace(
-        { key },
-        isExpired ? "readThroughCache expired" : "readThroughCache miss",
-      );
 
       // Apply rate limiting before fetch if enabled
       if (rateLimiter) {
@@ -109,15 +97,13 @@ export async function readThroughCache<T extends StorageValue>(
 
       return fetch({ key })
         .then(async (fresh) => {
-          logger.trace({ key, fresh }, "readThroughCache set");
           await Promise.all([
             kv.set(key, fresh),
             kv.setMeta(key, { timestamp: now }),
           ]);
           return fresh;
         })
-        .catch((err) => {
-          logger.error({ err }, "readThroughCache error");
+        .catch(() => {
           return defaultValue as T;
         });
     },

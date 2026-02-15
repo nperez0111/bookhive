@@ -1,7 +1,6 @@
 import { SpanKind, context, propagation, trace } from "@opentelemetry/api";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import type { ExecutionContext } from "hono";
-import { getLogger } from "./logger";
 import { measure } from "./measure";
 import { patchFetch, patchWaitUntil } from "./patch";
 import { PromiseStore } from "./promiseStore";
@@ -65,26 +64,16 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           executionContext?: ExecutionContext,
         ) {
           // Merge the default config with the user's config
-          const { libraryDebugMode, serviceName, isEnabled } = mergeConfigs(
+          const { serviceName, isEnabled } = mergeConfigs(
             defaultConfig,
             config,
           );
 
-          const logger = getLogger(libraryDebugMode ? "debug" : "warn");
-          // NOTE - This should only log if the FPX_LOG_LEVEL is "debug"
-          logger.debug("Library debug mode is enabled");
-
           if (!isEnabled) {
-            logger.debug(
-              "@fiberplane/hono-otel is missing FPX_ENDPOINT. Skipping instrumentation",
-            );
             return await originalFetch(request, rawEnv, executionContext);
           }
 
-          // Ignore instrumentation for requests that have the x-fpx-ignore header
-          // This is useful for not triggering infinite loops when the OpenAPI spec is fetched from Studio
           if (config?.ignore && config.ignore(request)) {
-            logger.debug("Ignoring request");
             return await originalFetch(request, rawEnv, executionContext);
           }
 
@@ -179,7 +168,6 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
                   throw new Error(r.statusText);
                 }
               },
-              logger,
             },
             originalFetch,
           );

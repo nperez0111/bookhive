@@ -2,17 +2,6 @@ import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { AppContext } from "../context";
 import type { FollowsSync } from "./getFollows";
 
-// Mock logger before getFollows is loaded
-const mockLogger = {
-  info: mock(),
-  warn: mock(),
-  error: mock(),
-  trace: mock(),
-};
-mock.module("../logger", () => ({
-  getLogger: () => mockLogger,
-}));
-
 const { shouldSyncFollows, getUserFollows } = await import("./getFollows");
 
 // Mock KV storage
@@ -41,6 +30,7 @@ const mockDb = {
 const mockCtx: AppContext = {
   kv: mockKv as any,
   db: mockDb as any,
+  addWideEventContext: mock(),
 } as any;
 
 describe("getFollows utilities", () => {
@@ -75,7 +65,9 @@ describe("getFollows utilities", () => {
     });
 
     it("should return false when last sync was recent (< 6 hours)", async () => {
-      const recentTime = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+      const recentTime = new Date(
+        Date.now() - 3 * 60 * 60 * 1000,
+      ).toISOString();
       const syncData: FollowsSync = {
         userDid: "did:plc:test123",
         lastFullSync: "2025-08-01T10:00:00.000Z",
@@ -133,7 +125,11 @@ describe("getFollows utilities", () => {
 
       expect(mockDb.selectFrom).toHaveBeenCalledWith("user_follows");
       expect(mockSelect).toHaveBeenCalledWith("followsDid");
-      expect(mockWhere1).toHaveBeenCalledWith("userDid", "=", "did:plc:test123");
+      expect(mockWhere1).toHaveBeenCalledWith(
+        "userDid",
+        "=",
+        "did:plc:test123",
+      );
       expect(mockWhere2).toHaveBeenCalledWith("isActive", "=", 1);
       expect(mockOrderBy).toHaveBeenCalledWith("syncedAt", "desc");
       expect(mockLimit).toHaveBeenCalledWith(100);

@@ -1,7 +1,6 @@
 import { serveStatic } from "hono/bun";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
-import { pinoLogger } from "hono-pino";
 import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
@@ -19,46 +18,26 @@ import {
 } from "./context";
 import { env } from "./env";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
+import { wideEventMiddleware } from "./middleware/wide-event";
 import adminRoutes from "./routes/admin";
 import importRoutes from "./routes/import";
 import { mainRouter } from "./routes";
-import type { Logger } from "pino";
 
 export type CreateAppOptions = {
-  logger: Logger;
   startTime: string;
   deps: AppDeps;
 };
 
-export function createApp({
-  logger,
-  startTime,
-  deps,
-}: CreateAppOptions): HonoServer {
+export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
-  // pinoLogger must run before createContextMiddleware so c.var.logger exists when
-  // ctx (and getSessionAgent’s closure) is created and later used.
   app.use(requestId());
   app.use(timing());
   if (env.isDevelopment) {
     app.use(prettyJSON());
   }
-  app.use(
-    pinoLogger({
-      pino: logger,
-      http: {
-        onResLevel(c) {
-          return c.req.path === "/healthcheck" ||
-            c.req.path.startsWith("/public") ||
-            c.req.path.startsWith("/images")
-            ? "trace"
-            : "info";
-        },
-      },
-    }),
-  );
   app.use("*", createContextMiddleware(deps));
+  app.use("*", wideEventMiddleware());
   app.use("*", async (c, next) => {
     c.set("assetUrls", await getBundleAssetUrls());
     await next();

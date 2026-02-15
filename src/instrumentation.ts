@@ -29,4 +29,6 @@ const sdk = new NodeSDK({
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
-sdk.start();
+if (!env.isDev) {
+  sdk.start();
+}

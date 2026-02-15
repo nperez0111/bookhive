@@ -37,6 +37,9 @@ RUN bun run build
 ################################################################################
 FROM base AS final
 
+ARG BUILD_SHA
+ENV BUILD_SHA=${BUILD_SHA}
+
 ENV NODE_ENV=production
 ENV PORT=8080
 

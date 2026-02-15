@@ -21,7 +21,7 @@ export async function searchBooks({
   ctx,
 }: {
   query: string;
-  ctx: Pick<AppContext, "db" | "kv" | "logger">;
+  ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext">;
 }) {
   return await readThroughCache<HiveId[]>(
     ctx.kv,
@@ -53,23 +53,19 @@ export async function searchBooks({
         try {
           await upsertBookIdentifiersBatch(ctx.db, res.data);
         } catch (error) {
-          ctx.logger.warn(
-            {
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to persist book id mappings during search",
-          );
+          ctx.addWideEventContext({
+            search_book_identifiers_persist: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
 
         const enrichmentPromises = res.data.map((book) =>
           enrichBookWithDetailedData(book, ctx as AppContext).catch((error) => {
-            ctx.logger.error(
-              {
-                bookId: book.id,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              "Background enrichment failed",
-            );
+            ctx.addWideEventContext({
+              enrichment_failed: true,
+              bookId: book.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }),
         );
 
@@ -125,16 +121,17 @@ export async function syncFollowsIfNeeded({
     const shouldSync = await shouldSyncFollows(ctx, agent.did);
     if (shouldSync) {
       await syncUserFollows(ctx, agent);
-      ctx.logger.info(
-        { userDid: agent.did },
-        "Follows sync completed on login",
-      );
+      ctx.addWideEventContext({
+        follows_sync: "completed",
+        userDid: agent.did,
+      });
     }
   } catch (error) {
-    ctx.logger.warn(
-      { userDid: agent.did, error },
-      "Failed to sync follows on login",
-    );
+    ctx.addWideEventContext({
+      follows_sync: "failed",
+      userDid: agent.did,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -183,7 +180,10 @@ export async function refetchBuzzes({
       )?.hiveId;
 
       if (!hiveId) {
-        ctx.logger.error({ record }, "hiveId not found for book");
+        ctx.addWideEventContext({
+          refetch_buzz_hive_id_missing: true,
+          record_uri: record.uri,
+        });
         return;
       }
 
@@ -279,7 +279,10 @@ export async function refetchBooks({
 
   Array.from(duplicatesByHiveId.values()).forEach((records) => {
     if (records.length > 1) {
-      ctx.logger.info({ records }, "Duplicate book found");
+      ctx.addWideEventContext({
+        duplicate_books_resolved: records.length,
+        records: records.map((r) => r.uri),
+      });
       const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
         a.value.createdAt.localeCompare(b.value.createdAt),
       );

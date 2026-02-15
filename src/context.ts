@@ -5,7 +5,6 @@ import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type { Env } from "hono-pino";
 import { getIronSession } from "iron-session";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -33,17 +32,21 @@ import sqliteKv from "./sqlite-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
 
-// Application state passed to the router and elsewhere
+/** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
+export type AddWideEventContext = (context: Record<string, unknown>) => void;
+
+// Application state passed to the router and elsewhere. No logger – request observability is via addWideEventContext + wide-event middleware.
 export type AppContext = {
   db: Database;
   kv: Storage;
   ingester: Ingester;
-  logger: Logger;
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
+  /** Add fields to the one wide event logged per request (observability). */
+  addWideEventContext: AddWideEventContext;
 };
 
 import type { BundleAssetUrls } from "./bundle-assets";
@@ -52,6 +55,10 @@ declare module "hono" {
   interface ContextVariableMap {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
+    /** Mutable bag for wide-event context; merged into the single request log. */
+    wideEventBag: Record<string, unknown>;
+    /** App logger; only wide-event middleware should call it for request-scoped logs. */
+    appLogger: Logger;
   }
 }
 
@@ -59,7 +66,8 @@ export type AppEnv = {
   Variables: {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
-  } & Env["Variables"];
+    appLogger: Logger;
+  };
 };
 
 export type HonoServer = Hono<AppEnv>;
@@ -129,7 +137,9 @@ export async function createAppDeps(): Promise<AppDeps> {
     kv,
     createBaseIdResolver(),
   );
-  const ingester = createIngester(db, kv);
+  const ingester = createIngester(db, kv, (wideEvent) =>
+    logger.info(wideEvent),
+  );
   const resolver = createCachingBidirectionalResolver(
     kv,
     createBidirectionalResolverAtcute(),
@@ -169,7 +179,10 @@ export async function getSessionAgent(
     await session.save();
     return sessionClientFromOAuthSession(oauthSession);
   } catch (err) {
-    ctx.logger.warn({ err }, "oauth restore failed");
+    ctx.addWideEventContext({
+      oauth_restore: "failed",
+      error: err instanceof Error ? err.message : String(err),
+    });
     await session.destroy();
     return null;
   }
@@ -178,13 +191,20 @@ export async function getSessionAgent(
 /** Middleware that sets request-scoped AppContext (deps + getSessionAgent, getProfile). Use on any Hono app that needs c.get("ctx"). */
 export function createContextMiddleware(deps: AppDeps) {
   return async (c: Context<AppEnv>, next: () => Promise<void>) => {
+    c.set("wideEventBag", {});
+    c.set("appLogger", deps.logger);
+
+    const { logger: _logger, ...restDeps } = deps;
     const ctx: AppContext = {
-      ...deps,
+      ...restDeps,
+      addWideEventContext(context: Record<string, unknown>) {
+        Object.assign(c.get("wideEventBag"), context);
+      },
       getSessionAgent(): Promise<SessionClient | null> {
         return lazy(() =>
           getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
             if (client) {
-              c.var.logger?.assign?.({ userDid: client.did });
+              ctx.addWideEventContext({ userDid: client.did });
             }
             return client;
           }),
