@@ -70,7 +70,6 @@ export default function (options: Options) {
 
     // Generate the API URL for logging
     const apiUrl = createApiUrl(opts);
-    console.log({ apiUrl });
 
     // Create a writable stream to handle the log data
     const destination = new Writable({

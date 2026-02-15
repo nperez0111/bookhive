@@ -1,39 +1,32 @@
 /**
- * OpenTelemetry tracing setup for Bun. Runs when imported at the top of index.ts.
- * Uses the base trace SDK (no Node SDK). Spans are created by Hono middleware
- * (opentelemetryMiddleware + instrument()).
+ * OpenTelemetry setup using the Node.js SDK.
+ * See https://opentelemetry.io/docs/languages/js/getting-started/nodejs/
  */
-import { trace } from "@opentelemetry/api";
+import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
-import {
-  BatchSpanProcessor,
-  BasicTracerProvider,
-} from "@opentelemetry/sdk-trace-base";
-import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { ConsoleSpanExporter } from "@opentelemetry/sdk-trace-base";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { env } from "./env";
 
-const provider = new BasicTracerProvider({
-  resource: new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: "bookhive",
-  }),
+const traceExporter =
+  !env.isDev &&
+  env.OPEN_OBSERVE_URL &&
+  env.OPEN_OBSERVE_USER &&
+  env.OPEN_OBSERVE_PASSWORD
+    ? new OTLPTraceExporter({
+        url: `${env.OPEN_OBSERVE_URL}/api/bookhive/v1/traces`,
+        headers: {
+          Authorization: `Basic ${Buffer.from(
+            `${env.OPEN_OBSERVE_USER}:${env.OPEN_OBSERVE_PASSWORD}`,
+          ).toString("base64")}`,
+        },
+      })
+    : new ConsoleSpanExporter();
+
+const sdk = new NodeSDK({
+  serviceName: "bookhive",
+  traceExporter,
+  instrumentations: [getNodeAutoInstrumentations()],
 });
 
-if (!env.isDev && env.OPEN_OBSERVE_URL && env.OPEN_OBSERVE_USER && env.OPEN_OBSERVE_PASSWORD) {
-  const authHeader = `Basic ${Buffer.from(
-    `${env.OPEN_OBSERVE_USER}:${env.OPEN_OBSERVE_PASSWORD}`,
-  ).toString("base64")}`;
-
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(
-      new OTLPTraceExporter({
-        url: `${env.OPEN_OBSERVE_URL}/api/bookhive/traces`,
-        headers: {
-          Authorization: authHeader,
-        },
-      }),
-    ),
-  );
-}
-
-trace.setGlobalTracerProvider(provider);
+sdk.start();

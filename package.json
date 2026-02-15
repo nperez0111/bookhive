@@ -22,6 +22,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "pino": "^10.1.0",
+    "pino-abstract-transport": "2.0.0",
     "sharp": "0.33.5"
   },
   "devDependencies": {
@@ -39,10 +41,13 @@
     "@hono/prometheus": "^1.0.2",
     "@hono/zod-validator": "^0.4.3",
     "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/exporter-trace-otlp-http": "0.56.0",
-    "@opentelemetry/resources": "1.28.0",
-    "@opentelemetry/sdk-trace-base": "1.29.0",
-    "@opentelemetry/semantic-conventions": "1.28.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.54.0",
+    "@opentelemetry/core": "2.5.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.212.0",
+    "@opentelemetry/resources": "2.5.1",
+    "@opentelemetry/sdk-node": "0.212.0",
+    "@opentelemetry/sdk-trace-base": "2.5.1",
+    "@opentelemetry/semantic-conventions": "1.29.0",
     "@tailwindcss/forms": "^0.5.10",
     "@types/bun": "latest",
     "@types/shimmer": "^1.2.0",
