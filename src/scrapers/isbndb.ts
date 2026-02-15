@@ -1,4 +1,3 @@
-import axios from "axios";
 import type { Logger } from "pino";
 import { objectHash, sha256base64 } from "ohash";
 // Type definitions
@@ -92,7 +91,7 @@ export default class IsbnDb {
 
       this.logger.trace({ params: params.toString() });
 
-      const response = await axios.get<IsbnDbSearchResponse>(
+      const response = await fetch(
         `${IsbnDb.API_URL}/books/${encodeURIComponent(query)}?${params.toString()}`,
         {
           headers: {
@@ -102,7 +101,10 @@ export default class IsbnDb {
         },
       );
 
-      return response.data.books.map((result) =>
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as IsbnDbSearchResponse;
+
+      return data.books.map((result) =>
         this.parseSearchResult(result, genericCover),
       );
     } catch (error) {
@@ -153,17 +155,17 @@ export default class IsbnDb {
     if (!this.active) return null;
 
     try {
-      const response = await axios.get<IsbnDbBook>(
-        `${IsbnDb.API_URL}/book/${isbn}`,
-        {
-          headers: {
-            Authorization: this.apiKey,
-            "Content-Type": "application/json",
-          },
+      const response = await fetch(`${IsbnDb.API_URL}/book/${isbn}`, {
+        headers: {
+          Authorization: this.apiKey,
+          "Content-Type": "application/json",
         },
-      );
+      });
 
-      return this.parseSearchResult(response.data, genericCover);
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as IsbnDbBook;
+
+      return this.parseSearchResult(data, genericCover);
     } catch (error) {
       this.logger.warn({ message: "Error looking up ISBN", error });
       return null;

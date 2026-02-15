@@ -1,5 +1,4 @@
 // Warning: This is AI slop, translated from https://github.com/janeczku/calibre-web/blob/master/cps/metadata_provider/google.py
-import axios from "axios";
 import type { Logger } from "pino";
 import { LANGUAGE_NAMES, languageMap } from "./languageNames";
 
@@ -142,11 +141,12 @@ class Google {
 
       this.logger.trace({ query: searchQuery });
 
-      const response = await axios.get<GoogleSearchResponse>(
-        `${Google.SEARCH_URL}${searchQuery}`,
-      );
+      const response = await fetch(`${Google.SEARCH_URL}${searchQuery}`);
 
-      return (response.data.items || []).map((result) =>
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as GoogleSearchResponse;
+
+      return (data.items || []).map((result) =>
         this.parseSearchResult(result, genericCover, locale),
       );
     } catch (error) {
