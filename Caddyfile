@@ -1,8 +1,0 @@
-# HTTPS — test subdomain of your domain
-# Run: caddy run   or   caddy run --config Caddyfile
-# For local only: add to /etc/hosts: 127.0.0.1 test.bookhive.buzz
-# For real DNS: point test.bookhive.buzz to this host and remove "tls internal" for Let's Encrypt
-test.bookhive.buzz {
-	tls internal
-	reverse_proxy localhost:8080
-}

@@ -8,7 +8,7 @@
     "seed:db": "bun run src/initialize.ts",
     "dev": "bun run build:assets && bun --hot run src/index.ts",
     "build:assets": "bun run scripts/build-assets.ts",
-    "build": "bun run lexgen && bun run build:server",
+    "build": "bun --bun run lexgen && bun run build:server",
     "build:server": "bun run scripts/build-server.ts",
     "test": "bun test src",
     "test:run": "bun test src --no-watch",
@@ -23,8 +23,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pino": "^10.1.0",
-    "pino-abstract-transport": "2.0.0",
     "sharp": "0.33.5"
   },
   "devDependencies": {
@@ -61,7 +59,7 @@
     "envalid": "^8.1.1",
     "eslint": "^9.39.2",
     "hono": "^4.11.9",
-    "ipx": "3.0.1",
+    "ipx": "3.1.1",
     "iron-session": "^8.0.4",
     "kysely": "^0.28.9",
     "ohash": "1.1.4",
