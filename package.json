@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@atcute/xrpc-server": "0.1.9",
     "sharp": "0.33.5"
   },
   "devDependencies": {

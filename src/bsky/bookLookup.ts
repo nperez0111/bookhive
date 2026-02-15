@@ -5,20 +5,80 @@ import type { HiveBook } from "../types";
 
 type DbCtx = { db: Database };
 
+/** Lexicon API shape for buzz.bookhive.hiveBook ($type + null → undefined). */
+export type HiveBookOutput = {
+  $type: "buzz.bookhive.hiveBook";
+  id: string;
+  title: string;
+  authors: string;
+  thumbnail: string;
+  createdAt: string;
+  updatedAt: string;
+  cover?: string;
+  description?: string;
+  rating?: number;
+  ratingsCount?: number;
+  source?: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  identifiers?: BookIdentifiers;
+};
+
 /**
- * Transform a HiveBook database row to include parsed identifiers with hiveId always included
+ * Map a hive book + identifiers to the lexicon hiveBook output shape.
+ * Use this when you already have resolved identifiers (e.g. from findBookIdentifiersByLookup).
+ */
+export function toHiveBookOutput(
+  book: HiveBook,
+  identifiers: BookIdentifiers,
+): HiveBookOutput {
+  return {
+    $type: "buzz.bookhive.hiveBook",
+    id: book.id,
+    title: book.title,
+    authors: book.authors,
+    thumbnail: book.thumbnail ?? "",
+    createdAt: book.createdAt,
+    updatedAt: book.updatedAt,
+    cover: book.cover ?? undefined,
+    description: book.description ?? undefined,
+    rating: book.rating ?? undefined,
+    ratingsCount: book.ratingsCount ?? undefined,
+    source: book.source ?? undefined,
+    sourceId: book.sourceId ?? undefined,
+    sourceUrl: book.sourceUrl ?? undefined,
+    identifiers,
+  };
+}
+
+/**
+ * Transform a HiveBook DB row to the lexicon hiveBook output shape.
+ * Parses identifiers from book.identifiers (JSON string) with hiveId always included.
  */
 export function transformBookWithIdentifiers<
-  T extends { id: string; identifiers: string | null | undefined },
->(book: T): Omit<T, "identifiers"> & { identifiers: BookIdentifiers } {
-  const { identifiers, ...rest } = book;
-  return {
-    ...rest,
-    identifiers: {
-      hiveId: book.id,
-      ...(identifiers ? (JSON.parse(identifiers) as BookIdentifiers) : {}),
-    },
+  T extends { id: string; identifiers: string | null | undefined } & Pick<
+    HiveBook,
+    | "title"
+    | "authors"
+    | "thumbnail"
+    | "createdAt"
+    | "updatedAt"
+    | "cover"
+    | "description"
+    | "rating"
+    | "ratingsCount"
+    | "source"
+    | "sourceId"
+    | "sourceUrl"
+  >,
+>(book: T): HiveBookOutput {
+  const identifiers: BookIdentifiers = {
+    hiveId: book.id,
+    ...(book.identifiers
+      ? (JSON.parse(book.identifiers) as BookIdentifiers)
+      : {}),
   };
+  return toHiveBookOutput(book as HiveBook, identifiers);
 }
 
 export async function findBookIdentifiersByLookup({

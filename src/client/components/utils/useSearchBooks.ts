@@ -39,8 +39,9 @@ export function useSearchBooks(
         if (!res.ok) throw new Error("Search failed");
         return res.json();
       })
-      .then((data: HiveBook[]) => {
-        setState({ status: "success", data: Array.isArray(data) ? data : [] });
+      .then((data: { books?: HiveBook[] } | HiveBook[]) => {
+        const list = Array.isArray(data) ? data : (data?.books ?? []);
+        setState({ status: "success", data: list });
       })
       .catch(() => {
         setState((prev) => ({ status: "error", data: prev.data }));

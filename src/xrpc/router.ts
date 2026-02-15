@@ -1,11 +1,20 @@
 /**
  * XRPC router: mounts the four BookHive query methods at /xrpc/*
- * Handlers are registered as addQuery-style routes; pass app and deps from createRouter.
+ * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
-import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
-import { z } from "zod";
-import { ids } from "../bsky/lexicon";
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  XRPCRouter,
+  json,
+  XRPCError,
+  AuthRequiredError,
+} from "@atcute/xrpc-server";
+import {
+  BuzzBookhiveSearchBooks,
+  BuzzBookhiveGetBookIdentifiers,
+  BuzzBookhiveGetBook,
+  BuzzBookhiveGetProfile,
+} from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
   GetBookOutputSchema,
@@ -14,6 +23,7 @@ import type {
 import {
   findBookIdentifiersByLookup,
   findHiveBookByBookIdentifiersLookup,
+  toHiveBookOutput,
   transformBookWithIdentifiers,
 } from "../bsky/bookLookup";
 import { BOOK_STATUS_MAP } from "../constants";
@@ -63,27 +73,25 @@ export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
   }) => Promise<ProfileViewDetailed | null>;
 };
 
+const xrpcContextStorage = new AsyncLocalStorage<XrpcContext>();
+
+function getCtx(): XrpcContext {
+  const ctx = xrpcContextStorage.getStore();
+  if (!ctx)
+    throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
+  return ctx;
+}
+
 export function createXrpcRouter<
   E extends XrpcContext,
   V extends { ctx: E } = { ctx: E },
->(app: Hono<{ Variables: V }>, deps: XrpcDeps<E>): void {
-  const xrpcApp = new Hono<{ Variables: V }>();
+>(app: import("hono").Hono<{ Variables: V }>, deps: XrpcDeps<E>): void {
+  const router = new XRPCRouter();
 
-  // buzz.bookhive.searchBooks
-  xrpcApp.get(
-    "/" + ids.BuzzBookhiveSearchBooks,
-    zValidator(
-      "query",
-      z.object({
-        q: z.string(),
-        limit: z.coerce.number().default(25),
-        offset: z.coerce.number().optional().default(0),
-        id: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      const { q, limit, offset, id } = c.req.valid("query");
-      const ctx = c.get("ctx");
+  router.addQuery(BuzzBookhiveSearchBooks, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { q, limit = 25, offset = 0, id } = params;
 
       if (id) {
         const book = await ctx.db
@@ -93,73 +101,50 @@ export function createXrpcRouter<
           .limit(1)
           .executeTakeFirst();
 
-        return c.json(
-          [book]
-            .filter((a) => a !== undefined)
-            .map(transformBookWithIdentifiers),
-        );
+        const books = [book]
+          .filter((a): a is HiveBook => a !== undefined)
+          .map((b) => transformBookWithIdentifiers(b));
+        return json({ books });
       }
 
       const bookIds = await deps.searchBooks({ query: q, ctx });
 
       if (!bookIds.length) {
-        return c.json([]);
+        return json({ books: [] });
       }
 
       const books = await ctx.db
         .selectFrom("hive_book")
         .selectAll()
         .where("id", "in", bookIds)
-        .limit(limit * offset + limit)
+        .limit(limit * (offset ?? 0) + limit)
         .execute();
 
       books.sort((a, b) => bookIds.indexOf(a.id) - bookIds.indexOf(b.id));
 
-      return c.json(
-        books.slice(offset, offset + limit).map(transformBookWithIdentifiers),
-      );
+      const slice = books.slice(offset ?? 0, (offset ?? 0) + limit);
+      return json({
+        books: slice.map((b) => transformBookWithIdentifiers(b)),
+        offset: (offset ?? 0) + slice.length,
+      });
     },
-  );
+  });
 
-  // buzz.bookhive.getBookIdentifiers
-  xrpcApp.get(
-    "/" + ids.BuzzBookhiveGetBookIdentifiers,
-    zValidator(
-      "query",
-      z
-        .object({
-          hiveId: z.string().optional(),
-          isbn: z.string().optional(),
-          isbn13: z.string().optional(),
-          goodreadsId: z.string().optional(),
-        })
-        .refine(
-          ({ hiveId, isbn, isbn13, goodreadsId }) =>
-            Boolean(hiveId || isbn || isbn13 || goodreadsId),
-          {
-            message:
-              "At least one identifier is required: hiveId, isbn, isbn13, or goodreadsId",
-          },
-        ),
-    ),
-    async (c) => {
-      const ctx = c.get("ctx");
-      const query = c.req.valid("query");
-
-      const hiveId = normalizeHiveId(query.hiveId);
-      const isbn = normalizeIsbn(query.isbn);
-      const isbn13 = normalizeIsbn13(query.isbn13);
-      const goodreadsId = normalizeGoodreadsId(query.goodreadsId);
+  router.addQuery(BuzzBookhiveGetBookIdentifiers, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const hiveId = normalizeHiveId(params.hiveId);
+      const isbn = normalizeIsbn(params.isbn);
+      const isbn13 = normalizeIsbn13(params.isbn13);
+      const goodreadsId = normalizeGoodreadsId(params.goodreadsId);
 
       if (!hiveId && !isbn && !isbn13 && !goodreadsId) {
-        return c.json(
-          {
-            success: false,
-            message:
-              "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
-          },
-          400,
-        );
+        throw new XRPCError({
+          status: 400,
+          error: "InvalidRequest",
+          description:
+            "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
+        });
       }
 
       let bookIdentifiersRow = await findBookIdentifiersByLookup({
@@ -188,7 +173,11 @@ export function createXrpcRouter<
       }
 
       if (!bookIdentifiersRow && !hiveBook) {
-        return c.json({ success: false, message: "Book not found" }, 404);
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "Book not found",
+        });
       }
 
       if (hiveBook) {
@@ -205,40 +194,33 @@ export function createXrpcRouter<
 
       if (!bookIdentifiersRow) {
         if (!hiveBook) {
-          return c.json({ success: false, message: "Book not found" }, 404);
+          throw new XRPCError({
+            status: 404,
+            error: "NotFound",
+            description: "Book not found",
+          });
         }
-        const response = {
+        const response: GetBookIdentifiersOutputSchema = {
           bookIdentifiers: toBookIdentifiersOutput(
             deriveBookIdentifiers(hiveBook),
           ),
-        } satisfies GetBookIdentifiersOutputSchema;
-        return c.json(response);
+        };
+        return json(response);
       }
 
-      const response = {
+      const response: GetBookIdentifiersOutputSchema = {
         bookIdentifiers: toBookIdentifiersOutput(bookIdentifiersRow),
-      } satisfies GetBookIdentifiersOutputSchema;
-      return c.json(response);
+      };
+      return json(response);
     },
-  );
+  });
 
-  // buzz.bookhive.getBook
-  xrpcApp.get(
-    "/" + ids.BuzzBookhiveGetBook,
-    zValidator(
-      "query",
-      z.object({
-        id: z.string().optional(),
-        isbn: z.string().optional(),
-        isbn13: z.string().optional(),
-        goodreadsId: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      const { id, isbn, isbn13, goodreadsId } = c.req.valid("query");
+  router.addQuery(BuzzBookhiveGetBook, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      const { id, isbn, isbn13, goodreadsId } = params;
       let hiveId = id as HiveId | undefined;
-      const ctx = c.get("ctx");
 
       if (!id) {
         hiveId = (
@@ -252,7 +234,11 @@ export function createXrpcRouter<
       }
 
       if (!hiveId) {
-        return c.json({ success: false, message: "Book not found" }, 400);
+        throw new XRPCError({
+          status: 400,
+          error: "InvalidRequest",
+          description: "Book not found",
+        });
       }
 
       const book = await ctx.db
@@ -263,7 +249,11 @@ export function createXrpcRouter<
         .executeTakeFirst();
 
       if (!book) {
-        return c.json({ success: false, message: "Book not found" }, 404);
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "Book not found",
+        });
       }
 
       const comments = await ctx.db
@@ -330,7 +320,22 @@ export function createXrpcRouter<
         ),
       );
 
-      const response = {
+      const bookIdentifiers: BookIdentifiers = book.identifiers
+        ? {
+            hiveId: book.id,
+            ...(JSON.parse(book.identifiers) as BookIdentifiers),
+          }
+        : {
+            hiveId: book.id,
+            ...toBookIdentifiersOutput(
+              await findBookIdentifiersByLookup({ ctx, hiveId: book.id }),
+            ),
+          };
+
+      const response: GetBookOutputSchema & {
+        userBookUri?: string;
+        userBookCid?: string;
+      } = {
         createdAt: userBook?.createdAt,
         startedAt: userBook?.startedAt ?? undefined,
         finishedAt: userBook?.finishedAt ?? undefined,
@@ -340,33 +345,7 @@ export function createXrpcRouter<
         bookProgress: userBook?.bookProgress ?? undefined,
         userBookUri: userBook?.uri ?? undefined,
         userBookCid: userBook?.cid ?? undefined,
-        book: {
-          $type: "buzz.bookhive.hiveBook",
-          id: book.id,
-          title: book.title,
-          authors: book.authors,
-          cover: book.cover ?? undefined,
-          createdAt: book.createdAt,
-          updatedAt: book.updatedAt,
-          rating: book.rating ?? undefined,
-          ratingsCount: book.ratingsCount ?? undefined,
-          thumbnail: book.thumbnail ?? undefined,
-          description: book.description ?? undefined,
-          source: book.source ?? undefined,
-          sourceId: book.sourceId ?? undefined,
-          sourceUrl: book.sourceUrl ?? undefined,
-          identifiers: {
-            hiveId: book.id,
-            ...(book.identifiers
-              ? (JSON.parse(book.identifiers) as BookIdentifiers)
-              : toBookIdentifiersOutput(
-                  await findBookIdentifiersByLookup({
-                    ctx,
-                    hiveId: book.id,
-                  }),
-                )),
-          },
-        },
+        book: toHiveBookOutput(book, bookIdentifiers),
         comments: comments.map((c) => ({
           book: { cid: c.bookCid, uri: c.bookUri },
           comment: c.comment,
@@ -401,39 +380,23 @@ export function createXrpcRouter<
           userDid: b.userDid,
           userHandle: didToHandle[b.userDid] ?? b.userDid,
         })),
-      } satisfies GetBookOutputSchema & {
-        userBookUri?: string;
-        userBookCid?: string;
       };
 
-      return c.json(response);
+      return json(response as never);
     },
-  );
+  });
 
-  // buzz.bookhive.getProfile
-  xrpcApp.get(
-    "/" + ids.BuzzBookhiveGetProfile,
-    zValidator(
-      "query",
-      z.object({
-        did: z.string().optional(),
-        handle: z.string().optional(),
-      }),
-    ),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      let { did, handle } = c.req.valid("query");
-      const ctx = c.get("ctx");
+  router.addQuery(BuzzBookhiveGetProfile, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      let { did, handle } = params;
 
       if (!did && !handle) {
         if (!agent) {
-          return c.json(
-            {
-              success: false,
-              message: "No did or handle specified, and no session",
-            },
-            401,
-          );
+          throw new AuthRequiredError({
+            description: "No did or handle specified, and no session",
+          });
         }
         did = agent.did;
       }
@@ -443,7 +406,11 @@ export function createXrpcRouter<
       }
 
       if (!did) {
-        return c.json({ success: false, message: "User not found" }, 404);
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "User not found",
+        });
       }
 
       const books = await ctx.db
@@ -500,7 +467,7 @@ export function createXrpcRouter<
             )
           : undefined;
 
-      const response = {
+      const response: GetProfileOutputSchema = {
         profile: {
           displayName: profile?.displayName ?? profile?.handle ?? did,
           avatar: profile?.avatar,
@@ -597,11 +564,13 @@ export function createXrpcRouter<
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
           )
           .slice(0, 15),
-      } satisfies GetProfileOutputSchema;
+      };
 
-      return c.json(response);
+      return json(response as unknown as GetProfileOutputSchema);
     },
-  );
+  });
 
-  app.route("/xrpc", xrpcApp);
+  app.all("/xrpc/*", (c) =>
+    xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)),
+  );
 }
