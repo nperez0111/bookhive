@@ -58,8 +58,8 @@ export const BuzzBook: FC<{
         )}
       </a>
 
-      <a href={`/profile/${userHandle}`} class="cursor-pointer">
-        <div class="mt-5 px-3 pb-5">
+      <div class="mt-5 px-3 pb-5">
+        <a href={`/books/${book.hiveId}`} class="block cursor-pointer">
           <h5
             class="book-title line-clamp-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white"
             style={`--book-title-name: book-title-${book.hiveId}`}
@@ -106,9 +106,14 @@ export const BuzzBook: FC<{
               </span>
             )}
           </div>
-          <span class="line-clamp-1 block font-semibold text-ellipsis">
-            @{userHandle}
-          </span>
+        </a>
+        <a
+          href={`/profile/${userHandle}`}
+          class="mt-1 line-clamp-1 block font-semibold text-ellipsis hover:underline"
+        >
+          @{userHandle}
+        </a>
+        <a href={`/books/${book.hiveId}`} class="block cursor-pointer">
           {book.status && book.status in BOOK_STATUS_PAST_TENSE_MAP
             ? BOOK_STATUS_PAST_TENSE_MAP[
                 book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP
@@ -121,8 +126,8 @@ export const BuzzBook: FC<{
           {book.review && book.review.length > 0 && (
             <span> and reviewed it</span>
           )}
-        </div>
-      </a>
+        </a>
+      </div>
     </div>
   );
 };
