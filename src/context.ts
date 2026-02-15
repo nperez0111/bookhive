@@ -184,7 +184,7 @@ export function createContextMiddleware(deps: AppDeps) {
         return lazy(() =>
           getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
             if (client) {
-              c.var.logger.assign({ userDid: client.did });
+              c.var.logger?.assign?.({ userDid: client.did });
             }
             return client;
           }),
