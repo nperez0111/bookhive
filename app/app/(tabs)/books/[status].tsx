@@ -21,7 +21,7 @@ import {
   Pressable,
   ScrollView,
 } from "react-native";
-import { UserBook } from "../../../../src/bsky/lexicon/types/buzz/bookhive/defs";
+import { UserBook } from "../../../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 const STATUS_CONFIG = {
   reading: {
@@ -68,7 +68,7 @@ const sortBooks = (
   books: UserBook[],
   sortBy: SortBy,
   sortOrder: SortOrder,
-  bookStatus: string
+  bookStatus: string,
 ): UserBook[] => {
   const sorted = [...books].sort((a, b) => {
     let aValue: string | number | null = null;
@@ -130,7 +130,9 @@ function FilteredBooksContent({ status }: { status: string }) {
 
   const filteredBooks = useMemo(() => {
     if (!profile.data) return [];
-    const filtered = profile.data.books.filter((book) => book.status === config.status);
+    const filtered = profile.data.books.filter(
+      (book) => book.status === config.status,
+    );
     return sortBooks(filtered, sortBy, sortOrder, config.status);
   }, [profile.data, config.status, sortBy, sortOrder]);
 
@@ -269,11 +271,17 @@ function FilteredBooksContent({ status }: { status: string }) {
     } else {
       // Set new sort and default to desc for dates, asc for text
       setSortBy(newSortBy);
-      setSortOrder(newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc");
+      setSortOrder(
+        newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc",
+      );
     }
   };
 
-  const sortOptions: { key: SortBy; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
+  const sortOptions: {
+    key: SortBy;
+    label: string;
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+  }[] = [
     { key: "dateAdded", label: "Date Added", icon: "calendar-outline" },
     { key: "dateRead", label: "Date Read", icon: "book-outline" },
     { key: "title", label: "Title", icon: "text-outline" },
@@ -304,7 +312,9 @@ function FilteredBooksContent({ status }: { status: string }) {
                     backgroundColor: isActive
                       ? colors.primary
                       : colors.buttonBackground,
-                    borderColor: isActive ? colors.primary : colors.buttonBorder,
+                    borderColor: isActive
+                      ? colors.primary
+                      : colors.buttonBorder,
                   },
                 ]}
               >

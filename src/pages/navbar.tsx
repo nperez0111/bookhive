@@ -1,6 +1,6 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 
 export const Navbar: FC<{
   profile?: ProfileViewDetailed | null;

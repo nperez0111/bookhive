@@ -1,12 +1,11 @@
 import { iterateAtpRepo } from "@atcute/car";
-import { Agent, jsonToLex } from "@atproto/api";
-import { TID } from "@atproto/common";
+import * as TID from "@atcute/tid";
+
+import type { SessionClient } from "../auth/client";
 import { parseISO, isValid, startOfDay } from "date-fns";
 
-import type { AppContext } from "..";
-import { ids } from "../bsky/lexicon/lexicons";
-import * as BookRecord from "../bsky/lexicon/types/buzz/bookhive/book";
-import * as BuzzRecord from "../bsky/lexicon/types/buzz/bookhive/buzz";
+import type { AppContext } from "../context";
+import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
 import type { HiveId, UserBook, UserBookRow } from "../types";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
@@ -109,13 +108,13 @@ export async function getUserBook({
   hiveId,
 }: {
   ctx: AppContext;
-  agent: Agent;
+  agent: SessionClient;
   hiveId: HiveId;
 }): Promise<UserBook | null> {
   const rawUserBook = await ctx.db
     .selectFrom("user_book")
     .selectAll()
-    .where("userDid", "=", agent.assertDid)
+    .where("userDid", "=", agent.did)
     .where("hiveId", "=", hiveId)
     .executeTakeFirst();
 
@@ -162,18 +161,20 @@ export async function getBookRecord({
   cid,
   uri,
 }: {
-  agent: Agent;
+  agent: SessionClient;
   cid: string;
   uri: string;
 }): Promise<BookRecord.Record | null> {
-  const originalBook = (
-    await agent.com.atproto.repo.getRecord({
-      repo: agent.assertDid,
+  const res = await agent.get("com.atproto.repo.getRecord", {
+    params: {
+      repo: agent.did,
       collection: ids.BuzzBookhiveBook,
       rkey: uri.split("/").at(-1)!,
-      cid: cid,
-    })
-  ).data.value as BookRecord.Record | undefined;
+      cid,
+    },
+  });
+  const payload = res.ok ? (res.data as { value?: unknown }) : null;
+  const originalBook = payload?.value as BookRecord.Record | undefined;
 
   if (!originalBook) {
     return null;
@@ -192,7 +193,7 @@ export async function updateBookRecord({
   updates,
 }: {
   ctx: AppContext;
-  agent: Agent;
+  agent: SessionClient;
   hiveId: HiveId;
   updates: Partial<BookRecord.Record> & { coverImage?: string };
 }): Promise<{ book: BookRecord.Record; userBook: UserBook }> {
@@ -288,25 +289,31 @@ export async function updateBookRecord({
 
   const record = book.value as BookRecord.Record;
 
-  const response = await agent.com.atproto.repo.applyWrites({
-    repo: agent.assertDid,
-    writes: [
-      {
-        $type: originalBook
-          ? "com.atproto.repo.applyWrites#update"
-          : "com.atproto.repo.applyWrites#create",
-        collection: ids.BuzzBookhiveBook,
-        rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.nextStr(),
-        value: record,
-      },
-    ],
+  const response = await agent.post("com.atproto.repo.applyWrites", {
+    input: {
+      repo: agent.did,
+      writes: [
+        {
+          $type: originalBook
+            ? "com.atproto.repo.applyWrites#update"
+            : "com.atproto.repo.applyWrites#create",
+          collection: ids.BuzzBookhiveBook,
+          rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.now(),
+          value: record,
+        },
+      ],
+    },
   });
 
-  const firstResult = response.data.results?.[0];
+  type ApplyOut = {
+    results?: Array<{ $type: string; uri?: string; cid?: string }>;
+  };
+  const applyData = response.ok ? (response.data as ApplyOut) : null;
+  const firstResult = applyData?.results?.[0];
   if (
-    !response.success ||
-    !response.data.results ||
-    response.data.results.length === 0 ||
+    !response.ok ||
+    !applyData?.results ||
+    applyData.results.length === 0 ||
     !firstResult ||
     !(
       firstResult.$type === "com.atproto.repo.applyWrites#updateResult" ||
@@ -316,9 +323,9 @@ export async function updateBookRecord({
     throw new Error("Failed to record book");
   }
   const nextUserBook = {
-    uri: firstResult.uri,
-    cid: firstResult.cid,
-    userDid: agent.assertDid,
+    uri: firstResult.uri!,
+    cid: firstResult.cid!,
+    userDid: agent.did,
     createdAt: record.createdAt,
     authors: record.authors,
     title: record.title,
@@ -348,7 +355,7 @@ export async function updateBookRecords({
   overwrite = false,
 }: {
   ctx: AppContext;
-  agent: Agent;
+  agent: SessionClient;
   updates: Map<HiveId, Partial<BookRecord.Record> & { coverImage?: string }>;
   bookRecords?: Promise<{
     books: Map<string, BookRecord.Record>;
@@ -439,9 +446,9 @@ export async function updateBookRecords({
     updatesToApply.push({
       type: originalBook ? "update" : "create",
       record: record,
-      rkey: rkey ?? TID.nextStr(),
+      rkey: rkey ?? TID.now(),
       userBook: {
-        userDid: agent.assertDid,
+        userDid: agent.did,
         createdAt: record.createdAt,
         authors: record.authors,
         title: record.title,
@@ -466,54 +473,61 @@ export async function updateBookRecords({
   await Promise.all(
     updatesToApply.map(async (u) => {
       if (!u.record.cover) {
-        u.record.cover = await uploadImageBlob(
+        u.record.cover = (await uploadImageBlob(
           u.originalUpdate.coverImage,
           agent,
-        );
+        )) as typeof u.record.cover;
       }
       return u;
     }),
   );
 
-  const response = await agent.com.atproto.repo.applyWrites({
-    repo: agent.assertDid,
-    writes: updatesToApply.map(({ type, record, rkey }) => ({
-      $type: `com.atproto.repo.applyWrites#${type}`,
-      collection: ids.BuzzBookhiveBook,
-      rkey,
-      value: record,
-    })),
+  const response = await agent.post("com.atproto.repo.applyWrites", {
+    input: {
+      repo: agent.did,
+      writes: updatesToApply.map(({ type, record, rkey }) => ({
+        $type: `com.atproto.repo.applyWrites#${type}`,
+        collection: ids.BuzzBookhiveBook,
+        rkey,
+        value: record,
+      })),
+    },
   });
 
-  if (
-    !response.success ||
-    !response.data.results ||
-    response.data.results.length === 0
-  ) {
+  type ApplyOutBulk = {
+    results?: Array<{ $type: string; uri?: string; cid?: string }>;
+  };
+  const applyData2 = response.ok ? (response.data as ApplyOutBulk) : null;
+  if (!response.ok || !applyData2?.results || applyData2.results.length === 0) {
     throw new Error("Failed to record books");
   }
 
-  await response.data.results.reduce(async (acc, result, index) => {
-    await acc;
-    const update = updatesToApply[index];
-    if (
-      result.$type === "com.atproto.repo.applyWrites#updateResult" ||
-      result.$type === "com.atproto.repo.applyWrites#createResult"
-    ) {
-      await updateUserBook({
-        ctx,
-        userBook: { ...update.userBook, uri: result.uri, cid: result.cid },
-      });
-    }
-  }, Promise.resolve());
-
-  ctx.logger.info(
-    {
-      userDid: agent.assertDid,
-      bookCount: updatesToApply.length,
+  await applyData2.results.reduce(
+    async (
+      acc: Promise<void>,
+      result: { $type: string; uri?: string; cid?: string },
+      index: number,
+    ) => {
+      await acc;
+      const update = updatesToApply[index];
+      if (
+        result.$type === "com.atproto.repo.applyWrites#updateResult" ||
+        result.$type === "com.atproto.repo.applyWrites#createResult"
+      ) {
+        await updateUserBook({
+          ctx,
+          userBook: { ...update.userBook, uri: result.uri!, cid: result.cid! },
+        });
+      }
     },
-    "Wrote books to PDS & DB",
+    Promise.resolve(),
   );
+
+  ctx.addWideEventContext({
+    event: "wrote_books",
+    userDid: agent.did,
+    book_count: updatesToApply.length,
+  });
 
   return;
 }
@@ -524,10 +538,10 @@ export async function updateBookRecords({
 export async function getUserRepoRecords({
   ctx,
   agent,
-  did = agent.assertDid,
+  did = agent.did,
 }: {
   ctx: AppContext;
-  agent: Agent;
+  agent: SessionClient;
   did?: string;
 }): Promise<{
   /**
@@ -539,9 +553,13 @@ export async function getUserRepoRecords({
    */
   buzzes: Map<string, BuzzRecord.Record>;
 }> {
-  const { data } = await agent.com.atproto.sync.getRepo({
-    did,
+  const res = await agent.get("com.atproto.sync.getRepo", {
+    params: { did },
+    as: "bytes",
   });
+  const data: Uint8Array = res.ok
+    ? (res.data as Uint8Array)
+    : new Uint8Array(0);
 
   const books = new Map<string, BookRecord.Record>();
   const buzzes = new Map<string, BuzzRecord.Record>();
@@ -552,7 +570,7 @@ export async function getUserRepoRecords({
         // https://github.com/bluesky-social/atproto/issues/3866 to get the validation to pass
         // Need to parse the whole object into a JSON, then parse it back into a Lexicon object
         const book = BookRecord.validateRecord(
-          jsonToLex(JSON.parse(JSON.stringify(value))),
+          JSON.parse(JSON.stringify(value)) as BookRecord.Record,
         );
         if (book.success) {
           books.set(key, book.value);
@@ -563,7 +581,7 @@ export async function getUserRepoRecords({
         // https://github.com/bluesky-social/atproto/issues/3866 to get the validation to pass
         // Need to parse the whole object into a JSON, then parse it back into a Lexicon object
         const buzz = BuzzRecord.validateRecord(
-          jsonToLex(JSON.parse(JSON.stringify(value))),
+          JSON.parse(JSON.stringify(value)) as BuzzRecord.Record,
         );
         if (buzz.success) {
           buzzes.set(key, buzz.value);
@@ -573,14 +591,12 @@ export async function getUserRepoRecords({
     }
   }
 
-  ctx.logger.info(
-    {
-      userDid: did,
-      bookCount: books.size,
-      buzzCount: buzzes.size,
-    },
-    "Fetched books & buzzes",
-  );
+  ctx.addWideEventContext({
+    event: "fetched_repo",
+    userDid: did,
+    book_count: books.size,
+    buzz_count: buzzes.size,
+  });
 
   return { books, buzzes };
 }

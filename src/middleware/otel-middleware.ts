@@ -35,7 +35,6 @@ export const opentelemetryMiddleware =
         await next();
       });
       if (ctx.error) {
-        ctx.get("ctx").logger.error({ error: ctx.error.message });
         span.recordException(ctx.error);
         span.setStatus({
           code: SpanStatusCode.ERROR,
@@ -45,9 +44,6 @@ export const opentelemetryMiddleware =
         span.setStatus({ code: SpanStatusCode.OK });
       }
     } catch (error) {
-      ctx.get("ctx").logger.error({
-        error: error instanceof Error ? error.message : "unknown error",
-      });
       span.recordException(error as Error);
       span.setStatus({
         code: SpanStatusCode.ERROR,

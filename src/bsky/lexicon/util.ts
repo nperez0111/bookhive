@@ -2,7 +2,7 @@
  * GENERATED CODE - DO NOT MODIFY
  */
 
-import { type ValidationResult } from "@atproto/lexicon";
+import type { ValidationResult } from "./validators.js";
 
 export type OmitKey<T, K extends keyof T> = {
   [K2 in keyof T as K2 extends K ? never : K2]: T[K2];

@@ -1,7 +1,8 @@
 import tailwindAnimated from "tailwindcss-animated";
 import forms from "@tailwindcss/forms";
+import * as tailwindcss from "tailwindcss";
 
-/** @type {import('tailwindcss').Config} */
+/** @type {tailwindcss.Config} */
 export default {
   content: ["./src/index.css", "./src/pages/**/*.{js,ts,jsx,tsx}", "./src/client/**/*.{js,ts,jsx,tsx}"],
   theme: {

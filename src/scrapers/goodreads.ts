@@ -1,5 +1,3 @@
-import axios from "axios";
-import type { Logger } from "pino";
 import type { HiveBook } from "../types";
 import { getHiveId } from "./getHiveId";
 
@@ -38,11 +36,9 @@ class Goodreads {
     "https://www.goodreads.com/book/auto_complete";
 
   private readonly active: boolean;
-  private readonly logger: Logger;
 
-  constructor(logger: Logger, active: boolean = true) {
+  constructor(active: boolean = true) {
     this.active = active;
-    this.logger = logger;
   }
 
   async search(
@@ -60,9 +56,7 @@ class Goodreads {
         q: query,
       });
 
-      this.logger.trace({ params: params.toString() });
-
-      const response = await axios.get<GoodreadsBook[]>(
+      const response = await fetch(
         `${Goodreads.SEARCH_URL}?${params.toString()}`,
         {
           headers: {
@@ -74,16 +68,11 @@ class Goodreads {
         },
       );
 
-      return response.data.map((result) =>
-        this.parseSearchResult(result, genericCover),
-      );
-    } catch (error) {
-      this.logger.warn(
-        {
-          error,
-        },
-        "Error searching Goodreads",
-      );
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as GoodreadsBook[];
+
+      return data.map((result) => this.parseSearchResult(result, genericCover));
+    } catch {
       return [];
     }
   }

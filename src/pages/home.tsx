@@ -1,9 +1,10 @@
 import { type FC, Fragment } from "hono/jsx";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
 import { BookFields } from "../db";
+import type { Book } from "../types";
 import { LibraryImport } from "./import";
 import { BuzzSection } from "./components/buzz";
 
@@ -183,73 +184,35 @@ function Features() {
   );
 }
 
-async function LatestActivity() {
-  const c = useRequestContext();
-  startTime(c, "latestBuzzes");
-
-  const latestBuzzes = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
-    .orderBy("user_book.createdAt", "desc")
-    .limit(100)
-    .execute();
-  endTime(c, "latestBuzzes");
-
-  startTime(c, "didHandleMap");
-  const didHandleMap = await c
-    .get("ctx")
-    .resolver.resolveDidsToHandles(latestBuzzes.map((book) => book.userDid));
-  endTime(c, "didHandleMap");
-
+function LatestActivitySection({
+  books,
+  didHandleMap,
+}: {
+  books: Book[];
+  didHandleMap: Record<string, string>;
+}) {
   return (
     <BuzzSection
       title="Recent buzzes"
       subtitle="See what others are reading and what they think about it."
-      books={latestBuzzes}
+      books={books}
       didHandleMap={didHandleMap}
     />
   );
 }
 
-async function FriendsBuzzes() {
-  const c = useRequestContext();
-  const profile = await c.get("ctx").getProfile();
-
-  if (!profile) {
-    return <Fragment />; // Don't show friends buzzes if user is not logged in
-  }
-
-  startTime(c, "friendsBuzzes");
-  const friendsBuzzes = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
-    .select(BookFields)
-    .where("user_follows.userDid", "=", profile.did)
-    .where("user_follows.isActive", "=", 1)
-    .orderBy("user_book.createdAt", "desc")
-    .limit(50)
-    .execute();
-  endTime(c, "friendsBuzzes");
-
-  if (friendsBuzzes.length === 0) {
-    return <Fragment />; // Don't show section if no friends buzzes
-  }
-
-  startTime(c, "friendsDidHandleMap");
-  const didHandleMap = await c
-    .get("ctx")
-    .resolver.resolveDidsToHandles(friendsBuzzes.map((book) => book.userDid));
-  endTime(c, "friendsDidHandleMap");
-
+function FriendsBuzzesSection({
+  books,
+  didHandleMap,
+}: {
+  books: Book[];
+  didHandleMap: Record<string, string>;
+}) {
   return (
     <BuzzSection
       title="Recent buzzes from friends"
       subtitle="See what your followers are reading and what they think about it."
-      books={friendsBuzzes}
+      books={books}
       didHandleMap={didHandleMap}
     />
   );
@@ -261,6 +224,46 @@ export const Home: FC<Props> = async () => {
   startTime(c, "profile");
   const profile = await c.get("ctx").getProfile();
   endTime(c, "profile");
+
+  startTime(c, "latestBuzzes");
+  const latestBuzzes = await c
+    .get("ctx")
+    .db.selectFrom("user_book")
+    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+    .select(BookFields)
+    .orderBy("user_book.createdAt", "desc")
+    .limit(100)
+    .execute();
+  endTime(c, "latestBuzzes");
+
+  let friendsBuzzes: Awaited<typeof latestBuzzes> = [];
+  if (profile) {
+    startTime(c, "friendsBuzzes");
+    friendsBuzzes = await c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
+      .select(BookFields)
+      .where("user_follows.userDid", "=", profile.did)
+      .where("user_follows.isActive", "=", 1)
+      .orderBy("user_book.createdAt", "desc")
+      .limit(50)
+      .execute();
+    endTime(c, "friendsBuzzes");
+  }
+
+  const allDids = [
+    ...new Set([
+      ...latestBuzzes.map((b) => b.userDid),
+      ...friendsBuzzes.map((b) => b.userDid),
+    ]),
+  ];
+  startTime(c, "didHandleMap");
+  const didHandleMap = await c
+    .get("ctx")
+    .resolver.resolveDidsToHandles(allDids);
+  endTime(c, "didHandleMap");
 
   return (
     <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
@@ -282,8 +285,16 @@ export const Home: FC<Props> = async () => {
           <Features />
         </Fragment>
       )}
-      <FriendsBuzzes />
-      <LatestActivity />
+      {friendsBuzzes.length > 0 ? (
+        <FriendsBuzzesSection
+          books={friendsBuzzes as Book[]}
+          didHandleMap={didHandleMap}
+        />
+      ) : null}
+      <LatestActivitySection
+        books={latestBuzzes as Book[]}
+        didHandleMap={didHandleMap}
+      />
       <div class="my-16 text-center text-gray-500">
         See this project&nbsp;
         <a

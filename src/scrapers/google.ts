@@ -1,6 +1,4 @@
 // Warning: This is AI slop, translated from https://github.com/janeczku/calibre-web/blob/master/cps/metadata_provider/google.py
-import axios from "axios";
-import type { Logger } from "pino";
 import { LANGUAGE_NAMES, languageMap } from "./languageNames";
 
 // Type definitions
@@ -69,11 +67,9 @@ class Google {
     "https://www.googleapis.com/books/v1/volumes?q=";
 
   private readonly active: boolean;
-  private readonly logger: Logger;
 
-  constructor(logger: Logger, active: boolean = true) {
+  constructor(active: boolean = true) {
     this.active = active;
-    this.logger = logger;
   }
 
   private getTitleTokens(
@@ -140,17 +136,15 @@ class Google {
       // For now, we are only searching in one language
       searchQuery += "&langRestrict=" + locale;
 
-      this.logger.trace({ query: searchQuery });
+      const response = await fetch(`${Google.SEARCH_URL}${searchQuery}`);
 
-      const response = await axios.get<GoogleSearchResponse>(
-        `${Google.SEARCH_URL}${searchQuery}`,
-      );
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as GoogleSearchResponse;
 
-      return (response.data.items || []).map((result) =>
+      return (data.items || []).map((result) =>
         this.parseSearchResult(result, genericCover, locale),
       );
-    } catch (error) {
-      this.logger.warn({ message: "Error searching Google", error });
+    } catch {
       return [];
     }
   }
@@ -287,22 +281,10 @@ class Google {
     const UNKNOWN_TRANSLATION = "Unknown";
 
     try {
-      // Get language names for locale
       const names = LANGUAGE_NAMES[locale] || LANGUAGE_NAMES["en"];
-      if (!names) {
-        this.logger.error(`Missing language names for locale: ${locale}`);
-        return UNKNOWN_TRANSLATION;
-      }
-
-      // Get specific language name
-      const name = names[langCode as keyof typeof names] || UNKNOWN_TRANSLATION;
-      if (name === UNKNOWN_TRANSLATION) {
-        this.logger.error(`Missing translation for language name: ${langCode}`);
-      }
-
-      return name;
-    } catch (error) {
-      this.logger.error(`Error getting language name: ${error}`);
+      if (!names) return UNKNOWN_TRANSLATION;
+      return names[langCode as keyof typeof names] || UNKNOWN_TRANSLATION;
+    } catch {
       return UNKNOWN_TRANSLATION;
     }
   }

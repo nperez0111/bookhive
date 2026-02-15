@@ -3,7 +3,7 @@ import { getBaseUrl } from "@/context/auth";
 import { router } from "expo-router";
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { UserBook } from "../../src/bsky/lexicon/types/buzz/bookhive/defs";
+import { UserBook } from "../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 interface BookGridItemProps {
   book: UserBook;

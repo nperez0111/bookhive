@@ -1,4 +1,4 @@
-import SqliteDb from "better-sqlite3";
+import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import {
   Kysely,
   Migrator,
@@ -7,10 +7,13 @@ import {
   type Migration,
   type MigrationProvider,
 } from "kysely";
+import { Database as DatabaseSync } from "bun:sqlite";
 import type {
   BookIdentifiersRow,
   Buzz,
   HiveBook,
+  HiveBookGenre,
+  HiveId,
   UserBookRow,
   UserFollow,
 } from "./types";
@@ -18,6 +21,7 @@ import type {
 // Types
 export type DatabaseSchema = {
   hive_book: HiveBook;
+  hive_book_genre: HiveBookGenre;
   book_id_map: BookIdentifiersRow;
   user_book: UserBookRow;
   buzz: Buzz;
@@ -211,6 +215,23 @@ migrations["006"] = {
   },
 };
 
+migrations["008"] = {
+  async up(db: Kysely<unknown>) {
+    // Speeds up "latest buzzes" and any query ordering by user_book.createdAt
+    await db.schema
+      .createIndex("idx_user_book_created_at")
+      .on("user_book")
+      .column("createdAt")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema
+      .dropIndex("idx_user_book_created_at")
+      .on("user_book")
+      .execute();
+  },
+};
+
 migrations["007"] = {
   async up(db: Kysely<unknown>) {
     await db.schema
@@ -271,17 +292,48 @@ migrations["007"] = {
   },
 };
 
+migrations["009"] = {
+  async up(db: Kysely<unknown>) {
+    // Denormalized genre list so /genres can avoid full scan + json_each on hive_book
+    await db.schema
+      .createTable("hive_book_genre")
+      .addColumn("hiveId", "text", (col) => col.notNull())
+      .addColumn("genre", "text", (col) => col.notNull())
+      .execute();
+
+    await db.schema
+      .createIndex("idx_hive_book_genre_genre")
+      .on("hive_book_genre")
+      .column("genre")
+      .execute();
+
+    await db.schema
+      .createIndex("idx_hive_book_genre_hive_id")
+      .on("hive_book_genre")
+      .column("hiveId")
+      .execute();
+
+    await sql`
+      INSERT INTO hive_book_genre (hiveId, genre)
+      SELECT hive_book.id, json_each.value
+      FROM hive_book, json_each(hive_book.genres)
+      WHERE hive_book.genres IS NOT NULL
+    `.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("hive_book_genre").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): Database => {
-  const sqlite = new SqliteDb(location, { fileMustExist: false });
-
-  // Enable WAL mode
-  sqlite.pragma("journal_mode = WAL");
+  const sqlite = new DatabaseSync(location);
+  sqlite.exec("PRAGMA journal_mode = WAL");
 
   return new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
-      database: sqlite,
+      database: wrapBunSqliteForKysely(sqlite),
     }),
   });
 };
@@ -293,3 +345,19 @@ export const migrateToLatest = async (db: Database) => {
 };
 
 export type Database = Kysely<DatabaseSchema>;
+
+/** Keep hive_book_genre in sync when hive_book.genres is updated (used by enrichBookData). */
+export async function syncHiveBookGenres(
+  db: Database,
+  hiveId: HiveId,
+  genresJson: string | null,
+): Promise<void> {
+  await db.deleteFrom("hive_book_genre").where("hiveId", "=", hiveId).execute();
+  if (!genresJson) return;
+  const genres: string[] = JSON.parse(genresJson);
+  if (genres.length === 0) return;
+  await db
+    .insertInto("hive_book_genre")
+    .values(genres.map((genre) => ({ hiveId, genre })))
+    .execute();
+}

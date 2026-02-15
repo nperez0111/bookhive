@@ -1,6 +1,7 @@
+import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import { defineDriver } from "unstorage";
 import { Kysely, SqliteDialect } from "kysely";
-import Database from "better-sqlite3";
+import { Database as DatabaseSync } from "bun:sqlite";
 
 interface TableSchema {
   [k: string]: {
@@ -38,14 +39,12 @@ export default defineDriver<
           throw new Error("SQLite location is required");
         }
 
-        const sqlite = new Database(location, { fileMustExist: false });
-
-        // Enable WAL mode
-        sqlite.pragma("journal_mode = WAL");
+        const sqlite = new DatabaseSync(location);
+        sqlite.exec("PRAGMA journal_mode = WAL");
 
         _db = new Kysely<TableSchema>({
           dialect: new SqliteDialect({
-            database: sqlite,
+            database: wrapBunSqliteForKysely(sqlite),
           }),
         });
 
@@ -146,9 +145,12 @@ export default defineDriver<
         if (!result) {
           return null;
         }
+        const mtime = new Date(result.updated_at);
         return {
           birthtime: new Date(result.created_at),
-          mtime: new Date(result.updated_at),
+          mtime,
+          /** Used by readThroughCache for TTL; setItem updates updated_at. */
+          timestamp: mtime.getTime(),
         };
       },
 

@@ -3,7 +3,7 @@ import { sql } from "kysely";
 import type { HiveBook } from "../types";
 import { BookListItem } from "./components/book";
 import { endTime, startTime } from "hono/timing";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import type { Context } from "hono";
 
 type SortOption = "popularity" | "relevance" | "reviews";
@@ -244,55 +244,42 @@ export async function getBooksByGenre(
   const offset = (page - 1) * pageSize;
 
   startTime(c, "genre-books-count-query");
-  // First, get the total count
   const totalCountResult = await ctx.db
-    .selectFrom("hive_book")
-    .select(sql<number>`COUNT(*)`.as("count"))
-    .where("genres", "is not", null)
-    .where(
-      sql`EXISTS (
-        SELECT 1 FROM json_each(hive_book.genres) 
-        WHERE value = ${genre}
-      )` as any,
-    )
+    .selectFrom("hive_book_genre")
+    .select(sql<number>`COUNT(DISTINCT hiveId)`.as("count"))
+    .where("genre", "=", genre)
     .executeTakeFirst();
   endTime(c, "genre-books-count-query");
 
-  const totalBooks = totalCountResult?.count || 0;
+  const totalBooks = totalCountResult?.count ?? 0;
   const totalPages = Math.ceil(totalBooks / pageSize);
 
   startTime(c, "genre-books-data-query");
-  // Then get the paginated books with appropriate sorting
   let query = ctx.db
     .selectFrom("hive_book")
-    .selectAll()
-    .where("genres", "is not", null)
-    .where(
-      sql`EXISTS (
-        SELECT 1 FROM json_each(hive_book.genres) 
-        WHERE value = ${genre}
-      )` as any,
-    );
+    .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
+    .selectAll("hive_book")
+    .where("hive_book_genre.genre", "=", genre);
 
-  // Apply sorting based on sortBy parameter
   switch (sortBy) {
     case "popularity":
-      query = query.orderBy("ratingsCount", "desc").orderBy("rating", "desc");
+      query = query
+        .orderBy("hive_book.ratingsCount", "desc")
+        .orderBy("hive_book.rating", "desc");
       break;
     case "relevance":
-      // Sort by position in genre array (first genre is most relevant)
-      // We need to find the key (index) of the genre in the JSON array
       query = query.orderBy(
         sql`(
-          SELECT CAST(key AS INTEGER) FROM json_each(hive_book.genres) 
+          SELECT CAST(key AS INTEGER) FROM json_each(hive_book.genres)
           WHERE value = ${genre}
         )`,
         "asc",
       );
       break;
     case "reviews":
-      // Sort by rating (reviews quality) then by ratings count
-      query = query.orderBy("rating", "desc").orderBy("ratingsCount", "desc");
+      query = query
+        .orderBy("hive_book.rating", "desc")
+        .orderBy("hive_book.ratingsCount", "desc");
       break;
   }
 

@@ -1,7 +1,6 @@
 import { type Child, type FC } from "hono/jsx";
 import type { Book, HiveBook } from "../../types";
-import * as BookStatus from "../../bsky/lexicon/types/buzz/bookhive/defs";
-import { BOOK_STATUS_MAP } from "../../constants";
+import { BOOK_STATUS, BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
 import { FallbackCover } from "./fallbackCover";
 import { hydrateUserBook } from "../../utils/bookProgress";
@@ -24,7 +23,7 @@ export const BookList: FC<{
           .db.selectFrom("user_book")
           .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
           .selectAll()
-          .where("user_book.userDid", "=", agent.assertDid)
+          .where("user_book.userDid", "=", agent.did)
           .orderBy("user_book.createdAt", "desc")
           .limit(10_000)
           .execute()
@@ -38,18 +37,13 @@ export const BookList: FC<{
     return arr;
   }
 
-  if (!books.length) {
+  if (!books?.length) {
     return (fallback || NO_BOOKS_FOUND) as any;
   }
 
   return (
     <div class="relative overflow-hidden rounded-lg bg-yellow-50 pb-16 dark:bg-zinc-800">
-      <input
-        type="radio"
-        id="tab-read"
-        name="tabs"
-        class="peer/read hidden"
-      />
+      <input type="radio" id="tab-read" name="tabs" class="peer/read hidden" />
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
       <input
         type="radio"
@@ -108,15 +102,18 @@ export const BookList: FC<{
       >
         <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {orNoResults(
-            books
-              .filter((book) => book.status === BookStatus.FINISHED)
+            (books ?? [])
+              .filter((book) => book.status === BOOK_STATUS.FINISHED)
               .sort((a, b) => {
                 // Sort by finishedAt date, most recent first
                 // If finishedAt is null, put those books at the end
                 if (!a.finishedAt && !b.finishedAt) return 0;
                 if (!a.finishedAt) return 1;
                 if (!b.finishedAt) return -1;
-                return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+                return (
+                  new Date(b.finishedAt).getTime() -
+                  new Date(a.finishedAt).getTime()
+                );
               })
               .map((book) => <BookListItem book={book} />),
           )}
@@ -130,8 +127,8 @@ export const BookList: FC<{
       >
         <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {orNoResults(
-            books
-              .filter((book) => book.status === BookStatus.READING)
+            (books ?? [])
+              .filter((book) => book.status === BOOK_STATUS.READING)
               .sort((a, b) => {
                 // Sort by most recent progress update first
                 // Fall back to startedAt, then createdAt for books without progress
@@ -139,9 +136,7 @@ export const BookList: FC<{
                   a.bookProgress?.updatedAt || a.startedAt || a.createdAt;
                 const bDate =
                   b.bookProgress?.updatedAt || b.startedAt || b.createdAt;
-                return (
-                  new Date(bDate).getTime() - new Date(aDate).getTime()
-                );
+                return new Date(bDate).getTime() - new Date(aDate).getTime();
               })
               .map((book) => <BookListItem book={book} />),
           )}
@@ -155,8 +150,8 @@ export const BookList: FC<{
       >
         <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {orNoResults(
-            books
-              .filter((book) => book.status === BookStatus.WANTTOREAD)
+            (books ?? [])
+              .filter((book) => book.status === BOOK_STATUS.WANTTOREAD)
               .map((book) => <BookListItem book={book} />),
           )}
         </ul>
@@ -219,7 +214,10 @@ export const BookListItem: FC<{
                       style={{
                         clipPath: `inset(0 ${
                           100 -
-                          Math.min(100, Math.max(0, (rating - (star - 1)) * 100))
+                          Math.min(
+                            100,
+                            Math.max(0, (rating - (star - 1)) * 100),
+                          )
                         }% 0 0)`,
                       }}
                       class="fill-current text-yellow-400"

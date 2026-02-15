@@ -1,10 +1,15 @@
-import { Agent } from "@atproto/api";
+import { Client } from "@atcute/client";
+import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import { setIdentityCache } from "../bsky/id-resolver";
+import type { ProfileViewDetailed } from "../types";
 import { readThroughCache } from "./readThroughCache";
-import type { AppContext } from "..";
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
-import { getLogger } from "../logger";
+import type { AppContext } from "../context";
 
-const logger = getLogger({ name: "kv-cache" });
+/** Public fetch handler for unauthenticated XRPC (e.g. appview). */
+const publicHandler = {
+  handle: (path: string, init?: RequestInit) =>
+    fetch(new URL(path, "https://public.api.bsky.app").toString(), init),
+};
 
 export async function getProfile({
   ctx,
@@ -13,17 +18,33 @@ export async function getProfile({
   ctx: AppContext;
   did: string;
 }): Promise<ProfileViewDetailed | null> {
-  const agent =
-    (await ctx.getSessionAgent()) ||
-    new Agent("https://public.api.bsky.app/xrpc");
-  const profile = await readThroughCache(ctx.kv, "profile:" + did, async () => {
-    logger.trace({ did }, "getProfile fetch");
-    return agent
-      .getProfile({
-        actor: did,
-      })
-      .then((res) => res.data);
-  });
+  const sessionClient = await ctx.getSessionAgent();
+  const client = sessionClient
+    ? sessionClient
+    : new Client({ handler: publicHandler });
+  const profile = await readThroughCache<ProfileViewDetailed | null>(
+    ctx.kv,
+    "profile:" + did,
+    async () => {
+      try {
+        const actorParam = did as ActorIdentifier;
+        const res = sessionClient
+          ? await sessionClient.get("app.bsky.actor.getProfile", {
+              params: { actor: actorParam },
+            })
+          : await client.get("app.bsky.actor.getProfile", {
+              params: { actor: actorParam },
+            });
+        const profile = res.ok ? (res.data as ProfileViewDetailed) : null;
+        if (profile?.did && profile?.handle) {
+          await setIdentityCache(ctx.kv, profile.did, profile.handle);
+        }
+        return profile;
+      } catch {
+        return null;
+      }
+    },
+  );
   return profile;
 }
 
@@ -38,29 +59,27 @@ export async function getProfiles({
   const profiles = await ctx.kv.getItems<ProfileViewDetailed | null>(
     dids.map((did) => "profile:" + did),
   );
-  const agent =
-    (await ctx.getSessionAgent()) ||
-    new Agent("https://public.api.bsky.app/xrpc");
+  const sessionClient = await ctx.getSessionAgent();
+  const client = sessionClient
+    ? sessionClient
+    : new Client({ handler: publicHandler });
 
   const missingProfiles = profiles
     .filter((p) => p.value === null)
     .map((p) => p.key.slice("profile:".length));
 
-  logger.trace(
-    {
-      numberFound: profiles.length - missingProfiles.length,
-      numberMissing: missingProfiles.length,
-    },
-    "found profiles",
-  );
-
   if (missingProfiles.length > 0) {
-    logger.trace({ dids: missingProfiles }, "getProfiles fetch");
-    const fetchedProfiles = await agent
-      .getProfiles({
-        actors: missingProfiles,
-      })
-      .then((res) => res.data.profiles);
+    const actorsParam = missingProfiles as ActorIdentifier[];
+    const res = sessionClient
+      ? await sessionClient.get("app.bsky.actor.getProfiles", {
+          params: { actors: actorsParam },
+        })
+      : await client.get("app.bsky.actor.getProfiles", {
+          params: { actors: actorsParam },
+        });
+    const fetchedProfiles = res.ok
+      ? (res.data as { profiles: ProfileViewDetailed[] }).profiles
+      : [];
 
     profiles.forEach((p) => {
       if (p.value === null) {
@@ -73,6 +92,11 @@ export async function getProfiles({
 
     ctx.kv.setItems(
       fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })),
+    );
+    await Promise.all(
+      fetchedProfiles
+        .filter((p) => p.did && p.handle)
+        .map((p) => setIdentityCache(ctx.kv, p.did!, p.handle!)),
     );
   }
 

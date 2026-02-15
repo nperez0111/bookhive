@@ -65,13 +65,13 @@ const FailedRow: FC<{
         `/xrpc/buzz.bookhive.searchBooks?q=${query}&limit=20`,
       );
       const data = await res.json();
-      const results = Array.isArray(data) ? data : [];
+      const results = Array.isArray(data) ? data : (data?.books ?? []);
       if (!results.length) {
         const res = await fetch(
           `/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(`${row.title}`)}&limit=20`,
         );
         const data = await res.json();
-        return setResults(Array.isArray(data) ? data : []);
+        return setResults(Array.isArray(data) ? data : (data?.books ?? []));
       }
       setResults(results);
     } catch {
@@ -104,8 +104,9 @@ const FailedRow: FC<{
       const bookRes = await fetch(
         `/xrpc/buzz.bookhive.searchBooks?id=${hiveId}&limit=1`,
       );
-      const arr = await bookRes.json();
-      const b = Array.isArray(arr) ? arr[0] : null;
+      const data = await bookRes.json();
+      const arr = Array.isArray(data) ? data : (data?.books ?? []);
+      const b = arr[0] ?? null;
       if (b) {
         onResolved(
           {

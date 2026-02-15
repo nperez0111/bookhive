@@ -3,7 +3,7 @@ import { sql } from "kysely";
 import type { HiveBook } from "../types";
 import { BookListItem } from "./components/book";
 import { endTime, startTime } from "hono/timing";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import type { Context } from "hono";
 import {
   buildAuthorLikePatterns,

@@ -1,5 +1,4 @@
 // // Warning: This is AI slop, translated from https://github.com/janeczku/calibre-web/blob/master/cps/metadata_provider/amazon.py
-// import axios, { type AxiosInstance } from "axios";
 // import { load } from "cheerio";
 // import type { Logger } from "pino"; // Assuming winston for logging
 
@@ -24,34 +23,32 @@
 //   cover?: string;
 // }
 
+// const AMAZON_FETCH_HEADERS = {
+//   "upgrade-insecure-requests": "1",
+//   "user-agent":
+//     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+//   accept:
+//     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8",
+//   "Sec-Fetch-Site": "same-origin",
+//   "Sec-Fetch-Mode": "navigate",
+//   "Sec-Fetch-User": "?1",
+//   "Sec-Fetch-Dest": "document",
+//   "Upgrade-Insecure-Requests": "1",
+//   "Alt-Used": "www.amazon.com",
+//   Priority: "u=0, i",
+//   "accept-encoding": "gzip, deflate, br, zstd",
+//   "accept-language": "en-US,en;q=0.9",
+// } as const;
+
 // class Amazon {
 //   public static readonly NAME = "Amazon";
 //   private static readonly ID = "amazon";
 //   private readonly active: boolean;
 //   private readonly logger: Logger;
-//   private readonly session: AxiosInstance;
 
 //   constructor(logger: Logger, active: boolean = true) {
 //     this.active = active;
 //     this.logger = logger;
-//     this.session = axios.create({
-//       headers: {
-//         "upgrade-insecure-requests": "1",
-//         "user-agent":
-//           "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
-//         accept:
-//           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8",
-//         "Sec-Fetch-Site": "same-origin",
-//         "Sec-Fetch-Mode": "navigate",
-//         "Sec-Fetch-User": "?1",
-//         "Sec-Fetch-Dest": "document",
-//         "Upgrade-Insecure-Requests": "1",
-//         "Alt-Used": "www.amazon.com",
-//         Priority: "u=0, i",
-//         "accept-encoding": "gzip, deflate, br, zstd",
-//         "accept-language": "en-US,en;q=0.9",
-//       },
-//     });
 //   }
 
 //   private async fetchBookDetails(
@@ -59,8 +56,12 @@
 //     index: number,
 //   ): Promise<[BookResult, number] | null> {
 //     try {
-//       const response = await this.session.get(`https://www.amazon.com${link}`);
-//       const $ = load(response.data);
+//       const response = await fetch(`https://www.amazon.com${link}`, {
+//         headers: AMAZON_FETCH_HEADERS,
+//       });
+//       if (!response.ok) throw new Error(response.statusText);
+//       const html = await response.text();
+//       const $ = load(html);
 //       const productDiv = $(
 //         'div[cel_widget_id="dpx-ppd_csm_instrumentation_wrapper"]',
 //       );
@@ -149,8 +150,12 @@
 //     try {
 //       // Search for books
 //       const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(query)}&i=digital-text&sprefix=${encodeURIComponent(query)}%2Cdigital-text&ref=nb_sb_noss`;
-//       const response = await this.session.get(searchUrl);
-//       const $ = load(response.data);
+//       const response = await fetch(searchUrl, {
+//         headers: AMAZON_FETCH_HEADERS,
+//       });
+//       if (!response.ok) throw new Error(response.statusText);
+//       const html = await response.text();
+//       const $ = load(html);
 
 //       // Get book links
 //       const links = $('div[data-component-type="s-search-result"]')

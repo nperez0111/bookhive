@@ -1,6 +1,7 @@
+import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
-import type { AppContext } from "..";
+import type { AppContext } from "../context";
 import { upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {
@@ -30,39 +31,41 @@ export async function enrichBookWithDetailedData(
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       if (enrichedDate > thirtyDaysAgo) {
-        ctx.logger.debug({ bookId: book.id }, "Book already enriched recently");
+        ctx.addWideEventContext({
+          enrichment: "skipped",
+          bookId: book.id,
+          reason: "already_enriched_recently",
+        });
         return;
       }
     }
 
     // Only enrich Goodreads books with sourceUrl
     if (book.source !== "Goodreads" || !book.sourceUrl) {
-      ctx.logger.debug(
-        {
-          bookId: book.id,
-          source: book.source,
-          hasSourceUrl: !!book.sourceUrl,
-        },
-        "Skipping enrichment - not a Goodreads book or no sourceUrl",
-      );
+      ctx.addWideEventContext({
+        enrichment: "skipped",
+        bookId: book.id,
+        reason: "not_goodreads_or_no_source_url",
+        source: book.source,
+      });
       return;
     }
 
-    ctx.logger.info(
-      { bookId: book.id, sourceUrl: book.sourceUrl },
-      "Starting book enrichment",
-    );
+    ctx.addWideEventContext({
+      enrichment: "started",
+      bookId: book.id,
+      sourceUrl: book.sourceUrl,
+    });
 
     const detailedData = await getBookDetailedInfo(book.sourceUrl);
 
     if (!detailedData) {
-      ctx.logger.warn(
-        {
-          bookId: book.id,
-          sourceUrl: book.sourceUrl,
-        },
-        "Failed to fetch detailed data",
-      );
+      ctx.addWideEventContext({
+        enrichment: "failed",
+        bookId: book.id,
+        reason: "fetch_detailed_data_failed",
+        sourceUrl: book.sourceUrl,
+      });
       return;
     }
 
@@ -122,29 +125,27 @@ export async function enrichBookWithDetailedData(
       .where("id", "=", book.id)
       .execute();
 
+    await syncHiveBookGenres(ctx.db, book.id, genres);
+
     await upsertBookIdentifiers(ctx.db, {
       ...book,
       sourceId: detailedData.book.id || book.sourceId,
       meta: serializedMeta,
     });
 
-    ctx.logger.info(
-      {
-        bookId: book.id,
-        genres: detailedData.book.genres.length,
-        hasSeries: !!detailedData.book.series,
-        hasAuthorBio: !!detailedData.book.primaryAuthor.description,
-      },
-      "Successfully enriched book data",
-    );
+    ctx.addWideEventContext({
+      enrichment: "completed",
+      bookId: book.id,
+      genres_count: detailedData.book.genres.length,
+      has_series: !!detailedData.book.series,
+      has_author_bio: !!detailedData.book.primaryAuthor.description,
+    });
   } catch (error) {
-    ctx.logger.error(
-      {
-        bookId: book.id,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error enriching book data",
-    );
+    ctx.addWideEventContext({
+      enrichment: "error",
+      bookId: book.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
     // Don't throw - enrichment failures shouldn't break the app
   }
 }

@@ -1,5 +1,3 @@
-import axios from "axios";
-import type { Logger } from "pino";
 import { objectHash, sha256base64 } from "ohash";
 // Type definitions
 export interface MetaSourceInfo {
@@ -66,12 +64,10 @@ export default class IsbnDb {
   private static readonly API_URL = "https://api2.isbndb.com";
 
   private readonly active: boolean;
-  private readonly logger: Logger;
   private readonly apiKey: string;
 
-  constructor(logger: Logger, apiKey: string, active: boolean = true) {
+  constructor(apiKey: string, active: boolean = true) {
     this.active = active;
-    this.logger = logger;
     this.apiKey = apiKey;
   }
 
@@ -90,9 +86,7 @@ export default class IsbnDb {
         language: locale,
       });
 
-      this.logger.trace({ params: params.toString() });
-
-      const response = await axios.get<IsbnDbSearchResponse>(
+      const response = await fetch(
         `${IsbnDb.API_URL}/books/${encodeURIComponent(query)}?${params.toString()}`,
         {
           headers: {
@@ -102,11 +96,13 @@ export default class IsbnDb {
         },
       );
 
-      return response.data.books.map((result) =>
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as IsbnDbSearchResponse;
+
+      return data.books.map((result) =>
         this.parseSearchResult(result, genericCover),
       );
-    } catch (error) {
-      this.logger.warn({ message: "Error searching ISBNdb", error });
+    } catch {
       return [];
     }
   }
@@ -153,19 +149,18 @@ export default class IsbnDb {
     if (!this.active) return null;
 
     try {
-      const response = await axios.get<IsbnDbBook>(
-        `${IsbnDb.API_URL}/book/${isbn}`,
-        {
-          headers: {
-            Authorization: this.apiKey,
-            "Content-Type": "application/json",
-          },
+      const response = await fetch(`${IsbnDb.API_URL}/book/${isbn}`, {
+        headers: {
+          Authorization: this.apiKey,
+          "Content-Type": "application/json",
         },
-      );
+      });
 
-      return this.parseSearchResult(response.data, genericCover);
-    } catch (error) {
-      this.logger.warn({ message: "Error looking up ISBN", error });
+      if (!response.ok) throw new Error(response.statusText);
+      const data = (await response.json()) as IsbnDbBook;
+
+      return this.parseSearchResult(data, genericCover);
+    } catch {
       return null;
     }
   }

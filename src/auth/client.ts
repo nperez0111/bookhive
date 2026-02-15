@@ -1,6 +1,9 @@
-import { NodeOAuthClient } from "@atproto/oauth-client-node";
+import { Client } from "@atcute/client";
+import type { OAuthSession } from "@atcute/oauth-node-client";
+import { OAuthClient } from "@atcute/oauth-node-client";
+import { createActorResolver } from "../bsky/id-resolver";
 import { env } from "../env";
-import { SessionStore, StateStore } from "./storage";
+import { createSessionStore, createStateStore } from "./storage";
 import type { Storage } from "unstorage";
 
 const time = Date.now();
@@ -9,7 +12,6 @@ const time = Date.now();
 // - atproto: Base scope required for AT Protocol authentication
 // - blob:*/*: Required for uploading book cover images
 // - repo:buzz.bookhive.book: Write operations on book records (create, update, delete)
-//   Note: Reading records doesn't require a permission per AT Protocol spec
 // - repo:buzz.bookhive.buzz: Write operations on comment records (create, update, delete)
 // - repo:app.bsky.graph.follow: Create follow records (for following users)
 // - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
@@ -17,34 +19,39 @@ const time = Date.now();
 export const OAUTH_SCOPES =
   "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
 
-export const createClient = async (kv: Storage) => {
+export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
-  const url = publicUrl || `http://127.0.0.1:${env.PORT}`;
-  const enc = encodeURIComponent;
-  return new NodeOAuthClient({
-    clientMetadata: {
-      client_name: "BookHive",
-      client_id: publicUrl
-        ? `${url}/oauth-client-metadata.json`
-        : `http://localhost?redirect_uri=${enc(`${url}/oauth/callback`)}&scope=${enc(OAUTH_SCOPES)}`,
-      client_uri: url,
-      redirect_uris: [`${url}/oauth/callback`],
+  const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
+  const isLoopback = !publicUrl;
+  const redirectUris = isLoopback
+    ? [`http://127.0.0.1:${env.PORT}/oauth/callback`]
+    : [`${baseUrl}/oauth/callback`];
+
+  return new OAuthClient({
+    metadata: {
+      ...(isLoopback
+        ? {}
+        : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
+      redirect_uris: redirectUris,
       scope: OAUTH_SCOPES,
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      application_type: "web",
-      token_endpoint_auth_method: "none",
-      dpop_bound_access_tokens: true,
-      logo_uri: `${url}/public/full_logo.jpg`,
-      policy_uri: `${url}/privacy-policy`,
+      ...(isLoopback
+        ? {}
+        : {
+            client_uri: baseUrl,
+            client_name: "BookHive",
+            logo_uri: `${baseUrl}/public/full_logo.jpg`,
+            policy_uri: `${baseUrl}/privacy-policy`,
+          }),
     },
-    stateStore: new StateStore(kv),
-    sessionStore: new SessionStore(kv),
+    actorResolver: createActorResolver(),
+    stores: {
+      sessions: createSessionStore(kv),
+      states: createStateStore(kv),
+    },
     requestLock: async function waitForLock(key, cb, attempt = 0) {
       if (attempt > 10) {
         throw new Error(`Lock timeout for ${key}`);
       }
-
       const lock = await kv.get<number>(`auth_lock:${key}`);
       if (!lock) {
         try {
@@ -54,19 +61,47 @@ export const createClient = async (kv: Storage) => {
           await kv.del(`auth_lock:${key}`);
         }
       }
-
       if (lock !== time) {
-        // Check again in 100ms
         return new Promise((resolve, reject) =>
           setTimeout(
-            () => waitForLock(key, cb, attempt++).then(resolve, reject),
+            () => waitForLock(key, cb, attempt + 1).then(resolve, reject),
             100,
           ),
         );
       }
-
-      // If we get here, the lock is ours
       return cb();
     },
   });
+}
+
+/** Session-scoped XRPC client with .did (for use where Agent was used). */
+export type SessionClient = {
+  did: string;
+  get: (
+    name: string,
+    opts?: Record<string, unknown>,
+  ) => Promise<
+    | { ok: true; data: unknown }
+    | { ok: false; data: { error: string; message?: string } }
+  >;
+  post: (
+    name: string,
+    opts?: Record<string, unknown>,
+  ) => Promise<
+    | { ok: true; data: unknown }
+    | { ok: false; data: { error: string; message?: string } }
+  >;
 };
+
+export function sessionClientFromOAuthSession(
+  session: OAuthSession,
+): SessionClient {
+  const client = new Client({ handler: session });
+  return {
+    get did() {
+      return session.did;
+    },
+    get: client.get.bind(client) as SessionClient["get"],
+    post: client.post.bind(client) as SessionClient["post"],
+  };
+}

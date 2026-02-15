@@ -1,8 +1,8 @@
 import { formatDistanceToNow } from "date-fns";
 import { type FC, type PropsWithChildren, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
+import { endTime, startTime } from "hono/timing";
 import { sql } from "kysely";
-import * as BookStatus from "../bsky/lexicon/types/buzz/bookhive/defs";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import type { HiveBook, UserBook } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
@@ -17,6 +17,7 @@ async function Recommendations({
   did: string | null;
 }) {
   const c = useRequestContext();
+  startTime(c, "db_peer_books");
   const peerBooks = await c
     .get("ctx")
     .db.selectFrom("user_book")
@@ -25,10 +26,13 @@ async function Recommendations({
     .orderBy("indexedAt", "desc")
     .limit(100)
     .execute();
+  endTime(c, "db_peer_books");
 
+  startTime(c, "resolver_dids_to_handles");
   const didHandleMap = await c
     .get("ctx")
     .resolver.resolveDidsToHandles(peerBooks.map((s) => s.userDid));
+  endTime(c, "resolver_dids_to_handles");
 
   if (!peerBooks.length) {
     return (
@@ -65,7 +69,7 @@ async function Recommendations({
                 ? BOOK_STATUS_MAP[
                     related.status as keyof typeof BOOK_STATUS_MAP
                   ]
-                : related.status || BOOK_STATUS_MAP[BookStatus.READING]}{" "}
+                : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
               {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
               {related.stars && <span> - rated {related.stars / 2}</span>}
               {related.review && <span> - reviewed</span>}
@@ -189,19 +193,19 @@ const BookStatusButton: FC<{
             <div className="p-1">
               {[
                 {
-                  value: BookStatus.FINISHED,
+                  value: BOOK_STATUS.FINISHED,
                   label: "Read",
                 },
                 {
-                  value: BookStatus.READING,
+                  value: BOOK_STATUS.READING,
                   label: "Reading",
                 },
                 {
-                  value: BookStatus.WANTTOREAD,
+                  value: BOOK_STATUS.WANTTOREAD,
                   label: "Want to Read",
                 },
                 {
-                  value: BookStatus.ABANDONED,
+                  value: BOOK_STATUS.ABANDONED,
                   label: "Abandoned",
                 },
               ].map((status) => (
@@ -288,8 +292,11 @@ export const BookInfo: FC<{
   book: HiveBook;
 }> = async ({ book }) => {
   const c = useRequestContext();
+  startTime(c, "get_session");
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
+  endTime(c, "get_session");
 
+  startTime(c, "db_user_book");
   const rawUserBook = did
     ? await c
         .get("ctx")
@@ -299,8 +306,10 @@ export const BookInfo: FC<{
         .where("hiveId", "==", book.id)
         .executeTakeFirst()
     : undefined;
+  endTime(c, "db_user_book");
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
 
+  startTime(c, "db_reviews_of_this_book");
   const reviewsOfThisBook = await c
     .get("ctx")
     .db.selectFrom("user_book")
@@ -324,6 +333,7 @@ export const BookInfo: FC<{
     .orderBy("user_book.createdAt", "desc")
     .limit(10_000)
     .execute();
+  endTime(c, "db_reviews_of_this_book");
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">

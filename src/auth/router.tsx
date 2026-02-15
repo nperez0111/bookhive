@@ -1,15 +1,18 @@
-import { isValidHandle } from "@atproto/syntax";
 import { getIronSession, sealData, type SessionOptions } from "iron-session";
 
-import { OAuthResolverError } from "@atproto/oauth-client-node";
+import type { Did } from "@atcute/lexicons";
 import { env } from "../env";
-import type { AppContext, HonoServer, Session } from "../index";
+import type { AppContext, HonoServer, Session } from "../context";
 import { Layout } from "../pages/layout";
 
-import { Agent } from "@atproto/api";
 import { Error } from "../pages/error";
 import { Login } from "../pages/login";
-import { OAUTH_SCOPES } from "./client";
+import {
+  OAUTH_SCOPES,
+  sessionClientFromOAuthSession,
+  type SessionClient,
+} from "./client";
+import { isValidHandle } from "./handle";
 
 // Helper function to get consistent session configuration
 export function getSessionConfig(): SessionOptions {
@@ -34,23 +37,30 @@ export function loginRouter(
     onLogin = async () => {},
     onLogout = async () => {},
   }: {
-    onLogin?: (ctx: { agent: Agent | null; ctx: AppContext }) => Promise<void>;
-    onLogout?: (ctx: { agent: Agent | null; ctx: AppContext }) => Promise<void>;
+    onLogin?: (ctx: {
+      agent: SessionClient | null;
+      ctx: AppContext;
+    }) => Promise<void>;
+    onLogout?: (ctx: {
+      agent: SessionClient | null;
+      ctx: AppContext;
+    }) => Promise<void>;
   } = {},
 ) {
   // OAuth metadata (deprecated)
   app.get("/client-metadata.json", async (c) => {
-    return c.json(c.get("ctx").oauthClient.clientMetadata);
+    return c.json(c.get("ctx").oauthClient.metadata);
   });
 
   // OAuth metadata
   app.get("/oauth-client-metadata.json", async (c) => {
-    return c.json(c.get("ctx").oauthClient.clientMetadata);
+    return c.json(c.get("ctx").oauthClient.metadata);
   });
 
   // OAuth callback to complete session creation
   app.get("/oauth/callback", async (c) => {
-    const params = new URLSearchParams(c.req.url.split("?")[1]);
+    const callbackUrl = new URL(c.req.url);
+    const params = callbackUrl.searchParams;
     try {
       const { session, state } = await c
         .get("ctx")
@@ -62,49 +72,18 @@ export function loginRouter(
         getSessionConfig(),
       );
 
-      // assert(!clientSession.did, "session already exists");
-      clientSession.did = session.did;
+      clientSession.did = session.did as string;
       await clientSession.save();
 
-      const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
-
-      // // Log granted scopes vs requested scopes
-      // if (oauthSession) {
-      //   try {
-      //     const tokenInfo = await oauthSession.getTokenInfo("auto");
-      //     const requestedScopes = OAUTH_SCOPES.split(" ");
-      //     const grantedScopes = tokenInfo.scope?.split(" ") || [];
-
-      //     const missingScopes = requestedScopes.filter(
-      //       (scope) => !grantedScopes.includes(scope),
-      //     );
-
-      //     c.get("ctx").logger.info(
-      //       {
-      //         did: session.did,
-      //         requestedScopes,
-      //         grantedScopes,
-      //         missingScopes,
-      //         grantedScopeString: tokenInfo.scope,
-      //         requestedScopeString: OAUTH_SCOPES,
-      //       },
-      //       "OAuth scopes comparison - requested vs granted",
-      //     );
-      //   } catch (err) {
-      //     c.get("ctx").logger.warn(
-      //       { err, did: session.did },
-      //       "Could not retrieve token info to check granted scopes",
-      //     );
-      //   }
-      // }
-
-      const agent = oauthSession ? new Agent(oauthSession) : null;
+      const agent = sessionClientFromOAuthSession(session);
       await onLogin({ agent, ctx: c.get("ctx") });
 
-      if (state) {
+      if (state && typeof state === "object" && "redirectUri" in state) {
         try {
-          const { redirectUri, handle } = JSON.parse(state);
-
+          const { redirectUri, handle } = state as {
+            redirectUri: string;
+            handle: string;
+          };
           const redirectTo = new URL(redirectUri);
           if (
             redirectTo.protocol !== "exp:" &&
@@ -138,11 +117,18 @@ export function loginRouter(
       }
 
       return c.redirect("/");
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth callback failed");
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : String(err);
+      c.get("ctx").addWideEventContext({
+        oauth_callback: "failed",
+        error: errMsg,
+      });
       return c.html(
         <Layout>
-          <Login error={`Login failed: ${(err as Error).message}`} />
+          <Login error={`Login failed: ${errMsg}`} />
         </Layout>,
       );
     }
@@ -183,22 +169,26 @@ export function loginRouter(
     }
 
     try {
-      const url = await c.get("ctx").oauthClient.authorize(handle, {
+      const { url } = await c.get("ctx").oauthClient.authorize({
+        target: { type: "account", identifier: handle },
         scope: OAUTH_SCOPES,
-        state: JSON.stringify({ redirectUri, handle }),
+        state: { redirectUri, handle },
       });
       return c.redirect(url.toString());
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth authorize failed");
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Couldn't initiate login";
+      c.get("ctx").addWideEventContext({
+        oauth_authorize: "failed",
+        error: errMsg,
+      });
 
       return c.html(
         <Layout>
           <Error
-            message={
-              err instanceof OAuthResolverError
-                ? err.message
-                : "Couldn't initiate login"
-            }
+            message={errMsg}
             description="Oauth authorization failed"
             statusCode={400}
           />
@@ -216,8 +206,11 @@ export function loginRouter(
         getSessionConfig(),
       );
 
-      const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
-      // Use "auto" to automatically refresh tokens when needed
+      const oauthSession = await c
+        .get("ctx")
+        .oauthClient.restore(session.did as Did, {
+          refresh: "auto",
+        });
       await oauthSession.getTokenInfo("auto");
       // Keep session TTL fixed at 24 hours for mobile sessions too
       session.updateConfig(getSessionConfig());
@@ -258,20 +251,24 @@ export function loginRouter(
     }
 
     try {
-      const url = await c.get("ctx").oauthClient.authorize(handle, {
+      const { url } = await c.get("ctx").oauthClient.authorize({
+        target: { type: "account", identifier: handle },
         scope: OAUTH_SCOPES,
       });
       return c.redirect(url.toString());
-    } catch (err) {
-      c.get("ctx").logger.error({ err }, "oauth authorize failed");
-      const error =
-        err instanceof OAuthResolverError
-          ? err.message
+    } catch (err: unknown) {
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
           : "Couldn't initiate login";
+      c.get("ctx").addWideEventContext({
+        oauth_authorize: "failed",
+        error: errMsg,
+      });
       return c.html(
         <Layout>
           <Error
-            message={error}
+            message={errMsg}
             description="OAuth authorization failed"
             statusCode={400}
           />
@@ -288,9 +285,14 @@ export function loginRouter(
       c.res,
       getSessionConfig(),
     );
-    const oauthSession = await c.get("ctx").oauthClient.restore(session.did);
-    const agent = oauthSession ? new Agent(oauthSession) : null;
-    await onLogout({ agent, ctx: c.get("ctx") });
+    if (session.did) {
+      try {
+        await c.get("ctx").oauthClient.revoke(session.did as Did);
+      } catch {
+        // ignore revoke errors
+      }
+    }
+    await onLogout({ agent: null, ctx: c.get("ctx") });
     await session.destroy();
     return c.redirect("/");
   });

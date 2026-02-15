@@ -70,7 +70,6 @@ export default function (options: Options) {
 
     // Generate the API URL for logging
     const apiUrl = createApiUrl(opts);
-    console.log({ apiUrl });
 
     // Create a writable stream to handle the log data
     const destination = new Writable({
@@ -172,7 +171,8 @@ export default function (options: Options) {
           debugLog("Logs sent successfully:", await response.json());
         }
       } catch (error: any) {
-        if (error.cause.code === "ECONNREFUSED") {
+        const code = error?.cause?.code ?? error?.code;
+        if (code === "ECONNREFUSED") {
           failures++;
           if (failures > 2) {
             disableLogging = true;

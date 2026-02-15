@@ -28,7 +28,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
-import { UserBook } from "../../../src/bsky/lexicon/types/buzz/bookhive/defs";
+import { UserBook } from "../../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 interface BookSectionProps {
   books: UserBook[];
@@ -190,15 +190,18 @@ export default function HomeScreen() {
     profile.refetch().finally(() => setIsRefreshing(false));
   }, [profile.refetch]);
 
-  const handleStatPress = useCallback((label: string) => {
-    if (label === "Currently Reading") {
-      router.push("/books/reading" as any);
-    } else if (label === "Finished") {
-      router.push("/books/finished" as any);
-    } else if (label === "Total Books" && authState?.did) {
-      router.push(`/profile/${authState.did}` as any);
-    }
-  }, [authState?.did]);
+  const handleStatPress = useCallback(
+    (label: string) => {
+      if (label === "Currently Reading") {
+        router.push("/books/reading" as any);
+      } else if (label === "Finished") {
+        router.push("/books/finished" as any);
+      } else if (label === "Total Books" && authState?.did) {
+        router.push(`/profile/${authState.did}` as any);
+      }
+    },
+    [authState?.did],
+  );
 
   if (profile.isLoading && !isRefreshing && !profile.data) {
     return (

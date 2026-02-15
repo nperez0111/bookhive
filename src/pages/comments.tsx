@@ -1,4 +1,4 @@
-import type { ProfileViewDetailed } from "@atproto/api/dist/client/types/app/bsky/actor/defs";
+import type { ProfileViewDetailed } from "../types";
 import { useRequestContext } from "hono/jsx-renderer";
 import type { NotNull } from "kysely";
 import type { HiveBook } from "../types";
@@ -236,8 +236,7 @@ export async function CommentsSection({
   did,
 }: PropsWithChildren<{ book: HiveBook; did?: string | null }>) {
   const c = useRequestContext();
-  startTime(c, "fetch_comments");
-
+  startTime(c, "comments_top_level_reviews");
   const topLevelReviews = await c
     .get("ctx")
     .db.selectFrom("user_book")
@@ -255,6 +254,9 @@ export async function CommentsSection({
     .orderBy("user_book.createdAt", "desc")
     .limit(1000)
     .execute();
+  endTime(c, "comments_top_level_reviews");
+
+  startTime(c, "comments_buzz");
   const comments = await c
     .get("ctx")
     .db.selectFrom("buzz")
@@ -270,8 +272,7 @@ export async function CommentsSection({
     .orderBy("buzz.createdAt", "desc")
     .limit(3000)
     .execute();
-
-  endTime(c, "fetch_comments");
+  endTime(c, "comments_buzz");
 
   startTime(c, "fetch_profiles");
   const profiles = await getProfiles({
