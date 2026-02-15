@@ -171,7 +171,8 @@ export default function (options: Options) {
           debugLog("Logs sent successfully:", await response.json());
         }
       } catch (error: any) {
-        if (error.cause.code === "ECONNREFUSED") {
+        const code = error?.cause?.code ?? error?.code;
+        if (code === "ECONNREFUSED") {
           failures++;
           if (failures > 2) {
             disableLogging = true;
