@@ -95,6 +95,10 @@ const StatusDropdown: FC<{
                 label: "Want to Read",
               },
               {
+                value: BOOK_STATUS.OWNED,
+                label: "Owned",
+              },
+              {
                 value: BOOK_STATUS.ABANDONED,
                 label: "Abandoned",
               },

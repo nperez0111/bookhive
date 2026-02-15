@@ -237,6 +237,7 @@ const StatusDropdown: FC<{
       { value: "buzz.bookhive.defs#finished", label: "Read" },
       { value: "buzz.bookhive.defs#reading", label: "Reading" },
       { value: "buzz.bookhive.defs#wantToRead", label: "Want to Read" },
+      { value: "buzz.bookhive.defs#owned", label: "Owned" },
       { value: "buzz.bookhive.defs#abandoned", label: "Abandoned" },
     ],
     [],

@@ -47,13 +47,19 @@ export const BookList: FC<{
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
       <input
         type="radio"
+        id="tab-owned"
+        name="tabs"
+        class="peer/owned hidden"
+      />
+      <input
+        type="radio"
         id="tab-reading"
         name="tabs"
         class="peer/reading hidden"
         checked
       />
 
-      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
+      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/owned:[&_label[for='tab-owned']]:border-yellow-600 peer-checked/owned:[&_label[for='tab-owned']]:text-yellow-600 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
         <ul
           class="-mb-px flex flex-wrap text-center text-sm font-medium"
           role="tablist"
@@ -89,6 +95,17 @@ export const BookList: FC<{
               class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
             >
               Read
+            </label>
+          </li>
+          <li class="me-2" role="presentation">
+            <label
+              for="tab-owned"
+              role="tab"
+              aria-selected="false"
+              aria-controls="tab-owned-panel"
+              class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              Owned
             </label>
           </li>
         </ul>
@@ -152,6 +169,20 @@ export const BookList: FC<{
           {orNoResults(
             (books ?? [])
               .filter((book) => book.status === BOOK_STATUS.WANTTOREAD)
+              .map((book) => <BookListItem book={book} />),
+          )}
+        </ul>
+      </div>
+      <div
+        id="tab-owned-panel"
+        role="tabpanel"
+        aria-labelledby="tab-owned"
+        class="mt-8 hidden peer-checked/owned:block"
+      >
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {orNoResults(
+            (books ?? [])
+              .filter((book) => book.status === BOOK_STATUS.OWNED)
               .map((book) => <BookListItem book={book} />),
           )}
         </ul>
