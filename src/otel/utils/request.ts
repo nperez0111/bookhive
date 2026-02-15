@@ -7,7 +7,7 @@ import {
   EXTRA_SEMATTRS_HTTP_REQUEST_METHOD,
   EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE,
   EXTRA_SEMATTRS_URL_FULL,
-} from "../constants";
+} from "./constants";
 import type {
   GlobalResponse,
   HonoResponse,

@@ -1,7 +1,7 @@
 // Load OpenTelemetry SDK first (replaces node --require ./instrumentation.cjs)
 import "./instrumentation";
 
-import { instrument } from "./middleware/index.ts";
+import { instrument } from "./otel/index.ts";
 import app from "./server";
 import { env } from "./env";
 

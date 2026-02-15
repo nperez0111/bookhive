@@ -6,9 +6,9 @@
   },
   "scripts": {
     "seed:db": "bun run src/initialize.ts",
-    "dev": "bun run build:assets && bun --hot run src/index.ts",
+    "dev": "bun run build:assets && nitro dev",
     "build:assets": "bun run scripts/build-assets.ts",
-    "build": "bun --bun run lexgen && bun run build:server",
+    "build": "bun run lexgen && nitro build",
     "build:server": "bun run scripts/build-server.ts",
     "test": "bun test src",
     "test:run": "bun test src --no-watch",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
+    "nitropack": "^2.12.4",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",
     "sharp": "0.33.5"
