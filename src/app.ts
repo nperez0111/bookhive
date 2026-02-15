@@ -37,11 +37,8 @@ export function createApp({
 }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
-  app.use("*", createContextMiddleware(deps));
-  app.use("*", async (c, next) => {
-    c.set("assetUrls", await getBundleAssetUrls());
-    await next();
-  });
+  // pinoLogger must run before createContextMiddleware so c.var.logger exists when
+  // ctx (and getSessionAgent’s closure) is created and later used.
   app.use(requestId());
   app.use(timing());
   if (env.isDevelopment) {
@@ -61,6 +58,11 @@ export function createApp({
       },
     }),
   );
+  app.use("*", createContextMiddleware(deps));
+  app.use("*", async (c, next) => {
+    c.set("assetUrls", await getBundleAssetUrls());
+    await next();
+  });
   app.use(secureHeaders());
   app.use(compress());
   app.use(jsxRenderer());

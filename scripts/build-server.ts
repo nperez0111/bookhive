@@ -28,7 +28,7 @@ const mainResult = await Bun.build({
     identifiers: true,
     syntax: false,
   },
-  sourcemap: "external",
+  sourcemap: "linked",
 });
 
 if (!mainResult.success) {
@@ -49,7 +49,7 @@ const transportResult = await Bun.build({
     identifiers: true,
     syntax: false,
   },
-  sourcemap: "external",
+  sourcemap: "linked",
 });
 
 if (!transportResult.success) {
