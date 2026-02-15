@@ -3,10 +3,21 @@
  * entry.html (e.g. src/index.css with @import "tailwindcss") is processed.
  * Also builds the pino OpenObserve transport as a separate bundle so it can
  * be loaded by pino at runtime in Docker (target: "./logger/open-observe.js").
+ * Runs build:assets first so public/output.css and public/js/client.js exist.
  * See https://bun.com/docs/bundler.md and bun-plugin-tailwind.
  */
 import plugin from "bun-plugin-tailwind";
 
+// Build public assets first (shared with dev via build:assets)
+const assets = Bun.spawn({
+  cmd: ["bun", "run", "scripts/build-assets.ts"],
+  cwd: process.cwd(),
+  stdout: "inherit",
+  stderr: "inherit",
+});
+if ((await assets.exited) !== 0) process.exit(1);
+
+// Build server bundle
 const mainResult = await Bun.build({
   entrypoints: ["./src/index.ts"],
   outdir: "./dist",
