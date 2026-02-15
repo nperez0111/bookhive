@@ -4,6 +4,7 @@ import { cleanEnv, port, str, testOnly } from "envalid";
 
 export const env = cleanEnv(process.env, {
   NODE_ENV: str({
+    default: "production",
     devDefault: testOnly("test"),
     choices: ["development", "production", "test"],
   }),

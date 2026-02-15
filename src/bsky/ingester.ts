@@ -1,6 +1,7 @@
 import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
+import { env } from "../env";
 import { searchBooks } from "../routes/index";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
@@ -75,7 +76,7 @@ export function createIngester(
       did: evt.did,
       uri: evt.uri.toString(),
       timestamp: new Date().toISOString(),
-      env: { node_env: process.env.NODE_ENV },
+      env: { node_env: env.NODE_ENV },
     };
 
     try {
@@ -268,7 +269,7 @@ export function createIngester(
           type: err instanceof Error ? err.name : "Error",
         },
         timestamp: new Date().toISOString(),
-        env: { node_env: process.env.NODE_ENV },
+        env: { node_env: env.NODE_ENV },
       });
       setTimeout(() => {
         if (abortController?.signal.aborted) return;
@@ -282,6 +283,9 @@ export function createIngester(
     subscription = new JetstreamSubscription({
       url: JETSTREAM_URL,
       wantedCollections: WANTED_COLLECTIONS,
+      ws: {
+        connectionTimeout: 20_000,
+      },
       onConnectionError(event) {
         emitWideEvent({
           msg: "ingester",
@@ -293,7 +297,7 @@ export function createIngester(
                 : String(event.error),
           },
           timestamp: new Date().toISOString(),
-          env: { node_env: process.env.NODE_ENV },
+          env: { node_env: env.NODE_ENV },
         });
       },
     });
