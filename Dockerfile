@@ -48,8 +48,8 @@ COPY package.json bun.lock* ./
 COPY scripts/strip-workspaces.ts ./scripts/
 RUN bun run scripts/strip-workspaces.ts && rm -f bun.lock bun.lockb
 
-# Production install only
-RUN bun install --production
+# Production install only; no cache so the image stays slim
+RUN bun install --production --no-cache && rm -rf /root/.bun/install/cache 2>/dev/null || true
 
 # Copy built server bundle (contents of dist at app root so ./entry-*.js resolve)
 COPY --from=build /usr/src/app/dist ./

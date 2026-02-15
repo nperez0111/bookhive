@@ -7,6 +7,7 @@
 **/.classpath
 **/.dockerignore
 **/.env
+**/.env.*
 **/.git
 **/.gitignore
 **/.project
@@ -30,5 +31,12 @@
 **/values.dev.yaml
 **/build
 **/dist
+# Server build doesn't need the Expo app workspace (workspaces are stripped in Dockerfile)
+app/
+# Tests, docs, CI
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+**/.github
 LICENSE
 README.md
