@@ -27,3 +27,5 @@ dist-ssr
 /public/js/client.js*
 /server.js
 .env
+.nitro
+.output

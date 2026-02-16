@@ -16,8 +16,8 @@ import {
   type HonoServer,
 } from "./context";
 import { env } from "./env";
-import { opentelemetryMiddleware } from "./middleware/index.ts";
-import { wideEventMiddleware } from "./middleware/wide-event";
+import { opentelemetryMiddleware } from "./otel/index.ts";
+import { wideEventMiddleware } from "./otel/wide-event";
 import adminRoutes from "./routes/admin";
 import importRoutes from "./routes/import";
 import { mainRouter } from "./routes";
@@ -30,6 +30,10 @@ export type CreateAppOptions = {
 export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
+  app.use(async (c, next) => {
+    console.log(c.req.url);
+    await next();
+  });
   app.use(timing());
   if (env.isDevelopment) {
     app.use(prettyJSON());
