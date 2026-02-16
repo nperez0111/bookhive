@@ -55,6 +55,8 @@ declare module "hono" {
   interface ContextVariableMap {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
+    /** Request ID (UUID); set by wide-event middleware for the rest of the request. */
+    requestId: string;
     /** Mutable bag for wide-event context; merged into the single request log. */
     wideEventBag: Record<string, unknown>;
     /** App logger; only wide-event middleware should call it for request-scoped logs. */
@@ -66,6 +68,7 @@ export type AppEnv = {
   Variables: {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
+    requestId: string;
     appLogger: Logger;
   };
 };

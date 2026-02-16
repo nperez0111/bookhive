@@ -5,7 +5,6 @@ import { compress } from "hono/compress";
 import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
 import { prettyJSON } from "hono/pretty-json";
-import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { timing } from "hono/timing";
 
@@ -31,7 +30,6 @@ export type CreateAppOptions = {
 export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
-  app.use(requestId());
   app.use(timing());
   if (env.isDevelopment) {
     app.use(prettyJSON());

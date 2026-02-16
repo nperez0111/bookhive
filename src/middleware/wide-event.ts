@@ -18,8 +18,9 @@ function shouldEmitForPath(path: string): boolean {
 export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const start = Date.now();
-    const requestId =
-      c.req.header("x-request-id") ?? `req-${c.req.url}-${start}`;
+    const requestId = c.req.header("x-request-id") ?? crypto.randomUUID();
+    c.set("requestId", requestId);
+    c.header("X-Request-Id", requestId);
 
     try {
       await next();
