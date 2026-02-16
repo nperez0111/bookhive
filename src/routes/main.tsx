@@ -4,7 +4,7 @@
  */
 import {
   createIPX,
-  createIPXWebServer,
+  createIPXFetchHandler,
   ipxFSStorage,
   ipxHttpStorage,
 } from "ipx";
@@ -42,7 +42,7 @@ declare module "hono" {
   }
 }
 
-const ipx = createIPXWebServer(
+const ipxHandler = createIPXFetchHandler(
   createIPX({
     maxAge: 60 * 60 * 24 * 30,
     storage: ipxFSStorage({ dir: "./public" }),
@@ -93,9 +93,20 @@ export function mainRouter(deps: AppDeps): HonoServer {
     }),
   );
 
-  app.use("/images/*", (c) =>
-    ipx(new Request(c.req.raw.url.replace(/\/images/, ""))),
-  );
+  app.use("/images/*", async (c) => {
+    // Use pathname only so behavior is identical behind proxies (fixes production IPX errors)
+    const pathname = new URL(c.req.url).pathname;
+    const ipxPath = pathname.replace(/^\/images/, "") || "/";
+    const ipxUrl = new URL(ipxPath, "http://localhost").href;
+    const res = await ipxHandler(ipxUrl);
+    const headers = new Headers(res.headers);
+    headers.set("X-Request-Id", c.get("requestId"));
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
+  });
 
   app.use("/books/:hiveId", methodOverride({ app }));
   app.use("/comments/:commentId", methodOverride({ app }));
