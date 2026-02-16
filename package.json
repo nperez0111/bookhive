@@ -6,7 +6,7 @@
   },
   "scripts": {
     "seed:db": "bun run src/initialize.ts",
-    "dev": "bun run build:assets && nitro dev",
+    "dev": "bun run build:assets && bunx --bun nitro dev",
     "build:assets": "bun run scripts/build-assets.ts",
     "build": "bun run lexgen && nitro build",
     "build:server": "bun run scripts/build-server.ts",
