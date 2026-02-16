@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
-    "nitropack": "^2.12.4",
+    "nitro": "latest",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",
     "sharp": "0.33.5"
