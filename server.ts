@@ -8,7 +8,7 @@ import app from "./src/server.ts";
 console.log("here");
 
 export default {
-  fetch: instrument(app).fetch,
+  fetch: app.fetch,
   port: env.PORT,
   development: env.isDevelopment,
 };
