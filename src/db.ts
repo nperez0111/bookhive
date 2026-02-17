@@ -328,25 +328,52 @@ migrations["009"] = {
 
 migrations["010"] = {
   async up(db: Kysely<unknown>) {
+    const MIGRATION_010_BATCH_SIZE = 500;
     // Backfill book_id_map.goodreadsId from hive_book (source/sourceId/sourceUrl)
     // so goodreadsId matches the canonical id from hive_book.
-    const rows = await db
-      // @ts-ignore
-      .selectFrom("hive_book")
-      .select(["id", "source", "sourceId", "sourceUrl", "meta"])
-      .execute();
-
+    // Batched reads (LIMIT/OFFSET) + one UPDATE per batch (CASE) to avoid loading
+    // the full table and per-row round-trips.
     const updatedAt = new Date().toISOString();
-    for (const row of rows) {
-      const { goodreadsId } = deriveBookIdentifiers(row);
-      await db
+    let offset = 0;
+    let batch: {
+      id: string;
+      source: string | null;
+      sourceId: string | null;
+      sourceUrl: string | null;
+      meta: string | null;
+    }[];
+    do {
+      batch = await db
         // @ts-ignore
-        .updateTable("book_id_map")
-        // @ts-ignore
-        .set({ goodreadsId, updatedAt })
-        .where("hiveId", "=", row.id)
+        .selectFrom("hive_book")
+        .select(["id", "source", "sourceId", "sourceUrl", "meta"])
+        .orderBy("id")
+        .limit(MIGRATION_010_BATCH_SIZE)
+        .offset(offset)
         .execute();
-    }
+      if (batch.length === 0) break;
+      const updates = batch.map((row) => ({
+        hiveId: row.id as HiveId,
+        goodreadsId: deriveBookIdentifiers(
+          row as Parameters<typeof deriveBookIdentifiers>[0],
+        ).goodreadsId as string | null,
+      }));
+      const hiveIds = updates.map((u) => u.hiveId) as HiveId[];
+      const caseFragments = updates.map(
+        (u) => sql`WHEN ${u.hiveId} THEN ${u.goodreadsId}`,
+      );
+      await db
+        // @ts-ignore - migration uses unknown schema; set uses raw CASE, where uses hiveIds
+        .updateTable("book_id_map")
+        .set({
+          goodreadsId: sql`CASE hiveId ${sql.join(caseFragments, sql` `)} END`,
+          updatedAt: sql`${updatedAt}`,
+        })
+        // @ts-ignore - Kysely<unknown> rejects hiveId[] in where
+        .where("hiveId", "in", hiveIds)
+        .execute();
+      offset += batch.length;
+    } while (batch.length === MIGRATION_010_BATCH_SIZE);
   },
   async down(_db: Kysely<unknown>) {
     // No reversible fix; goodreadsId was wrong before.
