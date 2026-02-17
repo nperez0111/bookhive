@@ -162,26 +162,69 @@ export async function createAppDeps(): Promise<AppDeps> {
   };
 }
 
+/** Optional timing callbacks for server-timing breakdown (session_iron, session_restore, session_save). */
+export type SessionTiming = {
+  start: (name: string) => void;
+  end: (name: string) => void;
+};
+
+const SESSION_CLIENT_CACHE_TTL_MS = 30_000; // 30s in-memory cache to avoid restore+getTokenInfo on every request
+const sessionClientCache = new Map<
+  string,
+  { client: SessionClient; expiresAt: number }
+>();
+
+function getCachedSessionClient(did: string): SessionClient | null {
+  const entry = sessionClientCache.get(did);
+  if (!entry || Date.now() > entry.expiresAt) return null;
+  return entry.client;
+}
+
+function setCachedSessionClient(did: string, client: SessionClient): void {
+  sessionClientCache.set(did, {
+    client,
+    expiresAt: Date.now() + SESSION_CLIENT_CACHE_TTL_MS,
+  });
+}
+
 // Helper function to get the session client for the active session
 export async function getSessionAgent(
   req: Request,
   res: Response,
   ctx: AppContext,
+  timing?: SessionTiming,
 ): Promise<SessionClient | null> {
+  timing?.start("session_iron");
   const session = await getIronSession<Session>(req, res, getSessionConfig());
+  timing?.end("session_iron");
 
   if (!session.did) {
     return null;
   }
 
+  const cached = getCachedSessionClient(session.did);
+  if (cached) {
+    return cached;
+  }
+
   try {
+    timing?.start("session_restore");
     const oauthSession = await ctx.oauthClient.restore(session.did as Did, {
       refresh: "auto",
     });
-    await oauthSession.getTokenInfo("auto");
+    timing?.end("session_restore");
+
+    // Don't await getTokenInfo: OAuthSession.handle() calls getTokenSet('auto') on first
+    // request, so the token is loaded/refreshed when we first use the client (e.g. getProfile).
+
+    timing?.start("session_save");
     session.updateConfig(getSessionConfig());
     await session.save();
-    return sessionClientFromOAuthSession(oauthSession);
+    timing?.end("session_save");
+
+    const client = sessionClientFromOAuthSession(oauthSession);
+    setCachedSessionClient(session.did, client);
+    return client;
   } catch (err) {
     ctx.addWideEventContext({
       oauth_restore: "failed",
@@ -211,16 +254,18 @@ export function createContextMiddleware(deps: AppDeps) {
         return profileLazy.value as Promise<ProfileViewDetailed | null>;
       },
     };
-    const sessionLazy = lazy(() => {
-      startTime(c, "get_session_iron");
-      return getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
-        endTime(c, "get_session_iron");
+    const sessionTiming: SessionTiming = {
+      start: (name) => startTime(c, name),
+      end: (name) => endTime(c, name),
+    };
+    const sessionLazy = lazy(() =>
+      getSessionAgent(c.req.raw, c.res, ctx, sessionTiming).then((client) => {
         if (client) {
           ctx.addWideEventContext({ userDid: client.did });
         }
         return client;
-      });
-    });
+      }),
+    );
     const profileLazy = lazy(async () => {
       startTime(c, "get_profile_session");
       const client = await sessionLazy.value;
