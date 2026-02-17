@@ -205,47 +205,49 @@ export function createContextMiddleware(deps: AppDeps) {
         Object.assign(c.get("wideEventBag"), context);
       },
       getSessionAgent(): Promise<SessionClient | null> {
-        return lazy(() => {
-          startTime(c, "get_session_iron");
-          return getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
-            endTime(c, "get_session_iron");
-            if (client) {
-              ctx.addWideEventContext({ userDid: client.did });
-            }
-            return client;
-          });
-        }).value;
+        return sessionLazy.value;
       },
       async getProfile(): Promise<ProfileViewDetailed | null> {
-        return lazy(async () => {
-          startTime(c, "get_profile_session");
-          const client = await ctx.getSessionAgent();
-          endTime(c, "get_profile_session");
-          if (!client?.did) {
-            return null;
-          }
-          startTime(c, "get_profile_cache");
-          const result = await readThroughCache<ProfileViewDetailed | null>(
-            deps.kv,
-            "profile:" + client.did,
-            async () => {
-              startTime(c, "get_profile_network");
-              try {
-                const res = await client.get("app.bsky.actor.getProfile", {
-                  params: { actor: client.did as ActorIdentifier },
-                });
-                if (!res.ok) return null;
-                return res.data as ProfileViewDetailed | null;
-              } finally {
-                endTime(c, "get_profile_network");
-              }
-            },
-          );
-          endTime(c, "get_profile_cache");
-          return result;
-        }).value as Promise<ProfileViewDetailed | null>;
+        return profileLazy.value as Promise<ProfileViewDetailed | null>;
       },
     };
+    const sessionLazy = lazy(() => {
+      startTime(c, "get_session_iron");
+      return getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
+        endTime(c, "get_session_iron");
+        if (client) {
+          ctx.addWideEventContext({ userDid: client.did });
+        }
+        return client;
+      });
+    });
+    const profileLazy = lazy(async () => {
+      startTime(c, "get_profile_session");
+      const client = await sessionLazy.value;
+      endTime(c, "get_profile_session");
+      if (!client?.did) {
+        return null;
+      }
+      startTime(c, "get_profile_cache");
+      const result = await readThroughCache<ProfileViewDetailed | null>(
+        deps.kv,
+        "profile:" + client.did,
+        async () => {
+          startTime(c, "get_profile_network");
+          try {
+            const res = await client.get("app.bsky.actor.getProfile", {
+              params: { actor: client.did as ActorIdentifier },
+            });
+            if (!res.ok) return null;
+            return res.data as ProfileViewDetailed | null;
+          } finally {
+            endTime(c, "get_profile_network");
+          }
+        },
+      );
+      endTime(c, "get_profile_cache");
+      return result;
+    });
     c.set("ctx", ctx);
     await next();
   };
