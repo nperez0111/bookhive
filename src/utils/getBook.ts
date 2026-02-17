@@ -7,6 +7,8 @@ import { parseISO, isValid, startOfDay } from "date-fns";
 import type { AppContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
 import type { HiveId, UserBook, UserBookRow } from "../types";
+import { findBookIdentifiersByLookup } from "../bsky/bookLookup";
+import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 import { hydrateUserBook, serializeUserBook } from "./bookProgress";
@@ -247,6 +249,9 @@ export async function updateBookRecord({
   // Determine the final status (use auto-inferred status or original status)
   const finalStatus = autoStatus || originalBook?.status;
 
+  const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
+  const identifiers = toBookIdentifiersOutput(identifiersRow);
+
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -279,6 +284,7 @@ export async function updateBookRecord({
         : updates.bookProgress !== undefined
           ? updates.bookProgress
           : originalBook?.bookProgress,
+    identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
   };
 
   const book = BookRecord.validateRecord(bookData);
@@ -371,6 +377,16 @@ export async function updateBookRecords({
   }> = [];
 
   const bookMap = (await bookRecords).books;
+  const hiveIds = [...updates.keys()];
+  const idRows = await ctx.db
+    .selectFrom("book_id_map")
+    .where("hiveId", "in", hiveIds)
+    .selectAll()
+    .execute();
+  const identifiersByHiveId = new Map(
+    idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]),
+  );
+
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
       bookMap.entries().find(([_rkey, book]) => book.hiveId === hiveId) ?? [];
@@ -404,6 +420,10 @@ export async function updateBookRecords({
     // Determine the final status (use auto-inferred status or original status)
     const finalStatus = autoStatus || originalBook?.status;
 
+    const idOutput = identifiersByHiveId.get(hiveId);
+    const identifiers =
+      idOutput && Object.keys(idOutput).length > 0 ? idOutput : undefined;
+
     const book = BookRecord.validateRecord({
       $type: ids.BuzzBookhiveBook,
       // Always prefer original values
@@ -435,6 +455,7 @@ export async function updateBookRecords({
           : update.bookProgress !== undefined
             ? update.bookProgress
             : originalBook?.bookProgress,
+      identifiers,
     });
 
     if (!book.success) {

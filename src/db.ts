@@ -17,6 +17,7 @@ import type {
   UserBookRow,
   UserFollow,
 } from "./types";
+import { deriveBookIdentifiers } from "./utils/bookIdentifiers.js";
 
 // Types
 export type DatabaseSchema = {
@@ -322,6 +323,33 @@ migrations["009"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("hive_book_genre").execute();
+  },
+};
+
+migrations["010"] = {
+  async up(db: Kysely<unknown>) {
+    // Backfill book_id_map.goodreadsId from hive_book (source/sourceId/sourceUrl)
+    // so goodreadsId matches the canonical id from hive_book.
+    const rows = await db
+      // @ts-ignore
+      .selectFrom("hive_book")
+      .select(["id", "source", "sourceId", "sourceUrl", "meta"])
+      .execute();
+
+    const updatedAt = new Date().toISOString();
+    for (const row of rows) {
+      const { goodreadsId } = deriveBookIdentifiers(row);
+      await db
+        // @ts-ignore
+        .updateTable("book_id_map")
+        // @ts-ignore
+        .set({ goodreadsId, updatedAt })
+        .where("hiveId", "=", row.id)
+        .execute();
+    }
+  },
+  async down(_db: Kysely<unknown>) {
+    // No reversible fix; goodreadsId was wrong before.
   },
 };
 

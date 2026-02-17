@@ -71,6 +71,11 @@
             "description": "Progress tracking details for the book",
             "type": "ref",
             "ref": "buzz.bookhive.defs#bookProgress"
+          },
+          "identifiers": {
+            "description": "External identifiers for the book",
+            "type": "ref",
+            "ref": "buzz.bookhive.defs#bookIdentifiers"
           }
         }
       }

@@ -228,6 +228,12 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    */
   hiveId: /*#__PURE__*/ v.string(),
   /**
+   * External identifiers for the book
+   */
+  get identifiers() {
+    return /*#__PURE__*/ v.optional(bookIdentifiersSchema);
+  },
+  /**
    * Average rating (0-1000)
    * @minimum 0
    * @maximum 1000

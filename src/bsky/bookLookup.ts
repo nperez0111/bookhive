@@ -78,29 +78,33 @@ export function transformBookWithIdentifiers<
       ? (JSON.parse(book.identifiers) as BookIdentifiers)
       : {}),
   };
-  return toHiveBookOutput(book as HiveBook, identifiers);
+  return toHiveBookOutput(book as unknown as HiveBook, identifiers);
 }
 
 export async function findBookIdentifiersByLookup({
   ctx,
   hiveId,
-  isbn,
+  isbn10,
   isbn13,
   goodreadsId,
 }: {
   ctx: DbCtx;
   hiveId?: HiveId | null;
-  isbn?: string | null;
+  isbn10?: string | null;
   isbn13?: string | null;
   goodreadsId?: string | null;
 }) {
+  if (!hiveId && !isbn10 && !isbn13 && !goodreadsId) {
+    return undefined;
+  }
+
   let query = ctx.db.selectFrom("book_id_map").selectAll();
 
   if (hiveId) {
     query = query.where("hiveId", "=", hiveId);
   }
-  if (isbn) {
-    query = query.where("isbn", "=", isbn);
+  if (isbn10) {
+    query = query.where("isbn", "=", isbn10);
   }
   if (isbn13) {
     query = query.where("isbn13", "=", isbn13);
@@ -115,13 +119,13 @@ export async function findBookIdentifiersByLookup({
 export async function findHiveBookByBookIdentifiersLookup({
   ctx,
   hiveId,
-  isbn,
+  isbn10,
   isbn13,
   goodreadsId,
 }: {
   ctx: DbCtx;
   hiveId: HiveId | null;
-  isbn: string | null;
+  isbn10: string | null;
   isbn13: string | null;
   goodreadsId: string | null;
 }): Promise<HiveBook | undefined> {
@@ -153,7 +157,7 @@ export async function findHiveBookByBookIdentifiersLookup({
     }
   }
 
-  if (isbn) {
+  if (isbn10) {
     const byIsbn = await ctx.db
       .selectFrom("hive_book")
       .selectAll()
@@ -162,7 +166,7 @@ export async function findHiveBookByBookIdentifiersLookup({
           string | null
         >`NULLIF(REPLACE(REPLACE(UPPER(CAST(json_extract(meta, '$.isbn') AS TEXT)), '-', ''), ' ', ''), '')`,
         "=",
-        isbn,
+        isbn10,
       )
       .executeTakeFirst();
     if (byIsbn) {

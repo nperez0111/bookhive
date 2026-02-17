@@ -14,9 +14,9 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBookIdentifiers", {
      */
     hiveId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
     /**
-     * The book ISBN identifier
+     * The book ISBN-10 identifier
      */
-    isbn: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    isbn10: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
     /**
      * The book ISBN-13 identifier
      */

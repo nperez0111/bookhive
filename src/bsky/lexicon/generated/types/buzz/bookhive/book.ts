@@ -37,6 +37,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      */
     hiveId: /*#__PURE__*/ v.string(),
     /**
+     * External identifiers for the book
+     */
+    get identifiers() {
+      return /*#__PURE__*/ v.optional(BuzzBookhiveDefs.bookIdentifiersSchema);
+    },
+    /**
      * The book's review
      * @maxGraphemes 15000
      */

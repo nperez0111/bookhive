@@ -198,11 +198,11 @@ export function createXrpcRouter<
     async handler({ params }) {
       const ctx = getCtx();
       const hiveId = normalizeHiveId(params.hiveId);
-      const isbn = normalizeIsbn(params.isbn);
+      const isbn10 = normalizeIsbn(params.isbn10);
       const isbn13 = normalizeIsbn13(params.isbn13);
       const goodreadsId = normalizeGoodreadsId(params.goodreadsId);
 
-      if (!hiveId && !isbn && !isbn13 && !goodreadsId) {
+      if (!hiveId && !isbn10 && !isbn13 && !goodreadsId) {
         throw new XRPCError({
           status: 400,
           error: "InvalidRequest",
@@ -214,7 +214,7 @@ export function createXrpcRouter<
       let bookIdentifiersRow = await findBookIdentifiersByLookup({
         ctx,
         hiveId,
-        isbn,
+        isbn10,
         isbn13,
         goodreadsId,
       });
@@ -230,7 +230,7 @@ export function createXrpcRouter<
         hiveBook = await findHiveBookByBookIdentifiersLookup({
           ctx,
           hiveId,
-          isbn,
+          isbn10,
           isbn13,
           goodreadsId,
         });
@@ -283,14 +283,14 @@ export function createXrpcRouter<
     async handler({ params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      const { id, isbn, isbn13, goodreadsId } = params;
+      const { id, isbn10, isbn13, goodreadsId } = params;
       let hiveId = id as HiveId | undefined;
 
       if (!id) {
         hiveId = (
           await findBookIdentifiersByLookup({
             ctx,
-            isbn,
+            isbn10,
             isbn13,
             goodreadsId,
           })
@@ -508,6 +508,24 @@ export function createXrpcRouter<
         hydrateUserBook(book),
       );
 
+      const profileHiveIds = [
+        ...new Set([
+          ...books.map((b) => b.hiveId),
+          ...friendsBuzzes.map((b) => b.hiveId),
+        ]),
+      ];
+      const profileIdRows =
+        profileHiveIds.length > 0
+          ? await ctx.db
+              .selectFrom("book_id_map")
+              .where("hiveId", "in", profileHiveIds)
+              .selectAll()
+              .execute()
+          : [];
+      const identifiersByHiveId = new Map(
+        profileIdRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]),
+      );
+
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
           new Set(
@@ -564,6 +582,7 @@ export function createXrpcRouter<
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
+          identifiers: identifiersByHiveId.get(b.hiveId),
         })),
         books: parsedBooks.map((b) => ({
           userDid: b.userDid,
@@ -582,6 +601,7 @@ export function createXrpcRouter<
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
+          identifiers: identifiersByHiveId.get(b.hiveId),
         })),
         activity: books
           .reduce(

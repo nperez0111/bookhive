@@ -242,6 +242,11 @@
           "description": "Progress tracking information for the book",
           "type": "ref",
           "ref": "buzz.bookhive.defs#bookProgress"
+        },
+        "identifiers": {
+          "description": "External identifiers for the book",
+          "type": "ref",
+          "ref": "buzz.bookhive.defs#bookIdentifiers"
         }
       }
     },
