@@ -114,6 +114,10 @@ const app = new Hono<AppEnv>()
           firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
         )
       ) {
+        c.set(
+          "requestError",
+          new Error("Failed to write comment to the database"),
+        );
         return c.html(
           <Layout>
             <ErrorPage

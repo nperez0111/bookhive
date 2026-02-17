@@ -10,7 +10,7 @@ import {
 } from "ipx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
-import { endTime, startTime } from "hono/timing";
+import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
@@ -57,6 +57,8 @@ const ipxHandler = createIPXFetchHandler(
 export function mainRouter(deps: AppDeps): HonoServer {
   const app = new Hono<AppEnv>();
 
+  // Ensure timing/metric is available for startTime/endTime in routes and layout (parent timing() may not run before this sub-app in some paths)
+  app.use(timing());
   app.use("*", createContextMiddleware(deps));
 
   loginRouter(app, {

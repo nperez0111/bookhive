@@ -62,6 +62,8 @@ declare module "hono" {
     wideEventBag: Record<string, unknown>;
     /** App logger; only wide-event middleware should call it for request-scoped logs. */
     appLogger: Logger;
+    /** Set by error-capture middleware (thrown) or by handlers (caught then return 5xx); included in wide-event log. */
+    requestError?: unknown;
   }
 }
 
@@ -71,6 +73,7 @@ export type AppEnv = {
     assetUrls: BundleAssetUrls | null;
     requestId: string;
     appLogger: Logger;
+    requestError?: unknown;
   };
 };
 

@@ -246,6 +246,8 @@ const app = new Hono<AppEnv>()
             } as Partial<BookRecord.Record> & { coverImage?: string },
           });
         } catch (e) {
+          c.set("requestError", e);
+          c.get("ctx").addWideEventContext({ write_book: "failed" });
           return c.html(
             <Layout>
               <ErrorPage
@@ -261,10 +263,8 @@ const app = new Hono<AppEnv>()
         }
         return c.redirect("/books/" + hiveId);
       } catch (err) {
-        c.get("ctx").addWideEventContext({
-          write_book: "failed",
-          error: err instanceof Error ? err.message : String(err),
-        });
+        c.set("requestError", err);
+        c.get("ctx").addWideEventContext({ write_book: "failed" });
         await c.get("ctx").kv.del(bookLockKey);
         return c.html(
           <Layout>

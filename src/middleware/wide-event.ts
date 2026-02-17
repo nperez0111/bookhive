@@ -10,6 +10,13 @@ import type { AppEnv } from "../context";
 const SKIP_PATHS = ["/healthcheck", "/metrics"];
 const SKIP_PREFIXES = ["/public", "/images"];
 
+function toErrorPayload(err: unknown): { message: string; type: string } {
+  if (err instanceof Error) {
+    return { message: err.message, type: err.name };
+  }
+  return { message: String(err), type: "Error" };
+}
+
 function shouldEmitForPath(path: string): boolean {
   if (SKIP_PATHS.includes(path)) return false;
   return !SKIP_PREFIXES.some((p) => path.startsWith(p));
@@ -58,11 +65,30 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
         Object.assign(wideEvent, bag);
       }
 
-      if (c.error) {
-        wideEvent["error"] = {
-          message: c.error instanceof Error ? c.error.message : String(c.error),
-          type: c.error instanceof Error ? c.error.name : "Error",
-        };
+      // Ensure error is in the log for 5xx: from bag (string/object), c.error, or requestError (thrown or set by handler)
+      if (outcome === "error") {
+        const fromBag = wideEvent["error"];
+        const normalized =
+          typeof fromBag === "string"
+            ? { message: fromBag, type: "Error" as const }
+            : fromBag &&
+                typeof fromBag === "object" &&
+                "message" in fromBag &&
+                typeof (fromBag as { message: unknown }).message === "string"
+              ? (fromBag as { message: string; type?: string })
+              : null;
+        if (normalized && typeof normalized.message === "string") {
+          wideEvent["error"] = {
+            message: normalized.message,
+            type:
+              typeof normalized.type === "string" ? normalized.type : "Error",
+          };
+        } else {
+          const err = c.error ?? c.get("requestError");
+          if (err !== undefined) {
+            wideEvent["error"] = toErrorPayload(err);
+          }
+        }
       }
 
       const level = outcome === "error" ? "error" : "info";

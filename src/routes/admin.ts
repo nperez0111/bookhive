@@ -88,11 +88,11 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       });
     } catch (err) {
       const duration = Date.now() - startTimeExport;
+      c.set("requestError", err);
       ctx.addWideEventContext({
         admin_export: "failed",
         client_ip: clientIp,
         duration_ms: duration,
-        error: err instanceof Error ? err.message : String(err),
       });
       return c.json({ message: "Failed to create export archive" }, 500);
     }
@@ -132,10 +132,10 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       "Cache-Control": "no-store",
     });
   } catch (err) {
+    c.set("requestError", err);
     ctx.addWideEventContext({
       admin_export: "error",
       client_ip: clientIp,
-      error: err instanceof Error ? err.message : String(err),
     });
     return c.json({ message: "Internal server error" }, 500);
   }

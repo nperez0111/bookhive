@@ -16,6 +16,7 @@ import {
   type HonoServer,
 } from "./context";
 import { env } from "./env";
+import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
 import adminRoutes from "./routes/admin";
@@ -36,6 +37,7 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   }
   app.use("*", createContextMiddleware(deps));
   app.use("*", wideEventMiddleware());
+  app.use("*", errorCaptureMiddleware());
   app.use("*", async (c, next) => {
     c.set("assetUrls", await getBundleAssetUrls());
     await next();
