@@ -5,6 +5,7 @@ import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { endTime, startTime } from "hono/timing";
 import { getIronSession } from "iron-session";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -204,32 +205,44 @@ export function createContextMiddleware(deps: AppDeps) {
         Object.assign(c.get("wideEventBag"), context);
       },
       getSessionAgent(): Promise<SessionClient | null> {
-        return lazy(() =>
-          getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
+        return lazy(() => {
+          startTime(c, "get_session_iron");
+          return getSessionAgent(c.req.raw, c.res, ctx).then((client) => {
+            endTime(c, "get_session_iron");
             if (client) {
               ctx.addWideEventContext({ userDid: client.did });
             }
             return client;
-          }),
-        ).value;
+          });
+        }).value;
       },
       async getProfile(): Promise<ProfileViewDetailed | null> {
         return lazy(async () => {
-          const client = await getSessionAgent(c.req.raw, c.res, ctx);
+          startTime(c, "get_profile_session");
+          const client = await ctx.getSessionAgent();
+          endTime(c, "get_profile_session");
           if (!client?.did) {
             return null;
           }
-          return readThroughCache<ProfileViewDetailed | null>(
+          startTime(c, "get_profile_cache");
+          const result = await readThroughCache<ProfileViewDetailed | null>(
             deps.kv,
             "profile:" + client.did,
             async () => {
-              const res = await client.get("app.bsky.actor.getProfile", {
-                params: { actor: client.did as ActorIdentifier },
-              });
-              if (!res.ok) return null;
-              return res.data as ProfileViewDetailed | null;
+              startTime(c, "get_profile_network");
+              try {
+                const res = await client.get("app.bsky.actor.getProfile", {
+                  params: { actor: client.did as ActorIdentifier },
+                });
+                if (!res.ok) return null;
+                return res.data as ProfileViewDetailed | null;
+              } finally {
+                endTime(c, "get_profile_network");
+              }
             },
           );
+          endTime(c, "get_profile_cache");
+          return result;
         }).value as Promise<ProfileViewDetailed | null>;
       },
     };

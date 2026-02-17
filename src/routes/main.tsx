@@ -80,7 +80,8 @@ export function mainRouter(deps: AppDeps): HonoServer {
       startTime(c, "layout_get_profile");
       const profileData = await c.get("ctx").getProfile();
       endTime(c, "layout_get_profile");
-      return (
+      startTime(c, "layout_render");
+      const result = (
         <Layout
           {...props}
           assetUrls={c.get("assetUrls") ?? undefined}
@@ -90,6 +91,8 @@ export function mainRouter(deps: AppDeps): HonoServer {
           <div class="relative">{children}</div>
         </Layout>
       );
+      endTime(c, "layout_render");
+      return result;
     }),
   );
 
