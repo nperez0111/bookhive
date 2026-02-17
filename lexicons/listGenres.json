@@ -1,0 +1,60 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.listGenres",
+  "defs": {
+    "genreWithCount": {
+      "type": "object",
+      "required": ["genre", "count"],
+      "properties": {
+        "genre": { "type": "string", "description": "Genre name" },
+        "count": {
+          "type": "integer",
+          "description": "Number of books in this genre"
+        }
+      }
+    },
+    "main": {
+      "type": "query",
+      "description": "List genres with book counts. Does not require authentication.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "description": "Maximum number of genres to return"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Offset for pagination"
+          },
+          "minBooks": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Only return genres with at least this many books"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["genres"],
+          "properties": {
+            "genres": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "#genreWithCount" }
+            },
+            "offset": {
+              "type": "integer",
+              "description": "Next offset for pagination"
+            }
+          }
+        }
+      }
+    }
+  }
+}

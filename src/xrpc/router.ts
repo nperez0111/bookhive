@@ -11,6 +11,7 @@ import {
 } from "@atcute/xrpc-server";
 import {
   BuzzBookhiveSearchBooks,
+  BuzzBookhiveListGenres,
   BuzzBookhiveGetBookIdentifiers,
   BuzzBookhiveGetBook,
   BuzzBookhiveGetProfile,
@@ -39,7 +40,7 @@ import {
   normalizeIsbn13,
   toBookIdentifiersOutput,
 } from "../utils/bookIdentifiers";
-import type { NotNull } from "kysely";
+import { sql, type NotNull, type SqlBool } from "kysely";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
@@ -162,6 +163,33 @@ export function createXrpcRouter<
       return json({
         books: slice.map((b) => transformBookWithIdentifiers(b)),
         offset: off + slice.length,
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveListGenres, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { limit = 50, offset = 0, minBooks = 0 } = params;
+
+      let query = ctx.db
+        .selectFrom("hive_book_genre")
+        .select(["genre", sql<number>`COUNT(*)`.as("count")])
+        .groupBy("genre")
+        .orderBy(sql`COUNT(*)`, "desc");
+
+      if (minBooks > 0) {
+        query = query.having(sql<SqlBool>`COUNT(*) >= ${minBooks}`);
+      }
+
+      const genres = await query
+        .limit(limit)
+        .offset(offset ?? 0)
+        .execute();
+
+      return json({
+        genres: genres.map((g) => ({ genre: g.genre, count: g.count })),
+        offset: (offset ?? 0) + genres.length,
       });
     },
   });

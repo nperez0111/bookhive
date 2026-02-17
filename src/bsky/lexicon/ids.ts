@@ -9,6 +9,7 @@ export const ids = {
   BuzzBookhiveGetBookIdentifiers: "buzz.bookhive.getBookIdentifiers",
   BuzzBookhiveGetProfile: "buzz.bookhive.getProfile",
   BuzzBookhiveHiveBook: "buzz.bookhive.hiveBook",
+  BuzzBookhiveListGenres: "buzz.bookhive.listGenres",
   BuzzBookhiveSearchBooks: "buzz.bookhive.searchBooks",
   ComAtprotoRepoStrongRef: "com.atproto.repo.strongRef",
 } as const;

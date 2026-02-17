@@ -5,5 +5,6 @@ export * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook.js";
 export * as BuzzBookhiveGetBookIdentifiers from "./types/buzz/bookhive/getBookIdentifiers.js";
 export * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
 export * as BuzzBookhiveHiveBook from "./types/buzz/bookhive/hiveBook.js";
+export * as BuzzBookhiveListGenres from "./types/buzz/bookhive/listGenres.js";
 export * as BuzzBookhiveSearchBooks from "./types/buzz/bookhive/searchBooks.js";
 export * as ComAtprotoRepoStrongRef from "./types/com/atproto/repo/strongRef.js";
