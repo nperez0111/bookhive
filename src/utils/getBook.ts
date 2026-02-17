@@ -2,7 +2,7 @@ import { iterateAtpRepo } from "@atcute/car";
 import * as TID from "@atcute/tid";
 
 import type { SessionClient } from "../auth/client";
-import { parseISO, isValid, startOfDay } from "date-fns";
+import { parseISO, isValid } from "date-fns";
 
 import type { AppContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
@@ -84,13 +84,34 @@ function inferBookStatusAndDates(updates: {
     autoStatus = BOOK_STATUS.FINISHED;
   }
 
-  // Auto-set dates based on status if not already provided
+  // Auto-set dates based on status if not already provided.
+  // Use UTC "today" so the date doesn't depend on server timezone (startOfDay uses server local TZ).
   if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
-    // Auto-set startedAt to current date at start of day
-    autoStartedAt = startOfDay(new Date()).toISOString();
+    const now = new Date();
+    autoStartedAt = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    ).toISOString();
   } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
-    // Auto-set finishedAt to current date at start of day
-    autoFinishedAt = startOfDay(new Date()).toISOString();
+    const now = new Date();
+    autoFinishedAt = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    ).toISOString();
   }
 
   // Normalize dates to ISO format at start of day
