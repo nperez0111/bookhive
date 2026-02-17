@@ -7,11 +7,15 @@
       "description": "Find books matching the search criteria. Does not require authentication.",
       "parameters": {
         "type": "params",
-        "required": ["q"],
+        "required": [],
         "properties": {
           "q": {
             "type": "string",
             "description": "Search query string. Will be matched against title and authors fields."
+          },
+          "genre": {
+            "type": "string",
+            "description": "Filter by genre. Returns books in that genre. Can be used with or without q."
           },
           "limit": {
             "type": "integer",

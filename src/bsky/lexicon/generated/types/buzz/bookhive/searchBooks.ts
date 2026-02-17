@@ -6,6 +6,10 @@ import * as BuzzBookhiveHiveBook from "./hiveBook.js";
 const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.searchBooks", {
   params: /*#__PURE__*/ v.object({
     /**
+     * Filter by genre. Returns books in that genre. Can be used with or without q.
+     */
+    genre: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    /**
      * The ID of the book within the hive.
      */
     id: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
@@ -27,7 +31,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.searchBooks", {
     /**
      * Search query string. Will be matched against title and authors fields.
      */
-    q: /*#__PURE__*/ v.string(),
+    q: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   }),
   output: {
     type: "lex",

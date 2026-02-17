@@ -91,7 +91,7 @@ export function createXrpcRouter<
   router.addQuery(BuzzBookhiveSearchBooks, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { q, limit = 25, offset = 0, id } = params;
+      const { q, genre, limit = 25, offset = 0, id } = params;
 
       if (id) {
         const book = await ctx.db
@@ -107,6 +107,42 @@ export function createXrpcRouter<
         return json({ books });
       }
 
+      const off = offset ?? 0;
+
+      if (genre !== undefined && genre !== "") {
+        let genreQuery = ctx.db
+          .selectFrom("hive_book_genre")
+          .innerJoin("hive_book", "hive_book.id", "hive_book_genre.hiveId")
+          .selectAll("hive_book")
+          .where("hive_book_genre.genre", "=", genre);
+
+        if (q !== undefined && q !== "") {
+          const pattern = `%${q}%`;
+          genreQuery = genreQuery.where((eb) =>
+            eb.or([
+              eb("hive_book.rawTitle", "like", pattern),
+              eb("hive_book.authors", "like", pattern),
+            ]),
+          );
+        }
+
+        const books = await genreQuery
+          .orderBy("hive_book.ratingsCount", "desc")
+          .orderBy("hive_book.rating", "desc")
+          .limit(limit)
+          .offset(off)
+          .execute();
+
+        return json({
+          books: books.map((b) => transformBookWithIdentifiers(b)),
+          offset: off + books.length,
+        });
+      }
+
+      if (q === undefined || q === "") {
+        return json({ books: [] });
+      }
+
       const bookIds = await deps.searchBooks({ query: q, ctx });
 
       if (!bookIds.length) {
@@ -117,15 +153,15 @@ export function createXrpcRouter<
         .selectFrom("hive_book")
         .selectAll()
         .where("id", "in", bookIds)
-        .limit(limit * (offset ?? 0) + limit)
+        .limit(limit * off + limit)
         .execute();
 
       books.sort((a, b) => bookIds.indexOf(a.id) - bookIds.indexOf(b.id));
 
-      const slice = books.slice(offset ?? 0, (offset ?? 0) + limit);
+      const slice = books.slice(off, off + limit);
       return json({
         books: slice.map((b) => transformBookWithIdentifiers(b)),
-        offset: (offset ?? 0) + slice.length,
+        offset: off + slice.length,
       });
     },
   });
