@@ -21,13 +21,26 @@ const app = new Hono<AppEnv>()
   .get("/:hiveId", async (c) => {
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
+    const hiveId = c.req.param("hiveId") as HiveId;
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")
       .selectAll()
-      .where("id", "=", c.req.param("hiveId") as HiveId)
+      .where("id", "=", hiveId)
       .limit(1)
       .executeTakeFirst();
+
+    let isbn: string | undefined;
+    if (book) {
+      const idMap = await c
+        .get("ctx")
+        .db.selectFrom("book_id_map")
+        .select(["isbn13", "isbn"])
+        .where("hiveId", "=", hiveId)
+        .limit(1)
+        .executeTakeFirst();
+      isbn = idMap?.isbn13 || idMap?.isbn || undefined;
+    }
     endTime(c, "db_fetch_book");
 
     if (!book) {
@@ -59,11 +72,19 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "render_book_page");
+    const authors = book.authors.split("\t");
     const res = await c.render(<BookInfo book={book} />, {
       title: "BookHive | " + book.title,
       image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-      description: `See ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
-    });
+      description: `See ${book.title} by ${authors.join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
+      ogType: "book",
+      ogExtra: (
+        <>
+          {authors[0] && <meta property="book:author" content={authors[0]} />}
+          {isbn && <meta property="book:isbn" content={isbn} />}
+        </>
+      ),
+    } as any);
     endTime(c, "render_book_page");
     endTime(c, "route_get_book");
     return res;

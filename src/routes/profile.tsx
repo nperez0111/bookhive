@@ -163,7 +163,7 @@ const app = new Hono<AppEnv>()
       />,
       {
         title: "BookHive | @" + handle,
-        description: `@${handle}'s BookHive Profile page with ${parsedBooks.length} books`,
+        description: `@${handle}'s reading profile — ${parsedBooks.length} books read on BookHive`,
         image: profile?.avatar,
       },
     );

@@ -92,7 +92,7 @@ const app = new Hono<AppEnv>()
       />,
       {
         title: `BookHive | ${genre} Books`,
-        description: `Discover ${genre} books on BookHive`,
+        description: `Discover ${result.totalBooks} ${genre} books on BookHive`,
       },
     );
   })
@@ -120,7 +120,7 @@ const app = new Hono<AppEnv>()
       />,
       {
         title: `BookHive | Books by ${author}`,
-        description: `Discover books by ${author} on BookHive`,
+        description: `Discover ${result.totalBooks} books by ${author} on BookHive`,
       },
     );
   });

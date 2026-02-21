@@ -13,6 +13,8 @@ export const Layout: FC<
     /** Pass from jsxRenderer when available so Layout doesn't need RequestContext */
     assetUrls?: BundleAssetUrls;
     url?: string;
+    ogType?: string;
+    ogExtra?: any;
   }>
 > = ({
   children,
@@ -21,6 +23,8 @@ export const Layout: FC<
   description = "Goodreads but better. Built on top of Blue Sky.",
   assetUrls: assetUrlsProp,
   url: urlProp,
+  ogType = "website",
+  ogExtra,
 }) => {
   let url = urlProp ?? "https://bookhive.buzz";
   let assetUrls = assetUrlsProp;
@@ -33,8 +37,12 @@ export const Layout: FC<
       assetUrls = null;
     }
   }
-  const cssUrls = assetUrls?.css?.length ? assetUrls.css : ["/public/output.css"];
-  const jsUrls = assetUrls?.js?.length ? assetUrls.js : ["/public/js/client.js"];
+  const cssUrls = assetUrls?.css?.length
+    ? assetUrls.css
+    : ["/public/output.css"];
+  const jsUrls = assetUrls?.js?.length
+    ? assetUrls.js
+    : ["/public/js/client.js"];
   const now = Date.now();
 
   return html`<!doctype html>
@@ -42,12 +50,14 @@ export const Layout: FC<
       <head>
         <meta charset="UTF-8" />
         <meta property="og:url" content="${url}" />
-        <meta property="og:type" content="website" />
+        <meta property="og:type" content="${ogType}" />
         <meta property="og:title" content="${title}" />
+        <meta property="og:site_name" content="BookHive" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
         <meta property="og:logo" content="/public/icon.svg" />
-        <meta name="twitter:card" content="${image}" />
+        ${ogExtra}
+        <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="bookhive.buzz" />
         <meta property="twitter:url" content="${url}" />
         <meta name="twitter:title" content="${title}" />
@@ -155,7 +165,9 @@ export const Layout: FC<
             --color-avatar-fallback: #e5e7eb;
           }`)}
         </style>
-        ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
+        ${jsUrls.map(
+          (src) => html`<script type="module" src="${src}"></script>`,
+        )}
         <script
           type="module"
           src="/public/js/actor-typeahead.js?v=${now}"
