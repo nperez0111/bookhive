@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../context";
 import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
+import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
 import { LibraryImport } from "../pages/import";
@@ -22,6 +23,13 @@ const app = new Hono<AppEnv>()
       return c.redirect("/app");
     }
     return c.render(<Home />, { title: "BookHive | Home" });
+  })
+  .get("/feed", async (c) => {
+    const profile = await c.get("ctx").getProfile();
+    if (!profile) {
+      return c.redirect("/login", 302);
+    }
+    return c.render(<FeedPage />, { title: "BookHive | Activity Feed" });
   })
   .get("/.well-known/atproto-did", (c) =>
     c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"),

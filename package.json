@@ -8,7 +8,7 @@
     "seed:db": "bun run src/initialize.ts",
     "dev": "bun run --parallel dev:server dev:vite",
     "dev:server": "bun --hot run src/index.ts",
-    "dev:vite": "vite",
+    "dev:vite": "sleep 1 && bunx vite",
     "build": "bun --bun run lexgen && bun run build:server",
     "build:server": "bun run scripts/build-server.ts",
     "test": "bun test src",

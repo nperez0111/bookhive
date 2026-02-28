@@ -2,6 +2,7 @@ import { type FC } from "hono/jsx";
 import type { ProfileViewDetailed } from "../../types";
 import { formatDistanceToNow } from "date-fns";
 import type { Book } from "../../types";
+import { BOOK_STATUS } from "../../constants";
 
 export const ProfileHeader: FC<{
   handle: string;
@@ -10,55 +11,94 @@ export const ProfileHeader: FC<{
   books: Book[];
   isFollowing?: boolean;
   canFollow?: boolean;
-}> = ({ handle, did, profile, books, isFollowing, canFollow }) => {
+  isOwnProfile?: boolean;
+}> = ({
+  handle,
+  did,
+  profile,
+  books,
+  isFollowing,
+  canFollow,
+  isOwnProfile,
+}) => {
+  const booksRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED)
+    .length;
+  const reviewCount = books.filter((b) => b.review?.trim()).length;
+  const joinDate =
+    books.length > 0
+      ? formatDistanceToNow(
+          new Date(books.map((b) => b.createdAt).sort()[0]!),
+          { addSuffix: true },
+        )
+      : null;
+
   return (
-    <div class="mb-12 flex items-start gap-8 px-4">
-      {profile?.avatar && (
-        <img
-          class="size-32 rounded-xl object-cover shadow-lg transition sm:size-40 md:size-56"
-          src={`/images/w_500/${profile.avatar}`}
-          alt=""
-        />
-      )}
-      <div class="flex flex-col gap-4">
-        <div class="flex items-center gap-3">
-          <h1 class="text-5xl leading-12 font-bold lg:text-6xl lg:tracking-tight">
+    <div class="card">
+      <div class="card-body flex flex-col items-start gap-4 md:flex-row md:items-start">
+        {profile?.avatar && (
+          <img
+            src={`/images/w_500/${profile.avatar}`}
+            alt=""
+            class="h-20 w-20 flex-shrink-0 rounded-full object-cover"
+          />
+        )}
+        <div class="min-w-0 flex-1">
+          <h1 class="text-2xl font-bold text-foreground">
             {profile?.displayName || handle}
           </h1>
-          {canFollow ? (
-            isFollowing ? (
-              <span class="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-                Following
-              </span>
-            ) : (
-              <form action="/api/follow-form" method="post">
-                <input type="hidden" name="did" value={did} />
-                <button
-                  type="submit"
-                  class="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-400 focus:outline-none dark:bg-blue-500 dark:hover:bg-blue-600"
-                >
-                  Follow
-                </button>
-              </form>
-            )
-          ) : null}
-        </div>
-        <p class="text-lg text-slate-600 dark:text-slate-400">
           <a
             href={`https://bsky.app/profile/${handle}`}
-            class="inline text-blue-600 hover:underline"
+            class="text-muted-foreground hover:text-foreground mt-0.5 block text-sm"
           >
-            @{handle} 🦋
+            @{handle}
           </a>
-          {books.length
-            ? ` • Joined ${formatDistanceToNow(books.map((book) => book.createdAt).sort()[0], { addSuffix: true })}`
-            : null}
-        </p>
-        {profile?.description && (
-          <p class="max-w-2xl leading-relaxed text-slate-600 dark:text-slate-300">
-            {profile.description}
-          </p>
-        )}
+          {profile?.description && (
+            <p class="text-muted-foreground mt-2 leading-relaxed">
+              {profile.description}
+            </p>
+          )}
+          {joinDate && (
+            <p class="text-muted-foreground mt-1 text-sm">Joined {joinDate}</p>
+          )}
+          <div class="mt-3 flex flex-wrap gap-2">
+            <span class="badge">{booksRead} books read</span>
+            <span class="badge">{reviewCount} reviews</span>
+          </div>
+        </div>
+        <div class="flex flex-shrink-0 gap-2">
+          {isOwnProfile ? (
+            <a href="/settings" class="btn btn-ghost">
+              Settings
+            </a>
+          ) : (
+            <>
+              <a
+                href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out @${handle}'s reading profile on BookHive! https://bookhive.buzz/profile/${handle}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-ghost"
+              >
+                Share
+              </a>
+              {canFollow &&
+                (isFollowing ? (
+                  <form action="/api/unfollow-form" method="post">
+                    <input type="hidden" name="did" value={did} />
+                    <button type="submit" class="btn btn-ghost">
+                      Following
+                    </button>
+                  </form>
+                ) : (
+                  <form action="/api/follow-form" method="post">
+                    <input type="hidden" name="did" value={did} />
+                    <button type="submit" class="btn btn-primary">
+                      Follow
+                    </button>
+                  </form>
+                ))}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

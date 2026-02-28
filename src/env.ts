@@ -9,7 +9,11 @@ export const env = cleanEnv(process.env, {
     choices: ["development", "production", "test"],
   }),
   PORT: port({ devDefault: testOnly(3000) }),
-  PUBLIC_URL: str({ default: "http://127.0.0.1:8080" }),
+  PUBLIC_URL: str({
+    default: "http://127.0.0.1:8080",
+    devDefault: "http://127.0.0.1:5173",
+    desc: "Public origin (use http://127.0.0.1:5173 in dev so OAuth callback goes through Vite; RFC 8252 requires loopback IP not localhost).",
+  }),
   DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
   KV_DB_PATH: str({
     devDefault: ":memory:",

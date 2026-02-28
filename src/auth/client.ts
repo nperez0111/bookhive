@@ -13,11 +13,11 @@ const time = Date.now();
 // - blob:*/*: Required for uploading book cover images
 // - repo:buzz.bookhive.book: Write operations on book records (create, update, delete)
 // - repo:buzz.bookhive.buzz: Write operations on comment records (create, update, delete)
-// - repo:app.bsky.graph.follow: Create follow records (for following users)
+// - repo:app.bsky.graph.follow: Create and delete follow records (follow/unfollow)
 // - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
 // - rpc:app.bsky.actor.getProfile: Required for fetching user profile information from any Audience
 export const OAUTH_SCOPES =
-  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
 
 export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
@@ -26,9 +26,7 @@ export async function createOAuthClient(kv: Storage) {
     !publicUrl ||
     publicUrl.includes("127.0.0.1") ||
     publicUrl.includes("localhost");
-  const redirectUris = isLoopback
-    ? [`http://127.0.0.1:${env.PORT}/oauth/callback`]
-    : [`${baseUrl}/oauth/callback`];
+  const redirectUris = [`${baseUrl}/oauth/callback`];
 
   return new OAuthClient({
     metadata: {

@@ -207,8 +207,10 @@ export const EditableLibraryTable: FC<{
   });
 
   return (
-    <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800">
-      <table class="w-full divide-y divide-gray-200 dark:divide-gray-700">
+    <>
+      {/* Desktop: table view */}
+      <div class="hidden overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800 md:block">
+        <table class="table w-full">
         <thead class="sticky top-0 z-10 bg-yellow-50 dark:bg-zinc-900">
           <tr>
             <th
@@ -258,7 +260,7 @@ export const EditableLibraryTable: FC<{
             >
               <td class="px-4 py-2">
                 <div class="flex items-center space-x-3">
-                  <div class="h-12 w-8 flex-shrink-0 overflow-hidden rounded-md">
+                  <div class="h-12 w-8 shrink-0 overflow-hidden rounded-md">
                     <img
                       src={book.cover || book.thumbnail || ""}
                       alt={`Cover of ${book.title}`}
@@ -270,7 +272,7 @@ export const EditableLibraryTable: FC<{
                         target.nextElementSibling?.classList.remove("hidden");
                       }}
                     />
-                    <div class="hidden h-full w-full items-center justify-center bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700">
+                    <div class="hidden h-full w-full items-center justify-center bg-linear-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700">
                       <svg
                         class="h-6 w-6 text-yellow-600 dark:text-yellow-400"
                         fill="currentColor"
@@ -369,6 +371,63 @@ export const EditableLibraryTable: FC<{
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+
+      {/* Mobile: card view */}
+      <div class="space-y-4 md:hidden">
+        {sortedBooks.map((book, index) => (
+          <div key={book.hiveId} class="card">
+            <div class="card-body flex gap-3">
+              <a href={`/books/${book.hiveId}`} class="shrink-0">
+                {book.cover || book.thumbnail ? (
+                  <img
+                    src={book.cover || book.thumbnail || ""}
+                    alt=""
+                    class="h-16 w-12 rounded object-cover"
+                  />
+                ) : (
+                  <div class="bg-muted flex h-16 w-12 items-center justify-center rounded">
+                    <svg class="text-muted-foreground h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z" />
+                    </svg>
+                  </div>
+                )}
+              </a>
+              <div class="min-w-0 flex-1">
+                <a href={`/books/${book.hiveId}`} class="text-foreground font-semibold hover:underline">
+                  {book.title}
+                </a>
+                <div class="text-muted-foreground text-sm">
+                  {book.authors.split("\t").join(", ")}
+                </div>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  <span class="badge">
+                    {book.status && BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
+                      ? BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
+                      : book.status ?? "—"}
+                  </span>
+                  {book.stars != null && (
+                    <span class="badge">{"★".repeat(Math.round(book.stars / 2))}</span>
+                  )}
+                </div>
+              </div>
+              <div onclick="event.stopPropagation()" class="shrink-0">
+                <StatusDropdown book={book} bookIndex={index} />
+                <form
+                  action={`/books/${book.hiveId}${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
+                  method="post"
+                  class="mt-1"
+                >
+                  <input type="hidden" name="_method" value="DELETE" />
+                  <button type="submit" class="btn btn-ghost text-destructive text-xs">
+                    Remove
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 };

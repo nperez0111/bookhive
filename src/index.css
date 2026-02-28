@@ -261,3 +261,30 @@ body {
     display: none;
   }
 }
+
+/* CSS-only tabs (e.g. profile Following/Followers) */
+.tabs {
+  @apply flex flex-wrap gap-0;
+}
+
+.tabs .tab-content {
+  @apply w-full flex-shrink-0 basis-full;
+}
+
+.tabs .tab-label {
+  @apply border-border text-muted-foreground hover:text-foreground cursor-pointer border-b-2 border-transparent px-4 py-2 text-sm font-medium transition-colors;
+}
+
+.tabs:has(#tab-following:checked) .tab-label[for="tab-following"],
+.tabs:has(#tab-followers:checked) .tab-label[for="tab-followers"] {
+  @apply border-primary text-foreground border-b-2;
+}
+
+.tabs .tab-panel {
+  @apply hidden pt-4;
+}
+
+.tabs:has(#tab-following:checked) .tab-panel[data-tab="following"],
+.tabs:has(#tab-followers:checked) .tab-panel[data-tab="followers"] {
+  @apply block;
+}

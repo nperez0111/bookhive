@@ -7,12 +7,13 @@ import { Fragment } from "hono/jsx";
 import { Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
 
+import { sql } from "kysely";
 import type { AppEnv } from "../context";
 import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { Layout } from "../pages/layout";
 import { ProfilePage } from "../pages/profile";
-import { getProfile } from "../utils/getProfile";
+import { getProfile, getProfiles } from "../utils/getProfile";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { refetchBooks } from "./lib";
 
@@ -150,6 +151,80 @@ const app = new Hono<AppEnv>()
         : undefined;
     endTime(c, "session");
 
+    startTime(c, "followCounts");
+    const [followingCountRes, followersCountRes] = await Promise.all([
+      c
+        .get("ctx")
+        .db.selectFrom("user_follows")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("userDid", "=", did)
+        .where("isActive", "=", 1)
+        .executeTakeFirst(),
+      c
+        .get("ctx")
+        .db.selectFrom("user_follows")
+        .select((eb) => eb.fn.countAll().as("count"))
+        .where("followsDid", "=", did)
+        .where("isActive", "=", 1)
+        .executeTakeFirst(),
+    ]);
+    const followingCount = Number(followingCountRes?.count ?? 0);
+    const followersCount = Number(followersCountRes?.count ?? 0);
+    endTime(c, "followCounts");
+
+    startTime(c, "followingFollowers");
+    const [followingRows, followersRows] = await Promise.all([
+      c
+        .get("ctx")
+        .db.selectFrom("user_follows")
+        .select("followsDid")
+        .where("userDid", "=", did)
+        .where("isActive", "=", 1)
+        .orderBy("followedAt", "desc")
+        .limit(50)
+        .execute(),
+      c
+        .get("ctx")
+        .db.selectFrom("user_follows")
+        .select("userDid")
+        .where("followsDid", "=", did)
+        .where("isActive", "=", 1)
+        .orderBy("followedAt", "desc")
+        .limit(50)
+        .execute(),
+    ]);
+    const followingDids = followingRows.map((r) => r.followsDid);
+    const followersDids = followersRows.map((r) => r.userDid);
+    const [followingProfiles, followersProfiles] = await Promise.all([
+      followingDids.length > 0
+        ? getProfiles({ ctx: c.get("ctx"), dids: followingDids })
+        : [],
+      followersDids.length > 0
+        ? getProfiles({ ctx: c.get("ctx"), dids: followersDids })
+        : [],
+    ]);
+    endTime(c, "followingFollowers");
+
+    startTime(c, "genreStats");
+    let genreStats: { genre: string; count: number }[] = [];
+    if (isBuzzer && parsedBooks.length > 0) {
+      const hiveIds = parsedBooks.map((b) => b.hiveId);
+      const rows = await c
+        .get("ctx")
+        .db.selectFrom("hive_book_genre")
+        .select(["genre", sql<number>`COUNT(*)`.as("count")])
+        .where("hiveId", "in", hiveIds)
+        .groupBy("genre")
+        .orderBy(sql`COUNT(*)`, "desc")
+        .limit(15)
+        .execute();
+      genreStats = rows.map((r) => ({
+        genre: r.genre,
+        count: Number(r.count),
+      }));
+    }
+    endTime(c, "genreStats");
+
     return c.render(
       <ProfilePage
         isBuzzer={isBuzzer}
@@ -160,6 +235,11 @@ const app = new Hono<AppEnv>()
         isFollowing={isFollowing}
         canFollow={Boolean(sessionAgent) && sessionAgent?.did !== did}
         isOwnProfile={sessionAgent?.did === did}
+        followingCount={followingCount}
+        followersCount={followersCount}
+        followingProfiles={followingProfiles}
+        followersProfiles={followersProfiles}
+        genreStats={genreStats}
       />,
       {
         title: "BookHive | @" + handle,

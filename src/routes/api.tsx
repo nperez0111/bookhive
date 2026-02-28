@@ -402,6 +402,125 @@ const app = new Hono<AppEnv>()
       } catch {}
       return c.redirect(`/profile/${targetHandle}`, 302);
     },
+  )
+  .post(
+    "/unfollow",
+    zValidator("json", z.object({ did: z.string() })),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { did } = c.req.valid("json");
+      if (!did || did === agent.did) {
+        return c.json({ success: false, message: "Invalid DID" }, 400);
+      }
+      try {
+        const listRes = await agent.get("com.atproto.repo.listRecords", {
+          params: {
+            repo: agent.did,
+            collection: "app.bsky.graph.follow",
+            limit: 300,
+          },
+        });
+        if (!listRes.ok) throw new Error("Failed to list follows");
+        const data = listRes.data as {
+          records: Array<{ uri: string; value: { subject: string } }>;
+        };
+        const followRecord = data.records.find((r) => r.value?.subject === did);
+        if (!followRecord) {
+          await c
+            .get("ctx")
+            .db.updateTable("user_follows")
+            .set({ isActive: 0 })
+            .where("userDid", "=", agent.did)
+            .where("followsDid", "=", did)
+            .execute();
+          return c.json({ success: true });
+        }
+        await agent.post("com.atproto.repo.applyWrites", {
+          input: {
+            repo: agent.did,
+            writes: [
+              {
+                $type: "com.atproto.repo.applyWrites#delete",
+                uri: followRecord.uri,
+              },
+            ],
+          },
+        });
+        await c
+          .get("ctx")
+          .db.updateTable("user_follows")
+          .set({ isActive: 0 })
+          .where("userDid", "=", agent.did)
+          .where("followsDid", "=", did)
+          .execute();
+        return c.json({ success: true });
+      } catch (e: unknown) {
+        return c.json(
+          {
+            success: false,
+            message: (e as Error)?.message || "Unfollow failed",
+          },
+          400,
+        );
+      }
+    },
+  )
+  .post(
+    "/unfollow-form",
+    zValidator("form", z.object({ did: z.string() })),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.redirect("/", 302);
+      }
+      const { did } = c.req.valid("form");
+      let targetHandle = did;
+      try {
+        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+      } catch {}
+      if (!did || did === agent.did) {
+        return c.redirect(`/profile/${targetHandle}`, 302);
+      }
+      try {
+        const listRes = await agent.get("com.atproto.repo.listRecords", {
+          params: {
+            repo: agent.did,
+            collection: "app.bsky.graph.follow",
+            limit: 300,
+          },
+        });
+        if (listRes.ok) {
+          const data = listRes.data as {
+            records: Array<{ uri: string; value: { subject: string } }>;
+          };
+          const followRecord = data.records.find((r) => r.value?.subject === did);
+          if (followRecord) {
+            await agent.post("com.atproto.repo.applyWrites", {
+              input: {
+                repo: agent.did,
+                writes: [
+                  {
+                    $type: "com.atproto.repo.applyWrites#delete",
+                    uri: followRecord.uri,
+                  },
+                ],
+              },
+            });
+          }
+        }
+        await c
+          .get("ctx")
+          .db.updateTable("user_follows")
+          .set({ isActive: 0 })
+          .where("userDid", "=", agent.did)
+          .where("followsDid", "=", did)
+          .execute();
+      } catch {}
+      return c.redirect(`/profile/${targetHandle}`, 302);
+    },
   );
 
 export default app;
