@@ -646,10 +646,11 @@ export const BookInfo: FC<{
           )}
 
           {did && usersBook?.status !== BOOK_STATUS.FINISHED && (
-            <div className="mt-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md dark:border-gray-700 dark:bg-zinc-900">
-              <h2 className="mb-2 text-xl font-bold">Reading Progress</h2>
+            <div className="card mt-8">
+            <div className="card-body">
+              <h2 className="mb-2 text-xl font-bold text-foreground">Reading Progress</h2>
               {usersBook?.bookProgress && (
-                <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
+                <p className="mb-3 text-sm text-muted-foreground">
                   {[
                     usersBook.bookProgress.percent !== undefined
                       ? `${usersBook.bookProgress.percent}% complete`
