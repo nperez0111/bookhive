@@ -1,3 +1,4 @@
+import { join } from "path";
 import { serveStatic } from "hono/bun";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
@@ -26,10 +27,19 @@ import { mainRouter } from "./routes";
 export type CreateAppOptions = {
   startTime: string;
   deps: AppDeps;
+  /** In production, root dir for built assets (public or dist/public). Resolved when running from dist/ (Docker) vs repo root. */
+  productionPublicRoot?: string;
 };
 
-export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
+export function createApp({
+  startTime,
+  deps,
+  productionPublicRoot,
+}: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
+  const assetRoot =
+    productionPublicRoot ??
+    (env.isProduction ? "dist/public" : "public");
 
   app.use(timing());
   if (env.isDevelopment) {
@@ -59,19 +69,35 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   app.route("/admin", adminRoutes);
   app.route("/import", importRoutes);
 
+  // Static assets before main router so /assets and /public are served first
+  const publicRoot = env.isProduction
+    ? join(process.cwd(), assetRoot)
+    : join(process.cwd(), "public");
+  app.use("/robots.txt", serveStatic({ root: publicRoot }));
+  if (env.isProduction) {
+    app.use(
+      "/assets/*",
+      serveStatic({
+        root: publicRoot,
+        rewriteRequestPath: (path) =>
+          path.startsWith("/assets") ? path.slice(1) : path,
+      }),
+    );
+  }
+  app.use(
+    "/public/*",
+    serveStatic({
+      root: env.isProduction ? publicRoot : process.cwd(),
+      rewriteRequestPath: (path) =>
+        env.isProduction
+          ? path.replace(/^\/public\/?/, "")
+          : path.replace(/^\/static/, "./public"),
+    }),
+  );
+
   // TODO enable etag for everything but import route
   app.use(etag());
   app.route("/", mainRouter(deps));
-
-  app.use(
-    "/robots.txt",
-    serveStatic({ root: env.isProduction ? "./dist/public" : "./public" }),
-  );
-
-  // Serve built assets in production
-  if (env.isProduction) {
-    app.use("/assets", serveStatic({ root: "./dist/public" }));
-  }
 
   // Sitemap
   app.get("/sitemap.xml", async (c) => {
@@ -104,14 +130,6 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
       "Content-Type": "application/xml",
     });
   });
-
-  app.use(
-    "/public/*",
-    serveStatic({
-      root: "./",
-      rewriteRequestPath: (path) => path.replace(/^\/static/, "./public"),
-    }),
-  );
 
   // 404 handler
   app.notFound((c) => c.json({ message: "Not Found" }, 404));

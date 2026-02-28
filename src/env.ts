@@ -9,7 +9,7 @@ export const env = cleanEnv(process.env, {
     choices: ["development", "production", "test"],
   }),
   PORT: port({ devDefault: testOnly(3000) }),
-  PUBLIC_URL: str({}),
+  PUBLIC_URL: str({ default: "http://127.0.0.1:8080" }),
   DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
   KV_DB_PATH: str({
     devDefault: ":memory:",

@@ -1,3 +1,6 @@
+import { join } from "path";
+import { env } from "../env";
+
 export type BundleAssetUrls = { css: string[]; js: string[] };
 
 export interface ViteManifestEntry {
@@ -11,27 +14,60 @@ export interface ViteManifest {
 }
 
 let cachedManifest: ViteManifest | null = null;
+/** Set when manifest is loaded; used so app can serve from same root (Docker: cwd is dist → public/; local prod: dist/public/). */
+let cachedProductionPublicRoot: string | null = null;
+
+/**
+ * Resolve production public root: directory that contains .vite/manifest.json and built assets.
+ * - When running from repo root: dist/public/
+ * - When running from dist/ (e.g. Docker `cd dist && bun index.js`): public/
+ */
+export async function resolveProductionPublicRoot(): Promise<string> {
+  if (cachedProductionPublicRoot) return cachedProductionPublicRoot;
+  const cwd = process.cwd();
+  for (const dir of ["public", "dist/public"]) {
+    const absPath = join(cwd, dir, ".vite", "manifest.json");
+    const file = Bun.file(absPath);
+    if (await file.exists()) {
+      cachedProductionPublicRoot = dir;
+      return dir;
+    }
+  }
+  return "dist/public";
+}
 
 /**
  * Load Vite's manifest.json in production.
  * In development, returns null (asset URLs are provided by getAssetUrlsFromManifest).
  */
 export async function loadViteManifest(): Promise<ViteManifest | null> {
-  if (process.env.NODE_ENV !== "production") {
-    // In dev mode, we don't use the manifest - assets are served by Vite directly
-    return null;
-  }
-
-  if (cachedManifest) {
-    return cachedManifest;
-  }
+  if (env.NODE_ENV !== "production") return null;
+  if (cachedManifest) return cachedManifest;
 
   try {
-    // In production, manifest is at dist/public/.vite/manifest.json
-    const manifestFile = await Bun.file(
-      "dist/public/.vite/manifest.json",
-    ).text();
-    cachedManifest = JSON.parse(manifestFile);
+    const cwd = process.cwd();
+    const possiblePaths = [
+      join(cwd, "public", ".vite", "manifest.json"),
+      join(cwd, "dist", "public", ".vite", "manifest.json"),
+    ];
+
+    let manifestFile: string | null = null;
+    for (const absPath of possiblePaths) {
+      try {
+        const file = Bun.file(absPath);
+        if (await file.exists()) {
+          manifestFile = await file.text();
+          cachedProductionPublicRoot = absPath.includes("/dist/public/")
+            ? "dist/public"
+            : "public";
+          break;
+        }
+      } catch {
+        // Try next path
+      }
+    }
+
+    cachedManifest = manifestFile ? JSON.parse(manifestFile) : null;
     return cachedManifest;
   } catch (error) {
     console.error("Failed to load Vite manifest:", error);
@@ -46,9 +82,8 @@ export async function loadViteManifest(): Promise<ViteManifest | null> {
 export function getAssetUrlsFromManifest(
   manifest: ViteManifest | null,
 ): BundleAssetUrls {
-  // In development, manifest is null - Vite serves assets directly
   if (!manifest) {
-    if (process.env.NODE_ENV !== "production") {
+    if (env.NODE_ENV !== "production") {
       // Dev mode: Vite serves CSS from client entry at port 5173
       // The CSS is imported in src/client/index.tsx, so Vite will inject it
       return {

@@ -22,7 +22,10 @@ export const OAUTH_SCOPES =
 export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
   const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
-  const isLoopback = !publicUrl;
+  const isLoopback =
+    !publicUrl ||
+    publicUrl.includes("127.0.0.1") ||
+    publicUrl.includes("localhost");
   const redirectUris = isLoopback
     ? [`http://127.0.0.1:${env.PORT}/oauth/callback`]
     : [`${baseUrl}/oauth/callback`];

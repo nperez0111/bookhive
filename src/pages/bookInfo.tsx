@@ -838,16 +838,17 @@ export const BookInfo: FC<{
                 }}
               />
             </div>
+            </div>
           )}
 
           {/* Reading Dates Section */}
           {did && usersBook && (
-            <div className="mt-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md dark:border-gray-700 dark:bg-zinc-900">
-              <h2 className="mb-4 text-xl font-bold">Reading Dates</h2>
+            <div className="card mt-8">
+            <div className="card-body">
+              <h2 className="mb-4 text-xl font-bold text-foreground">Reading Dates</h2>
               <div className="grid gap-4 md:grid-cols-2">
-                {/* Started Date */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="field">
+                  <label className="field-label mb-2 block text-sm font-medium text-foreground">
                     Started Reading
                   </label>
                   <UpdateBookForm
@@ -866,20 +867,15 @@ export const BookInfo: FC<{
                               .slice(0, 10)
                           : ""
                       }
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                      className="input w-full"
                     />
-                    <button
-                      type="submit"
-                      className="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
-                    >
+                    <button type="submit" className="btn btn-primary btn-sm mt-2">
                       Save
                     </button>
                   </UpdateBookForm>
                 </div>
-
-                {/* Finished Date */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="field">
+                  <label className="field-label mb-2 block text-sm font-medium text-foreground">
                     Finished Reading
                   </label>
                   <UpdateBookForm
@@ -898,30 +894,83 @@ export const BookInfo: FC<{
                               .slice(0, 10)
                           : ""
                       }
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                      className="input w-full"
                     />
-                    <button
-                      type="submit"
-                      className="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
-                    >
+                    <button type="submit" className="btn btn-primary btn-sm mt-2">
                       Save
                     </button>
                   </UpdateBookForm>
                 </div>
               </div>
             </div>
+            </div>
           )}
         </div>
 
-        {/* Right Column - Recommendations */}
-        <aside className="lg:w-1/4">
+        {/* Right Column - Recommendations, Also by author, Share */}
+        <aside className="flex flex-col gap-4 lg:w-1/4">
           <Recommendations book={book} did={did} />
+
+          {otherBooksByAuthor.length > 0 && (
+            <div class="card">
+              <div class="card-header">
+                <h3 class="text-lg font-semibold text-foreground">
+                  Also by {firstAuthor}
+                </h3>
+              </div>
+              <div class="card-body">
+                <div class="flex gap-4 overflow-x-auto pb-2">
+                  {otherBooksByAuthor.slice(0, 5).map((other) => (
+                    <a
+                      key={other.id}
+                      href={`/books/${other.id}`}
+                      class="shrink-0"
+                    >
+                      {other.cover || other.thumbnail ? (
+                        <img
+                          src={other.cover || other.thumbnail || ""}
+                          alt={other.title}
+                          class="h-28 w-20 rounded object-cover"
+                        />
+                      ) : (
+                        <div class="h-28 w-20 rounded bg-muted" />
+                      )}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="text-lg font-semibold text-foreground">Share</h3>
+            </div>
+            <div class="card-body flex flex-col gap-2">
+              <a
+                href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out "${book.title}" by ${book.authors.split("\t")[0]} on BookHive 📚 ${origin ? `${origin}/books/${book.id}` : ""}`)}`}
+                class="btn btn-primary"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Share on Bluesky
+              </a>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                data-book-url={`/books/${book.id}`}
+                onclick="const url = this.getAttribute('data-book-url'); if (url) navigator.clipboard.writeText((window.location.origin || '') + url); this.textContent = 'Link copied!'; setTimeout(() => this.textContent = 'Copy link', 2000)"
+              >
+                Copy link
+              </button>
+            </div>
+          </div>
         </aside>
       </div>
       {Boolean(reviewsOfThisBook.length) && (
         <div className="mt-8">
           <CommentsSection book={book} did={did}>
-            <h2 className="mb-5 text-2xl font-bold">Reviews</h2>
+            <h2 className="mb-5 text-2xl font-bold text-foreground">Reviews</h2>
           </CommentsSection>
         </div>
       )}
