@@ -142,6 +142,15 @@ export const ProfilePage: FC<{
                   </div>
                 </div>
               )}
+
+              <p class="mt-4">
+                <a
+                  href={`/profile/${handle}/stats/${year}`}
+                  class="text-primary hover:underline text-sm font-medium"
+                >
+                  See your Year in Books →
+                </a>
+              </p>
             </div>
           </div>
 

@@ -48,6 +48,7 @@ export const BookFields = [
   "hive_book.thumbnail",
   "hive_book.description",
   "hive_book.rating",
+  "hive_book.ratingsCount",
   "hive_book.rawTitle",
 ] as const;
 

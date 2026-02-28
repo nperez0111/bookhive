@@ -13,8 +13,15 @@ import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { Layout } from "../pages/layout";
 import { ProfilePage } from "../pages/profile";
+import { ReadingStatsPage } from "../pages/readingStats";
 import { getProfile, getProfiles } from "../utils/getProfile";
 import { hydrateUserBook } from "../utils/bookProgress";
+import {
+  computeReadingStats,
+  filterFinishedBooksAllTime,
+  filterFinishedBooksByYear,
+  MIN_BOOKS_FOR_YEAR_STATS,
+} from "../utils/readingStats";
 import { refetchBooks } from "./lib";
 
 const app = new Hono<AppEnv>()
@@ -82,6 +89,172 @@ const app = new Hono<AppEnv>()
       );
     }
     return c.redirect(`/images/w_500/${profile.avatar}`);
+  })
+  .get("/profile/:handle/stats", async (c) => {
+    const year = new Date().getFullYear();
+    const handle = c.req.param("handle");
+    return c.redirect(`/profile/${handle}/stats/${year}`);
+  })
+  .get("/profile/:handle/stats/:year", async (c) => {
+    const handle = c.req.param("handle");
+    const yearParam = c.req.param("year");
+    const year = parseInt(yearParam, 10);
+    if (Number.isNaN(year) || year < 2000 || year > 2100) {
+      return c.render(
+        <Layout>
+          <ErrorPage
+            message="Invalid year"
+            description="Please choose a valid year for your reading stats."
+            statusCode={400}
+          />
+        </Layout>,
+        { title: "Invalid year" },
+        400,
+      );
+    }
+
+    startTime(c, "resolveDid");
+    const did = isDid(handle)
+      ? handle
+      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    endTime(c, "resolveDid");
+
+    if (!did) {
+      return c.render(
+        <Layout>
+          <ErrorPage
+            message="Profile not found"
+            description="This profile does not exist or has no books on BookHive."
+            statusCode={404}
+          />
+        </Layout>,
+        { title: "Profile Not Found" },
+        404,
+      );
+    }
+
+    const isBuzzer = Boolean(
+      await c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .select("userDid")
+        .where("userDid", "=", did)
+        .limit(1)
+        .executeTakeFirst(),
+    );
+
+    if (!isBuzzer) {
+      return c.render(
+        <Layout>
+          <ErrorPage
+            message="No books yet"
+            description="This user has no books on BookHive yet."
+            statusCode={404}
+          />
+        </Layout>,
+        { title: "Reading stats" },
+        404,
+      );
+    }
+
+    startTime(c, "profile");
+    const profile = await getProfile({ ctx: c.get("ctx"), did });
+    endTime(c, "profile");
+
+    startTime(c, "books");
+    const books = await c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .where("user_book.userDid", "=", did)
+      .orderBy("user_book.indexedAt", "desc")
+      .limit(10_000)
+      .execute();
+    const parsedBooks = books.map((book) => hydrateUserBook(book));
+    endTime(c, "books");
+
+    const sessionAgent = await c.get("ctx").getSessionAgent();
+    const isOwnProfile = sessionAgent?.did === did;
+
+    const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
+    const showYearInBooks = finishedInYear.length >= MIN_BOOKS_FOR_YEAR_STATS;
+
+    let genreStatsForYear: { genre: string; count: number }[] = [];
+    if (finishedInYear.length > 0) {
+      const hiveIds = finishedInYear.map((b) => b.hiveId);
+      const rows = await c
+        .get("ctx")
+        .db.selectFrom("hive_book_genre")
+        .select(["genre", sql<number>`COUNT(*)`.as("count")])
+        .where("hiveId", "in", hiveIds)
+        .groupBy("genre")
+        .orderBy(sql`COUNT(*)`, "desc")
+        .limit(15)
+        .execute();
+      genreStatsForYear = rows.map((r) => ({
+        genre: r.genre,
+        count: Number(r.count),
+      }));
+    }
+
+    const stats = computeReadingStats(finishedInYear, genreStatsForYear);
+
+    let allTimeStats: ReturnType<typeof computeReadingStats> | undefined;
+    let availableYears: number[] = [];
+    if (!showYearInBooks && year != null) {
+      const allFinished = filterFinishedBooksAllTime(parsedBooks);
+      const allHiveIds = allFinished.map((b) => b.hiveId);
+      let allTimeGenreStats: { genre: string; count: number }[] = [];
+      if (allHiveIds.length > 0) {
+        const rows = await c
+          .get("ctx")
+          .db.selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .where("hiveId", "in", allHiveIds)
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(15)
+          .execute();
+        allTimeGenreStats = rows.map((r) => ({
+          genre: r.genre,
+          count: Number(r.count),
+        }));
+      }
+      allTimeStats = computeReadingStats(allFinished, allTimeGenreStats);
+    }
+
+    const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
+    const yearSet = new Set(
+      finishedAllTime
+        .map((b) => (b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0))
+        .filter((y) => y >= 2000 && y <= 2100),
+    );
+    const currentYear = new Date().getFullYear();
+    if (!yearSet.has(currentYear)) yearSet.add(currentYear);
+    availableYears = [...yearSet].sort((a, b) => b - a);
+
+    return c.render(
+      <Layout>
+        <ReadingStatsPage
+          handle={handle}
+          did={did}
+          year={year}
+          stats={stats}
+          profile={profile}
+          isOwnProfile={isOwnProfile}
+          availableYears={availableYears}
+          books={parsedBooks}
+          allTimeStats={allTimeStats}
+          showYearInBooks={showYearInBooks}
+        />
+      </Layout>,
+      {
+        title: `BookHive | @${handle}'s ${year} in Books`,
+        description: `@${handle}'s reading stats for ${year} — ${stats.booksCount} books read on BookHive`,
+        image: profile?.avatar,
+      },
+    );
   })
   .get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
@@ -151,6 +324,13 @@ const app = new Hono<AppEnv>()
         : undefined;
     endTime(c, "session");
 
+    // DIDs that have at least one book on BookHive (for following/followers filtering)
+    const buzzersSubquery = c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .select("userDid")
+      .distinct();
+
     startTime(c, "followCounts");
     const [followingCountRes, followersCountRes] = await Promise.all([
       c
@@ -159,6 +339,7 @@ const app = new Hono<AppEnv>()
         .select((eb) => eb.fn.countAll().as("count"))
         .where("userDid", "=", did)
         .where("isActive", "=", 1)
+        .where("followsDid", "in", buzzersSubquery)
         .executeTakeFirst(),
       c
         .get("ctx")
@@ -166,6 +347,7 @@ const app = new Hono<AppEnv>()
         .select((eb) => eb.fn.countAll().as("count"))
         .where("followsDid", "=", did)
         .where("isActive", "=", 1)
+        .where("userDid", "in", buzzersSubquery)
         .executeTakeFirst(),
     ]);
     const followingCount = Number(followingCountRes?.count ?? 0);
@@ -180,6 +362,7 @@ const app = new Hono<AppEnv>()
         .select("followsDid")
         .where("userDid", "=", did)
         .where("isActive", "=", 1)
+        .where("followsDid", "in", buzzersSubquery)
         .orderBy("followedAt", "desc")
         .limit(50)
         .execute(),
@@ -189,6 +372,7 @@ const app = new Hono<AppEnv>()
         .select("userDid")
         .where("followsDid", "=", did)
         .where("isActive", "=", 1)
+        .where("userDid", "in", buzzersSubquery)
         .orderBy("followedAt", "desc")
         .limit(50)
         .execute(),
@@ -216,7 +400,7 @@ const app = new Hono<AppEnv>()
         .where("hiveId", "in", hiveIds)
         .groupBy("genre")
         .orderBy(sql`COUNT(*)`, "desc")
-        .limit(15)
+        .limit(10)
         .execute();
       genreStats = rows.map((r) => ({
         genre: r.genre,

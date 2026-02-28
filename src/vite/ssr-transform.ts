@@ -1,10 +1,79 @@
+import type { IncomingMessage } from "node:http";
 import { type Plugin, type ViteDevServer } from "vite";
+
+const VITE_DEV_MARKER = "<!-- INJECT_VITE_DEV -->";
+const VITE_CLIENT_SCRIPT =
+  '<script type="module" src="/@vite/client"></script>';
+
+/** Extensions that Vite serves as static/assets; paths ending with these are not proxied. */
+const STATIC_EXTENSIONS = new Set([
+  "css",
+  "js",
+  "mjs",
+  "ts",
+  "tsx",
+  "jsx",
+  "json",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "ico",
+  "woff",
+  "woff2",
+  "ttf",
+  "eot",
+  "map",
+]);
+
+/**
+ * True when Vite should handle the request (don't proxy to Bun).
+ * Proxy-by-default: we only skip Vite-owned paths and paths that look like static files.
+ */
+function shouldSkipProxy(req: IncomingMessage): boolean {
+  if (!req.url) return true;
+  const pathname = req.url.replace(/\?.*/, "");
+
+  // Vite internals: client, HMR, @id/, etc.
+  if (req.url.startsWith("/@")) return true;
+  if (req.url.includes("/node_modules/")) return true;
+
+  // /images/* is served by Bun (IPX), so never skip by extension
+  if (pathname.startsWith("/images")) return false;
+
+  // Only skip when the last path segment has a known static file extension
+  // (so /profile/bookhive.buzz and /books/foo are proxied, /assets/style.css is not)
+  const lastSegment = pathname.split("/").pop() ?? "";
+  const ext = lastSegment.includes(".") ? lastSegment.split(".").pop()?.toLowerCase() : "";
+  if (ext && STATIC_EXTENSIONS.has(ext)) return true;
+
+  return false;
+}
+
+/**
+ * Replace Layout's dev marker with Vite client script.
+ * Fallback: if marker is absent (e.g. legacy or different entry), inject before </head>.
+ */
+function transformHtmlForDev(html: string): string {
+  if (html.includes(VITE_DEV_MARKER)) {
+    return html.replace(VITE_DEV_MARKER, VITE_CLIENT_SCRIPT);
+  }
+  // Fallback when marker is missing
+  if (!html.includes("/@vite/client")) {
+    return html.replace("</head>", `${VITE_CLIENT_SCRIPT}\n</head>`);
+  }
+  return html;
+}
 
 /**
  * SSR transform plugin for development mode.
  *
- * Proxies HTML requests from Vite (5173) to Bun server (8080),
- * then injects Vite client and asset URLs for HMR and styling.
+ * Proxies requests from Vite (5173) to Bun server (8080) by default,
+ * skipping only Vite-owned paths (/@, node_modules, static file lookalikes).
+ * For HTML responses, injects Vite client for HMR via a marker comment
+ * emitted by Layout in dev.
  *
  * This allows dev mode to run Vite and Bun in parallel, with
  * Vite handling CSS/JS and Bun handling server rendering.
@@ -14,40 +83,7 @@ export function ssrHtmlTransform(): Plugin {
     name: "ssr-html-transform",
     configureServer(server: ViteDevServer) {
       server.middlewares.use(async (req, res, next) => {
-        // Only proxy HTML requests (not static assets, modules, or HMR)
-        // Skip if it's a file with an extension (check pathname only; query can contain dots e.g. OAuth callback iss=)
-        if (!req.url) return next();
-        const pathname = req.url.replace(/\?.*/, "");
-        if (
-          (!pathname.startsWith("/images") && pathname.includes(".")) ||
-          req.url.startsWith("/@") ||
-          req.url.includes("/node_modules/")
-        ) {
-          return next();
-        }
-
-        // List of routes that should be server-rendered or handled by Bun
-        const serverRenderedRoutes = [
-          "/",
-          "/app",
-          "/login",
-          "/oauth/",
-          "/images/",
-          "/books/",
-          "/profile",
-          "/genres",
-          "/authors",
-          "/import",
-          "/privacy-policy",
-        ];
-
-        const shouldProxy = serverRenderedRoutes.some(
-          (route) => req.url === route || req.url?.startsWith(route),
-        );
-
-        if (!shouldProxy) {
-          return next();
-        }
+        if (shouldSkipProxy(req)) return next();
 
         try {
           // Collect request body for POST/PUT/PATCH so we can forward it
@@ -84,7 +120,6 @@ export function ssrHtmlTransform(): Plugin {
             if (location) {
               res.statusCode = bunRes.status;
               res.setHeader("Location", location);
-              // Forward Set-Cookie (e.g. session from OAuth callback); getSetCookie returns all
               const setCookies =
                 typeof bunRes.headers.getSetCookie === "function"
                   ? bunRes.headers.getSetCookie()
@@ -105,7 +140,6 @@ export function ssrHtmlTransform(): Plugin {
           const isHtml = contentType.includes("text/html");
 
           if (!isHtml) {
-            // Forward non-HTML as-is (e.g. JSON, empty body)
             res.statusCode = bunRes.status;
             bunRes.headers.forEach((value, key) => {
               if (key !== "transfer-encoding") res.setHeader(key, value);
@@ -115,29 +149,7 @@ export function ssrHtmlTransform(): Plugin {
             return;
           }
 
-          let html = await bunRes.text();
-
-          // Transform asset URLs for development
-          html = html.replace(
-            'href="/assets/style.css"',
-            'href="/src/index.css"',
-          );
-
-          // Inject Vite client for HMR (hot module replacement)
-          if (!html.includes("/@vite/client")) {
-            html = html.replace(
-              "</head>",
-              `<script type="module" src="/@vite/client"></script>
-    </head>`,
-            );
-          }
-
-          // Inject client JS entry point
-          html = html.replace(
-            "</body>",
-            `<script type="module" src="/src/client/index.tsx"></script>
-    </body>`,
-          );
+          const html = transformHtmlForDev(await bunRes.text());
 
           res.statusCode = bunRes.status;
           res.setHeader("Content-Type", "text/html");
@@ -145,7 +157,6 @@ export function ssrHtmlTransform(): Plugin {
           return;
         } catch (e) {
           console.error("SSR proxy error:", e);
-          // Fall through to next middleware on error
         }
 
         next();

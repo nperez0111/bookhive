@@ -41,10 +41,14 @@ export const Layout: FC<
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
   const now = Date.now();
+  // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
+  const isDevVite =
+    assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
 
   return html`<!doctype html>
     <html lang="en" class="bg-background text-foreground h-full">
       <head>
+        ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
         <meta name="theme-color" content="#f9eabc" />
         <script>

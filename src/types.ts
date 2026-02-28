@@ -217,7 +217,7 @@ type Simplify<T> = {
 
 type HiveFields = Pick<
   HiveBook,
-  "cover" | "thumbnail" | "description" | "rating"
+  "cover" | "thumbnail" | "description" | "rating" | "ratingsCount"
 >;
 
 /**
