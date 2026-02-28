@@ -271,7 +271,7 @@ function Screenshots() {
 
 export const AppPage: FC = () => {
   return (
-    <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
+    <div class="space-y-6">
       <Hero />
       <Features />
       <Screenshots />

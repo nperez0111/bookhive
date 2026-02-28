@@ -336,7 +336,7 @@ export const BookInfo: FC<{
   endTime(c, "db_reviews_of_this_book");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">

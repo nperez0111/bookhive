@@ -266,7 +266,7 @@ export const Home: FC<Props> = async () => {
   endTime(c, "didHandleMap");
 
   return (
-    <div class="bg-sand container mx-auto max-w-7xl dark:bg-zinc-900 dark:text-white">
+    <div class="space-y-6">
       {profile ? (
         <div class="flex flex-col gap-2 px-4 pt-16 lg:px-8">
           <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">

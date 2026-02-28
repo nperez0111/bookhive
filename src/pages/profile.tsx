@@ -26,7 +26,7 @@ export const ProfilePage: FC<{
   isOwnProfile,
 }) => {
   return (
-    <div class="bg-sand container mx-auto min-h-[calc(100vh-64px)] max-w-7xl p-8 px-3 dark:bg-zinc-900 dark:text-white">
+    <div class="space-y-6">
       <ProfileHeader
         handle={handle}
         did={did}

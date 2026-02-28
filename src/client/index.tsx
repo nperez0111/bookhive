@@ -1,4 +1,6 @@
 import { render } from "hono/jsx/dom";
+import "basecoat-css/sidebar";
+import "../index.css";
 
 import { SearchBox } from "./components/SearchBox";
 import { StarRating } from "./components/StarRating";

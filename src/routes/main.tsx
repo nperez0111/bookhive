@@ -18,6 +18,7 @@ import { createContextMiddleware } from "../context";
 import { loginRouter } from "../auth/router";
 import { Layout } from "../pages/layout";
 import { Navbar } from "../pages/navbar";
+import { Sidebar } from "../pages/sidebar";
 import { getProfile } from "../utils/getProfile";
 import { createXrpcRouter } from "../xrpc/router";
 import {
@@ -89,8 +90,32 @@ export function mainRouter(deps: AppDeps): HonoServer {
           assetUrls={c.get("assetUrls") ?? undefined}
           url={c.req.url}
         >
-          <Navbar profile={profileData} />
-          <div class="relative">{children}</div>
+          <div class="flex min-h-screen">
+            <Sidebar
+              currentPath={c.req.path}
+              user={
+                profileData
+                  ? {
+                      did: profileData.did,
+                      handle: profileData.handle,
+                      displayName: profileData.displayName,
+                      avatar: profileData.avatar,
+                    }
+                  : undefined
+              }
+            />
+            <div
+              id="sidebar-backdrop"
+              class="sidebar-backdrop"
+              aria-hidden="true"
+            />
+            <div class="layout-content flex flex-1 flex-col">
+              <Navbar profile={profileData} />
+              <main class="flex-1 p-4 lg:p-6">
+                <div class="mx-auto max-w-5xl">{children}</div>
+              </main>
+            </div>
+          </div>
         </Layout>
       );
       endTime(c, "layout_render");

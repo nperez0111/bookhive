@@ -7,7 +7,6 @@ import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
-import { Modal } from "./components/modal";
 
 type CommentShape = {
   parentUri?: string;
@@ -34,21 +33,18 @@ function CommentForm({
       <input type="hidden" name="parentCid" value={parentCid} />
       <input type="hidden" name="hiveId" value={bookId} />
 
-      <div>
+      <div class="field">
         <textarea
           name="comment"
           rows={3}
-          class="w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 dark:border-gray-600 dark:bg-zinc-700 dark:text-white"
+          class="input textarea w-full"
           placeholder="Write a reply..."
           required
-        ></textarea>
+        />
       </div>
 
       <div class="flex justify-end">
-        <button
-          type="submit"
-          class="cursor-pointer rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 focus:outline-none"
-        >
+        <button type="submit" class="btn btn-primary">
           Reply
         </button>
       </div>
@@ -62,171 +58,189 @@ function Comment({
   comments,
   bookId,
   did,
+  shareBaseUrl,
 }: {
   comment: CommentShape;
   profiles: ProfileViewDetailed[];
   comments: CommentShape[];
   bookId: HiveId;
   did?: string | null;
+  shareBaseUrl: string;
 }) {
   const profile = profiles.find((p) => p.did === comment.userDid);
-
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
+  const rkey = comment.uri.split("/").pop() ?? "";
+  const commentIdSafe = rkey.replace(/[^a-zA-Z0-9-]/g, "-");
+  const shareUrl = `${shareBaseUrl}#comment-${commentIdSafe}`;
 
   return (
-    <div class="mb-3">
-      <div class="mb-2 flex items-center justify-between">
-        <div class="flex items-center">
-          <a
-            href={`/profile/${profile?.handle}`}
-            class="mr-3 inline-flex items-center text-sm font-semibold text-gray-900 hover:text-blue-600 hover:underline dark:text-white dark:hover:text-blue-400"
-          >
-            <img
-              class="mr-2 h-6 w-6 rounded-full"
-              src={profile?.avatar}
-              alt={profile?.displayName}
-            />
-            @{profile?.handle}
-          </a>
-          <p class="text-sm text-gray-600 dark:text-gray-400">
-            <time pubdate datetime={comment.createdAt}>
+    <article class="card mb-4" id={`comment-${commentIdSafe}`}>
+      <div class="card-body">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-3">
+            <a
+              href={`/profile/${profile?.handle}`}
+              class="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary hover:underline"
+            >
+              <img
+                src={profile?.avatar}
+                alt={profile?.displayName ?? ""}
+                class="h-8 w-8 rounded-full object-cover"
+              />
+              @{profile?.handle}
+            </a>
+            <time
+              pubdate
+              datetime={comment.createdAt}
+              class="text-sm text-muted-foreground"
+            >
               {formatDistanceToNow(comment.createdAt, { addSuffix: true })}
             </time>
-          </p>
-        </div>
-      </div>
-      {comment.stars != null && (
-        <div class="mb-2 flex items-center">
-          <div class="flex items-center">
-            {Array.from({ length: 5 }, (_, i) => (
-              <svg
-                key={i}
-                class={`h-4 w-4 ${
-                  i < comment.stars! / 2
-                    ? "text-yellow-400"
-                    : "text-gray-300 dark:text-gray-600"
-                }`}
-                fill="currentColor"
-                viewBox="0 0 20 20"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-            ))}
           </div>
-          <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">
-            {comment.stars / 2}/5
-          </span>
         </div>
-      )}
-      <input
-        type="checkbox"
-        id={`comments-${comment.uri}`}
-        class="peer hidden"
-      />
-      <p class="mb-2 text-gray-900 peer-checked:invisible peer-checked:h-0 peer-checked:opacity-0 dark:text-white">
-        {comment.comment.split("\r\n").map((line, index, array) => (
-          <>
-            {line}
-            {index < array.length - 1 && <br />}
-          </>
-        ))}
-      </p>
 
-      <div class="relative inline">
+        {comment.stars != null && (
+          <div class="mb-2">
+            <span class="badge">
+              {Array.from({ length: 5 }, (_, i) =>
+                i < comment.stars! / 2 ? "★" : "☆",
+              ).join("")}{" "}
+              {comment.stars / 2}/5
+            </span>
+          </div>
+        )}
+
         <input
           type="checkbox"
-          id={`reply-${comment.uri}`}
+          id={`comments-toggle-${commentIdSafe}`}
           class="peer hidden"
         />
-        {Boolean(did) && (
-          <label
-            htmlFor={`reply-${comment.uri}`}
-            class="inline cursor-pointer pr-2 text-sm font-medium hover:text-blue-600 hover:underline dark:hover:text-blue-400"
-            tabindex={0}
-            role="button"
-            aria-controls={`form-${comment.uri}`}
-          >
-            Reply
-          </label>
-        )}
-
-        <label
-          htmlFor={`comments-${comment.uri}`}
-          class="inline-flex cursor-pointer items-center text-xs font-medium text-gray-600 sm:text-sm dark:text-gray-400"
-        >
-          {subComments.length} replies
-          <svg
-            class="ml-1 h-5 w-5"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              clip-rule="evenodd"
-              fill-rule="evenodd"
-              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-            ></path>
-          </svg>
-        </label>
-        {did === comment.userDid && (
-          <Modal
-            id={`delete-${comment.uri}`}
-            className="mt-2 inline cursor-pointer rounded border border-red-500 px-2 py-1 text-sm text-red-500 hover:bg-red-600 hover:text-white dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white"
-            button="Delete"
-            containerClass="inline"
-          >
-            Are you sure you want to delete this comment?
-            <form
-              action={`/comments/${comment.uri.split("/").pop()}`}
-              method="post"
-              class="mt-4 space-y-4"
-            >
-              <input type="hidden" name="_method" value="DELETE" />
-              <input type="hidden" name="commentId" value={comment.uri} />
-              <input type="hidden" name="hiveId" value={bookId} />
-              <div class="flex justify-end">
-                <button
-                  type="submit"
-                  class="cursor-pointer rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
-                >
-                  Delete
-                </button>
-              </div>
-            </form>
-          </Modal>
-        )}
-
-        <div class="invisible mt-4 h-0 pl-3 opacity-0 transition-all duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
-          <CommentForm
-            parentUri={comment.uri}
-            parentCid={comment.cid}
-            bookId={bookId}
-          />
+        <div class="peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0">
+          <p class="whitespace-pre-wrap text-foreground">
+            {comment.comment.split("\r\n").map((line, index, array) => (
+              <>
+                {line}
+                {index < array.length - 1 && <br />}
+              </>
+            ))}
+          </p>
         </div>
-      </div>
-      <div
-        id={"comments-" + comment.uri}
-        class="visible mt-4 h-auto pl-3 opacity-100 transition-all duration-200 peer-checked:invisible peer-checked:h-0 peer-checked:opacity-0"
-      >
-        {subComments.length === 0 ? null : (
-          <article class="my-5 pl-12">
-            {subComments.map((comment) => {
-              return (
+
+        <div class="relative mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="checkbox"
+            id={`reply-${commentIdSafe}`}
+            class="peer hidden"
+          />
+          {Boolean(did) && (
+            <label
+              htmlFor={`reply-${commentIdSafe}`}
+              class="btn btn-ghost btn-sm cursor-pointer"
+              tabindex={0}
+              role="button"
+              aria-controls={`form-${commentIdSafe}`}
+            >
+              Reply
+            </label>
+          )}
+
+          <label
+            htmlFor={`comments-toggle-${commentIdSafe}`}
+            class="btn btn-ghost btn-sm cursor-pointer"
+          >
+            {subComments.length} replies
+            <svg
+              class="ml-1 h-4 w-4"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                clip-rule="evenodd"
+                fill-rule="evenodd"
+                d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+              />
+            </svg>
+          </label>
+
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            data-url={shareUrl}
+            onclick="const el = this; const url = el.getAttribute('data-url'); if (url) { navigator.clipboard.writeText(window.location.origin + url); const t = el.textContent; el.textContent = 'Copied!'; setTimeout(() => el.textContent = t, 2000); }"
+          >
+            Share this review
+          </button>
+
+          {did === comment.userDid && (
+            <>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm text-destructive hover:bg-destructive/10"
+                onclick={`document.getElementById('delete-dialog-${commentIdSafe}').showModal()`}
+              >
+                Delete
+              </button>
+              <dialog
+                id={`delete-dialog-${commentIdSafe}`}
+                class="rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
+              >
+                <h3 class="mb-2 text-lg font-semibold">Delete review?</h3>
+                <p class="text-muted-foreground mb-4">This cannot be undone.</p>
+                <div class="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    onclick="this.closest('dialog').close()"
+                  >
+                    Cancel
+                  </button>
+                  <form
+                    action={`/comments/${rkey}`}
+                    method="post"
+                    class="inline"
+                  >
+                    <input type="hidden" name="_method" value="DELETE" />
+                    <button type="submit" class="btn btn-destructive">
+                      Delete
+                    </button>
+                  </form>
+                </div>
+              </dialog>
+            </>
+          )}
+
+          <div class="invisible mt-4 h-0 w-full opacity-0 transition-all duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
+            <CommentForm
+              parentUri={comment.uri}
+              parentCid={comment.cid}
+              bookId={bookId}
+            />
+          </div>
+        </div>
+
+        <div
+          id={`comments-${commentIdSafe}`}
+          class="visible mt-4 h-auto pl-0 opacity-100 transition-all duration-200 peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0"
+        >
+          {subComments.length > 0 && (
+            <div class="mt-4 space-y-4 border-l-2 border-border pl-4">
+              {subComments.map((sub) => (
                 <Comment
-                  comment={comment}
+                  comment={sub}
                   profiles={profiles}
                   comments={comments}
                   bookId={bookId}
                   did={did}
-                ></Comment>
-              );
-            })}
-          </article>
-        )}
+                  shareBaseUrl={shareBaseUrl}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -234,8 +248,13 @@ export async function CommentsSection({
   book,
   children,
   did,
-}: PropsWithChildren<{ book: HiveBook; did?: string | null }>) {
+}: PropsWithChildren<{
+  book: HiveBook;
+  did?: string | null;
+}>) {
   const c = useRequestContext();
+  const shareBaseUrl = `/books/${book.id}`;
+
   startTime(c, "comments_top_level_reviews");
   const topLevelReviews = await c
     .get("ctx")
@@ -284,17 +303,22 @@ export async function CommentsSection({
   endTime(c, "fetch_profiles");
 
   return (
-    <div class="mb-4 rounded-lg border border-gray-200 bg-yellow-50 p-4 shadow-xs sm:p-6 xl:mb-0 dark:border-gray-700 dark:bg-zinc-900">
-      {children}
-      {topLevelReviews.map((review) => (
-        <Comment
-          comment={review}
-          profiles={profiles}
-          comments={comments}
-          bookId={book.id}
-          did={did}
-        ></Comment>
-      ))}
+    <div class="card">
+      <div class="card-body">
+        {children}
+        <div class="space-y-2">
+          {topLevelReviews.map((review) => (
+            <Comment
+              comment={review}
+              profiles={profiles}
+              comments={comments}
+              bookId={book.id}
+              did={did}
+              shareBaseUrl={shareBaseUrl}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
