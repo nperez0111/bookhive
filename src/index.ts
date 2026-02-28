@@ -7,13 +7,15 @@ import { env } from "./env";
 
 import entryHtml from "./entry.html";
 
+const instrumentedApp = instrument(app);
+
 const server = Bun.serve({
   port: env.PORT,
   development: env.isDevelopment,
   routes: {
     "/_bundle": entryHtml,
   },
-  fetch: instrument(app).fetch,
+  fetch: instrumentedApp.fetch,
 });
 
 console.log(`Server is running on ${server.url}`);

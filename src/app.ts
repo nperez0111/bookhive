@@ -8,7 +8,7 @@ import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
 import { timing } from "hono/timing";
 
-import { getBundleAssetUrls } from "./bundle-assets";
+import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
 import {
   createContextMiddleware,
   type AppDeps,
@@ -39,7 +39,9 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   app.use("*", wideEventMiddleware());
   app.use("*", errorCaptureMiddleware());
   app.use("*", async (c, next) => {
-    c.set("assetUrls", await getBundleAssetUrls());
+    const manifest = await loadViteManifest();
+    const assetUrls = getAssetUrlsFromManifest(manifest);
+    c.set("assetUrls", assetUrls);
     await next();
   });
   app.use(secureHeaders());
@@ -61,7 +63,15 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   app.use(etag());
   app.route("/", mainRouter(deps));
 
-  app.use("/robots.txt", serveStatic({ root: "./public" }));
+  app.use(
+    "/robots.txt",
+    serveStatic({ root: env.isProduction ? "./dist/public" : "./public" }),
+  );
+
+  // Serve built assets in production
+  if (env.isProduction) {
+    app.use("/assets", serveStatic({ root: "./dist/public" }));
+  }
 
   // Sitemap
   app.get("/sitemap.xml", async (c) => {

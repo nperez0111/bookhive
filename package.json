@@ -6,8 +6,9 @@
   },
   "scripts": {
     "seed:db": "bun run src/initialize.ts",
-    "dev": "bun run build:assets && bun --hot run src/index.ts",
-    "build:assets": "bun run scripts/build-assets.ts",
+    "dev": "bun run --parallel dev:server dev:vite",
+    "dev:server": "bun --hot run src/index.ts",
+    "dev:vite": "vite",
     "build": "bun --bun run lexgen && bun run build:server",
     "build:server": "bun run scripts/build-server.ts",
     "test": "bun test src",
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
+    "basecoat-css": "0.3.11",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",
     "sharp": "0.34.5"
@@ -52,11 +54,11 @@
     "@opentelemetry/semantic-conventions": "1.29.0",
     "@tailwindcss/cli": "4.1.18",
     "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/vite": "4.2.1",
     "@types/bun": "latest",
     "@types/shimmer": "^1.2.0",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
     "@typescript-eslint/parser": "^8.49.0",
-    "bun-plugin-tailwind": "0.1.2",
     "csv-parse": "5.6.0",
     "date-fns": "4.1.0",
     "envalid": "^8.1.1",
@@ -76,6 +78,7 @@
     "tailwindcss-animated": "^2.0.0",
     "typescript": "^5.9.3",
     "unstorage": "1.13.1",
+    "vite": "7.3.1",
     "zod": "^3.25.76"
   },
   "module": "src/index.ts",

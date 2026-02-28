@@ -1,10 +1,53 @@
 @import "tailwindcss";
+@import "basecoat-css";
 
 @config '../tailwind.config.js';
 
 @theme {
   --color-sand: #f9eabc;
   --color-sand-dark: #998a5c;
+}
+
+:root {
+  --primary: rgb(217 119 6); /* amber-600 */
+  --primary-foreground: rgb(255 251 235); /* amber-50 */
+  --secondary: rgb(146 64 14); /* amber-800 */
+  --secondary-foreground: rgb(254 243 199); /* amber-100 */
+  --accent: rgb(251 191 36); /* amber-400 */
+  --accent-foreground: rgb(69 26 3); /* amber-950 */
+  --background: rgb(249 234 188); /* sand */
+  --foreground: rgb(28 25 23); /* stone-900 */
+  --card: rgb(254 252 232); /* yellow-50 */
+  --card-foreground: rgb(28 25 23);
+  --muted: rgb(254 249 195); /* yellow-100 */
+  --muted-foreground: rgb(120 113 108); /* stone-500 */
+  --border: rgb(229 213 160); /* sand-dark variant */
+  --input: rgb(229 213 160);
+  --ring: rgb(217 119 6); /* amber-600 */
+  --destructive: rgb(220 38 38); /* red-600 */
+  --popover: rgb(255 255 255);
+  --popover-foreground: rgb(28 25 23);
+}
+
+.dark {
+  --primary: rgb(245 158 11); /* amber-500 */
+  --primary-foreground: rgb(69 26 3); /* amber-950 */
+  --secondary: rgb(120 53 15); /* amber-900 */
+  --secondary-foreground: rgb(253 230 138); /* amber-200 */
+  --accent: rgb(245 158 11); /* amber-500 */
+  --accent-foreground: rgb(255 251 235); /* amber-50 */
+  --background: rgb(66 32 6); /* yellow-950 - homepage brown */
+  --foreground: rgb(250 250 249); /* stone-50 */
+  --card: rgb(69 26 3); /* amber-950 */
+  --card-foreground: rgb(250 250 249);
+  --muted: rgb(120 53 15); /* amber-900 */
+  --muted-foreground: rgb(253 230 138); /* amber-200 */
+  --border: rgb(146 64 14); /* amber-800 */
+  --input: rgb(146 64 14);
+  --ring: rgb(245 158 11); /* amber-500 */
+  --destructive: rgb(239 68 68); /* red-500 */
+  --popover: rgb(69 26 3);
+  --popover-foreground: rgb(250 250 249);
 }
 
 html,
@@ -72,4 +115,149 @@ body {
 ::view-transition-new(book-title) {
   animation-duration: 0.3s;
   animation-timing-function: ease-out;
+}
+
+/* Sidebar structure and nav (all breakpoints where sidebar is visible) */
+.sidebar {
+  @apply border-border bg-background text-foreground flex flex-col border-r;
+  padding: 1rem 0;
+}
+
+.sidebar header {
+  @apply flex items-center gap-2 px-4 pb-4;
+}
+
+.sidebar header img {
+  @apply shrink-0;
+}
+
+.sidebar header span {
+  @apply text-foreground font-semibold;
+  white-space: nowrap;
+}
+
+.sidebar > ul {
+  @apply flex flex-col gap-0.5 px-2;
+}
+
+.sidebar > ul li {
+  @apply list-none;
+}
+
+.sidebar > ul a {
+  @apply text-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors;
+  white-space: nowrap;
+}
+
+.sidebar > ul a:hover {
+  @apply bg-muted text-foreground;
+}
+
+.sidebar > ul a[aria-current="page"] {
+  @apply bg-primary text-primary-foreground;
+}
+
+.sidebar > ul a[aria-current="page"]:hover {
+  @apply bg-primary/90 text-primary-foreground;
+}
+
+.sidebar hr {
+  @apply border-border my-4;
+}
+
+.sidebar footer {
+  @apply mt-auto flex flex-col gap-1 px-4 pt-4;
+}
+
+.sidebar footer a {
+  @apply text-muted-foreground text-sm no-underline;
+  white-space: nowrap;
+}
+
+.sidebar footer a:hover {
+  @apply text-foreground;
+}
+
+/* User block in sidebar (when logged in) */
+.sidebar ul a:has(.avatar) {
+  @apply flex items-center gap-2;
+}
+
+.sidebar .avatar {
+  @apply size-8 shrink-0 overflow-hidden rounded-full;
+}
+
+.sidebar .avatar img {
+  @apply size-full object-cover;
+}
+
+/* Desktop: sidebar fixed, full width; content offset */
+@media (min-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    flex-shrink: 0;
+  }
+
+  .layout-content {
+    margin-left: 280px;
+  }
+}
+
+/* Tablet: same full sidebar as desktop so text isn’t truncated */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    flex-shrink: 0;
+  }
+
+  .layout-content {
+    margin-left: 280px;
+  }
+}
+
+/* Mobile: sidebar hidden, opened via drawer */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .sidebar-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (min-width: 768px) {
+  .sidebar-backdrop {
+    display: none;
+  }
 }

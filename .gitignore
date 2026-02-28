@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Build outputs
+/dist/
+/public/assets/
+/public/index.html
+/public/output.css
+/public/js/
+/server.js
+index.html
+
+# Vite dev server
+.vite/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,8 +34,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Database
 *.sqlite*
-/public/output.css
-/public/js/client.js*
-/server.js
+*.db
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# IDE and tools
+.opencode/
+.cursor/
+.supabase/

@@ -143,7 +143,7 @@ export function loginRouter(
         await c.get("ctx").getProfile();
       } catch {
         return c.html(
-          <Layout>
+          <Layout assetUrls={c.get("assetUrls")}>
             <Login handle={c.req.query("handle")} />
           </Layout>,
         );
@@ -151,7 +151,7 @@ export function loginRouter(
       return c.redirect("/");
     }
     return c.html(
-      <Layout>
+      <Layout assetUrls={c.get("assetUrls")}>
         <Login handle={c.req.query("handle")} />
       </Layout>,
     );
