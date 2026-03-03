@@ -939,7 +939,13 @@ export const BookInfo: FC<{
             <div class="card">
               <div class="card-header">
                 <h3 class="text-lg font-semibold text-foreground">
-                  Also by {firstAuthor}
+                  Also by{" "}
+                  <a
+                    href={`/authors/${encodeURIComponent(firstAuthor)}`}
+                    class="text-primary hover:text-primary/80 hover:underline"
+                  >
+                    {firstAuthor}
+                  </a>
                 </h3>
               </div>
               <div class="card-body">
