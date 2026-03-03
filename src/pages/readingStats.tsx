@@ -4,6 +4,7 @@ import type { ProfileViewDetailed } from "../types";
 import type { ReadingStats } from "../utils/readingStats";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { FallbackCover } from "./components/fallbackCover";
+import { format } from "date-fns";
 
 export const ReadingStatsPage: FC<{
   handle: string;
@@ -16,6 +17,7 @@ export const ReadingStatsPage: FC<{
   books: Book[];
   allTimeStats?: ReadingStats;
   showYearInBooks: boolean;
+  readingChallengeGoal?: number | null;
 }> = ({
   handle,
   did,
@@ -27,6 +29,7 @@ export const ReadingStatsPage: FC<{
   books,
   allTimeStats,
   showYearInBooks,
+  readingChallengeGoal = null,
 }) => {
   const title = year != null ? `Your ${year} in Books` : "Your reading stats";
   const totalBooksForGenre = stats.topGenres.reduce((s, g) => s + g.count, 0);
@@ -102,15 +105,18 @@ export const ReadingStatsPage: FC<{
 
       {showYearInBooks && (
         <>
-          {/* KPI row */}
-          <div class="card">
-            <div class="card-header">
-              <h2 class="card-title">Overview</h2>
-            </div>
+          {/* Hero stats - Spotify Wrapped style */}
+          <div class="card overflow-hidden bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
             <div class="card-body">
-              <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div class="mb-6 flex flex-wrap items-baseline gap-2">
+                <span class="text-4xl font-bold text-foreground md:text-5xl">
+                  {year}
+                </span>
+                <span class="text-muted-foreground text-xl">Year in Books</span>
+              </div>
+              <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
+                  <div class="text-4xl font-bold text-foreground md:text-5xl">
                     {stats.booksCount}
                   </div>
                   <div class="text-muted-foreground text-sm">
@@ -118,7 +124,7 @@ export const ReadingStatsPage: FC<{
                   </div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
+                  <div class="text-4xl font-bold text-foreground md:text-5xl">
                     {stats.pagesRead > 0
                       ? stats.pagesRead.toLocaleString()
                       : "—"}
@@ -126,7 +132,7 @@ export const ReadingStatsPage: FC<{
                   <div class="text-muted-foreground text-sm">Pages read</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
+                  <div class="text-4xl font-bold text-foreground md:text-5xl">
                     {stats.averageRating != null
                       ? stats.averageRating.toFixed(1)
                       : "—"}
@@ -134,7 +140,7 @@ export const ReadingStatsPage: FC<{
                   <div class="text-muted-foreground text-sm">Avg rating</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
+                  <div class="text-4xl font-bold text-foreground md:text-5xl">
                     {stats.averagePageCount != null
                       ? stats.averagePageCount.toLocaleString()
                       : "—"}
@@ -144,6 +150,145 @@ export const ReadingStatsPage: FC<{
               </div>
             </div>
           </div>
+
+          {/* Reading challenge */}
+          {(readingChallengeGoal != null || isOwnProfile) && year != null && (
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">Reading Challenge</h2>
+              </div>
+              <div class="card-body space-y-4">
+                {readingChallengeGoal != null ? (
+                  <>
+                    <div class="flex items-baseline justify-between gap-2">
+                      <span class="text-2xl font-bold text-foreground">
+                        {stats.booksCount} / {readingChallengeGoal} books
+                      </span>
+                      <span class="text-muted-foreground text-sm">
+                        {Math.min(
+                          100,
+                          Math.round(
+                            (stats.booksCount / readingChallengeGoal) * 100,
+                          ),
+                        )}
+                        % complete
+                      </span>
+                    </div>
+                    <div class="bg-muted h-4 overflow-hidden rounded-full">
+                      <div
+                        class="bg-primary h-full rounded-full transition-all"
+                        style={`width: ${Math.min(100, (stats.booksCount / readingChallengeGoal) * 100)}%`}
+                      />
+                    </div>
+                    {stats.booksCount >= readingChallengeGoal && (
+                      <p class="text-primary font-medium">
+                        🎉 Challenge complete!
+                      </p>
+                    )}
+                    {isOwnProfile && (
+                      <form
+                        action="/api/reading-challenge"
+                        method="post"
+                        class="flex flex-wrap items-center gap-2"
+                      >
+                        <input
+                          type="hidden"
+                          name="year"
+                          value={year}
+                        />
+                        <label class="text-muted-foreground text-sm">
+                          Update goal:
+                        </label>
+                        <input
+                          type="number"
+                          name="goal"
+                          min="1"
+                          max="1000"
+                          value={readingChallengeGoal}
+                          class="input w-20"
+                        />
+                        <button type="submit" class="btn btn-sm btn-primary">
+                          Save
+                        </button>
+                      </form>
+                    )}
+                  </>
+                ) : (
+                  isOwnProfile && (
+                    <form
+                      action="/api/reading-challenge"
+                      method="post"
+                      class="flex flex-wrap items-center gap-2"
+                    >
+                      <input type="hidden" name="year" value={year} />
+                      <label class="text-muted-foreground text-sm">
+                        Set your {year} reading goal:
+                      </label>
+                      <input
+                        type="number"
+                        name="goal"
+                        min="1"
+                        max="1000"
+                        placeholder="e.g. 52"
+                        class="input w-24"
+                      />
+                      <button type="submit" class="btn btn-sm btn-primary">
+                        Set goal
+                      </button>
+                    </form>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* First & Last book of year */}
+          {(stats.firstBookOfYear || stats.lastBookOfYear) && (
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">Bookends of the year</h2>
+              </div>
+              <div class="card-body grid gap-6 md:grid-cols-2">
+                {stats.firstBookOfYear && (
+                  <div>
+                    <p class="text-muted-foreground mb-1 text-sm">
+                      First book finished
+                      {stats.firstBookOfYear.finishedAt && (
+                        <span class="ml-1">
+                          (
+                          {format(
+                            new Date(stats.firstBookOfYear.finishedAt),
+                            "MMM d, yyyy",
+                          )}
+                          )
+                        </span>
+                      )}
+                    </p>
+                    <BookHighlight book={stats.firstBookOfYear} />
+                  </div>
+                )}
+                {stats.lastBookOfYear &&
+                  stats.lastBookOfYear !== stats.firstBookOfYear && (
+                    <div>
+                      <p class="text-muted-foreground mb-1 text-sm">
+                        Last book finished
+                        {stats.lastBookOfYear.finishedAt && (
+                          <span class="ml-1">
+                            (
+                            {format(
+                              new Date(stats.lastBookOfYear.finishedAt),
+                              "MMM d, yyyy",
+                            )}
+                            )
+                          </span>
+                        )}
+                      </p>
+                      <BookHighlight book={stats.lastBookOfYear} />
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
 
           {/* Rating distribution */}
           {(stats.ratingDistribution[1] ||

@@ -20,6 +20,12 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
       icon: "book",
       authRequired: true,
     },
+    {
+      href: user ? `/profile/${user.handle}/stats` : "/profile",
+      label: "Year in Books",
+      icon: "chart",
+      authRequired: true,
+    },
     { href: "/genres", label: "Discover", icon: "compass", authRequired: false },
     { href: "/import", label: "Import", icon: "upload", authRequired: true },
   ].filter((item) => !item.authRequired || user);
@@ -32,16 +38,21 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
       </header>
 
       <ul>
-        {navItems.map((item) => (
-          <li>
-            <a
-              href={item.href}
-              aria-current={currentPath === item.href ? "page" : undefined}
-            >
-              {item.label}
-            </a>
-          </li>
-        ))}
+        {navItems.map((item) => {
+          const isActive =
+            currentPath === item.href ||
+            (item.href.includes("/stats") && currentPath.includes("/stats"));
+          return (
+            <li>
+              <a
+                href={item.href}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {item.label}
+              </a>
+            </li>
+          );
+        })}
       </ul>
 
       {user && (

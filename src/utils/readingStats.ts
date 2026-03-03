@@ -17,6 +17,10 @@ export type ReadingStats = {
   averagePageCount: number | null;
   mostPopularBook: Book | null;
   leastPopularBook: Book | null;
+  /** First book finished in the year (earliest finishedAt) */
+  firstBookOfYear: Book | null;
+  /** Last book finished in the year (latest finishedAt) */
+  lastBookOfYear: Book | null;
 };
 
 function getPageCount(book: Book): number | null {
@@ -107,6 +111,17 @@ export function computeReadingStats(
       ? sortedByPopularity[sortedByPopularity.length - 1] ?? null
       : null;
 
+  const withFinishedAt = finished.filter(
+    (b): b is Book & { finishedAt: string } => b.finishedAt != null,
+  );
+  const byFinishedAt = [...withFinishedAt].sort(
+    (a, b) =>
+      new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
+  );
+  const firstBookOfYear = byFinishedAt[0] ?? null;
+  const lastBookOfYear =
+    byFinishedAt.length > 0 ? byFinishedAt[byFinishedAt.length - 1] ?? null : null;
+
   return {
     booksCount,
     pagesRead,
@@ -118,6 +133,8 @@ export function computeReadingStats(
     averagePageCount,
     mostPopularBook,
     leastPopularBook,
+    firstBookOfYear,
+    lastBookOfYear,
   };
 }
 

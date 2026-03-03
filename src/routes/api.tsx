@@ -599,6 +599,33 @@ const app = new Hono<AppEnv>()
       }
       return c.redirect(`/profile/${targetHandle}`, 302);
     },
+  )
+  .post(
+    "/reading-challenge",
+    zValidator(
+      "form",
+      z.object({
+        year: z.coerce.number().int().min(2000).max(2100),
+        goal: z.coerce.number().int().min(1).max(1000),
+      }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) {
+        return c.json({ success: false, message: "Invalid Session" }, 401);
+      }
+      const { year, goal } = c.req.valid("form");
+      const key = `reading-challenge:${agent.did}:${year}`;
+      await c.get("ctx").kv.setItem(key, String(goal));
+      c.get("ctx").addWideEventContext({
+        api: "reading_challenge",
+        userDid: agent.did,
+        year,
+        goal,
+      });
+      const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
+      return c.redirect(`/profile/${handle}/stats/${year}`, 302);
+    },
   );
 
 export default app;
