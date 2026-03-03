@@ -158,9 +158,11 @@ function Features() {
 function LatestActivitySection({
   books,
   didHandleMap,
+  user,
 }: {
   books: Book[];
   didHandleMap: Record<string, string>;
+  user?: ProfileViewDetailed | null;
 }) {
   return (
     <BuzzSection
@@ -168,6 +170,10 @@ function LatestActivitySection({
       subtitle="See what others are reading and what they think about it."
       books={books}
       didHandleMap={didHandleMap}
+      viewAllHref="/feed"
+      viewAllLabel="View all"
+      viewAllAuthRequired
+      user={user ? { did: user.did, handle: user.handle } : undefined}
     />
   );
 }
@@ -175,9 +181,11 @@ function LatestActivitySection({
 function FriendsBuzzesSection({
   books,
   didHandleMap,
+  user,
 }: {
   books: Book[];
   didHandleMap: Record<string, string>;
+  user?: ProfileViewDetailed | null;
 }) {
   return (
     <BuzzSection
@@ -185,6 +193,10 @@ function FriendsBuzzesSection({
       subtitle="See what your followers are reading and what they think about it."
       books={books}
       didHandleMap={didHandleMap}
+      viewAllHref="/feed"
+      viewAllLabel="View all"
+      viewAllAuthRequired
+      user={user ? { did: user.did, handle: user.handle } : undefined}
     />
   );
 }
@@ -512,11 +524,13 @@ export const Home: FC = async () => {
         <FriendsBuzzesSection
           books={friendsBuzzes as Book[]}
           didHandleMap={didHandleMap}
+          user={profile}
         />
       ) : null}
       <LatestActivitySection
         books={latestBuzzes as Book[]}
         didHandleMap={didHandleMap}
+        user={profile}
       />
     </div>
   );

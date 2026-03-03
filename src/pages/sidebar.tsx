@@ -12,16 +12,17 @@ interface SidebarProps {
 
 export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
   const navItems = [
-    { href: "/", label: "Home", icon: "home" },
-    { href: "/feed", label: "Activity Feed", icon: "activity" },
+    { href: "/", label: "Home", icon: "home", authRequired: false },
+    { href: "/feed", label: "Activity Feed", icon: "activity", authRequired: true },
     {
       href: user ? `/profile/${user.handle}` : "/profile",
       label: "My Books",
       icon: "book",
+      authRequired: true,
     },
-    { href: "/genres", label: "Discover", icon: "compass" },
-    { href: "/import", label: "Import", icon: "upload" },
-  ];
+    { href: "/genres", label: "Discover", icon: "compass", authRequired: false },
+    { href: "/import", label: "Import", icon: "upload", authRequired: true },
+  ].filter((item) => !item.authRequired || user);
 
   return (
     <nav class="sidebar" aria-label="Main navigation">
