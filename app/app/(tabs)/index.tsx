@@ -159,7 +159,7 @@ function BookSection({
             <BookCard
               title={book.title}
               authors={book.authors}
-              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`}
               onPress={() => router.push(`/book/${book.hiveId}`)}
               orientation="horizontal"
               style={{
@@ -433,7 +433,7 @@ export default function HomeScreen() {
                     title={book.title}
                     authors={book.authors}
                     meta={`@${book.userHandle ?? book.userDid}`}
-                    imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+                    imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`}
                     onPress={() => router.push(`/book/${book.hiveId}`)}
                     orientation="horizontal"
                     style={{

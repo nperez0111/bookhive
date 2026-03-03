@@ -75,7 +75,7 @@ const app = new Hono<AppEnv>()
     const authors = book.authors.split("\t");
     const res = await c.render(<BookInfo book={book} />, {
       title: "BookHive | " + book.title,
-      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`,
       description: `See ${book.title} by ${authors.join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
       ogType: "book",
       ogExtra: (
@@ -323,7 +323,7 @@ const app = new Hono<AppEnv>()
     }
     return c.render(<CommentsSection book={book} />, {
       title: "BookHive | Comments " + book.title,
-      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`,
       description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
     });
   });

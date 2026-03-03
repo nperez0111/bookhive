@@ -157,7 +157,7 @@ export default function ProfileScreen() {
       <View style={styles.coverContainer}>
         <Image
           source={{
-            uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+            uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`,
           }}
           style={styles.bookCover}
           resizeMode="cover"
