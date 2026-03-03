@@ -2,7 +2,10 @@ import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "../context";
-import { upsertBookIdentifiers } from "./bookIdentifiers";
+import {
+  normalizeGoodreadsId,
+  upsertBookIdentifiers,
+} from "./bookIdentifiers";
 
 interface BookMeta {
   publisher: string;
@@ -95,14 +98,21 @@ export async function enrichBookWithDetailedData(
       numPages: detailedData.book.details.numPages,
     };
 
-    // Merge identifiers with existing ones
+    // Merge identifiers with existing ones. Only use valid Goodreads IDs
+    // (numeric); reject Amazon/Kindle identifiers like kca://book/amzn1.
     const existingIdentifiers: BookIdentifiers = book.identifiers
       ? JSON.parse(book.identifiers)
       : {};
+    const validGoodreadsId =
+      normalizeGoodreadsId(book.sourceId) ||
+      normalizeGoodreadsId(detailedData.book.id) ||
+      (existingIdentifiers.goodreadsId
+        ? normalizeGoodreadsId(existingIdentifiers.goodreadsId)
+        : null);
     const updatedIdentifiers: BookIdentifiers = {
       ...existingIdentifiers,
       hiveId: book.id,
-      goodreadsId: book.sourceId || existingIdentifiers.goodreadsId,
+      goodreadsId: validGoodreadsId ?? undefined,
       isbn10: detailedData.book.details.isbn || existingIdentifiers.isbn10,
       isbn13: detailedData.book.details.isbn13 || existingIdentifiers.isbn13,
     };
