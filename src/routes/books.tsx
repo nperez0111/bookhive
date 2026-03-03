@@ -73,7 +73,8 @@ const app = new Hono<AppEnv>()
 
     startTime(c, "render_book_page");
     const authors = book.authors.split("\t");
-    const res = await c.render(<BookInfo book={book} />, {
+    const reviewId = c.req.query("review-id") ?? undefined;
+    const res = await c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
       image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
       description: `See ${book.title} by ${authors.join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
@@ -327,7 +328,8 @@ const app = new Hono<AppEnv>()
         404,
       );
     }
-    return c.render(<CommentsSection book={book} />, {
+    const reviewId = c.req.query("review-id") ?? undefined;
+    return c.render(<CommentsSection book={book} reviewId={reviewId} />, {
       title: "BookHive | Comments " + book.title,
       image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
       description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,

@@ -291,7 +291,8 @@ const BookStatusButton: FC<{
 
 export const BookInfo: FC<{
   book: HiveBook;
-}> = async ({ book }) => {
+  reviewId?: string;
+}> = async ({ book, reviewId }) => {
   const c = useRequestContext();
   const origin = new URL(c.req.url).origin;
   startTime(c, "get_session");
@@ -992,7 +993,7 @@ export const BookInfo: FC<{
       </div>
       {Boolean(reviewsOfThisBook.length) && (
         <div className="mt-8">
-          <CommentsSection book={book} did={did}>
+          <CommentsSection book={book} did={did} reviewId={reviewId}>
             <h2 className="mb-5 text-2xl font-bold text-foreground">Reviews</h2>
           </CommentsSection>
         </div>

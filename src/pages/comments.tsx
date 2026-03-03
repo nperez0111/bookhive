@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
 import { Card, CardBody, UserBlock, StarDisplay, CardActions } from "./components/cards";
+import { Script } from "./utils/script";
 
 type CommentShape = {
   parentUri?: string;
@@ -72,13 +73,20 @@ function Comment({
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
   const rkey = comment.uri.split("/").pop() ?? "";
   const commentIdSafe = rkey.replace(/[^a-zA-Z0-9-]/g, "-");
-  const shareUrl = `${shareBaseUrl}#comment-${commentIdSafe}`;
+  const reviewLinkPath = `/books/${bookId}?review-id=${encodeURIComponent(
+    comment.uri,
+  )}`;
+  const shareUrl = reviewLinkPath;
 
   const handle = profile?.handle ?? comment.userDid;
   const timeAgo = formatDistanceToNow(comment.createdAt, { addSuffix: true });
 
   return (
-    <article id={`comment-${commentIdSafe}`} class="mb-4">
+    <article
+      id={`comment-${commentIdSafe}`}
+      class="mb-4"
+      data-review-uri={comment.uri}
+    >
       <Card>
         <CardBody>
           <UserBlock
@@ -91,6 +99,17 @@ function Comment({
           <time pubdate datetime={comment.createdAt} class="sr-only">
             {timeAgo}
           </time>
+
+          <div class="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{timeAgo}</span>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 text-[0.7rem] font-medium text-muted-foreground hover:text-foreground"
+              data-copy-path={reviewLinkPath}
+            >
+              Copy link
+            </button>
+          </div>
 
           {comment.stars != null && (
             <div class="mb-2 flex items-center gap-2">
@@ -238,9 +257,11 @@ export async function CommentsSection({
   book,
   children,
   did,
+  reviewId,
 }: PropsWithChildren<{
   book: HiveBook;
   did?: string | null;
+  reviewId?: string;
 }>) {
   const c = useRequestContext();
   const shareBaseUrl = `/books/${book.id}`;
@@ -296,19 +317,61 @@ export async function CommentsSection({
     <div class="card">
       <div class="card-body">
         {children}
-        <div class="space-y-2">
-          {topLevelReviews.map((review) => (
-            <Comment
-              comment={review}
-              profiles={profiles}
-              comments={comments}
-              bookId={book.id}
-              did={did}
-              shareBaseUrl={shareBaseUrl}
-            />
-          ))}
-        </div>
-      </div>
+      {reviewId && (
+        <p class="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>Viewing one review.</span>
+          <a
+            href={`/books/${book.id}`}
+            class="font-medium text-primary hover:underline"
+          >
+            See all reviews
+          </a>
+        </p>
+      )}
+      {topLevelReviews.map((review) => (
+        <Comment
+          comment={review}
+          profiles={profiles}
+          comments={comments}
+          bookId={book.id}
+          did={did}
+           shareBaseUrl={shareBaseUrl}
+        />
+      ))}
+      <Script
+        script={(document) => {
+          const reviewIdParam = new URLSearchParams(
+            document.location.search,
+          ).get("review-id");
+          if (reviewIdParam) {
+            document.querySelectorAll("[data-review-uri]").forEach((el) => {
+              if (el.getAttribute("data-review-uri") === reviewIdParam) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                el.classList.add("ring-2", "ring-yellow-500", "ring-offset-2");
+              }
+            });
+          }
+          document
+            .querySelectorAll<HTMLButtonElement>("[data-copy-path]")
+            .forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+              const path = btn.getAttribute("data-copy-path");
+              if (path && navigator.clipboard?.writeText) {
+                e.preventDefault();
+                navigator.clipboard
+                  .writeText(document.location.origin + path)
+                  .then(() => {
+                    const orig = btn.textContent;
+                    btn.textContent = "Copied!";
+                    setTimeout(() => {
+                      btn.textContent = orig;
+                    }, 1500);
+                  });
+              }
+            });
+          });
+        }}
+      />
     </div>
   );
 }
