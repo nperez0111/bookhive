@@ -55,6 +55,21 @@ body {
   @apply h-full;
 }
 
+/* Subtle honeycomb - no pattern (Firefox fix), explicit colors, theme-aware */
+html {
+  background-color: var(--background);
+  background-image: url("/honeycomb.svg");
+  background-repeat: repeat;
+}
+html.dark {
+  background-image: url("/honeycomb-dark.svg");
+}
+
+/* Body transparent so html honeycomb shows through */
+body {
+  background: transparent;
+}
+
 @keyframes loadingBar {
   0% {
     left: 0%;
