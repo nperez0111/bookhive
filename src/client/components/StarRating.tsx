@@ -90,7 +90,7 @@ export const StarRating: FC<StarRatingProps> = ({
             return (
               <svg
                 key={index}
-                className={`${baseClasses} text-yellow-400`}
+                className={`${baseClasses} text-accent`}
                 fill="currentColor"
                 viewBox="0 0 24 24"
               >
@@ -101,7 +101,7 @@ export const StarRating: FC<StarRatingProps> = ({
             return (
               <svg
                 key={index}
-                className={`${baseClasses} text-yellow-400`}
+                className={`${baseClasses} text-accent`}
                 fill="currentColor"
                 viewBox="0 0 24 24"
               >

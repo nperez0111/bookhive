@@ -86,7 +86,7 @@ export const ReadingStatsPage: FC<{
       </div>
 
       {!showYearInBooks && year != null && (
-        <div class="card border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950/20">
+        <div class="card bg-muted">
           <div class="card-body">
             <p class="text-foreground">
               Finish at least 3 books in {year} to see your Year in Books.

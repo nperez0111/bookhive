@@ -37,7 +37,7 @@ async function Recommendations({
 
   if (!peerBooks.length) {
     return (
-      <div class="rounded-xl border border-gray-200 bg-yellow-50 px-2 py-5 text-center dark:border-gray-700 dark:bg-zinc-900">
+      <div class="rounded-xl border border-border bg-card px-3 py-5 text-center text-muted-foreground shadow-sm">
         Be the first to read this on bookhive!
       </div>
     );
@@ -45,7 +45,7 @@ async function Recommendations({
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div class="rounded-xl border border-gray-200 bg-yellow-50 px-2 py-5 text-center dark:border-gray-700 dark:bg-zinc-900">
+      <div class="rounded-xl border border-border bg-card px-3 py-5 text-center text-muted-foreground shadow-sm">
         You are the only one to have added this on bookhive, so far!
       </div>
     );
@@ -63,9 +63,9 @@ async function Recommendations({
             <a
               key={related.userDid}
               href={`/profile/${handle}`}
-              class="block cursor-pointer rounded-xl border border-zinc-400 bg-yellow-50 px-2 py-2 hover:bg-zinc-100 dark:border-gray-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+              class="block cursor-pointer rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
             >
-              <span class="text-blue-600">@{handle}</span> - marked as{" "}
+              <span class="text-primary font-medium">@{handle}</span> - marked as{" "}
               {related.status && related.status in BOOK_STATUS_MAP
                 ? BOOK_STATUS_MAP[
                     related.status as keyof typeof BOOK_STATUS_MAP
@@ -154,7 +154,7 @@ const BookStatusButton: FC<{
             aria-haspopup="listbox"
             aria-expanded="false"
             aria-labelledby="status-label"
-            className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-zinc-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
+            className="peer w-full cursor-pointer rounded-md bg-card px-3 py-2 text-left text-sm font-medium text-foreground shadow-sm ring-1 ring-border ring-inset hover:bg-muted focus:ring-2 focus:ring-primary focus:outline-none"
             id="status-dropdown"
           >
             <span
@@ -188,7 +188,7 @@ const BookStatusButton: FC<{
           <div
             role="listbox"
             aria-labelledby="status-label"
-            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-yellow-50 opacity-0 shadow-lg ring-1 ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-zinc-800"
+            className="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
             id="status-dropdown-menu"
           >
             <div className="p-1">
@@ -219,8 +219,8 @@ const BookStatusButton: FC<{
                   value={status.value}
                   className={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
                     usersBook?.status === status.value
-                      ? "bg-yellow-900 text-white"
-                      : "text-gray-900 hover:bg-zinc-50 dark:text-white dark:hover:bg-zinc-700"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-muted"
                   }`}
                 >
                   <span className="block truncate">{status.label}</span>
@@ -363,7 +363,7 @@ export const BookInfo: FC<{
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Book Info */}
         <div className="lg:w-3/4">
-          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-zinc-900">
+          <div className="mb-8 flex flex-col gap-8 rounded-xl border border-border bg-card p-6 shadow-md md:flex-row">
             <div className="w-2/3 p-1 sm:w-1/2 md:w-1/3 lg:w-1/4">
               <div className="relative m-0 grid cursor-default break-inside-avoid p-4">
                 {/* From: https://codepen.io/mardisstudio/pen/ExBqRqE and converted to Tailwind */}
@@ -405,7 +405,7 @@ export const BookInfo: FC<{
                   <Fragment key={author}>
                     <a
                       href={`/authors/${encodeURIComponent(author)}`}
-                      className="text-yellow-600 hover:text-yellow-700 hover:underline dark:text-yellow-400 dark:hover:text-yellow-300"
+                      className="text-primary hover:text-primary/80 hover:underline"
                     >
                       {author}
                     </a>
@@ -422,17 +422,17 @@ export const BookInfo: FC<{
                       viewBox="0 0 24 24"
                       key={star}
                     >
-                      {/* Background star (gray) */}
+                      {/* Background star (muted) */}
                       <path
-                        class="fill-current text-gray-300"
+                        class="fill-current text-muted-foreground/40"
                         d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
-                      {/* Filled star (yellow) with clip */}
+                      {/* Filled star with clip */}
                       <path
                         style={{
                           clipPath: `inset(0 ${100 - Math.min(100, Math.max(0, ((book.rating || 0) / 1000 - (star - 1)) * 100))}% 0 0)`,
                         }}
-                        class="fill-current text-yellow-400"
+                        class="fill-current text-accent"
                         d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
                     </svg>
@@ -459,7 +459,7 @@ export const BookInfo: FC<{
 
               {book.genres && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                     Genres
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -468,7 +468,7 @@ export const BookInfo: FC<{
                         <a
                           key={index}
                           href={`/genres/${encodeURIComponent(genre)}`}
-                          className="genre-name rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-800 transition-colors hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 dark:hover:bg-yellow-800"
+                          className="genre-name rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
                           style={`--genre-name: genre-${genre}`}
                         >
                           {genre}
@@ -481,10 +481,10 @@ export const BookInfo: FC<{
 
               {book.series && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                     Series
                   </h3>
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <div className="text-sm text-muted-foreground">
                     {(() => {
                       const seriesData = JSON.parse(book.series);
                       return (
@@ -501,10 +501,10 @@ export const BookInfo: FC<{
 
               {book.meta && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                     Publication Details
                   </h3>
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <div className="text-sm text-muted-foreground">
                     {(() => {
                       const meta = JSON.parse(book.meta);
                       const details = [];
@@ -531,11 +531,11 @@ export const BookInfo: FC<{
                   return (
                     meta.authorBio && (
                       <div className="mb-4">
-                        <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                        <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                           About the Author
                         </h3>
                         <div
-                          className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-gray-700 dark:text-gray-300"
+                          className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-muted-foreground"
                           dangerouslySetInnerHTML={{
                             __html: meta.authorBio,
                           }}
@@ -552,10 +552,10 @@ export const BookInfo: FC<{
                     meta.secondaryAuthors &&
                     meta.secondaryAuthors.length > 0 && (
                       <div className="mb-4">
-                        <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                        <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                           Additional Authors
                         </h3>
-                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                        <div className="text-sm text-muted-foreground">
                           {meta.secondaryAuthors.map(
                             (author: any, index: number) => (
                               <span key={index}>
@@ -575,7 +575,7 @@ export const BookInfo: FC<{
                 <div className="mt-4 flex items-center">
                   <a
                     href={book.sourceUrl}
-                    className="flex items-center justify-between gap-3 rounded-md border border-zinc-600 p-2 hover:bg-yellow-800 hover:text-white dark:hover:bg-zinc-800"
+                    className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-primary hover:text-primary-foreground"
                   >
                     {book.source}
                     <svg
@@ -598,7 +598,7 @@ export const BookInfo: FC<{
             </div>
           </div>
           {did && (
-            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-yellow-50 p-6 shadow-md md:flex-row dark:border-gray-700 dark:bg-zinc-900">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-6 shadow-md md:flex-row">
               <div class="md:w-1/3 lg:w-1/4">
                 <h2 className="text-xl leading-2 font-bold">
                   {usersBook?.stars
@@ -642,7 +642,7 @@ export const BookInfo: FC<{
                   >
                     <div className="grid">
                       <textarea
-                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 py-2 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-yellow-600 focus:ring-inset sm:text-sm dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
+                        className="col-start-1 row-start-1 min-h-[100px] w-full overflow-hidden rounded-md border-0 bg-card py-2 text-foreground shadow-xs ring-1 ring-border ring-inset placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:ring-inset sm:text-sm"
                         style={{ resize: "none", gridArea: "1 / 1 / 2 / 2" }}
                         placeholder="Write your review here..."
                         name="review"
@@ -658,7 +658,7 @@ export const BookInfo: FC<{
                     </div>
                     <button
                       type="submit"
-                      class="mt-2 cursor-pointer rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                      class="mt-2 btn btn-primary"
                     >
                       Save
                     </button>
@@ -699,7 +699,7 @@ export const BookInfo: FC<{
                 <div className="flex flex-col gap-4">
                   {/* Pages */}
                   <div className="flex-1">
-                    <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    <label className="mb-1 block text-sm font-semibold text-foreground">
                       Pages read <span className="font-normal">/</span> Total
                       pages
                     </label>
@@ -710,10 +710,10 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         placeholder="Current"
                       />
-                      <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                      <span className="text-lg font-semibold text-muted-foreground">
                         /
                       </span>
                       <input
@@ -733,14 +733,14 @@ export const BookInfo: FC<{
                           })()
                         }
                         min={1}
-                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         placeholder="Total"
                       />
                     </div>
                   </div>
                   {/* Chapters */}
                   <div className="flex-1">
-                    <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    <label className="mb-1 block text-sm font-semibold text-foreground">
                       Chapters read <span className="font-normal">/</span> Total
                       chapters
                     </label>
@@ -751,10 +751,10 @@ export const BookInfo: FC<{
                         name="currentChapter"
                         value={usersBook?.bookProgress?.currentChapter ?? ""}
                         min={1}
-                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         placeholder="Current"
                       />
-                      <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                      <span className="text-lg font-semibold text-muted-foreground">
                         /
                       </span>
                       <input
@@ -763,7 +763,7 @@ export const BookInfo: FC<{
                         name="totalChapters"
                         value={usersBook?.bookProgress?.totalChapters ?? ""}
                         min={1}
-                        className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         placeholder="Total"
                       />
                     </div>
@@ -771,7 +771,7 @@ export const BookInfo: FC<{
                   {/* Percent */}
                   <div className="flex flex-1 flex-col justify-between">
                     <div>
-                      <label className="mb-1 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      <label className="mb-1 block text-sm font-semibold text-foreground">
                         Percent
                       </label>
                       <input
@@ -781,11 +781,11 @@ export const BookInfo: FC<{
                         value={usersBook?.bookProgress?.percent ?? ""}
                         min={0}
                         max={100}
-                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 focus:outline-none dark:border-gray-600 dark:bg-zinc-800 dark:text-white"
+                        className="w-full rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         placeholder="Auto-calculated"
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       Percent auto-fills from pages or chapters but can be
                       overridden.
                     </p>
@@ -793,7 +793,7 @@ export const BookInfo: FC<{
                 </div>
                 <button
                   type="submit"
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   Save progress
                 </button>

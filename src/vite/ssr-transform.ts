@@ -125,7 +125,7 @@ export function ssrHtmlTransform(): Plugin {
           const bunRes = await fetch(`http://127.0.0.1:8080${req.url}`, {
             method: req.method,
             headers,
-            body,
+            body: body ? new Uint8Array(body) : undefined,
             redirect: "manual",
           });
 

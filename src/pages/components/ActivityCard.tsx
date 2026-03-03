@@ -30,7 +30,7 @@ function getActionText(status: string | null): string {
   return "updated";
 }
 
-function getShareText(activity: FeedActivity, handle: string): string {
+function getShareText(activity: FeedActivity, _handle: string): string {
   const title = activity.title;
   const authorList = activity.authors?.replace(/\t/g, ", ") ?? "";
   return `I just finished "${title}"${authorList ? ` by ${authorList}` : ""} on BookHive!\n\nbookhive.buzz/books/${activity.hiveId}`;

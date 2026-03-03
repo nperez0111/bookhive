@@ -46,7 +46,7 @@ const StatusDropdown: FC<{
           aria-haspopup="listbox"
           aria-expanded="false"
           aria-labelledby={`status-label-${bookIndex}`}
-          class="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-zinc-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
+          class="peer w-full cursor-pointer rounded-md bg-card px-3 py-2 text-left text-sm font-medium text-foreground shadow-sm ring-1 ring-border ring-inset hover:bg-muted focus:ring-2 focus:ring-primary focus:outline-none"
           id={dropdownId}
         >
           <span
@@ -78,7 +78,7 @@ const StatusDropdown: FC<{
         <div
           role="listbox"
           aria-labelledby={`status-label-${bookIndex}`}
-          class="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-yellow-50 opacity-0 shadow-lg ring-1 ring-black transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100 dark:bg-zinc-800"
+          class="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
           id={dropdownMenuId}
         >
           <div class="p-1">
@@ -109,8 +109,8 @@ const StatusDropdown: FC<{
                 value={status.value}
                 class={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
                   book.status === status.value
-                    ? "bg-yellow-900 text-white"
-                    : "text-gray-900 hover:bg-zinc-50 dark:text-white dark:hover:bg-zinc-700"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-muted"
                 }`}
               >
                 <span class="block truncate">{status.label}</span>
@@ -179,8 +179,8 @@ export const EditableLibraryTable: FC<{
 }> = ({ books, redirectUrl }) => {
   if (!books.length) {
     return (
-      <div class="rounded-xl border border-gray-200 bg-yellow-50 px-6 py-8 text-center dark:border-gray-700 dark:bg-zinc-900">
-        <p class="text-lg text-gray-600 dark:text-gray-300">
+      <div class="rounded-xl border border-border bg-card px-6 py-8 text-center shadow-sm">
+        <p class="text-lg text-muted-foreground">
           No books in your library yet. Start adding books to see them here!
         </p>
       </div>
@@ -210,53 +210,53 @@ export const EditableLibraryTable: FC<{
   return (
     <>
       {/* Desktop: table view */}
-      <div class="hidden overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800 md:block">
+      <div class="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
         <table class="table w-full">
-        <thead class="sticky top-0 z-10 bg-yellow-50 dark:bg-zinc-900">
+        <thead class="sticky top-0 z-10 bg-muted">
           <tr>
             <th
-              class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              class="px-4 py-2 text-left text-sm font-semibold text-foreground"
               style="width: 35%"
             >
               Book
             </th>
             <th
-              class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              class="px-4 py-2 text-left text-sm font-semibold text-foreground"
               style="width: 20%"
             >
               Authors
             </th>
             <th
-              class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              class="px-4 py-2 text-left text-sm font-semibold text-foreground"
               style="width: 15%"
             >
               Status
             </th>
             <th
-              class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              class="px-4 py-2 text-left text-sm font-semibold text-foreground"
               style="width: 12%"
             >
               Rating
             </th>
-            <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">
+            <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground">
               Started
             </th>
-            <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-gray-900 dark:text-white">
+            <th class="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground">
               Finished
             </th>
             <th
-              class="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              class="px-4 py-2 text-left text-sm font-semibold text-foreground"
               style="width: 8%"
             >
               Actions
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-zinc-800">
+        <tbody class="divide-y divide-border bg-card">
           {sortedBooks.map((book, index) => (
             <tr
               key={book.hiveId}
-              class="cursor-pointer transition-colors duration-150 hover:bg-yellow-50/50 dark:hover:bg-zinc-700/50"
+              class="cursor-pointer transition-colors duration-150 hover:bg-muted/60"
               onclick={`window.location.href='/books/${book.hiveId}'`}
             >
               <td class="px-4 py-2">
@@ -273,9 +273,9 @@ export const EditableLibraryTable: FC<{
                         target.nextElementSibling?.classList.remove("hidden");
                       }}
                     />
-                    <div class="hidden h-full w-full items-center justify-center bg-linear-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700">
+                    <div class="hidden h-full w-full items-center justify-center bg-linear-to-br from-muted to-card">
                       <svg
-                        class="h-6 w-6 text-yellow-600 dark:text-yellow-400"
+                        class="h-6 w-6 text-primary"
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -285,7 +285,7 @@ export const EditableLibraryTable: FC<{
                   </div>
                   <div class="min-w-0 flex-1">
                     <h3
-                      class="book-title line-clamp-3 text-sm leading-tight font-medium text-gray-900 dark:text-white"
+                      class="book-title line-clamp-3 text-sm leading-tight font-medium text-foreground"
                       style={`--book-title-name: book-title-${book.hiveId}`}
                     >
                       {book.title}
@@ -294,7 +294,7 @@ export const EditableLibraryTable: FC<{
                 </div>
               </td>
               <td class="px-4 py-2">
-                <p class="text-sm text-gray-900 dark:text-white">
+                <p class="text-sm text-foreground">
                   {book.authors.split("\t").join(", ")}
                 </p>
               </td>
@@ -307,7 +307,7 @@ export const EditableLibraryTable: FC<{
                     <svg key={star} class="h-4 w-4" viewBox="0 0 24 24">
                       {/* Background star (gray) */}
                       <path
-                        class="fill-current text-gray-300 dark:text-gray-600"
+                        class="fill-current text-muted-foreground/40"
                         d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
                       {/* Filled star (yellow) with clip */}
@@ -315,7 +315,7 @@ export const EditableLibraryTable: FC<{
                         style={{
                           clipPath: `inset(0 ${100 - Math.min(100, Math.max(0, ((book.stars || 0) / 2 - (star - 1)) * 100))}% 0 0)`,
                         }}
-                        class="fill-current text-yellow-400"
+                        class="fill-current text-accent"
                         d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
                       />
                     </svg>
@@ -323,7 +323,7 @@ export const EditableLibraryTable: FC<{
                 </div>
               </td>
               <td class="px-4 py-2 whitespace-nowrap">
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-muted-foreground">
                   {book.startedAt
                     ? formatDistanceToNow(new Date(book.startedAt), {
                         addSuffix: true,
@@ -332,7 +332,7 @@ export const EditableLibraryTable: FC<{
                 </p>
               </td>
               <td class="px-4 py-2 whitespace-nowrap">
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-sm text-muted-foreground">
                   {book.finishedAt
                     ? formatDistanceToNow(new Date(book.finishedAt), {
                         addSuffix: true,

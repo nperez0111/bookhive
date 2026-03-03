@@ -43,7 +43,7 @@ export const BookList: FC<{
   }
 
   return (
-    <div class="relative overflow-hidden rounded-lg bg-yellow-50 pb-16 dark:bg-zinc-800">
+    <div class="relative overflow-hidden rounded-lg bg-card pb-16">
       <input type="radio" id="tab-read" name="tabs" class="peer/read hidden" />
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
       <input
@@ -54,7 +54,7 @@ export const BookList: FC<{
         checked
       />
 
-      <div class="mb-4 border-b border-gray-200 dark:border-gray-700 peer-checked/read:[&_label[for='tab-read']]:border-yellow-600 peer-checked/read:[&_label[for='tab-read']]:text-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:border-yellow-600 peer-checked/reading:[&_label[for='tab-reading']]:text-yellow-600 peer-checked/want:[&_label[for='tab-want']]:border-yellow-600 peer-checked/want:[&_label[for='tab-want']]:text-yellow-600">
+      <div class="mb-4 border-b border-border peer-checked/read:[&_label[for='tab-read']]:border-primary peer-checked/read:[&_label[for='tab-read']]:text-primary peer-checked/reading:[&_label[for='tab-reading']]:border-primary peer-checked/reading:[&_label[for='tab-reading']]:text-primary peer-checked/want:[&_label[for='tab-want']]:border-primary peer-checked/want:[&_label[for='tab-want']]:text-primary">
         <ul
           class="-mb-px flex flex-wrap text-center text-sm font-medium"
           role="tablist"

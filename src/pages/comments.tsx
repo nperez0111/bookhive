@@ -347,7 +347,7 @@ export async function CommentsSection({
             document.querySelectorAll("[data-review-uri]").forEach((el) => {
               if (el.getAttribute("data-review-uri") === reviewIdParam) {
                 el.scrollIntoView({ behavior: "smooth", block: "center" });
-                el.classList.add("ring-2", "ring-yellow-500", "ring-offset-2");
+                el.classList.add("ring-2", "ring-primary", "ring-offset-2");
               }
             });
           }
@@ -372,6 +372,7 @@ export async function CommentsSection({
           });
         }}
       />
+      </div>
     </div>
   );
 }

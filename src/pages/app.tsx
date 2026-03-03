@@ -37,7 +37,7 @@ function Hero() {
       <div class="relative z-10 order-1">
         <h1 class="text-4xl font-bold text-shadow-lg sm:text-5xl lg:text-6xl lg:tracking-tight xl:text-7xl xl:tracking-tighter">
           BookHive app for
-          <span class="ml-2 text-yellow-800 dark:text-yellow-600">iPhone</span>
+          <span class="ml-2 text-primary">iPhone</span>
         </h1>
         <p class="mt-4 max-w-xl text-lg text-slate-600 dark:text-slate-400">
           Manage, organize, and review your books anywhere. Follow friends,
@@ -47,13 +47,13 @@ function Hero() {
           <AppStoreBadge />
           <a
             href="https://bookhive.buzz"
-            class="inline-flex items-center justify-center rounded-md border border-yellow-700 bg-yellow-50 px-3.5 py-2.5 text-sm font-medium text-yellow-900 shadow-xs hover:bg-yellow-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-100 dark:hover:bg-yellow-900"
+            class="btn btn-ghost"
           >
             Continue on the web
           </a>
         </div>
       </div>
-      <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-yellow-50 to-transparent dark:from-yellow-950" />
+      <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-card to-transparent" />
     </section>
   );
 }
@@ -69,7 +69,7 @@ function Feature({
 }) {
   return (
     <div class="flex items-start gap-4">
-      <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-yellow-800 p-2 text-white">
+      <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-primary p-2 text-primary-foreground">
         {icon}
       </div>
       <div>

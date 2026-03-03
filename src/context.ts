@@ -50,7 +50,7 @@ export type AppContext = {
   addWideEventContext: AddWideEventContext;
 };
 
-import type { BundleAssetUrls } from "./bundle-assets";
+import type { BundleAssetUrls } from "./utils/manifest";
 
 declare module "hono" {
   interface ContextVariableMap {
