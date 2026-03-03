@@ -5,11 +5,13 @@
 import { Hono } from "hono";
 
 import type { AppEnv } from "../context";
+import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
+import { getProfiles } from "../utils/getProfile";
 import { LibraryImport } from "../pages/import";
 import { PrivacyPolicy } from "../pages/privacy-policy";
 import { GenresDirectory } from "../pages/genres";
@@ -29,7 +31,64 @@ const app = new Hono<AppEnv>()
     if (!profile) {
       return c.redirect("/login", 302);
     }
-    return c.render(<FeedPage />, { title: "BookHive | Activity Feed" });
+    const ctx = c.get("ctx");
+    const tab =
+      (c.req.query("tab") as "friends" | "all" | "tracking") || "friends";
+    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
+    const limit = 25;
+    const offset = (page - 1) * limit;
+
+    let query = ctx.db
+      .selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .orderBy("user_book.createdAt", "desc")
+      .limit(limit + 1)
+      .offset(offset);
+
+    if (tab === "friends") {
+      query = query.where(
+        "user_book.userDid",
+        "in",
+        ctx.db
+          .selectFrom("user_follows")
+          .where("user_follows.userDid", "=", profile.did)
+          .where("user_follows.isActive", "=", 1)
+          .select("user_follows.followsDid"),
+      ) as typeof query;
+    } else if (tab === "tracking") {
+      query = query.where(
+        "user_book.hiveId",
+        "in",
+        ctx.db
+          .selectFrom("user_book as ub2")
+          .where("ub2.userDid", "=", profile.did)
+          .select("ub2.hiveId"),
+      ) as typeof query;
+    }
+
+    const rows = await query.execute();
+    const hasMore = rows.length > limit;
+    const activities = rows.slice(0, limit);
+
+    const allDids = [...new Set(activities.map((a) => a.userDid))];
+    const [didHandleMap, profiles] = await Promise.all([
+      ctx.resolver.resolveDidsToHandles(allDids),
+      allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
+    ]);
+    const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
+
+    return c.render(
+      <FeedPage
+        activities={activities}
+        currentTab={tab}
+        currentPage={page}
+        hasMore={hasMore}
+        profileByDid={profileByDid}
+        didHandleMap={didHandleMap}
+      />,
+      { title: "BookHive | Activity Feed" },
+    );
   })
   .get("/.well-known/atproto-did", (c) =>
     c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"),
@@ -39,7 +98,7 @@ const app = new Hono<AppEnv>()
       title: "BookHive App for iOS",
       description:
         "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
-      image: "/public/hive.jpg",
+      image: "/hive.jpg",
     }),
   )
   .get("/privacy-policy", (c) =>

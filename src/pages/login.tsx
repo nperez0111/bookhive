@@ -85,7 +85,7 @@ export const Login: FC<{
     />
     <div class="relative w-full max-w-sm">
       <img
-        src="/public/full_logo.jpg"
+        src="/full_logo.jpg"
         alt="BookHive"
         class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
       />

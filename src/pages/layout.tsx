@@ -19,7 +19,7 @@ export const Layout: FC<
 > = ({
   children,
   title = "Bookhive",
-  image = "/public/full_logo.png",
+  image = "/full_logo.png",
   description = "Goodreads but better. Built on top of Blue Sky.",
   assetUrls: assetUrlsProp,
   url: urlProp,
@@ -40,7 +40,6 @@ export const Layout: FC<
   // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
-  const now = Date.now();
   // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
   const isDevVite =
     assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
@@ -70,7 +69,7 @@ export const Layout: FC<
         <meta property="og:site_name" content="BookHive" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
-        <meta property="og:logo" content="/public/icon.svg" />
+        <meta property="og:logo" content="/icon.svg" />
         ${ogExtra}
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="bookhive.buzz" />
@@ -81,21 +80,21 @@ export const Layout: FC<
         <link
           rel="apple-touch-icon"
           sizes="180x180"
-          href="/public/apple-touch-icon.png"
+          href="/apple-touch-icon.png"
         />
         <link
           rel="icon"
           type="image/png"
           sizes="32x32"
-          href="/public/favicon-32x32.png"
+          href="/favicon-32x32.png"
         />
         <link
           rel="icon"
           type="image/png"
           sizes="16x16"
-          href="/public/favicon-16x16.png"
+          href="/favicon-16x16.png"
         />
-        <link rel="manifest" href="/public/site.webmanifest" />
+        <link rel="manifest" href="/site.webmanifest" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="${description}" />
         <meta name="robots" content="index, follow" />
@@ -144,10 +143,7 @@ export const Layout: FC<
         ${jsUrls.map(
           (src) => html`<script type="module" src="${src}"></script>`,
         )}
-        <script
-          type="module"
-          src="/public/js/actor-typeahead.js?v=${now}"
-        ></script>
+        <script type="module" src="/js/actor-typeahead.js"></script>
       </head>
       <body class="bg-background text-foreground min-h-full">
         ${children}

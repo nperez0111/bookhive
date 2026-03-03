@@ -136,7 +136,13 @@ const app = new Hono<AppEnv>()
       const redirectTo = c.req.query("redirect") || `/books/${hiveId}`;
       return c.redirect(redirectTo);
     } catch (e) {
-      console.error("Failed to delete book", e);
+      c.set("requestError", e);
+      c.get("ctx").addWideEventContext({
+        book_delete: "failed",
+        hiveId,
+        userDid: agent.did,
+        error: (e as Error).message,
+      });
       throw e;
     }
   })

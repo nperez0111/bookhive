@@ -5,6 +5,7 @@ import { endTime, startTime } from "hono/timing";
 import { sql } from "kysely";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import type { HiveBook, UserBook } from "../types";
+import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { CommentsSection } from "./comments";
 import { Script } from "./utils/script";
@@ -292,6 +293,7 @@ export const BookInfo: FC<{
   book: HiveBook;
 }> = async ({ book }) => {
   const c = useRequestContext();
+  const origin = new URL(c.req.url).origin;
   startTime(c, "get_session");
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
@@ -334,6 +336,26 @@ export const BookInfo: FC<{
     .limit(10_000)
     .execute();
   endTime(c, "db_reviews_of_this_book");
+
+  const firstAuthor = book.authors.split("\t")[0] ?? "";
+  const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
+  const authorCondition = patterns
+    ? sql`(authors = ${patterns.exact} OR authors LIKE ${patterns.first} OR authors LIKE ${patterns.middle} OR authors LIKE ${patterns.last})`
+    : sql`0`;
+  startTime(c, "db_other_books_by_author");
+  const otherBooksByAuthor = firstAuthor
+    ? await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("id", "!=", book.id)
+        .where(authorCondition as any)
+        .orderBy("ratingsCount", "desc")
+        .orderBy("rating", "desc")
+        .limit(6)
+        .execute()
+    : [];
+  endTime(c, "db_other_books_by_author");
 
   return (
     <div className="space-y-6">

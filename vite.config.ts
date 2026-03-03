@@ -12,6 +12,23 @@ export default defineConfig({
     middlewareMode: false,
     port: 5173,
     strictPort: false,
+    hmr: {
+      // Explicit host so WebSocket connects correctly when proxying to Bun
+      host: "127.0.0.1",
+      port: 5173,
+      overlay: false,
+    },
+    watch: {
+      // Ignore paths that can trigger spurious HMR (cache, logs, build output)
+      ignored: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/.mcp_data/**",
+        "**/*.log",
+        "**/.vite/**",
+      ],
+    },
   },
   build: {
     outDir: "dist/public",

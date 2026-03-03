@@ -40,7 +40,7 @@ export async function createOAuthClient(kv: Storage) {
         : {
             client_uri: baseUrl,
             client_name: "BookHive",
-            logo_uri: `${baseUrl}/public/full_logo.jpg`,
+            logo_uri: `${baseUrl}/full_logo.jpg`,
             policy_uri: `${baseUrl}/privacy-policy`,
           }),
     },

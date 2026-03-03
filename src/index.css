@@ -170,12 +170,20 @@ body {
 }
 
 .sidebar footer a {
-  @apply text-muted-foreground text-sm no-underline;
+  @apply text-muted-foreground inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm no-underline transition-colors;
   white-space: nowrap;
 }
 
 .sidebar footer a:hover {
-  @apply text-foreground;
+  @apply bg-muted text-foreground;
+}
+
+.sidebar footer a[aria-current="page"] {
+  @apply bg-primary text-primary-foreground;
+}
+
+.sidebar footer a[aria-current="page"]:hover {
+  @apply bg-primary/90 text-primary-foreground;
 }
 
 /* User block in sidebar (when logged in) */
@@ -287,4 +295,13 @@ body {
 .tabs:has(#tab-following:checked) .tab-panel[data-tab="following"],
 .tabs:has(#tab-followers:checked) .tab-panel[data-tab="followers"] {
   @apply block;
+}
+
+/* Card parts (used with .card from basecoat) */
+.card .card-header {
+  @apply px-6;
+}
+
+.card .card-body {
+  @apply px-6;
 }

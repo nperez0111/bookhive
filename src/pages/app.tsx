@@ -9,7 +9,7 @@ function AppStoreBadge() {
       rel="noopener noreferrer"
     >
       <img
-        src="/public/download_app_store.svg"
+        src="/download_app_store.svg"
         alt="Download on the App Store"
         class="h-9 w-auto sm:h-10"
         loading="lazy"
@@ -26,7 +26,7 @@ function Hero() {
         {/* Phone screenshot */}
         <div class="relative aspect-[9/19] w-[80%] max-w-[260px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[300px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[420px]">
           <img
-            src="/public/screenshots/home-screen.png"
+            src="/screenshots/home-screen.png"
             alt="BookHive iOS — home screen"
             class="absolute inset-0 h-full w-full object-contain p-2"
             loading="lazy"
@@ -234,7 +234,7 @@ function Screenshots() {
         <div class="order-2 flex justify-center lg:order-2">
           <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
             <img
-              src="/public/screenshots/book-info.png"
+              src="/screenshots/book-info.png"
               alt="BookHive iOS — book details screen"
               class="absolute inset-0 h-full w-full object-contain p-2"
               loading="lazy"
@@ -249,7 +249,7 @@ function Screenshots() {
         <div class="order-2 flex justify-center lg:order-1">
           <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
             <img
-              src="/public/screenshots/comment.png"
+              src="/screenshots/comment.png"
               alt="BookHive iOS — comments and reviews"
               class="absolute inset-0 h-full w-full object-contain p-2"
               loading="lazy"

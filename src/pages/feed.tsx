@@ -1,154 +1,129 @@
-import { type FC } from "hono/jsx";
-import { useRequestContext } from "hono/jsx-renderer";
-import { endTime, startTime } from "hono/timing";
-import { BookFields } from "../db";
-import type { Book } from "../types";
-import type { ProfileViewDetailed } from "../types";
+import type { FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
-import { getProfiles } from "../utils/getProfile";
+import { ActivityCard } from "./components/ActivityCard";
+import type { FeedActivity } from "./components/ActivityCard";
+import type { ProfileViewDetailed } from "../types";
 
-export const FeedPage: FC = async () => {
-  const c = useRequestContext();
-  const profile = await c.get("ctx").getProfile();
-  if (!profile) {
-    return null as any; // Route redirects unauthenticated users
-  }
+type FeedRow = {
+  uri: string;
+  userDid: string;
+  hiveId: string;
+  title: string;
+  authors: string;
+  status: string | null;
+  stars: number | null;
+  review: string | null;
+  createdAt: string;
+  cover: string | null;
+  thumbnail: string | null;
+};
 
-  startTime(c, "feedFriendsBuzzes");
-  const friendsBuzzes = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
-    .select(BookFields)
-    .where("user_follows.userDid", "=", profile.did)
-    .where("user_follows.isActive", "=", 1)
-    .orderBy("user_book.createdAt", "desc")
-    .limit(100)
-    .execute();
-  endTime(c, "feedFriendsBuzzes");
+export interface FeedPageProps {
+  activities: FeedRow[];
+  currentTab: "friends" | "all" | "tracking";
+  currentPage: number;
+  hasMore: boolean;
+  profileByDid: Record<string, ProfileViewDetailed>;
+  didHandleMap: Record<string, string>;
+}
 
-  startTime(c, "feedLatestBuzzes");
-  const latestBuzzes = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
-    .orderBy("user_book.createdAt", "desc")
-    .limit(100)
-    .execute();
-  endTime(c, "feedLatestBuzzes");
+const TAB_LABELS: Record<"friends" | "all" | "tracking", string> = {
+  friends: "Friends",
+  all: "All",
+  tracking: "Books I Track",
+};
 
-  const allDids = [
-    ...new Set([
-      ...friendsBuzzes.map((b) => b.userDid),
-      ...latestBuzzes.map((b) => b.userDid),
-    ]),
-  ];
-  const [didHandleMap, friendProfiles] = await Promise.all([
-    c.get("ctx").resolver.resolveDidsToHandles(allDids),
-    allDids.length > 0
-      ? getProfiles({ ctx: c.get("ctx"), dids: allDids })
-      : [] as ProfileViewDetailed[],
-  ]);
-  const profileByDid = Object.fromEntries(
-    friendProfiles.map((p) => [p.did, p]),
-  );
-
-  const combined = [
-    ...(friendsBuzzes as Book[]).map((b) => ({ ...b, _source: "friends" as const })),
-    ...(latestBuzzes as Book[]).map((b) => ({ ...b, _source: "all" as const })),
-  ].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-  const seen = new Set<string>();
-  const deduped = combined.filter((item) => {
-    const key = `${item.userDid}-${item.hiveId}-${item.createdAt}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
+export const FeedPage: FC<FeedPageProps> = ({
+  activities,
+  currentTab,
+  currentPage,
+  hasMore,
+  profileByDid,
+  didHandleMap,
+}) => {
   return (
-    <div class="space-y-8 px-4 py-8 lg:px-8">
-      <h1 class="text-foreground text-2xl font-bold tracking-tight">
-        Activity Feed
-      </h1>
-
-      <div class="card">
-        <div class="card-body space-y-4">
-          {deduped.length === 0 ? (
-            <p class="text-muted-foreground">
-              No activity yet. Follow people on BookHive or add books to see activity here.
-            </p>
-          ) : (
-            deduped.slice(0, 50).map((activity) => {
-              const handle = didHandleMap[activity.userDid] ?? activity.userDid;
-              const prof = profileByDid[activity.userDid];
-              return (
-                <div
-                  key={`${activity.userDid}-${activity.hiveId}-${activity.createdAt}`}
-                  class="flex gap-3 border-b border-border pb-4 last:border-0 last:pb-0"
-                >
-                  <a href={`/profile/${handle}`} class="shrink-0">
-                    {prof?.avatar ? (
-                      <img
-                        src={`/images/w_100/${prof.avatar}`}
-                        alt=""
-                        class="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div class="bg-muted h-10 w-10 rounded-full" />
-                    )}
-                  </a>
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm">
-                      <a
-                        href={`/profile/${handle}`}
-                        class="text-foreground font-semibold hover:underline"
-                      >
-                        @{handle}
-                      </a>
-                      <span class="text-muted-foreground"> finished </span>
-                      <a
-                        href={`/books/${activity.hiveId}`}
-                        class="text-foreground font-semibold hover:underline"
-                      >
-                        {activity.title}
-                      </a>
-                    </div>
-                    {activity.stars != null && (
-                      <div class="text-amber-500 text-sm">
-                        {"★".repeat(Math.round(activity.stars / 2))}
-                      </div>
-                    )}
-                    {activity.review && (
-                      <p class="text-muted-foreground mt-1 line-clamp-2 text-sm">
-                        {activity.review}
-                      </p>
-                    )}
-                    <div class="text-muted-foreground mt-1 text-xs">
-                      {formatDistanceToNow(new Date(activity.createdAt), {
-                        addSuffix: true,
-                      })}
-                    </div>
-                  </div>
-                  {(activity.cover || activity.thumbnail) && (
-                    <a href={`/books/${activity.hiveId}`} class="shrink-0">
-                      <img
-                        src={activity.cover || activity.thumbnail || ""}
-                        alt=""
-                        class="h-16 w-12 rounded object-cover"
-                      />
-                    </a>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+    <div class="space-y-6 px-4 py-8 lg:px-8">
+      <div>
+        <h1 class="text-foreground text-3xl font-bold tracking-tight">
+          Activity Feed
+        </h1>
       </div>
+
+      {/* Tabs: link-based, no JS */}
+      <div class="flex gap-2 border-b border-border">
+        {(["friends", "all", "tracking"] as const).map((t) => (
+          <a
+            href={`/feed?tab=${t}`}
+            class={`tab-label cursor-pointer px-3 py-2 text-sm font-medium ${
+              currentTab === t
+                ? "border-b-2 border-primary text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {TAB_LABELS[t]}
+          </a>
+        ))}
+      </div>
+
+      {activities.length === 0 ? (
+        <div class="empty">
+          <div class="empty-title">No activity yet</div>
+          <div class="empty-description">
+            {currentTab === "friends"
+              ? "Follow users to see their activity"
+              : currentTab === "tracking"
+                ? "Add books to your library to see activity on books you track"
+                : "Check back later"}
+          </div>
+        </div>
+      ) : (
+        <div class="space-y-4">
+          {activities.map((activity) => {
+            const handle = didHandleMap[activity.userDid] ?? activity.userDid;
+            const prof = profileByDid[activity.userDid];
+            const user = {
+              handle,
+              displayName: prof?.displayName ?? null,
+              avatar: prof?.avatar ?? null,
+            };
+            const feedActivity: FeedActivity = {
+              uri: activity.uri,
+              userDid: activity.userDid,
+              hiveId: activity.hiveId,
+              title: activity.title,
+              authors: activity.authors,
+              status: activity.status,
+              stars: activity.stars,
+              review: activity.review,
+              createdAt: activity.createdAt,
+              cover: activity.cover,
+              thumbnail: activity.thumbnail,
+            };
+            const timeAgo = formatDistanceToNow(new Date(activity.createdAt), {
+              addSuffix: true,
+            });
+            return (
+              <ActivityCard
+                key={`${activity.userDid}-${activity.hiveId}-${activity.createdAt}`}
+                activity={feedActivity}
+                user={user}
+                timeAgo={timeAgo}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {hasMore && (
+        <div class="text-center">
+          <a
+            href={`/feed?tab=${currentTab}&page=${currentPage + 1}`}
+            class="btn btn-secondary"
+          >
+            Load more
+          </a>
+        </div>
+      )}
     </div>
   );
 };

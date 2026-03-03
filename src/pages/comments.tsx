@@ -7,6 +7,7 @@ import { getProfiles } from "../utils/getProfile";
 import { formatDistanceToNow } from "date-fns";
 import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
+import { Card, CardBody, UserBlock, StarDisplay, CardActions } from "./components/cards";
 
 type CommentShape = {
   parentUri?: string;
@@ -73,42 +74,30 @@ function Comment({
   const commentIdSafe = rkey.replace(/[^a-zA-Z0-9-]/g, "-");
   const shareUrl = `${shareBaseUrl}#comment-${commentIdSafe}`;
 
-  return (
-    <article class="card mb-4" id={`comment-${commentIdSafe}`}>
-      <div class="card-body">
-        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-3">
-            <a
-              href={`/profile/${profile?.handle}`}
-              class="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary hover:underline"
-            >
-              <img
-                src={profile?.avatar}
-                alt={profile?.displayName ?? ""}
-                class="h-8 w-8 rounded-full object-cover"
-              />
-              @{profile?.handle}
-            </a>
-            <time
-              pubdate
-              datetime={comment.createdAt}
-              class="text-sm text-muted-foreground"
-            >
-              {formatDistanceToNow(comment.createdAt, { addSuffix: true })}
-            </time>
-          </div>
-        </div>
+  const handle = profile?.handle ?? comment.userDid;
+  const timeAgo = formatDistanceToNow(comment.createdAt, { addSuffix: true });
 
-        {comment.stars != null && (
-          <div class="mb-2">
-            <span class="badge">
-              {Array.from({ length: 5 }, (_, i) =>
-                i < comment.stars! / 2 ? "★" : "☆",
-              ).join("")}{" "}
-              {comment.stars / 2}/5
-            </span>
-          </div>
-        )}
+  return (
+    <article id={`comment-${commentIdSafe}`} class="mb-4">
+      <Card>
+        <CardBody>
+          <UserBlock
+            handle={handle}
+            displayName={profile?.displayName ?? null}
+            avatar={profile?.avatar ?? null}
+            size="sm"
+            suffix={timeAgo}
+          />
+          <time pubdate datetime={comment.createdAt} class="sr-only">
+            {timeAgo}
+          </time>
+
+          {comment.stars != null && (
+            <div class="mb-2 flex items-center gap-2">
+              <StarDisplay rating={comment.stars / 2} size="sm" />
+              <span class="text-muted-foreground text-sm">{comment.stars / 2}/5</span>
+            </div>
+          )}
 
         <input
           type="checkbox"
@@ -126,7 +115,7 @@ function Comment({
           </p>
         </div>
 
-        <div class="relative mt-3 flex flex-wrap items-center gap-2">
+        <CardActions class="relative mt-3 flex-wrap">
           <input
             type="checkbox"
             id={`reply-${commentIdSafe}`}
@@ -218,7 +207,7 @@ function Comment({
               bookId={bookId}
             />
           </div>
-        </div>
+        </CardActions>
 
         <div
           id={`comments-${commentIdSafe}`}
@@ -239,7 +228,8 @@ function Comment({
             </div>
           )}
         </div>
-      </div>
+        </CardBody>
+      </Card>
     </article>
   );
 }

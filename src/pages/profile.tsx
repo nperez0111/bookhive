@@ -6,6 +6,7 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
 import { EditableLibraryTable } from "./components/EditableLibraryTable";
 import { BOOK_STATUS } from "../constants";
+import { UserBlock } from "./components/cards";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -179,11 +180,7 @@ export const ProfilePage: FC<{
                 {books
                   .filter((book) => book.review)
                   .map((book) => (
-                    <div key={book.hiveId} class="card">
-                      <div class="card-body p-0">
-                        <BookReview book={book} />
-                      </div>
-                    </div>
+                    <BookReview key={book.hiveId} book={book} />
                   ))}
               </div>
             </section>
@@ -218,21 +215,17 @@ export const ProfilePage: FC<{
                   <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
                     {followingProfiles.map((user) => (
                       <a
+                        key={user.did}
                         href={`/profile/${user.handle ?? user.did}`}
                         class="card flex items-center gap-2 p-2 transition-colors hover:border-primary/50"
                       >
-                        {user.avatar ? (
-                          <img
-                            src={`/images/w_100/${user.avatar}`}
-                            alt=""
-                            class="h-8 w-8 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div class="bg-muted h-8 w-8 shrink-0 rounded-full" />
-                        )}
-                        <span class="text-foreground truncate text-sm">
-                          @{user.handle ?? user.did}
-                        </span>
+                        <UserBlock
+                          handle={user.handle ?? user.did}
+                          avatar={user.avatar ?? null}
+                          displayName={null}
+                          size="sm"
+                          noLink
+                        />
                       </a>
                     ))}
                   </div>
@@ -241,21 +234,17 @@ export const ProfilePage: FC<{
                   <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
                     {followersProfiles.map((user) => (
                       <a
+                        key={user.did}
                         href={`/profile/${user.handle ?? user.did}`}
                         class="card flex items-center gap-2 p-2 transition-colors hover:border-primary/50"
                       >
-                        {user.avatar ? (
-                          <img
-                            src={`/images/w_100/${user.avatar}`}
-                            alt=""
-                            class="h-8 w-8 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div class="bg-muted h-8 w-8 shrink-0 rounded-full" />
-                        )}
-                        <span class="text-foreground truncate text-sm">
-                          @{user.handle ?? user.did}
-                        </span>
+                        <UserBlock
+                          handle={user.handle ?? user.did}
+                          avatar={user.avatar ?? null}
+                          displayName={null}
+                          size="sm"
+                          noLink
+                        />
                       </a>
                     ))}
                   </div>

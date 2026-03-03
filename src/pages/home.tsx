@@ -11,15 +11,16 @@ import { hydrateUserBook } from "../utils/bookProgress";
 import { BOOK_STATUS } from "../constants";
 import { formatDistanceToNow } from "date-fns";
 import { getProfiles } from "../utils/getProfile";
+import { StarCount } from "./components/cards";
 
 function Hero() {
   return (
-    <main class="relative px-4 pt-16 pb-8 md:pt-12 md:pb-24 lg:px-8">
+    <main class="relative px-4 pt-12 pb-10 sm:pt-14 sm:pb-12 md:pt-12 md:pb-24 lg:px-8">
       <div class="card mx-auto max-w-5xl">
         <div class="card-body flex flex-col items-center gap-8 md:flex-row md:items-center md:gap-12">
           <div class="flex justify-center md:order-2">
             <img
-              src="/public/hive.jpg"
+              src="/hive.jpg"
               alt="Bee sitting on a stack of books"
               class="max-h-[280px] w-[70%] max-w-[520px] rounded-xl object-cover sm:w-auto"
             />
@@ -110,10 +111,10 @@ function Features() {
 
   return (
     <div class="px-4 lg:px-8">
-      <div class="mt-16 text-center md:mt-0">
+      <div class="mt-10 text-center sm:mt-12 md:mt-16">
         <h2 class="text-foreground text-3xl font-bold tracking-tight lg:text-4xl">
           Everything you need to{" "}
-          <span class="text-primary underline decoration-primary decoration-2 underline-offset-4">
+          <span class="text-primary decoration-primary underline decoration-2 underline-offset-4">
             manage your books
           </span>
         </h2>
@@ -122,7 +123,7 @@ function Features() {
         </p>
       </div>
 
-      <div class="mt-12 grid gap-6 sm:grid-cols-2 md:grid-cols-3">
+      <div class="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6 md:grid-cols-3">
         {features.map((item) => (
           <div key={item.title} class="card">
             <div class="card-body flex gap-4">
@@ -162,14 +163,12 @@ function LatestActivitySection({
   didHandleMap: Record<string, string>;
 }) {
   return (
-    <div class="px-4 lg:px-8">
-      <BuzzSection
-        title="Recent buzzes"
-        subtitle="See what others are reading and what they think about it."
-        books={books}
-        didHandleMap={didHandleMap}
-      />
-    </div>
+    <BuzzSection
+      title="Recent buzzes"
+      subtitle="See what others are reading and what they think about it."
+      books={books}
+      didHandleMap={didHandleMap}
+    />
   );
 }
 
@@ -181,14 +180,12 @@ function FriendsBuzzesSection({
   didHandleMap: Record<string, string>;
 }) {
   return (
-    <div class="px-4 lg:px-8">
-      <BuzzSection
-        title="Recent buzzes from friends"
-        subtitle="See what your followers are reading and what they think about it."
-        books={books}
-        didHandleMap={didHandleMap}
-      />
-    </div>
+    <BuzzSection
+      title="Recent buzzes from friends"
+      subtitle="See what your followers are reading and what they think about it."
+      books={books}
+      didHandleMap={didHandleMap}
+    />
   );
 }
 
@@ -211,8 +208,9 @@ function Dashboard({
   );
   const year = new Date().getFullYear();
   const month = new Date().getMonth();
-  const totalRead = myBooks.filter((b) => b.status === BOOK_STATUS.FINISHED)
-    .length;
+  const totalRead = myBooks.filter(
+    (b) => b.status === BOOK_STATUS.FINISHED,
+  ).length;
   const thisMonth = myBooks.filter(
     (b) =>
       b.status === BOOK_STATUS.FINISHED &&
@@ -232,14 +230,14 @@ function Dashboard({
   );
 
   return (
-    <div class="space-y-8 px-4 pt-8 lg:px-8">
-      <h2 class="text-foreground text-2xl font-bold tracking-tight">
+    <div class="space-y-6 px-4 pt-6 sm:space-y-8 sm:pt-8 lg:px-8">
+      <h2 class="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
         Welcome back, {displayName}
       </h2>
 
-      <div class="grid gap-8 lg:grid-cols-3">
+      <div class="grid gap-6 sm:gap-8 lg:grid-cols-3">
         {/* Left column: 1/3 */}
-        <div class="space-y-6 lg:col-span-1">
+        <div class="space-y-4 sm:space-y-6 lg:col-span-1">
           {currentlyReading.length > 0 && (
             <div class="card">
               <div class="card-header">
@@ -304,7 +302,9 @@ function Dashboard({
             <div class="card-body">
               <div class="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div class="text-foreground text-2xl font-bold">{totalRead}</div>
+                  <div class="text-foreground text-2xl font-bold">
+                    {totalRead}
+                  </div>
                   <div class="text-muted-foreground text-xs">Total Read</div>
                 </div>
                 <div>
@@ -340,11 +340,25 @@ function Dashboard({
                 </p>
               ) : (
                 friendsBuzzes.slice(0, 10).map((activity) => {
-                  const handle = didHandleMap[activity.userDid] ?? activity.userDid;
+                  const handle =
+                    didHandleMap[activity.userDid] ?? activity.userDid;
                   const prof = profileByDid[activity.userDid];
+                  const timeAgo = formatDistanceToNow(
+                    new Date(activity.createdAt),
+                    {
+                      addSuffix: true,
+                    },
+                  );
                   return (
-                    <div key={`${activity.userDid}-${activity.hiveId}`} class="flex gap-3">
-                      <a href={`/profile/${handle}`} class="shrink-0">
+                    <div
+                      key={`${activity.userDid}-${activity.hiveId}`}
+                      class="flex gap-3"
+                    >
+                      <a
+                        href={`/profile/${handle}`}
+                        class="shrink-0"
+                        aria-label={`${handle}'s profile`}
+                      >
                         {prof?.avatar ? (
                           <img
                             src={`/images/w_100/${prof.avatar}`}
@@ -371,9 +385,9 @@ function Dashboard({
                             {activity.title}
                           </a>
                         </div>
-                        {activity.stars != null && (
-                          <div class="text-amber-500 text-sm">
-                            {"★".repeat(Math.round(activity.stars / 2))}
+                        {activity.stars != null && activity.stars > 0 && (
+                          <div class="mt-1 text-sm">
+                            <StarCount count={activity.stars / 2} />
                           </div>
                         )}
                         {activity.review && (
@@ -382,9 +396,7 @@ function Dashboard({
                           </p>
                         )}
                         <div class="text-muted-foreground mt-1 text-xs">
-                          {formatDistanceToNow(new Date(activity.createdAt), {
-                            addSuffix: true,
-                          })}
+                          {timeAgo}
                         </div>
                       </div>
                     </div>
@@ -399,7 +411,9 @@ function Dashboard({
       {/* Your books - link to profile */}
       <div class="card">
         <div class="card-body">
-          <h2 class="text-foreground mb-4 text-xl font-bold">Your library</h2>
+          <h2 class="text-foreground mb-3 text-xl font-bold sm:mb-4">
+            Your library
+          </h2>
           <BookList fallback={<LibraryImport />} />
         </div>
       </div>
@@ -459,7 +473,10 @@ export const Home: FC = async () => {
 
     const friendDids = [...new Set(friendsBuzzes.map((b) => b.userDid))];
     if (friendDids.length > 0) {
-      friendProfiles = await getProfiles({ ctx: c.get("ctx"), dids: friendDids });
+      friendProfiles = await getProfiles({
+        ctx: c.get("ctx"),
+        dids: friendDids,
+      });
     }
   }
 
@@ -476,7 +493,7 @@ export const Home: FC = async () => {
   endTime(c, "didHandleMap");
 
   return (
-    <div class="space-y-6">
+    <div class="space-y-8 sm:space-y-10">
       {profile ? (
         <Dashboard
           profile={profile}

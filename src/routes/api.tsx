@@ -132,8 +132,19 @@ const app = new Hono<AppEnv>()
         hiveId: hiveId as HiveId,
         updates,
       });
+      c.get("ctx").addWideEventContext({
+        api: "update_book",
+        hiveId,
+        userDid: agent.did,
+      });
       return c.json({ success: true, message: "Book updated" });
     } catch (e) {
+      c.get("ctx").addWideEventContext({
+        api_update_book: "failed",
+        hiveId,
+        userDid: agent.did,
+        error: (e as Error).message,
+      });
       return c.json({ success: false, message: (e as Error).message }, 400);
     } finally {
       await c.get("ctx").kv.del(bookLockKey);
@@ -227,6 +238,16 @@ const app = new Hono<AppEnv>()
           firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
         )
       ) {
+        c.set(
+          "requestError",
+          new Error("Failed to write comment to the database"),
+        );
+        c.get("ctx").addWideEventContext({
+          api_update_comment: "failed",
+          hiveId,
+          userDid: agent.did,
+          error: "applyWrites result invalid",
+        });
         return c.json(
           {
             success: false,
@@ -269,6 +290,12 @@ const app = new Hono<AppEnv>()
         )
         .execute();
 
+      c.get("ctx").addWideEventContext({
+        api: "update_comment",
+        hiveId,
+        userDid: agent.did,
+        comment_uri: firstResult.uri,
+      });
       return c.json({
         success: true,
         message: "Comment posted",
@@ -337,8 +364,19 @@ const app = new Hono<AppEnv>()
             }),
           )
           .execute();
+        c.get("ctx").addWideEventContext({
+          api: "follow",
+          userDid: agent.did,
+          targetDid: did,
+        });
         return c.json({ success: true });
       } catch (e: unknown) {
+        c.get("ctx").addWideEventContext({
+          api_follow: "failed",
+          userDid: agent.did,
+          targetDid: did,
+          error: (e as Error)?.message ?? "Follow failed",
+        });
         return c.json(
           {
             success: false,
@@ -399,7 +437,19 @@ const app = new Hono<AppEnv>()
             }),
           )
           .execute();
-      } catch {}
+        c.get("ctx").addWideEventContext({
+          api: "follow_form",
+          userDid: agent.did,
+          targetDid: did,
+        });
+      } catch (e: unknown) {
+        c.get("ctx").addWideEventContext({
+          api_follow_form: "failed",
+          userDid: agent.did,
+          targetDid: did,
+          error: (e as Error)?.message ?? "Follow failed",
+        });
+      }
       return c.redirect(`/profile/${targetHandle}`, 302);
     },
   )
@@ -436,6 +486,11 @@ const app = new Hono<AppEnv>()
             .where("userDid", "=", agent.did)
             .where("followsDid", "=", did)
             .execute();
+          c.get("ctx").addWideEventContext({
+            api: "unfollow",
+            userDid: agent.did,
+            targetDid: did,
+          });
           return c.json({ success: true });
         }
         await agent.post("com.atproto.repo.applyWrites", {
@@ -456,8 +511,19 @@ const app = new Hono<AppEnv>()
           .where("userDid", "=", agent.did)
           .where("followsDid", "=", did)
           .execute();
+        c.get("ctx").addWideEventContext({
+          api: "unfollow",
+          userDid: agent.did,
+          targetDid: did,
+        });
         return c.json({ success: true });
       } catch (e: unknown) {
+        c.get("ctx").addWideEventContext({
+          api_unfollow: "failed",
+          userDid: agent.did,
+          targetDid: did,
+          error: (e as Error)?.message ?? "Unfollow failed",
+        });
         return c.json(
           {
             success: false,
@@ -516,9 +582,21 @@ const app = new Hono<AppEnv>()
           .db.updateTable("user_follows")
           .set({ isActive: 0 })
           .where("userDid", "=", agent.did)
-          .where("followsDid", "=", did)
-          .execute();
-      } catch {}
+            .where("followsDid", "=", did)
+            .execute();
+        c.get("ctx").addWideEventContext({
+          api: "unfollow_form",
+          userDid: agent.did,
+          targetDid: did,
+        });
+      } catch (e: unknown) {
+        c.get("ctx").addWideEventContext({
+          api_unfollow_form: "failed",
+          userDid: agent.did,
+          targetDid: did,
+          error: (e as Error)?.message ?? "Unfollow failed",
+        });
+      }
       return c.redirect(`/profile/${targetHandle}`, 302);
     },
   );

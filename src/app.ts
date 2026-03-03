@@ -84,16 +84,15 @@ export function createApp({
       }),
     );
   }
-  app.use(
-    "/public/*",
-    serveStatic({
-      root: env.isProduction ? publicRoot : process.cwd(),
-      rewriteRequestPath: (path) =>
-        env.isProduction
-          ? path.replace(/^\/public\/?/, "")
-          : path.replace(/^\/static/, "./public"),
-    }),
-  );
+  // Serve static files at root (e.g. /hive.jpg, /book.svg) — Vite serves public at / in dev
+  const staticExt = /\.(jpg|jpeg|png|gif|svg|ico|webmanifest|js|css|woff2?|webp)$/i;
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
+    if (staticExt.test(path)) {
+      return serveStatic({ root: publicRoot })(c, next);
+    }
+    return next();
+  });
 
   // TODO enable etag for everything but import route
   app.use(etag());

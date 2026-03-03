@@ -3,6 +3,7 @@ import type { Book, HiveBook } from "../../types";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
 import { FallbackCover } from "./fallbackCover";
+import { StarDisplay } from "./cards";
 import { hydrateUserBook } from "../../utils/bookProgress";
 
 const NO_BOOKS_FOUND = (
@@ -197,35 +198,7 @@ export const BookListItem: FC<{
               {book.authors.split("\t").join(", ")}
             </p>
             <div className="flex items-center">
-              <div className="-ml-1 flex -space-x-1.5">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <svg
-                    class="relative inline-flex w-6"
-                    viewBox="0 0 24 24"
-                    key={star}
-                  >
-                    {/* Background star (gray) */}
-                    <path
-                      class="fill-current text-gray-300"
-                      d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z"
-                    />
-                    {/* Filled star (yellow) with clip */}
-                    <path
-                      style={{
-                        clipPath: `inset(0 ${
-                          100 -
-                          Math.min(
-                            100,
-                            Math.max(0, (rating - (star - 1)) * 100),
-                          )
-                        }% 0 0)`,
-                      }}
-                      class="fill-current text-yellow-400"
-                      d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z"
-                    />
-                  </svg>
-                ))}
-              </div>
+              <StarDisplay rating={rating} />
               <span class="ms-3 rounded bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-200 dark:text-blue-800">
                 {rating ? rating : "N/A"}
               </span>

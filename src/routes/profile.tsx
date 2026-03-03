@@ -100,6 +100,7 @@ const app = new Hono<AppEnv>()
     const yearParam = c.req.param("year");
     const year = parseInt(yearParam, 10);
     if (Number.isNaN(year) || year < 2000 || year > 2100) {
+      c.status(400);
       return c.render(
         <Layout>
           <ErrorPage
@@ -109,7 +110,6 @@ const app = new Hono<AppEnv>()
           />
         </Layout>,
         { title: "Invalid year" },
-        400,
       );
     }
 
@@ -120,6 +120,7 @@ const app = new Hono<AppEnv>()
     endTime(c, "resolveDid");
 
     if (!did) {
+      c.status(404);
       return c.render(
         <Layout>
           <ErrorPage
@@ -129,7 +130,6 @@ const app = new Hono<AppEnv>()
           />
         </Layout>,
         { title: "Profile Not Found" },
-        404,
       );
     }
 
@@ -144,6 +144,7 @@ const app = new Hono<AppEnv>()
     );
 
     if (!isBuzzer) {
+      c.status(404);
       return c.render(
         <Layout>
           <ErrorPage
@@ -153,7 +154,6 @@ const app = new Hono<AppEnv>()
           />
         </Layout>,
         { title: "Reading stats" },
-        404,
       );
     }
 

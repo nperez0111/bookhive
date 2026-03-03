@@ -118,6 +118,12 @@ const app = new Hono<AppEnv>()
           "requestError",
           new Error("Failed to write comment to the database"),
         );
+        c.get("ctx").addWideEventContext({
+          comment_post: "failed",
+          hiveId,
+          userDid: agent.did,
+          error: "applyWrites result invalid",
+        });
         return c.html(
           <Layout>
             <ErrorPage
@@ -162,6 +168,12 @@ const app = new Hono<AppEnv>()
         )
         .execute();
 
+      c.get("ctx").addWideEventContext({
+        comment_post: true,
+        hiveId,
+        userDid: agent.did,
+        comment_uri: firstResult.uri,
+      });
       return c.redirect("/books/" + hiveId);
     },
   )
@@ -208,6 +220,12 @@ const app = new Hono<AppEnv>()
       .where("uri", "=", commentUri)
       .execute();
 
+    c.get("ctx").addWideEventContext({
+      comment_delete: true,
+      commentId,
+      hiveId: comment[0].hiveId,
+      userDid: agent.did,
+    });
     if (c.req.header()["accept"] === "application/json") {
       return c.json({ success: true, commentId, comment: comment[0] });
     }

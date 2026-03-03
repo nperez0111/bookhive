@@ -31,7 +31,7 @@ export const Navbar: FC<{
 
         {/* Logo - hidden when sidebar visible (md+) */}
         <a href="/" class="flex shrink-0 items-center md:hidden">
-          <img src="/public/book.svg" alt="" width="24" height="24" />
+          <img src="/book.svg" alt="" width="24" height="24" />
           <span class="ml-2 font-bold">BookHive</span>
         </a>
 

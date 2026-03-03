@@ -2,6 +2,7 @@ import { type FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { Book } from "../../types";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../../constants";
+import { Card, CardBody, BookBlock, CardActions } from "./cards";
 
 const UpdateBookForm: FC<{
   book: Book;
@@ -376,42 +377,21 @@ export const EditableLibraryTable: FC<{
       {/* Mobile: card view */}
       <div class="space-y-4 md:hidden">
         {sortedBooks.map((book, index) => (
-          <div key={book.hiveId} class="card">
-            <div class="card-body flex gap-3">
-              <a href={`/books/${book.hiveId}`} class="shrink-0">
-                {book.cover || book.thumbnail ? (
-                  <img
-                    src={book.cover || book.thumbnail || ""}
-                    alt=""
-                    class="h-16 w-12 rounded object-cover"
-                  />
-                ) : (
-                  <div class="bg-muted flex h-16 w-12 items-center justify-center rounded">
-                    <svg class="text-muted-foreground h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z" />
-                    </svg>
-                  </div>
-                )}
-              </a>
-              <div class="min-w-0 flex-1">
-                <a href={`/books/${book.hiveId}`} class="text-foreground font-semibold hover:underline">
-                  {book.title}
-                </a>
-                <div class="text-muted-foreground text-sm">
-                  {book.authors.split("\t").join(", ")}
-                </div>
-                <div class="mt-1 flex flex-wrap gap-2">
-                  <span class="badge">
-                    {book.status && BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
-                      ? BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
-                      : book.status ?? "—"}
-                  </span>
-                  {book.stars != null && (
-                    <span class="badge">{"★".repeat(Math.round(book.stars / 2))}</span>
-                  )}
-                </div>
-              </div>
-              <div onclick="event.stopPropagation()" class="shrink-0">
+          <Card key={book.hiveId}>
+            <CardBody class="flex gap-3">
+              <BookBlock
+                hiveId={book.hiveId}
+                title={book.title}
+                authors={book.authors}
+                cover={book.cover}
+                thumbnail={book.thumbnail}
+                size="compact"
+                stars={book.stars}
+                status={book.status}
+                showStatus={true}
+                class="flex-1 min-w-0"
+              />
+              <CardActions class="shrink-0 flex-col items-stretch" onclick="event.stopPropagation()">
                 <StatusDropdown book={book} bookIndex={index} />
                 <form
                   action={`/books/${book.hiveId}${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
@@ -423,9 +403,9 @@ export const EditableLibraryTable: FC<{
                     Remove
                   </button>
                 </form>
-              </div>
-            </div>
-          </div>
+              </CardActions>
+            </CardBody>
+          </Card>
         ))}
       </div>
     </>
