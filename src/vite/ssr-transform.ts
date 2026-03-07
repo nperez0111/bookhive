@@ -171,6 +171,11 @@ export function ssrHtmlTransform(): Plugin {
           const html = transformHtmlForDev(await bunRes.text(), hmrEnabled);
 
           res.statusCode = bunRes.status;
+          bunRes.headers.forEach((value, key) => {
+            const k = key.toLowerCase();
+            if (k === "transfer-encoding" || k === "content-encoding" || k === "content-length" || k === "content-type") return;
+            res.setHeader(key, value);
+          });
           res.setHeader("Content-Type", "text/html");
           res.end(html);
           return;

@@ -75,7 +75,9 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
       <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
         <a href="/" class="hover:text-foreground transition-colors">Home</a>
         <span aria-hidden="true">›</span>
-        <span class="text-foreground font-medium">Authors</span>
+        <a href="/explore" class="hover:text-foreground transition-colors">Explore</a>
+        <span aria-hidden="true">›</span>
+        <a href="/explore/authors" class="hover:text-foreground transition-colors">Authors</a>
         <span aria-hidden="true">›</span>
         <span class="text-foreground font-medium">{author}</span>
       </nav>

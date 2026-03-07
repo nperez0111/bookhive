@@ -6,8 +6,8 @@ import type { AppEnv } from "../context";
 import { env } from "../env";
 import {
   cleanupExportPaths,
-  createExportReadStream,
-  createSanitizedExportArchive,
+  createTgzReadStream,
+  prepareSanitizedExportFiles,
   isAuthorizedExportRequest,
 } from "../utils/dbExport";
 
@@ -66,10 +66,10 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
     });
 
     const startTimeExport = Date.now();
-    let result: {
-      archivePath: string;
+    let prepared: {
       tmpDir: string;
       filename: string;
+      files: string[];
     };
 
     try {
@@ -80,7 +80,7 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
         env.KV_DB_PATH !== ":memory:" &&
         fs.existsSync(env.KV_DB_PATH);
 
-      result = await createSanitizedExportArchive({
+      prepared = await prepareSanitizedExportFiles({
         dbPath: env.DB_PATH,
         kvPath: includeKv ? env.KV_DB_PATH : undefined,
         exportDir,
@@ -97,38 +97,37 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       return c.json({ message: "Failed to create export archive" }, 500);
     }
 
-    const duration = Date.now() - startTimeExport;
-    const stream = createExportReadStream(result.archivePath, {
-      onClose: () => {
-        ctx.addWideEventContext({
-          admin_export: "completed",
-          client_ip: clientIp,
-          filename: result.filename,
-          duration_ms: duration,
-        });
-        void cleanupExportPaths({
-          archivePath: result.archivePath,
-          tmpDir: result.tmpDir,
-        });
+    // Stream tar stdout directly to the response so bytes start flowing
+    // immediately, avoiding proxy timeouts on large databases.
+    const stream = createTgzReadStream(
+      prepared.tmpDir,
+      prepared.files,
+      {
+        onClose: () => {
+          const duration = Date.now() - startTimeExport;
+          ctx.addWideEventContext({
+            admin_export: "completed",
+            client_ip: clientIp,
+            filename: prepared.filename,
+            duration_ms: duration,
+          });
+          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
+        },
+        onError: (err) => {
+          ctx.addWideEventContext({
+            admin_export_stream: "error",
+            client_ip: clientIp,
+            filename: prepared.filename,
+            error: err.message,
+          });
+          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
+        },
       },
-      onError: (err) => {
-        ctx.addWideEventContext({
-          admin_export_stream: "error",
-          client_ip: clientIp,
-          filename: result.filename,
-          error: err.message,
-        });
-        void cleanupExportPaths({
-          archivePath: result.archivePath,
-          tmpDir: result.tmpDir,
-        });
-      },
-    });
+    );
 
     return c.body(stream, 200, {
       "Content-Type": "application/gzip",
-      "Content-Encoding": "gzip",
-      "Content-Disposition": `attachment; filename="${result.filename}"`,
+      "Content-Disposition": `attachment; filename="${prepared.filename}"`,
       "Cache-Control": "no-store",
     });
   } catch (err) {

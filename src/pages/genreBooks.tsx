@@ -72,7 +72,9 @@ export const GenreBooks: FC<GenreBooksProps> = ({
       <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
         <a href="/" class="hover:text-foreground transition-colors">Home</a>
         <span aria-hidden="true">›</span>
-        <a href="/genres" class="hover:text-foreground transition-colors">Genres</a>
+        <a href="/explore" class="hover:text-foreground transition-colors">Explore</a>
+        <span aria-hidden="true">›</span>
+        <a href="/explore/genres" class="hover:text-foreground transition-colors">Genres</a>
         <span aria-hidden="true">›</span>
         <span class="text-foreground font-medium">{genre}</span>
       </nav>
@@ -89,7 +91,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
           <div class="mb-4 flex flex-wrap items-center gap-2">
             {sorts.map((s) => (
               <a
-                href={`/genres/${encodeURIComponent(genre)}?sort=${s.key}&page=1`}
+                href={`/explore/genres/${encodeURIComponent(genre)}?sort=${s.key}&page=1`}
                 class={`btn btn-sm ${sortBy === s.key ? "btn-primary" : "btn-ghost"}`}
               >
                 {s.label}
@@ -123,7 +125,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
               >
                 {currentPage > 1 ? (
                   <a
-                    href={`/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage - 1}`}
+                    href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage - 1}`}
                     class="btn btn-sm btn-ghost"
                   >
                     <span class="sr-only">Previous</span>
@@ -151,7 +153,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 
                   return (
                     <a
-                      href={`/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${pageNum}`}
+                      href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${pageNum}`}
                       class={`btn btn-sm ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                       aria-current={isCurrentPage ? "page" : undefined}
                     >
@@ -162,7 +164,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 
                 {currentPage < totalPages ? (
                   <a
-                    href={`/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage + 1}`}
+                    href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage + 1}`}
                     class="btn btn-sm btn-ghost"
                   >
                     <span class="sr-only">Next</span>

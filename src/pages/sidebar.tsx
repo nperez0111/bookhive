@@ -26,7 +26,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
       icon: "chart",
       authRequired: true,
     },
-    { href: "/genres", label: "Discover", icon: "compass", authRequired: false },
+    { href: "/explore", label: "Explore", icon: "compass", authRequired: false },
     { href: "/import", label: "Import", icon: "upload", authRequired: true },
   ].filter((item) => !item.authRequired || user);
 
@@ -41,7 +41,8 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
         {navItems.map((item) => {
           const isActive =
             currentPath === item.href ||
-            (item.href.includes("/stats") && currentPath.includes("/stats"));
+            (item.href.includes("/stats") && currentPath.includes("/stats")) ||
+            (item.href === "/explore" && currentPath.startsWith("/explore"));
           return (
             <li>
               <a
