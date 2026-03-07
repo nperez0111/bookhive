@@ -92,7 +92,7 @@ export function createIngester(
             return;
           }
           const book = asBook.value;
-          bidirectionalResolver.resolveDidToHandle(evt.did);
+          void bidirectionalResolver.resolveDidToHandle(evt.did);
 
           const hiveId = (
             await db
@@ -106,7 +106,7 @@ export function createIngester(
               .executeTakeFirst()
           )?.id;
           if (!hiveId) {
-            searchBooks({
+            void searchBooks({
               query: book.title,
               ctx: { db, kv, addWideEventContext: () => {} },
             });
@@ -166,7 +166,7 @@ export function createIngester(
             return;
           }
           const buzz = asBuzz.value;
-          bidirectionalResolver.resolveDidToHandle(evt.did);
+          void bidirectionalResolver.resolveDidToHandle(evt.did);
 
           const hiveId = (
             await db
@@ -301,7 +301,7 @@ export function createIngester(
         });
       },
     });
-    run();
+    void run();
   }
 
   return {

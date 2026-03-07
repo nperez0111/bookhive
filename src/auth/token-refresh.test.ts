@@ -17,7 +17,7 @@ const mockSession = {
 };
 
 // Mock environment
-mock.module("../env", () => ({
+void mock.module("../env", () => ({
   env: {
     COOKIE_SECRET: "test-secret-key-for-testing-purposes-only",
   },

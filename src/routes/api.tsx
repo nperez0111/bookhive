@@ -168,7 +168,7 @@ const app = new Hono<AppEnv>()
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
       const { hiveId, comment, parentUri, parentCid, uri } =
-        await c.req.valid("json");
+        c.req.valid("json");
 
       const originalBuzz = uri
         ? await c

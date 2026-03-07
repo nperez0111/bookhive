@@ -80,12 +80,12 @@ class Google {
     const titlePatterns: [RegExp, string][] = [
       // Remove things like: (2010) (Omnibus) etc.
       [
-        /[({\[](\d{4}|omnibus|anthology|hardcover|audiobook|audio\scd|paperback|turtleback|mass\s*market|edition|ed\.)[\])}]/gi,
+        /[({[](\d{4}|omnibus|anthology|hardcover|audiobook|audio\scd|paperback|turtleback|mass\s*market|edition|ed\.)[\])}]/gi,
         "",
       ],
 
       // Remove any strings that contain the substring edition inside parentheses
-      [/[({\[].*?(edition|ed\.).*?[\]})]]/gi, ""],
+      [/[({[].*?(edition|ed\.).*?[\]})]]/gi, ""],
 
       // Remove commas used as separators in numbers
       [/(\d+),(\d+)/g, "$1$2"],
@@ -94,7 +94,7 @@ class Google {
       [/(\s-)/g, " "],
 
       // Replace other special chars with a space
-      [/[:,;!@$%^&*(){}.`~"\s\[\]/]《》「」""""/g, " "],
+      [/[:,;!@$%^&*(){}.`~"\s[\]/]《》「」""""/g, " "],
     ];
 
     // Apply all patterns sequentially

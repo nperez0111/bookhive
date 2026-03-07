@@ -186,7 +186,7 @@ export function createBidirectionalResolverAtcute(): BidirectionalResolver {
         dids.map((did) => this.resolveDidToHandle(did).catch((_) => did)),
       );
       for (let i = 0; i < dids.length; i++) {
-        didHandleMap[dids[i]] = resolves[i];
+        didHandleMap[dids[i]!] = resolves[i]!;
       }
       return didHandleMap;
     },
@@ -241,7 +241,7 @@ export function createCachingBidirectionalResolver(
       }
       const didHandleMap: Record<string, string> = {};
       for (let i = 0; i < uniqueDids.length; i++) {
-        didHandleMap[uniqueDids[i]] = handles[i];
+        didHandleMap[uniqueDids[i]!] = handles[i]!;
       }
       return didHandleMap;
     },

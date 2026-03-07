@@ -162,10 +162,9 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
 
                 promiseStore.add(updateSpan(attributesResponse));
               },
-              checkResult: async (result) => {
-                const r = await result;
-                if (r.status >= 500) {
-                  throw new Error(r.statusText);
+              checkResult: (result) => {
+                if (result.status >= 500) {
+                  throw new Error(result.statusText);
                 }
               },
             },

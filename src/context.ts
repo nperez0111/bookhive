@@ -233,7 +233,7 @@ export async function getSessionAgent(
       oauth_restore: "failed",
       error: err instanceof Error ? err.message : String(err),
     });
-    await session.destroy();
+    session.destroy();
     return null;
   }
 }

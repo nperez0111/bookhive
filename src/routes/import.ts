@@ -67,10 +67,10 @@ importApp.post(
         .pipeThrough(parser)
         .tee();
 
-      countStream.pipeTo(
+      void countStream.pipeTo(
         new WritableStream({
           async write(book) {
-            searchBooks({ query: book.title, ctx });
+            void searchBooks({ query: book.title, ctx });
             totalBooks++;
           },
         }),
@@ -443,10 +443,10 @@ importApp.post(
         .pipeThrough(parser)
         .tee();
 
-      countStream.pipeTo(
+      void countStream.pipeTo(
         new WritableStream({
           async write(book) {
-            searchBooks({ query: book.title, ctx });
+            void searchBooks({ query: book.title, ctx });
             totalBooks++;
           },
         }),

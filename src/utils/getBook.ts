@@ -259,8 +259,8 @@ export async function updateBookRecord({
   });
 
   if (autoStartedAt && autoFinishedAt) {
-    const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
-    const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
+    const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
+    const finishedDateStr = autoFinishedAt.split("T")[0]!; // Extract YYYY-MM-DD
 
     if (finishedDateStr < startedDateStr) {
       throw new Error("Finished date must be on or after started date");
@@ -430,8 +430,8 @@ export async function updateBookRecords({
     });
 
     if (autoStartedAt && autoFinishedAt) {
-      const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
-      const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
+      const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
+      const finishedDateStr = autoFinishedAt.split("T")[0]!; // Extract YYYY-MM-DD
 
       if (finishedDateStr < startedDateStr) {
         throw new Error("Finished date must be on or after started date");
@@ -551,7 +551,7 @@ export async function updateBookRecords({
       index: number,
     ) => {
       await acc;
-      const update = updatesToApply[index];
+      const update = updatesToApply[index]!;
       if (
         result.$type === "com.atproto.repo.applyWrites#updateResult" ||
         result.$type === "com.atproto.repo.applyWrites#createResult"

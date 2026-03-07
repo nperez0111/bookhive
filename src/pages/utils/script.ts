@@ -1,7 +1,5 @@
-/** @jsx createElement */
 import { html, raw } from "hono/html";
-// @ts-expect-error
-import { type FC, createElement } from "hono/jsx";
+import type { FC } from "hono/jsx";
 
 export const Script: FC<{
   script: (document: Document) => void;

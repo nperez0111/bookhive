@@ -18,6 +18,7 @@ export function createBatchTransform<T, R>(
           batch = [];
         });
       }
+      return;
     },
 
     flush(controller) {
@@ -29,6 +30,7 @@ export function createBatchTransform<T, R>(
           batch = [];
         });
       }
+      return;
     },
   });
 }

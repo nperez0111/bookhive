@@ -5,7 +5,7 @@ export class PromiseStore {
 
   add(promise: Promise<unknown>) {
     this.promises.push(promise);
-    promise.finally(() => {
+    void promise.finally(() => {
       this.promises = this.promises.filter((p) => p === promise);
     });
   }

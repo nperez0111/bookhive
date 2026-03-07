@@ -10,7 +10,6 @@ import {
 } from "../constants";
 import type {
   GlobalResponse,
-  HonoResponse,
   InitParam,
   InputParam,
 } from "../types";
@@ -18,10 +17,7 @@ import type {
 // There are so many different types of headers
 // and we want to support all of them so we can
 // use a single function to do it all
-type PossibleHeaders =
-  | Headers
-  | HonoResponse["headers"]
-  | GlobalResponse["headers"];
+type PossibleHeaders = Headers;
 
 export function headersToObject(headers: PossibleHeaders) {
   const returnObject: Record<string, string> = {};
@@ -79,11 +75,11 @@ export function getRequestAttributes(input: InputParam, init?: InitParam) {
 }
 
 export async function getResponseAttributes(
-  response: GlobalResponse | HonoResponse,
+  response: GlobalResponse,
 ) {
   const attributes: Attributes = {
     [EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE]: String(response.status),
-    [SEMATTRS_HTTP_SCHEME]: response.url.split(":")[0],
+    [SEMATTRS_HTTP_SCHEME]: response.url.split(":")[0]!,
   };
 
   const contentLength = response.headers.get("content-length");

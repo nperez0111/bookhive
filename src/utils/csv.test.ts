@@ -65,8 +65,8 @@ describe("CSV Parsers", () => {
         ownedCopies: 1,
       });
 
-      expect(books[1].dateRead).toBeInstanceOf(Date);
-      expect(books[1].dateAdded).toBeInstanceOf(Date);
+      expect(books[1]!.dateRead).toBeInstanceOf(Date);
+      expect(books[1]!.dateAdded).toBeInstanceOf(Date);
     });
 
     it("should handle arrays and bookshelves correctly", async () => {
@@ -149,8 +149,8 @@ Where the Axe Is Buried,Ray Nayler,"",9780374615369,hardcover,to-read,2025/04/14
         lastDateRead: null,
       });
 
-      expect(books[0].dateAdded).toBeInstanceOf(Date);
-      expect(books[0].dateAdded?.getFullYear()).toBe(2017);
+      expect(books[0]!.dateAdded).toBeInstanceOf(Date);
+      expect(books[0]!.dateAdded?.getFullYear()).toBe(2017);
 
       // Test second book (read with last date read)
       expect(books[1]).toMatchObject({
@@ -164,8 +164,8 @@ Where the Axe Is Buried,Ray Nayler,"",9780374615369,hardcover,to-read,2025/04/14
         owned: false,
       });
 
-      expect(books[1].lastDateRead).toBeInstanceOf(Date);
-      expect(books[1].lastDateRead?.getFullYear()).toBe(2021);
+      expect(books[1]!.lastDateRead).toBeInstanceOf(Date);
+      expect(books[1]!.lastDateRead?.getFullYear()).toBe(2021);
 
       // Test third book (to-read)
       expect(books[2]).toMatchObject({

@@ -111,7 +111,7 @@ export function loginRouter(
           );
 
           return c.redirect(redirectTo.toString());
-        } catch (err) {
+        } catch {
           // ignore
         }
       }
@@ -226,7 +226,7 @@ export function loginRouter(
           ),
         },
       });
-    } catch (err) {
+    } catch {
       return c.json({ success: false }, 400);
     }
   });
@@ -293,7 +293,7 @@ export function loginRouter(
       }
     }
     await onLogout({ agent: null, ctx: c.get("ctx") });
-    await session.destroy();
+    session.destroy();
     return c.redirect("/");
   });
 }

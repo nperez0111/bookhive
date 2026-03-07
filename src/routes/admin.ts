@@ -14,7 +14,7 @@ import {
 const admin = new Hono<AppEnv>().get("/export", async (c) => {
   const ctx = c.get("ctx");
   const clientIp =
-    c.req.header("x-forwarded-for")?.split(",")[0].trim() ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-real-ip") ||
     "unknown";
 
@@ -106,7 +106,7 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
           filename: result.filename,
           duration_ms: duration,
         });
-        cleanupExportPaths({
+        void cleanupExportPaths({
           archivePath: result.archivePath,
           tmpDir: result.tmpDir,
         });
@@ -118,7 +118,7 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
           filename: result.filename,
           error: err.message,
         });
-        cleanupExportPaths({
+        void cleanupExportPaths({
           archivePath: result.archivePath,
           tmpDir: result.tmpDir,
         });

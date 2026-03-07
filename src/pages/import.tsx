@@ -240,7 +240,7 @@ export const LibraryImport: FC = () => {
                       : "/import/goodreads";
 
                   const form = new FormData();
-                  form.append("export", files[0]);
+                  form.append("export", files[0]!);
                   const importLabel = document.getElementById("import-label");
                   const importingLabel =
                     document.getElementById("importing-label");

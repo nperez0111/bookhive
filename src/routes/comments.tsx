@@ -41,7 +41,7 @@ const app = new Hono<AppEnv>()
         );
       }
       const { hiveId, comment, parentUri, parentCid, uri } =
-        await c.req.valid("form");
+        c.req.valid("form");
 
       const originalBuzz = uri
         ? await c
@@ -223,13 +223,13 @@ const app = new Hono<AppEnv>()
     c.get("ctx").addWideEventContext({
       comment_delete: true,
       commentId,
-      hiveId: comment[0].hiveId,
+      hiveId: comment[0]!.hiveId,
       userDid: agent.did,
     });
     if (c.req.header()["accept"] === "application/json") {
       return c.json({ success: true, commentId, comment: comment[0] });
     }
-    return c.redirect("/books/" + comment[0].hiveId);
+    return c.redirect("/books/" + comment[0]!.hiveId);
   });
 
 export default app;

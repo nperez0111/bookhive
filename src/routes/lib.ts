@@ -69,7 +69,7 @@ export async function searchBooks({
           }),
         );
 
-        Promise.allSettled(enrichmentPromises);
+        void Promise.allSettled(enrichmentPromises);
 
         return bookIds;
       }),

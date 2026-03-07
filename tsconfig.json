@@ -1,4 +1,5 @@
 {
+  "extends": "@tsconfig/strictest/tsconfig.json",
   "compilerOptions": {
     // Enable latest features
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
@@ -14,17 +15,8 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
     "noEmit": true,
-    
-    "skipLibCheck": true,
-    "noPropertyAccessFromIndexSignature": true,
-    
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "exactOptionalPropertyTypes": false
   },
   "include": ["src"]
 }
