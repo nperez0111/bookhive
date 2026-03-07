@@ -90,7 +90,7 @@ export async function getProfiles({
       }
     });
 
-    ctx.kv.setItems(
+    void ctx.kv.setItems(
       fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })),
     );
     await Promise.all(

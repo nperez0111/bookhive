@@ -3,12 +3,12 @@ import { getIronSession } from "iron-session";
 
 // Mock iron-session
 const mockGetIronSession = mock();
-mock.module("iron-session", () => ({
+void mock.module("iron-session", () => ({
   getIronSession: mockGetIronSession,
 }));
 
 // Mock environment
-mock.module("../env", () => ({
+void mock.module("../env", () => ({
   env: {
     COOKIE_SECRET: "test-secret-key-for-testing-purposes-only",
   },

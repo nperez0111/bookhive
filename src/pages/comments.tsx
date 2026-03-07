@@ -60,14 +60,12 @@ function Comment({
   comments,
   bookId,
   did,
-  shareBaseUrl,
 }: {
   comment: CommentShape;
   profiles: ProfileViewDetailed[];
   comments: CommentShape[];
   bookId: HiveId;
   did?: string | null;
-  shareBaseUrl: string;
 }) {
   const profile = profiles.find((p) => p.did === comment.userDid);
   const subComments = comments.filter((c) => c.parentUri === comment.uri);
@@ -241,7 +239,6 @@ function Comment({
                   comments={comments}
                   bookId={bookId}
                   did={did}
-                  shareBaseUrl={shareBaseUrl}
                 />
               ))}
             </div>
@@ -264,7 +261,6 @@ export async function CommentsSection({
   reviewId?: string;
 }>) {
   const c = useRequestContext();
-  const shareBaseUrl = `/books/${book.id}`;
 
   startTime(c, "comments_top_level_reviews");
   const topLevelReviews = await c
@@ -335,7 +331,6 @@ export async function CommentsSection({
           comments={comments}
           bookId={book.id}
           did={did}
-           shareBaseUrl={shareBaseUrl}
         />
       ))}
       <Script
@@ -358,7 +353,7 @@ export async function CommentsSection({
               const path = btn.getAttribute("data-copy-path");
               if (path && navigator.clipboard?.writeText) {
                 e.preventDefault();
-                navigator.clipboard
+                void navigator.clipboard
                   .writeText(document.location.origin + path)
                   .then(() => {
                     const orig = btn.textContent;

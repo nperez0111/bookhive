@@ -159,7 +159,7 @@ const FailedRow: FC<{
               className="btn btn-ghost btn-sm whitespace-nowrap"
               onClick={() => {
                 setOpen((v) => !v);
-                if (!isOpen) search();
+                if (!isOpen) void search();
               }}
             >
               Match book
@@ -663,7 +663,7 @@ export const ImportTableApp: FC = () => {
                       .replace(/\s+/g, " ")
                       .trim();
                   const [fkTitle, fkAuthor] = failedKey.split("::");
-                  const failedKeyNorm = `${normalize(fkTitle)}::${normalize(fkAuthor)}`;
+                  const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
 
                   setRows((prev) => {
                     const next = prev

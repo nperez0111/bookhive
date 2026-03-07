@@ -74,7 +74,7 @@ const app = new Hono<AppEnv>()
     startTime(c, "render_book_page");
     const authors = book.authors.split("\t");
     const reviewId = c.req.query("review-id") ?? undefined;
-    const res = await c.render(<BookInfo book={book} reviewId={reviewId} />, {
+    const res = c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
       image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
       description: `See ${book.title} by ${authors.join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
@@ -121,14 +121,14 @@ const app = new Hono<AppEnv>()
         input: {
           repo: agent.did,
           collection: ids.BuzzBookhiveBook,
-          rkey: book[0].uri.split("/").at(-1)!,
+          rkey: book[0]!.uri.split("/").at(-1)!,
         },
       });
       await c
         .get("ctx")
         .db.deleteFrom("user_book")
         .where("userDid", "=", agent.did)
-        .where("uri", "=", book[0].uri)
+        .where("uri", "=", book[0]!.uri)
         .execute();
 
       if (c.req.header()["accept"] === "application/json") {
@@ -211,7 +211,7 @@ const app = new Hono<AppEnv>()
           currentChapter,
           totalChapters,
           percent,
-        } = await c.req.valid("form");
+        } = c.req.valid("form");
 
         let bookProgress: Record<string, unknown> | undefined;
         if (
@@ -246,7 +246,7 @@ const app = new Hono<AppEnv>()
           return c.html(
             <Layout>
               <ErrorPage
-                message={`Book ${bookLock} already being added`}
+                message={`Book ${JSON.stringify(bookLock)} already being added`}
                 statusCode={429}
               />
             </Layout>,

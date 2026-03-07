@@ -39,7 +39,7 @@ export function isAuthorizedExportRequest(opts: {
   if (!authorizationHeader) return false;
   const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
   if (!match) return false;
-  return timingSafeEqualString(match[1], sharedSecret);
+  return timingSafeEqualString(match[1]!, sharedSecret);
 }
 
 async function sqliteBackup({

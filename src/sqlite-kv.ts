@@ -49,7 +49,7 @@ export default defineDriver<
         });
 
         // Create table if not exists
-        _db.schema
+        void _db.schema
           .createTable(table)
           .ifNotExists()
           .addColumn("id", "text", (col) => col.primaryKey())
@@ -64,7 +64,7 @@ export default defineDriver<
   }) => {
     return {
       name: DRIVER_NAME,
-      options: { location, table },
+      options: { ...(location !== undefined ? { location } : {}), table },
       getInstance: getDb,
 
       async hasItem(key) {

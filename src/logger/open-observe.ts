@@ -108,7 +108,7 @@ export default function (options: Options) {
     process.on("beforeExit", () => {
       debugLog("OpenObserve Pino: Process beforeExit");
       if (logs.length > 0 && !apiCallInProgress) {
-        sendLogs();
+        void sendLogs();
       }
     });
 
@@ -125,10 +125,10 @@ export default function (options: Options) {
       }
 
       if (logs.length >= opts.batchSize && !apiCallInProgress) {
-        sendLogs(callback);
+        void sendLogs(callback);
       } else {
         timer = setTimeout(() => {
-          (async () => {
+          void (async () => {
             await sendLogs(callback);
           })();
         }, opts.timeThresholdMs);

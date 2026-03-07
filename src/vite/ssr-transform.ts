@@ -123,11 +123,11 @@ export function ssrHtmlTransform(): Plugin {
           headers["connection"] = "close"; // Avoid connection reuse; can cause "Invalid header token" with Bun
 
           const bunRes = await fetch(`http://127.0.0.1:8080${req.url}`, {
-            method: req.method,
+            ...(req.method !== undefined ? { method: req.method } : {}),
             headers,
-            body: body ? new Uint8Array(body) : undefined,
+            body: body ? new Uint8Array(body) : null,
             redirect: "manual",
-          });
+          } as RequestInit);
 
           // Forward redirects so the browser goes to OAuth (or callback target)
           if (bunRes.status >= 300 && bunRes.status < 400) {
@@ -145,7 +145,7 @@ export function ssrHtmlTransform(): Plugin {
               for (const cookie of setCookies) {
                 res.appendHeader("Set-Cookie", cookie);
               }
-              bunRes.body?.cancel?.();
+              void bunRes.body?.cancel?.();
               res.end();
               return;
             }
@@ -184,8 +184,6 @@ export function ssrHtmlTransform(): Plugin {
           );
           return;
         }
-
-        next();
       });
     },
   };

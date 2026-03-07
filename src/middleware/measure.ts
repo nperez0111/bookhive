@@ -218,7 +218,7 @@ export function measure<ARGS extends unknown[], RESULT>(
             );
             if (isPromiseLike(result)) {
               shouldEndSpan = false;
-              result.finally(() => {
+              void result.finally(() => {
                 if (!endSpanManually) {
                   span.end();
                 }
@@ -292,7 +292,7 @@ async function handlePromise<T>(
 
         if (onError) {
           try {
-            await onError(span, exception);
+            onError(span, exception);
           } catch {
             // swallow error
           }
@@ -388,8 +388,7 @@ function handleGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
   }
 
   const active = context.active();
-  return {
-    ...iterable,
+  return Object.assign(Object.create(iterable) as Generator<T, TReturn, TNext>, {
     next: context.bind(
       active,
       measure("iterator.next", function nextFunction(...args: [] | [TNext]) {
@@ -459,7 +458,7 @@ function handleGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     [Symbol.iterator]() {
       return this;
     },
-  };
+  });
 }
 
 /**
@@ -497,8 +496,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     span.end();
   }
 
-  return {
-    ...iterable,
+  return Object.assign(Object.create(iterable) as AsyncGenerator<T, TReturn, TNext>, {
     next: context.bind(
       active,
       measure(
@@ -518,7 +516,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
                 }
 
                 if (onSuccess) {
-                  await onSuccess(span, result.value);
+                  onSuccess(span, result.value);
                 }
               } catch (error) {
                 handleError(error);
@@ -539,7 +537,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
         if (result.done) {
           try {
             if (checkResult) {
-              checkResult(result.value);
+              void checkResult(result.value);
             }
 
             if (!endSpanManually) {
@@ -571,7 +569,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     [Symbol.asyncIterator]() {
       return this;
     },
-  };
+  });
 }
 
 function convertToException(error: unknown) {

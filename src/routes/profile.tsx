@@ -264,7 +264,7 @@ const app = new Hono<AppEnv>()
       {
         title: `BookHive | @${handle}'s ${year} in Books`,
         description: `@${handle}'s reading stats for ${year} — ${stats.booksCount} books read on BookHive`,
-        image: profile?.avatar,
+        ...(profile?.avatar ? { image: profile.avatar } : {}),
       },
     );
   })
@@ -440,7 +440,7 @@ const app = new Hono<AppEnv>()
       {
         title: "BookHive | @" + handle,
         description: `@${handle}'s reading profile — ${parsedBooks.length} books read on BookHive`,
-        image: profile?.avatar,
+        ...(profile?.avatar ? { image: profile.avatar } : {}),
       },
     );
   });
