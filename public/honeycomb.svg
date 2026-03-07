@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="50" height="43.4" viewBox="0 0 50 43.4">
-  <!-- No pattern - direct polygons for Firefox. Tiles via background-repeat -->
-  <polygon points="24.8,22 37.3,29.2 37.3,43.7 24.8,50.9 12.3,43.7 12.3,29.2" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="0.6"/>
-  <polygon points="49.8,22 62.3,29.2 62.3,43.7 49.8,50.9 37.3,43.7 37.3,29.2" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="0.6"/>
-  <polygon points="-0.2,22 12.3,29.2 12.3,43.7 -0.2,50.9 -12.7,43.7 -12.7,29.2" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="0.6"/>
-  <polygon points="37.3,0.3 49.8,7.5 49.8,22 37.3,29.2 24.8,22 24.8,7.5" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="0.6"/>
-  <polygon points="12.3,0.3 24.8,7.5 24.8,22 12.3,29.2 -0.2,22 -0.2,7.5" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="0.6"/>
-</svg>

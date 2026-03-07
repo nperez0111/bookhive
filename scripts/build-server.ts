@@ -30,7 +30,7 @@ const mainResult = await Bun.build({
     identifiers: true,
     syntax: false,
   },
-  sourcemap: "linked",
+  sourcemap: "none",
 });
 
 if (!mainResult.success) {
@@ -51,7 +51,7 @@ const transportResult = await Bun.build({
     identifiers: true,
     syntax: false,
   },
-  sourcemap: "linked",
+  sourcemap: "none",
 });
 
 if (!transportResult.success) {
