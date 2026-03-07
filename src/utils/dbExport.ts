@@ -205,6 +205,33 @@ function createTgz(
   });
 }
 
+export function createTgzReadStream(
+  cwd: string,
+  files: string[],
+  callbacks?: { onClose?: () => void; onError?: (err: Error) => void },
+): ReadableStream<Uint8Array> {
+  const proc = spawn("tar", ["-czf", "-", "-C", cwd, ...files], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stderr: string[] = [];
+  if (proc.stderr) {
+    proc.stderr.on("data", (d: Buffer) => stderr.push(d.toString()));
+  }
+  proc.on("error", (err: Error) => callbacks?.onError?.(err));
+  proc.on("close", (code: number | null) => {
+    if (code === 0) {
+      callbacks?.onClose?.();
+    } else {
+      callbacks?.onError?.(
+        new Error(
+          `tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`,
+        ),
+      );
+    }
+  });
+  return Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
+}
+
 function computeFileMd5(filePath: string): string {
   const content = fs.readFileSync(filePath);
   return crypto.createHash("md5").update(content).digest("hex");
@@ -215,6 +242,110 @@ async function getFileStats(
 ): Promise<{ md5: string; size: number }> {
   const { size } = await fsp.stat(filePath);
   return { md5: computeFileMd5(filePath), size };
+}
+
+type PrepareResult = {
+  tmpDir: string;
+  filename: string;
+  files: string[];
+};
+
+export async function prepareSanitizedExportFiles(opts: {
+  dbPath: string;
+  kvPath?: string;
+  exportDir: string;
+  includeKv: boolean;
+}): Promise<PrepareResult> {
+  const { dbPath, kvPath, exportDir, includeKv } = opts;
+
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  const runId = crypto.randomUUID();
+  const tmpDir = path.join(exportDir, `bookhive-export-${stamp}-${runId}`);
+
+  try {
+    await fsp.mkdir(tmpDir, { recursive: true });
+  } catch (err) {
+    throw new Error(
+      `Failed to create export temporary directory at ${tmpDir}: ${toError(err).message}`,
+    );
+  }
+
+  const filename = `bookhive-export-${stamp}-${runId.slice(0, 8)}.tgz`;
+
+  try {
+    const dbOut = path.join(tmpDir, "db.sqlite");
+    try {
+      await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
+    } catch (err) {
+      throw new Error(
+        `Failed to backup main database from ${dbPath}: ${toError(err).message}`,
+      );
+    }
+
+    const includedFiles: ExportManifest["files"] = [];
+    const tables: string[] = [];
+    const views: string[] = [];
+
+    const dbStats = await getFileStats(dbOut);
+    includedFiles.push({ name: "db.sqlite", md5: dbStats.md5, size: dbStats.size });
+
+    try {
+      const db = new DatabaseSync(dbOut, { readonly: true });
+      try {
+        const schemaObjects = db
+          .prepare(
+            `SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name`,
+          )
+          .all() as Array<{ type: string; name: string }>;
+        for (const obj of schemaObjects) {
+          (obj.type === "table" ? tables : views).push(obj.name);
+        }
+      } finally {
+        db.close();
+      }
+    } catch (err) {
+      throw new Error(
+        `Failed to extract schema information from main database: ${toError(err).message}`,
+      );
+    }
+
+    if (includeKv && kvPath) {
+      const kvOut = path.join(tmpDir, "kv.sqlite");
+      try {
+        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut });
+      } catch (err) {
+        throw new Error(
+          `Failed to create sanitized KV copy from ${kvPath}: ${toError(err).message}`,
+        );
+      }
+      const kvStats = await getFileStats(kvOut);
+      includedFiles.push({ name: "kv.sqlite", md5: kvStats.md5, size: kvStats.size });
+    }
+
+    const manifest: ExportManifest = {
+      createdAt: now.toISOString(),
+      version: "1.0",
+      files: includedFiles,
+      excludedKvTables: ["auth_sessions", "auth_state"],
+      schema: { tables, views },
+    };
+
+    const manifestPath = path.join(tmpDir, "manifest.json");
+    try {
+      await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+    } catch (err) {
+      throw new Error(`Failed to write manifest file: ${toError(err).message}`);
+    }
+
+    const manifestStats = await getFileStats(manifestPath);
+    includedFiles.push({ name: "manifest.json", md5: manifestStats.md5, size: manifestStats.size });
+
+    return { tmpDir, filename, files: includedFiles.map((f) => f.name) };
+  } catch (err) {
+    await cleanupExportPaths({ tmpDir });
+    throw err;
+  }
 }
 
 export async function createSanitizedExportArchive(opts: {

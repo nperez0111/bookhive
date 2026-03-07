@@ -327,6 +327,26 @@ migrations["009"] = {
   },
 };
 
+migrations["011"] = {
+  async up(db: Kysely<unknown>) {
+    // Thumbnail query: ORDER BY ratingsCount DESC WHERE thumbnail IS NOT NULL
+    // Without this index: SCAN hive_book (123k rows) + USE TEMP B-TREE FOR ORDER BY
+    // With this index: direct index scan, no sort needed
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_ratings_thumbnail
+      ON hive_book(ratingsCount DESC, authors, thumbnail)
+      WHERE thumbnail IS NOT NULL AND thumbnail != ''`.execute(db);
+
+    // Stats/author query: GROUP BY computed first-author expression + ORDER BY SUM(ratingsCount)
+    // Covering index lets SQLite avoid reading the full row; reduces I/O from ~10MB to ~2MB
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_ratings
+      ON hive_book(authors, ratingsCount, rating)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_hive_book_ratings_thumbnail`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_hive_book_author_ratings`.execute(db);
+  },
+};
+
 migrations["010"] = {
   async up(db: Kysely<unknown>) {
     const MIGRATION_010_BATCH_SIZE = 500;
@@ -386,6 +406,12 @@ migrations["010"] = {
 export const createDb = (location: string): Database => {
   const sqlite = new DatabaseSync(location);
   sqlite.exec("PRAGMA journal_mode = WAL");
+  sqlite.exec("PRAGMA synchronous = NORMAL");  // safe with WAL; skips redundant fsyncs
+  sqlite.exec("PRAGMA cache_size = -65536");   // 64 MB page cache (default is ~2 MB)
+  sqlite.exec("PRAGMA temp_store = MEMORY");   // temp B-trees (sorts, GROUP BY) in RAM
+  // mmap intentionally omitted: prod DB is ~800 MB and growing; mmap_size = 0 (default)
+  // keeps memory usage bounded and predictable. The 64 MB page cache covers the full
+  // hot index working set (~56 MB: genre + thumbnail + author-ratings indexes).
 
   return new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({

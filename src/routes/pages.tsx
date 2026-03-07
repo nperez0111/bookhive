@@ -1,6 +1,7 @@
 /**
- * Static and listing pages: home, app, privacy, import, genres, authors.
- * Mount at / so paths are /, /app, /import, /genres, /genres/:genre, /authors/:author.
+ * Static and listing pages: home, app, privacy, import, explore, genres, authors.
+ * Mount at / so paths are /, /app, /import, /explore, /explore/genres, /explore/genres/:genre,
+ * /explore/authors, /authors/:author.
  */
 import { Hono } from "hono";
 
@@ -14,8 +15,10 @@ import { Layout } from "../pages/layout";
 import { getProfiles } from "../utils/getProfile";
 import { LibraryImport } from "../pages/import";
 import { PrivacyPolicy } from "../pages/privacy-policy";
+import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
 import { GenreBooks, getBooksByGenre } from "../pages/genreBooks";
+import { AuthorDirectory } from "../pages/authorDirectory";
 import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 
 const app = new Hono<AppEnv>()
@@ -128,13 +131,21 @@ const app = new Hono<AppEnv>()
         "Import your library from Goodreads or StoryGraph to BookHive",
     });
   })
-  .get("/genres", (c) =>
+  // Explore hub
+  .get("/explore", (c) =>
+    c.render(<Explore />, {
+      title: "BookHive | Explore",
+      description: "Discover books by genre or author on BookHive",
+    }),
+  )
+  // Explore sub-pages
+  .get("/explore/genres", (c) =>
     c.render(<GenresDirectory />, {
       title: "BookHive | Explore Genres",
       description: "Explore books by genre on BookHive",
     }),
   )
-  .get("/genres/:genre", async (c) => {
+  .get("/explore/genres/:genre", async (c) => {
     const genre = decodeURIComponent(c.req.param("genre"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const sortBy =
@@ -165,6 +176,20 @@ const app = new Hono<AppEnv>()
       },
     );
   })
+  .get("/explore/authors", (c) =>
+    c.render(<AuthorDirectory />, {
+      title: "BookHive | Explore Authors",
+      description: "Explore books by author on BookHive",
+    }),
+  )
+  // Legacy redirects
+  .get("/genres", (c) => c.redirect("/explore/genres", 301))
+  .get("/genres/:genre", (c) =>
+    c.redirect(
+      `/explore/genres/${c.req.param("genre")}${c.req.url.includes("?") ? "?" + new URL(c.req.url).searchParams.toString() : ""}`,
+      301,
+    ),
+  )
   .get("/authors/:author", async (c) => {
     const author = decodeURIComponent(c.req.param("author"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));

@@ -31,22 +31,33 @@ Browser ──> Bun.serve() ──> Hono app ──> Server-rendered JSX pages
 | `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)    |
 | `src/client/index.tsx` | Client bundle entry — mounts 3 hydrated components |
 
-## Routing
+## Routes
 
-All routes mounted in `src/app.ts` via `src/routes/main.tsx`.
+All routes composed in `src/routes/main.tsx` → `src/app.ts`.
 
-| Path                                                                                       | File                      | What it does               |
-| ------------------------------------------------------------------------------------------ | ------------------------- | -------------------------- |
-| `/`, `/app`, `/privacy-policy`, `/import`, `/genres`, `/genres/:genre`, `/authors/:author` | `src/routes/pages.tsx`    | Static/listing pages       |
-| `/profile`, `/profile/:handle`, `/refresh-books`                                           | `src/routes/profile.tsx`  | User profiles              |
-| `/books/:hiveId` (GET/DELETE/POST), `/books/:hiveId/comments`                              | `src/routes/books.tsx`    | Book CRUD + comments page  |
-| `/comments` (POST/DELETE)                                                                  | `src/routes/comments.tsx` | Comment mutations          |
-| `/api/update-book`, `/api/update-comment`, `/api/follow`, `/api/follow-form`               | `src/routes/api.tsx`      | JSON API endpoints         |
-| `/login`, `/logout`, `/oauth/callback`                                                     | `src/auth/router.tsx`     | Auth flows                 |
-| `/import` (POST /goodreads, /storygraph)                                                   | `src/routes/import.ts`    | CSV import via SSE         |
-| `/admin/export`                                                                            | `src/routes/admin.ts`     | DB export                  |
-| `/xrpc/*`                                                                                  | `src/xrpc/router.ts`      | AT Protocol XRPC endpoints |
-| `/images/*`                                                                                | `src/routes/main.tsx`     | IPX image proxy/transform  |
+- `/` → `src/pages/home.tsx` — landing, hero, book list, buzzes
+- `/feed` → `src/pages/feed.tsx` — activity feed, friends/all/tracking tabs
+- `/app` → `src/pages/app.tsx` — iOS app landing
+- `/privacy-policy` → `src/pages/privacy-policy.tsx` — privacy policy
+- `/import` → `src/pages/import.tsx` — Goodreads/StoryGraph CSV import, SSE progress
+- `/explore` → `src/pages/explore.tsx` — explore hub
+- `/explore/genres` → `src/pages/genres.tsx` — genre directory
+- `/explore/genres/:genre` → `src/pages/genreBooks.tsx` — books by genre, paginated, sortable
+- `/explore/authors` → `src/pages/authorDirectory.tsx` — author directory
+- `/authors/:author` → `src/pages/authorBooks.tsx` — books by author, paginated
+- `/genres`, `/genres/:genre` → legacy redirects to `/explore/genres`
+- `/profile`, `/profile/:handle` → `src/pages/profile.tsx` — user profile, book shelves
+- `/profile/:handle/stats` → `src/pages/readingStats.tsx` — reading stats by year
+- `/refresh-books` → `src/routes/profile.tsx` — re-sync books from PDS
+- `/books/:hiveId` → `src/pages/bookInfo.tsx` — book detail, status, rating, review, progress
+- `/books/:hiveId/comments` → `src/pages/comments.tsx` — comments/reviews section
+- `/comments` (POST/DELETE) → `src/routes/comments.tsx` — comment mutations
+- `/api/update-book`, `/api/update-comment`, `/api/follow`, `/api/follow-form` → `src/routes/api.tsx` — JSON API
+- `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx` — OAuth auth flows
+- `/import` (POST /goodreads, /storygraph) → `src/routes/import.ts` — CSV import handler
+- `/admin/export` → `src/routes/admin.ts` — DB export
+- `/xrpc/*` → `src/xrpc/router.ts` — AT Protocol XRPC endpoints
+- `/images/*` → `src/routes/main.tsx` — IPX image proxy/transform
 
 Shared route helpers: `src/routes/lib.ts` (searchBooks, refetchBooks, refetchBuzzes, syncFollows).
 
