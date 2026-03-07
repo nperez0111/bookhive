@@ -33,6 +33,7 @@ import profile from "./profile";
 import books from "./books";
 import comments from "./comments";
 import api from "./api";
+import rss from "./rss";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -146,6 +147,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.route("/books", books);
   app.route("/comments", comments);
   app.route("/api", api);
+  app.route("/rss", rss);
 
   createXrpcRouter(app, {
     searchBooks,
