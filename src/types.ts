@@ -195,6 +195,17 @@ export type BookIdentifiersRow = {
   updatedAt: string;
 };
 
+export type FeedPost = {
+  /** AT-URI of the app.bsky.feed.post record */
+  uri: string;
+  /** DID of the author */
+  userDid: string;
+  /** When we indexed this post */
+  indexedAt: string;
+  /** createdAt from the post record */
+  createdAt: string;
+};
+
 export type UserFollow = {
   /**
    * DID of the user who is following
