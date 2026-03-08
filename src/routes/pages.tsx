@@ -35,8 +35,7 @@ const app = new Hono<AppEnv>()
       return c.redirect("/login", 302);
     }
     const ctx = c.get("ctx");
-    const tab =
-      (c.req.query("tab") as "friends" | "all" | "tracking") || "friends";
+    const tab = (c.req.query("tab") as "friends" | "all" | "tracking") || "friends";
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const limit = 25;
     const offset = (page - 1) * limit;
@@ -93,9 +92,7 @@ const app = new Hono<AppEnv>()
       { title: "BookHive | Activity Feed" },
     );
   })
-  .get("/.well-known/atproto-did", (c) =>
-    c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"),
-  )
+  .get("/.well-known/atproto-did", (c) => c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"))
   .get("/app", (c) =>
     c.render(<AppPage />, {
       title: "BookHive App for iOS",
@@ -127,8 +124,7 @@ const app = new Hono<AppEnv>()
     }
     return c.render(<LibraryImport />, {
       title: "BookHive | Import",
-      description:
-        "Import your library from Goodreads or StoryGraph to BookHive",
+      description: "Import your library from Goodreads or StoryGraph to BookHive",
     });
   })
   // Explore hub
@@ -148,18 +144,9 @@ const app = new Hono<AppEnv>()
   .get("/explore/genres/:genre", async (c) => {
     const genre = decodeURIComponent(c.req.param("genre"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const sortBy =
-      (c.req.query("sort") as "popularity" | "relevance" | "reviews") ||
-      "popularity";
+    const sortBy = (c.req.query("sort") as "popularity" | "relevance" | "reviews") || "popularity";
     const pageSize = 100;
-    const result = await getBooksByGenre(
-      genre,
-      c.get("ctx"),
-      page,
-      pageSize,
-      sortBy,
-      c,
-    );
+    const result = await getBooksByGenre(genre, c.get("ctx"), page, pageSize, sortBy, c);
     return c.render(
       <GenreBooks
         genre={genre}
@@ -193,17 +180,9 @@ const app = new Hono<AppEnv>()
   .get("/authors/:author", async (c) => {
     const author = decodeURIComponent(c.req.param("author"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const sortBy =
-      (c.req.query("sort") as "popularity" | "reviews") || "popularity";
+    const sortBy = (c.req.query("sort") as "popularity" | "reviews") || "popularity";
     const pageSize = 100;
-    const result = await getBooksByAuthor(
-      author,
-      c.get("ctx"),
-      page,
-      pageSize,
-      sortBy,
-      c,
-    );
+    const result = await getBooksByAuthor(author, c.get("ctx"), page, pageSize, sortBy, c);
     return c.render(
       <AuthorBooks
         author={author}

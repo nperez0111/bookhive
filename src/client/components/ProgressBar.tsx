@@ -4,11 +4,7 @@ export const ProgressBar: FC<{
   class?: string;
   containerClass?: string;
   isActive: boolean;
-}> = ({
-  class: className = "dark:bg-white bg-blue-950",
-  containerClass,
-  isActive,
-}) => {
+}> = ({ class: className = "dark:bg-white bg-blue-950", containerClass, isActive }) => {
   return (
     <div class={`relative w-full p-[1px] ${containerClass}`}>
       <div

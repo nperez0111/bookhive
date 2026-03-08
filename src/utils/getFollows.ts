@@ -9,10 +9,7 @@ export interface FollowsSync {
   cursor: string | null;
 }
 
-export async function syncUserFollows(
-  ctx: AppContext,
-  agent: SessionClient,
-): Promise<void> {
+export async function syncUserFollows(ctx: AppContext, agent: SessionClient): Promise<void> {
   const userDid = agent.did;
 
   try {
@@ -53,8 +50,7 @@ async function determineSyncType(
     }
 
     const lastFullSync = new Date(syncData.lastFullSync);
-    const daysSinceFullSync =
-      (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceFullSync = (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
 
     ctx.addWideEventContext({
       follows_days_since_full_sync: daysSinceFullSync,
@@ -308,10 +304,7 @@ export async function getUserFollows(
   return follows.map((f) => f.followsDid);
 }
 
-export async function shouldSyncFollows(
-  ctx: AppContext,
-  userDid: string,
-): Promise<boolean> {
+export async function shouldSyncFollows(ctx: AppContext, userDid: string): Promise<boolean> {
   try {
     const syncData = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
 

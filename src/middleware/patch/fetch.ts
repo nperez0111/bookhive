@@ -1,11 +1,7 @@
 import { SpanKind } from "@opentelemetry/api";
 import shimmer from "shimmer";
 import { measure } from "../measure";
-import {
-  getRequestAttributes,
-  getResponseAttributes,
-  isWrapped,
-} from "../utils";
+import { getRequestAttributes, getResponseAttributes, isWrapped } from "../utils";
 
 const wrap = shimmer.wrap.bind(shimmer);
 

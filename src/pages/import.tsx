@@ -1,8 +1,7 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-const SHARE_TEXT =
-  "I just imported my reading list to BookHive! 📚 https://bookhive.social";
+const SHARE_TEXT = "I just imported my reading list to BookHive! 📚 https://bookhive.social";
 
 export const LibraryImport: FC = () => {
   return (
@@ -16,9 +15,7 @@ export const LibraryImport: FC = () => {
 
           {/* Service Selection: radio group with visual cards */}
           <div class="mb-6">
-            <p class="text-muted-foreground mb-3 text-sm">
-              Choose where to import from
-            </p>
+            <p class="text-muted-foreground mb-3 text-sm">Choose where to import from</p>
             <div class="flex flex-wrap gap-4">
               <label class="flex cursor-pointer">
                 <input
@@ -29,22 +26,13 @@ export const LibraryImport: FC = () => {
                   defaultChecked
                 />
                 <div class="card flex flex-1 items-center border-2 px-4 py-3 transition-colors peer-checked:border-primary peer-checked:bg-primary/5 hover:border-border min-w-[140px]">
-                  <span class="font-medium text-foreground">
-                    From Goodreads
-                  </span>
+                  <span class="font-medium text-foreground">From Goodreads</span>
                 </div>
               </label>
               <label class="flex cursor-pointer">
-                <input
-                  type="radio"
-                  name="import-service"
-                  value="storygraph"
-                  class="peer sr-only"
-                />
+                <input type="radio" name="import-service" value="storygraph" class="peer sr-only" />
                 <div class="card flex flex-1 items-center border-2 px-4 py-3 transition-colors peer-checked:border-primary peer-checked:bg-primary/5 hover:border-border min-w-[140px]">
-                  <span class="font-medium text-foreground">
-                    From StoryGraph
-                  </span>
+                  <span class="font-medium text-foreground">From StoryGraph</span>
                 </div>
               </label>
             </div>
@@ -86,23 +74,15 @@ export const LibraryImport: FC = () => {
             <div class="card border-primary/30">
               <div class="card-body">
                 <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span class="font-semibold text-foreground">
-                    Import Progress
-                  </span>
+                  <span class="font-semibold text-foreground">Import Progress</span>
                   <div id="refresh-button" class="flex justify-end" />
                 </div>
                 <div class="mt-4 space-y-4">
                   <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <span
-                      id="progress-text"
-                      class="font-semibold text-foreground"
-                    >
+                    <span id="progress-text" class="font-semibold text-foreground">
                       Processing...
                     </span>
-                    <span
-                      id="progress-count"
-                      class="text-sm text-muted-foreground"
-                    >
+                    <span id="progress-count" class="text-sm text-muted-foreground">
                       0/0
                     </span>
                   </div>
@@ -113,15 +93,8 @@ export const LibraryImport: FC = () => {
                       style="width: 0%"
                     />
                   </div>
-                  <div
-                    id="stage-message"
-                    class="alert text-sm"
-                    role="status"
-                  />
-                  <div
-                    id="current-book"
-                    class="truncate text-sm text-muted-foreground"
-                  />
+                  <div id="stage-message" class="alert text-sm" role="status" />
+                  <div id="current-book" class="truncate text-sm text-muted-foreground" />
                   <div
                     id="failed-books"
                     class="alert alert-destructive max-h-40 overflow-y-auto text-sm"
@@ -164,21 +137,13 @@ export const LibraryImport: FC = () => {
                 />
               </svg>
             </span>
-            <input
-              id="import-file"
-              type="file"
-              name="export"
-              accept=".csv"
-              class="hidden"
-            />
+            <input id="import-file" type="file" name="export" accept=".csv" class="hidden" />
             <Script
               script={(document) => {
                 const shareText = encodeURIComponent(SHARE_TEXT);
 
                 function dispatchImportEvent(detail: any) {
-                  window.dispatchEvent(
-                    new CustomEvent("bookhive:import-event", { detail }),
-                  );
+                  window.dispatchEvent(new CustomEvent("bookhive:import-event", { detail }));
                   const table = document.getElementById("import-table");
                   const controls = document.getElementById("import-controls");
                   const progress = document.getElementById("import-progress");
@@ -192,11 +157,8 @@ export const LibraryImport: FC = () => {
                 const radioButtons = document.querySelectorAll(
                   'input[name="import-service"]',
                 ) as NodeListOf<HTMLInputElement>;
-                const goodreadsInstructions =
-                  document.getElementById("goodreads-instructions");
-                const storygraphInstructions = document.getElementById(
-                  "storygraph-instructions",
-                );
+                const goodreadsInstructions = document.getElementById("goodreads-instructions");
+                const storygraphInstructions = document.getElementById("storygraph-instructions");
 
                 function updateSelection() {
                   const selectedService = document.querySelector(
@@ -216,9 +178,7 @@ export const LibraryImport: FC = () => {
                 });
                 updateSelection();
 
-                const importFile = document.getElementById(
-                  "import-file",
-                ) as HTMLInputElement;
+                const importFile = document.getElementById("import-file") as HTMLInputElement;
                 if (!importFile) throw new Error("Import file not found");
 
                 importFile.addEventListener("change", async () => {
@@ -242,11 +202,9 @@ export const LibraryImport: FC = () => {
                   const form = new FormData();
                   form.append("export", files[0]!);
                   const importLabel = document.getElementById("import-label");
-                  const importingLabel =
-                    document.getElementById("importing-label");
+                  const importingLabel = document.getElementById("importing-label");
                   const controls = document.getElementById("import-controls");
-                  const progressEl =
-                    document.getElementById("import-progress");
+                  const progressEl = document.getElementById("import-progress");
                   importLabel?.classList.add("hidden");
                   importingLabel?.classList.remove("hidden");
                   controls?.classList.add("hidden");
@@ -261,26 +219,18 @@ export const LibraryImport: FC = () => {
                   }
 
                   const progressBar = document.getElementById("progress-bar");
-                  const progressText =
-                    document.getElementById("progress-text");
-                  const progressCount =
-                    document.getElementById("progress-count");
-                  const currentBook =
-                    document.getElementById("current-book");
-                  const stageMessage =
-                    document.getElementById("stage-message");
-                  const completeCard =
-                    document.getElementById("import-complete-card");
-                  const completeCount =
-                    document.getElementById("import-complete-count");
+                  const progressText = document.getElementById("progress-text");
+                  const progressCount = document.getElementById("progress-count");
+                  const currentBook = document.getElementById("current-book");
+                  const stageMessage = document.getElementById("stage-message");
+                  const completeCard = document.getElementById("import-complete-card");
+                  const completeCount = document.getElementById("import-complete-count");
                   const shareLink = document.getElementById(
                     "import-share-link",
                   ) as HTMLAnchorElement;
 
                   try {
-                    const reader = response.body
-                      .pipeThrough(new TextDecoderStream())
-                      .getReader();
+                    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
 
                     const processEvent = (event: any) => {
                       if (
@@ -293,33 +243,26 @@ export const LibraryImport: FC = () => {
                         switch (event.event) {
                           case "import-start":
                             progressText.textContent = "Starting import...";
-                            stageMessage.textContent =
-                              event.stageProgress?.message ?? "";
+                            stageMessage.textContent = event.stageProgress?.message ?? "";
                             progressBar.style.width = "0%";
                             break;
                           case "book-load":
                             progressText.textContent = "Processing books...";
-                            stageMessage.textContent =
-                              event.stageProgress?.message ?? "";
+                            stageMessage.textContent = event.stageProgress?.message ?? "";
                             progressCount.textContent = `${event.stageProgress?.current ?? 0} books processed`;
                             currentBook.textContent = `Current: ${event.title ?? ""} by ${event.author ?? ""}`;
                             break;
                           case "upload-start":
                             progressText.textContent = "Uploading books...";
-                            stageMessage.textContent =
-                              event.stageProgress?.message ?? "";
+                            stageMessage.textContent = event.stageProgress?.message ?? "";
                             progressCount.textContent = `0/${event.stageProgress?.total ?? 0}`;
                             progressBar.style.width = "0%";
                             break;
                           case "book-upload": {
-                            const pct =
-                              event.total > 0
-                                ? (event.processed / event.total) * 100
-                                : 0;
+                            const pct = event.total > 0 ? (event.processed / event.total) * 100 : 0;
                             progressBar.style.width = `${pct}%`;
                             progressText.textContent = "Uploading books...";
-                            stageMessage.textContent =
-                              event.stageProgress?.message ?? "";
+                            stageMessage.textContent = event.stageProgress?.message ?? "";
                             progressCount.textContent = `${event.stageProgress?.current ?? 0}/${event.stageProgress?.total ?? 0}`;
                             currentBook.textContent = `Current: ${event.title ?? ""} by ${event.author ?? ""}`;
                             break;
@@ -327,14 +270,12 @@ export const LibraryImport: FC = () => {
                           case "import-complete":
                             progressBar.style.width = "100%";
                             progressText.textContent = "Import complete!";
-                            stageMessage.textContent =
-                              event.stageProgress?.message ?? "";
+                            stageMessage.textContent = event.stageProgress?.message ?? "";
                             progressCount.textContent = `${event.stageProgress?.current ?? 0}/${event.stageProgress?.total ?? 0}`;
                             currentBook.textContent = "";
 
                             if (completeCard && completeCount && shareLink) {
-                              const count =
-                                event.stageProgress?.current ?? event.uploaded ?? 0;
+                              const count = event.stageProgress?.current ?? event.uploaded ?? 0;
                               completeCount.textContent = String(count);
                               shareLink.href = `https://bsky.app/intent/compose?text=${shareText}`;
                               completeCard.classList.remove("hidden");
@@ -343,11 +284,7 @@ export const LibraryImport: FC = () => {
                         }
                       }
 
-                      if (
-                        event.event === "book-upload" &&
-                        event.title &&
-                        event.author
-                      ) {
+                      if (event.event === "book-upload" && event.title && event.author) {
                         dispatchImportEvent({
                           event: "book-upload",
                           processed: event.processed,
@@ -359,30 +296,22 @@ export const LibraryImport: FC = () => {
                             hiveId: event.hiveId || event.book?.hiveId,
                             title: event.title || event.book?.title,
                             authors: event.author || event.book?.authors,
-                            coverImage:
-                              event.coverImage || event.book?.coverImage,
+                            coverImage: event.coverImage || event.book?.coverImage,
                             status: event.status || event.book?.status,
-                            finishedAt:
-                              event.finishedAt || event.book?.finishedAt,
+                            finishedAt: event.finishedAt || event.book?.finishedAt,
                             stars: event.stars ?? event.book?.stars,
                             review: event.review ?? event.book?.review,
-                            alreadyExists:
-                              event.alreadyExists ??
-                              event.book?.alreadyExists,
+                            alreadyExists: event.alreadyExists ?? event.book?.alreadyExists,
                           },
                         });
-                      } else if (
-                        event.event === "import-start" ||
-                        event.event === "upload-start"
-                      ) {
+                      } else if (event.event === "import-start" || event.event === "upload-start") {
                         dispatchImportEvent(event);
                       } else if (event.event === "import-complete") {
                         dispatchImportEvent(event);
                         if (event.failedBooks?.length) {
                           for (let i = 0; i < event.failedBooks.length; i++) {
                             const fb = event.failedBooks[i];
-                            const details =
-                              event.failedBookDetails?.[i] || {};
+                            const details = event.failedBookDetails?.[i] || {};
                             dispatchImportEvent({
                               event: "book-failed",
                               failedBook: { ...fb, ...details },
@@ -402,10 +331,7 @@ export const LibraryImport: FC = () => {
                             try {
                               processEvent(JSON.parse(data));
                             } catch (e) {
-                              console.error(
-                                "Failed to parse final SSE message:",
-                                e,
-                              );
+                              console.error("Failed to parse final SSE message:", e);
                             }
                           }
                         }
@@ -427,18 +353,15 @@ export const LibraryImport: FC = () => {
                     }
                   } catch (e) {
                     console.error("Stream reading failed:", e);
-                    if (progressText)
-                      progressText.textContent = "Import failed";
+                    if (progressText) progressText.textContent = "Import failed";
                     if (stageMessage)
                       stageMessage.textContent =
                         "An error occurred during import. Please try again.";
-                    if (stageMessage)
-                      stageMessage.classList.add("alert-destructive");
+                    if (stageMessage) stageMessage.classList.add("alert-destructive");
                   } finally {
                     importLabel?.classList.remove("hidden");
                     importingLabel?.classList.add("hidden");
-                    const container =
-                      document.getElementById("refresh-button");
+                    const container = document.getElementById("refresh-button");
                     if (container) {
                       container.innerHTML = "";
                       const reset = document.createElement("button");
@@ -461,20 +384,14 @@ export const LibraryImport: FC = () => {
       </div>
 
       {/* Post-import share prompt (hidden until import completes) */}
-      <div
-        id="import-complete-card"
-        class="card mt-6 hidden"
-      >
+      <div id="import-complete-card" class="card mt-6 hidden">
         <div class="card-header">
           <h3 class="text-lg font-semibold text-foreground">
-            Import complete! <span id="import-complete-count">0</span> books
-            added.
+            Import complete! <span id="import-complete-count">0</span> books added.
           </h3>
         </div>
         <div class="card-body">
-          <p class="text-muted-foreground mb-4">
-            Let your friends know you're on BookHive!
-          </p>
+          <p class="text-muted-foreground mb-4">Let your friends know you're on BookHive!</p>
           <a
             id="import-share-link"
             href={`https://bsky.app/intent/compose?text=${encodeURIComponent(SHARE_TEXT)}`}

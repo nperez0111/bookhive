@@ -15,10 +15,7 @@ export const SearchBox: FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        searchRef.current &&
-        !searchRef.current.contains(event.target as Node)
-      ) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsOpened(false);
       }
     };
@@ -73,9 +70,7 @@ export const SearchBox: FC = () => {
           role="combobox"
           aria-expanded={isOpened}
           aria-controls="search-results"
-          aria-activedescendant={
-            selectedIndex >= 0 ? `book-${selectedIndex}` : undefined
-          }
+          aria-activedescendant={selectedIndex >= 0 ? `book-${selectedIndex}` : undefined}
           autocomplete="off"
           placeholder="Search books..."
           id="search-books"

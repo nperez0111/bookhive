@@ -72,9 +72,7 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
     const seriesData = seriesRef ? apolloState[seriesRef] : null;
 
     // Parse genres
-    const genres =
-      bookData.bookGenres?.map((bg: any) => bg.genre?.name).filter(Boolean) ||
-      [];
+    const genres = bookData.bookGenres?.map((bg: any) => bg.genre?.name).filter(Boolean) || [];
 
     // Parse secondary contributors (only authors)
     const secondaryContributors =
@@ -133,9 +131,7 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
   }
 }
 
-async function getBookDetailedInfo(
-  sourceUrl: string,
-): Promise<ParsedGoodreadsData | null> {
+async function getBookDetailedInfo(sourceUrl: string): Promise<ParsedGoodreadsData | null> {
   try {
     const response = await fetch(sourceUrl);
     const data = await response.text();

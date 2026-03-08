@@ -68,7 +68,9 @@ type ChannelMeta = {
 
 function buildRssXml(items: FeedItem[], channel: ChannelMeta): string {
   const lastBuildDate =
-    items.length > 0 && items[0] ? toRfc2822(items[0].createdAt) : toRfc2822(new Date().toISOString());
+    items.length > 0 && items[0]
+      ? toRfc2822(items[0].createdAt)
+      : toRfc2822(new Date().toISOString());
 
   const itemsXml = items
     .map((item) => {
@@ -136,7 +138,7 @@ const app = new Hono<AppEnv>()
     const rows = await query.execute();
 
     const handle = isDid(handleParam)
-      ? (await ctx.resolver.resolveDidToHandle(did)) ?? handleParam
+      ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)
       : handleParam;
 
     const xml = buildRssXml(rows, {
@@ -184,7 +186,7 @@ const app = new Hono<AppEnv>()
     const rows = await query.execute();
 
     const handle = isDid(handleParam)
-      ? (await ctx.resolver.resolveDidToHandle(did)) ?? handleParam
+      ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)
       : handleParam;
 
     const xml = buildRssXml(rows, {

@@ -27,12 +27,10 @@ function Hero() {
           </div>
           <div class="text-center md:order-1 md:text-left">
             <h1 class="text-foreground text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl">
-              The social platform for{" "}
-              <span class="text-primary">book lovers</span>
+              The social platform for <span class="text-primary">book lovers</span>
             </h1>
             <p class="text-muted-foreground mt-4 max-w-xl text-lg">
-              Follow your friends, discover new books, and own your data on the
-              AT protocol.
+              Follow your friends, discover new books, and own your data on the AT protocol.
             </p>
             <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center md:justify-start">
               <a href="/login" class="btn btn-primary">
@@ -53,16 +51,14 @@ function Features() {
   const features = [
     {
       title: "Manage your books",
-      description:
-        "Add books to your library, mark them as read, reading, or want to read.",
+      description: "Add books to your library, mark them as read, reading, or want to read.",
       icon: (
         <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
       ),
     },
     {
       title: "Follow your friends",
-      description:
-        "See what your friends are reading and what they thought about it.",
+      description: "See what your friends are reading and what they thought about it.",
       icon: (
         <>
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -74,8 +70,7 @@ function Features() {
     },
     {
       title: "Discover new books",
-      description:
-        "Find books and authors based on what you and your friends read.",
+      description: "Find books and authors based on what you and your friends read.",
       icon: (
         <>
           <path d="M10 10h4" />
@@ -89,16 +84,14 @@ function Features() {
     },
     {
       title: "Rate and review",
-      description:
-        "Rate books out of 5 stars and leave reviews to share with friends.",
+      description: "Rate books out of 5 stars and leave reviews to share with friends.",
       icon: (
         <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
       ),
     },
     {
       title: "Own your data",
-      description:
-        "Built on the AT protocol — your library and reviews live in your account.",
+      description: "Built on the AT protocol — your library and reviews live in your account.",
       icon: (
         <>
           <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
@@ -118,9 +111,7 @@ function Features() {
             manage your books
           </span>
         </h2>
-        <p class="text-muted-foreground mt-4 text-lg">
-          BookHive keeps your library in one place.
-        </p>
+        <p class="text-muted-foreground mt-4 text-lg">BookHive keeps your library in one place.</p>
       </div>
 
       <div class="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6 md:grid-cols-3">
@@ -143,9 +134,7 @@ function Features() {
               </div>
               <div>
                 <h3 class="text-foreground font-semibold">{item.title}</h3>
-                <p class="text-muted-foreground mt-1 text-sm leading-relaxed">
-                  {item.description}
-                </p>
+                <p class="text-muted-foreground mt-1 text-sm leading-relaxed">{item.description}</p>
               </div>
             </div>
           </div>
@@ -215,14 +204,10 @@ function Dashboard({
   friendProfiles: ProfileViewDetailed[];
 }) {
   const displayName = profile.displayName ?? profile.handle ?? "there";
-  const currentlyReading = myBooks.filter(
-    (b) => b.status === BOOK_STATUS.READING,
-  );
+  const currentlyReading = myBooks.filter((b) => b.status === BOOK_STATUS.READING);
   const year = new Date().getFullYear();
   const month = new Date().getMonth();
-  const totalRead = myBooks.filter(
-    (b) => b.status === BOOK_STATUS.FINISHED,
-  ).length;
+  const totalRead = myBooks.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const thisMonth = myBooks.filter(
     (b) =>
       b.status === BOOK_STATUS.FINISHED &&
@@ -237,9 +222,7 @@ function Dashboard({
       new Date(b.finishedAt).getFullYear() === year,
   ).length;
 
-  const profileByDid = Object.fromEntries(
-    friendProfiles.map((p) => [p.did, p]),
-  );
+  const profileByDid = Object.fromEntries(friendProfiles.map((p) => [p.did, p]));
 
   return (
     <div class="space-y-6 px-4 pt-6 sm:space-y-8 sm:pt-8 lg:px-8">
@@ -293,10 +276,7 @@ function Dashboard({
                             )}
                           </div>
                           <div class="progress">
-                            <div
-                              class="progress-bar"
-                              style={`width: ${progress}%`}
-                            />
+                            <div class="progress-bar" style={`width: ${progress}%`} />
                           </div>
                         </div>
                       </div>
@@ -314,21 +294,15 @@ function Dashboard({
             <div class="card-body">
               <div class="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div class="text-foreground text-2xl font-bold">
-                    {totalRead}
-                  </div>
+                  <div class="text-foreground text-2xl font-bold">{totalRead}</div>
                   <div class="text-muted-foreground text-xs">Total Read</div>
                 </div>
                 <div>
-                  <div class="text-foreground text-2xl font-bold">
-                    {thisMonth}
-                  </div>
+                  <div class="text-foreground text-2xl font-bold">{thisMonth}</div>
                   <div class="text-muted-foreground text-xs">This Month</div>
                 </div>
                 <div>
-                  <div class="text-foreground text-2xl font-bold">
-                    {thisYear}
-                  </div>
+                  <div class="text-foreground text-2xl font-bold">{thisYear}</div>
                   <div class="text-muted-foreground text-xs">This Year</div>
                 </div>
               </div>
@@ -352,20 +326,13 @@ function Dashboard({
                 </p>
               ) : (
                 friendsBuzzes.slice(0, 10).map((activity) => {
-                  const handle =
-                    didHandleMap[activity.userDid] ?? activity.userDid;
+                  const handle = didHandleMap[activity.userDid] ?? activity.userDid;
                   const prof = profileByDid[activity.userDid];
-                  const timeAgo = formatDistanceToNow(
-                    new Date(activity.createdAt),
-                    {
-                      addSuffix: true,
-                    },
-                  );
+                  const timeAgo = formatDistanceToNow(new Date(activity.createdAt), {
+                    addSuffix: true,
+                  });
                   return (
-                    <div
-                      key={`${activity.userDid}-${activity.hiveId}`}
-                      class="flex gap-3"
-                    >
+                    <div key={`${activity.userDid}-${activity.hiveId}`} class="flex gap-3">
                       <a
                         href={`/profile/${handle}`}
                         class="shrink-0"
@@ -407,9 +374,7 @@ function Dashboard({
                             {activity.review}
                           </p>
                         )}
-                        <div class="text-muted-foreground mt-1 text-xs">
-                          {timeAgo}
-                        </div>
+                        <div class="text-muted-foreground mt-1 text-xs">{timeAgo}</div>
                       </div>
                     </div>
                   );
@@ -423,9 +388,7 @@ function Dashboard({
       {/* Your books - link to profile */}
       <div class="card">
         <div class="card-body">
-          <h2 class="text-foreground mb-3 text-xl font-bold sm:mb-4">
-            Your library
-          </h2>
+          <h2 class="text-foreground mb-3 text-xl font-bold sm:mb-4">Your library</h2>
           <BookList fallback={<LibraryImport />} />
         </div>
       </div>
@@ -493,15 +456,10 @@ export const Home: FC = async () => {
   }
 
   const allDids = [
-    ...new Set([
-      ...latestBuzzes.map((b) => b.userDid),
-      ...friendsBuzzes.map((b) => b.userDid),
-    ]),
+    ...new Set([...latestBuzzes.map((b) => b.userDid), ...friendsBuzzes.map((b) => b.userDid)]),
   ];
   startTime(c, "didHandleMap");
-  const didHandleMap = await c
-    .get("ctx")
-    .resolver.resolveDidsToHandles(allDids);
+  const didHandleMap = await c.get("ctx").resolver.resolveDidsToHandles(allDids);
   endTime(c, "didHandleMap");
 
   return (

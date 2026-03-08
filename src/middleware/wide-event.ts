@@ -36,11 +36,7 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
         const statusCode = c.res?.status ?? 500;
         const durationMs = Date.now() - start;
         const outcome =
-          statusCode >= 500
-            ? "error"
-            : statusCode >= 400
-              ? "client_error"
-              : "success";
+          statusCode >= 500 ? "error" : statusCode >= 400 ? "client_error" : "success";
 
         const wideEvent: Record<string, unknown> = {
           msg: "request",
@@ -77,8 +73,7 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
           if (normalized && typeof normalized.message === "string") {
             wideEvent["error"] = {
               message: normalized.message,
-              type:
-                typeof normalized.type === "string" ? normalized.type : "Error",
+              type: typeof normalized.type === "string" ? normalized.type : "Error",
             };
           } else {
             const err = c.error ?? c.get("requestError");

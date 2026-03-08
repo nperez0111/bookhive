@@ -33,10 +33,7 @@ export const ReadingStatsPage: FC<{
 }) => {
   const title = year != null ? `Your ${year} in Books` : "Your reading stats";
   const totalBooksForGenre = stats.topGenres.reduce((s, g) => s + g.count, 0);
-  const maxRatingCount = Math.max(
-    1,
-    ...Object.values(stats.ratingDistribution),
-  );
+  const maxRatingCount = Math.max(1, ...Object.values(stats.ratingDistribution));
 
   return (
     <div class="space-y-6 px-4 lg:px-8">
@@ -109,9 +106,7 @@ export const ReadingStatsPage: FC<{
           <div class="card overflow-hidden bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
             <div class="card-body">
               <div class="mb-6 flex flex-wrap items-baseline gap-2">
-                <span class="text-4xl font-bold text-foreground md:text-5xl">
-                  {year}
-                </span>
+                <span class="text-4xl font-bold text-foreground md:text-5xl">{year}</span>
                 <span class="text-muted-foreground text-xl">Year in Books</span>
               </div>
               <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
@@ -125,25 +120,19 @@ export const ReadingStatsPage: FC<{
                 </div>
                 <div class="text-center">
                   <div class="text-4xl font-bold text-foreground md:text-5xl">
-                    {stats.pagesRead > 0
-                      ? stats.pagesRead.toLocaleString()
-                      : "—"}
+                    {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Pages read</div>
                 </div>
                 <div class="text-center">
                   <div class="text-4xl font-bold text-foreground md:text-5xl">
-                    {stats.averageRating != null
-                      ? stats.averageRating.toFixed(1)
-                      : "—"}
+                    {stats.averageRating != null ? stats.averageRating.toFixed(1) : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Avg rating</div>
                 </div>
                 <div class="text-center">
                   <div class="text-4xl font-bold text-foreground md:text-5xl">
-                    {stats.averagePageCount != null
-                      ? stats.averagePageCount.toLocaleString()
-                      : "—"}
+                    {stats.averagePageCount != null ? stats.averagePageCount.toLocaleString() : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Avg length (pgs)</div>
                 </div>
@@ -165,12 +154,7 @@ export const ReadingStatsPage: FC<{
                         {stats.booksCount} / {readingChallengeGoal} books
                       </span>
                       <span class="text-muted-foreground text-sm">
-                        {Math.min(
-                          100,
-                          Math.round(
-                            (stats.booksCount / readingChallengeGoal) * 100,
-                          ),
-                        )}
+                        {Math.min(100, Math.round((stats.booksCount / readingChallengeGoal) * 100))}
                         % complete
                       </span>
                     </div>
@@ -181,9 +165,7 @@ export const ReadingStatsPage: FC<{
                       />
                     </div>
                     {stats.booksCount >= readingChallengeGoal && (
-                      <p class="text-primary font-medium">
-                        🎉 Challenge complete!
-                      </p>
+                      <p class="text-primary font-medium">🎉 Challenge complete!</p>
                     )}
                     {isOwnProfile && (
                       <form
@@ -191,14 +173,8 @@ export const ReadingStatsPage: FC<{
                         method="post"
                         class="flex flex-wrap items-center gap-2"
                       >
-                        <input
-                          type="hidden"
-                          name="year"
-                          value={year}
-                        />
-                        <label class="text-muted-foreground text-sm">
-                          Update goal:
-                        </label>
+                        <input type="hidden" name="year" value={year} />
+                        <label class="text-muted-foreground text-sm">Update goal:</label>
                         <input
                           type="number"
                           name="goal"
@@ -255,37 +231,26 @@ export const ReadingStatsPage: FC<{
                       First book finished
                       {stats.firstBookOfYear.finishedAt && (
                         <span class="ml-1">
-                          (
-                          {format(
-                            new Date(stats.firstBookOfYear.finishedAt),
-                            "MMM d, yyyy",
-                          )}
-                          )
+                          ({format(new Date(stats.firstBookOfYear.finishedAt), "MMM d, yyyy")})
                         </span>
                       )}
                     </p>
                     <BookHighlight book={stats.firstBookOfYear} />
                   </div>
                 )}
-                {stats.lastBookOfYear &&
-                  stats.lastBookOfYear !== stats.firstBookOfYear && (
-                    <div>
-                      <p class="text-muted-foreground mb-1 text-sm">
-                        Last book finished
-                        {stats.lastBookOfYear.finishedAt && (
-                          <span class="ml-1">
-                            (
-                            {format(
-                              new Date(stats.lastBookOfYear.finishedAt),
-                              "MMM d, yyyy",
-                            )}
-                            )
-                          </span>
-                        )}
-                      </p>
-                      <BookHighlight book={stats.lastBookOfYear} />
-                    </div>
-                  )}
+                {stats.lastBookOfYear && stats.lastBookOfYear !== stats.firstBookOfYear && (
+                  <div>
+                    <p class="text-muted-foreground mb-1 text-sm">
+                      Last book finished
+                      {stats.lastBookOfYear.finishedAt && (
+                        <span class="ml-1">
+                          ({format(new Date(stats.lastBookOfYear.finishedAt), "MMM d, yyyy")})
+                        </span>
+                      )}
+                    </p>
+                    <BookHighlight book={stats.lastBookOfYear} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -333,18 +298,14 @@ export const ReadingStatsPage: FC<{
                 <div class="space-y-1">
                   {stats.topGenres.map((g) => (
                     <div key={g.genre} class="flex items-center gap-2">
-                      <span class="text-foreground w-24 truncate text-sm">
-                        {g.genre}
-                      </span>
+                      <span class="text-foreground w-24 truncate text-sm">{g.genre}</span>
                       <div class="bg-muted h-4 flex-1 rounded">
                         <div
                           class="bg-primary h-4 rounded"
                           style={`width: ${(g.count / totalBooksForGenre) * 100}%`}
                         />
                       </div>
-                      <span class="text-muted-foreground text-sm">
-                        {g.count}
-                      </span>
+                      <span class="text-muted-foreground text-sm">{g.count}</span>
                     </div>
                   ))}
                 </div>
@@ -361,17 +322,13 @@ export const ReadingStatsPage: FC<{
               <div class="card-body space-y-4">
                 {stats.shortestBook && (
                   <div>
-                    <p class="text-muted-foreground text-sm">
-                      Shortest read
-                    </p>
+                    <p class="text-muted-foreground text-sm">Shortest read</p>
                     <BookHighlight book={stats.shortestBook} />
                   </div>
                 )}
                 {stats.longestBook && stats.longestBook !== stats.shortestBook && (
                   <div>
-                    <p class="text-muted-foreground text-sm">
-                      Longest read
-                    </p>
+                    <p class="text-muted-foreground text-sm">Longest read</p>
                     <BookHighlight book={stats.longestBook} />
                   </div>
                 )}
@@ -390,21 +347,16 @@ export const ReadingStatsPage: FC<{
               <div class="card-body space-y-4">
                 {stats.mostPopularBook && (
                   <div>
-                    <p class="text-muted-foreground text-sm">
-                      Most popular (by community rating)
-                    </p>
+                    <p class="text-muted-foreground text-sm">Most popular (by community rating)</p>
                     <BookHighlight book={stats.mostPopularBook} />
                   </div>
                 )}
-                {stats.leastPopularBook &&
-                  stats.leastPopularBook !== stats.mostPopularBook && (
-                    <div>
-                      <p class="text-muted-foreground text-sm">
-                        Least popular (by community rating)
-                      </p>
-                      <BookHighlight book={stats.leastPopularBook} />
-                    </div>
-                  )}
+                {stats.leastPopularBook && stats.leastPopularBook !== stats.mostPopularBook && (
+                  <div>
+                    <p class="text-muted-foreground text-sm">Least popular (by community rating)</p>
+                    <BookHighlight book={stats.leastPopularBook} />
+                  </div>
+                )}
                 {!stats.mostPopularBook && !stats.leastPopularBook && (
                   <p class="text-muted-foreground text-sm">
                     Community ratings will appear as books are rated.
@@ -438,9 +390,7 @@ function BookHighlight({ book }: { book: Book }) {
       <div class="min-w-0 flex-1">
         <p class="font-medium text-foreground line-clamp-2">{book.title}</p>
         <p class="text-muted-foreground truncate text-sm">{book.authors}</p>
-        {pages != null && (
-          <p class="text-muted-foreground text-xs">{pages} pages</p>
-        )}
+        {pages != null && <p class="text-muted-foreground text-xs">{pages} pages</p>}
       </div>
     </a>
   );

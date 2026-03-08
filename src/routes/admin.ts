@@ -49,15 +49,10 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
         client_ip: clientIp,
         db_path: env.DB_PATH,
       });
-      return c.json(
-        { message: "DB exports require DB_PATH to be a file path" },
-        400,
-      );
+      return c.json({ message: "DB exports require DB_PATH to be a file path" }, 400);
     }
 
-    const exportDir =
-      env.DB_EXPORT_DIR?.trim() ||
-      path.join(path.dirname(env.DB_PATH), "exports");
+    const exportDir = env.DB_EXPORT_DIR?.trim() || path.join(path.dirname(env.DB_PATH), "exports");
 
     ctx.addWideEventContext({
       admin_export: "started",
@@ -76,9 +71,7 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
       await fs.promises.mkdir(exportDir, { recursive: true });
 
       const includeKv =
-        Boolean(env.KV_DB_PATH) &&
-        env.KV_DB_PATH !== ":memory:" &&
-        fs.existsSync(env.KV_DB_PATH);
+        Boolean(env.KV_DB_PATH) && env.KV_DB_PATH !== ":memory:" && fs.existsSync(env.KV_DB_PATH);
 
       prepared = await prepareSanitizedExportFiles({
         dbPath: env.DB_PATH,
@@ -99,31 +92,27 @@ const admin = new Hono<AppEnv>().get("/export", async (c) => {
 
     // Stream tar stdout directly to the response so bytes start flowing
     // immediately, avoiding proxy timeouts on large databases.
-    const stream = createTgzReadStream(
-      prepared.tmpDir,
-      prepared.files,
-      {
-        onClose: () => {
-          const duration = Date.now() - startTimeExport;
-          ctx.addWideEventContext({
-            admin_export: "completed",
-            client_ip: clientIp,
-            filename: prepared.filename,
-            duration_ms: duration,
-          });
-          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
-        },
-        onError: (err) => {
-          ctx.addWideEventContext({
-            admin_export_stream: "error",
-            client_ip: clientIp,
-            filename: prepared.filename,
-            error: err.message,
-          });
-          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
-        },
+    const stream = createTgzReadStream(prepared.tmpDir, prepared.files, {
+      onClose: () => {
+        const duration = Date.now() - startTimeExport;
+        ctx.addWideEventContext({
+          admin_export: "completed",
+          client_ip: clientIp,
+          filename: prepared.filename,
+          duration_ms: duration,
+        });
+        void cleanupExportPaths({ tmpDir: prepared.tmpDir });
       },
-    );
+      onError: (err) => {
+        ctx.addWideEventContext({
+          admin_export_stream: "error",
+          client_ip: clientIp,
+          filename: prepared.filename,
+          error: err.message,
+        });
+        void cleanupExportPaths({ tmpDir: prepared.tmpDir });
+      },
+    });
 
     return c.body(stream, 200, {
       "Content-Type": "application/gzip",

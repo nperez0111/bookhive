@@ -31,10 +31,9 @@ export function useSearchBooks(
       data: prev.data,
     }));
 
-    fetch(
-      `/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=10`,
-      { signal: ac.signal },
-    )
+    fetch(`/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=10`, {
+      signal: ac.signal,
+    })
       .then((res) => {
         if (!res.ok) throw new Error("Search failed");
         return res.json();

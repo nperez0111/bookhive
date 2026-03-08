@@ -12,24 +12,12 @@ export const ProfileHeader: FC<{
   isFollowing?: boolean;
   canFollow?: boolean;
   isOwnProfile?: boolean;
-}> = ({
-  handle,
-  did,
-  profile,
-  books,
-  isFollowing,
-  canFollow,
-  isOwnProfile,
-}) => {
-  const booksRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED)
-    .length;
+}> = ({ handle, did, profile, books, isFollowing, canFollow, isOwnProfile }) => {
+  const booksRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const reviewCount = books.filter((b) => b.review?.trim()).length;
   const joinDate =
     books.length > 0
-      ? formatDistanceToNow(
-          new Date(books.map((b) => b.createdAt).sort()[0]!),
-          { addSuffix: true },
-        )
+      ? formatDistanceToNow(new Date(books.map((b) => b.createdAt).sort()[0]!), { addSuffix: true })
       : null;
 
   return (
@@ -43,9 +31,7 @@ export const ProfileHeader: FC<{
           />
         )}
         <div class="min-w-0 flex-1">
-          <h1 class="text-2xl font-bold text-foreground">
-            {profile?.displayName || handle}
-          </h1>
+          <h1 class="text-2xl font-bold text-foreground">{profile?.displayName || handle}</h1>
           <a
             href={`https://bsky.app/profile/${handle}`}
             class="text-muted-foreground hover:text-foreground mt-0.5 block text-sm"
@@ -53,13 +39,9 @@ export const ProfileHeader: FC<{
             @{handle}
           </a>
           {profile?.description && (
-            <p class="text-muted-foreground mt-2 leading-relaxed">
-              {profile.description}
-            </p>
+            <p class="text-muted-foreground mt-2 leading-relaxed">{profile.description}</p>
           )}
-          {joinDate && (
-            <p class="text-muted-foreground mt-1 text-sm">Joined {joinDate}</p>
-          )}
+          {joinDate && <p class="text-muted-foreground mt-1 text-sm">Joined {joinDate}</p>}
           <div class="mt-3 flex flex-wrap gap-2">
             <span class="badge">{booksRead} books read</span>
             <span class="badge">{reviewCount} reviews</span>

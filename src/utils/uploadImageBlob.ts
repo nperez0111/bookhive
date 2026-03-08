@@ -1,15 +1,10 @@
 import type { SessionClient } from "../auth/client";
 import sharp from "sharp";
 
-export async function uploadImageBlob(
-  image: string | undefined,
-  agent: SessionClient,
-) {
+export async function uploadImageBlob(image: string | undefined, agent: SessionClient) {
   try {
     if (image) {
-      const data = await fetch(image as string).then((res) =>
-        res.arrayBuffer(),
-      );
+      const data = await fetch(image as string).then((res) => res.arrayBuffer());
 
       const resizedImage = await sharp(Buffer.from(data))
         .resize({ width: 800, withoutEnlargement: true })

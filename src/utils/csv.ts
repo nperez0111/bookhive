@@ -121,16 +121,14 @@ export function getStorygraphCsvParser() {
               moods: record["Moods"] || "",
               pace: record["Pace"] || "",
               characterOrPlot: record["Character- or Plot-Driven?"] || "",
-              strongCharacterDevelopment:
-                record["Strong Character Development?"] || "",
+              strongCharacterDevelopment: record["Strong Character Development?"] || "",
               loveableCharacters: record["Loveable Characters?"] || "",
               diverseCharacters: record["Diverse Characters?"] || "",
               flawedCharacters: record["Flawed Characters?"] || "",
               starRating: record["Star Rating"] || 0,
               review: record["Review"] || "",
               contentWarnings: record["Content Warnings"] || "",
-              contentWarningDescription:
-                record["Content Warning Description"] || "",
+              contentWarningDescription: record["Content Warning Description"] || "",
               tags: record["Tags"] || "",
               owned: record["Owned?"] || false,
             };
@@ -167,25 +165,20 @@ export function getStorygraphCsvParser() {
               moods: record["Moods"] || "",
               pace: record["Pace"] || "",
               characterOrPlot: record["Character- or Plot-Driven?"] || "",
-              strongCharacterDevelopment:
-                record["Strong Character Development?"] || "",
+              strongCharacterDevelopment: record["Strong Character Development?"] || "",
               loveableCharacters: record["Loveable Characters?"] || "",
               diverseCharacters: record["Diverse Characters?"] || "",
               flawedCharacters: record["Flawed Characters?"] || "",
               starRating: record["Star Rating"] || 0,
               review: record["Review"] || "",
               contentWarnings: record["Content Warnings"] || "",
-              contentWarningDescription:
-                record["Content Warning Description"] || "",
+              contentWarningDescription: record["Content Warning Description"] || "",
               tags: record["Tags"] || "",
               owned: record["Owned?"] || false,
             };
             controller.enqueue(storygraphBook);
           } else {
-            console.warn(
-              "Skipping invalid StoryGraph record during flush:",
-              record,
-            );
+            console.warn("Skipping invalid StoryGraph record during flush:", record);
           }
         }
       } catch (error) {
@@ -296,10 +289,7 @@ export function getGoodreadsCsvParser() {
           if (record && record.title && record.author) {
             controller.enqueue(record);
           } else {
-            console.warn(
-              "Skipping invalid Goodreads record during flush:",
-              record,
-            );
+            console.warn("Skipping invalid Goodreads record during flush:", record);
           }
         }
       } catch (error) {

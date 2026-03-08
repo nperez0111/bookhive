@@ -65,9 +65,7 @@ describe("getFollows utilities", () => {
     });
 
     it("should return false when last sync was recent (< 6 hours)", async () => {
-      const recentTime = new Date(
-        Date.now() - 3 * 60 * 60 * 1000,
-      ).toISOString();
+      const recentTime = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
       const syncData: FollowsSync = {
         userDid: "did:plc:test123",
         lastFullSync: "2025-08-01T10:00:00.000Z",
@@ -125,20 +123,12 @@ describe("getFollows utilities", () => {
 
       expect(mockDb.selectFrom).toHaveBeenCalledWith("user_follows");
       expect(mockSelect).toHaveBeenCalledWith("followsDid");
-      expect(mockWhere1).toHaveBeenCalledWith(
-        "userDid",
-        "=",
-        "did:plc:test123",
-      );
+      expect(mockWhere1).toHaveBeenCalledWith("userDid", "=", "did:plc:test123");
       expect(mockWhere2).toHaveBeenCalledWith("isActive", "=", 1);
       expect(mockOrderBy).toHaveBeenCalledWith("syncedAt", "desc");
       expect(mockLimit).toHaveBeenCalledWith(100);
 
-      expect(result).toEqual([
-        "did:plc:follow1",
-        "did:plc:follow2",
-        "did:plc:follow3",
-      ]);
+      expect(result).toEqual(["did:plc:follow1", "did:plc:follow2", "did:plc:follow3"]);
     });
 
     it("should return empty array when no follows found", async () => {

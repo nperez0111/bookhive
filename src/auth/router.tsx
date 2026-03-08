@@ -7,11 +7,7 @@ import { Layout } from "../pages/layout";
 
 import { Error } from "../pages/error";
 import { Login } from "../pages/login";
-import {
-  OAUTH_SCOPES,
-  sessionClientFromOAuthSession,
-  type SessionClient,
-} from "./client";
+import { OAUTH_SCOPES, sessionClientFromOAuthSession, type SessionClient } from "./client";
 import { isValidHandle } from "./handle";
 
 // Helper function to get consistent session configuration
@@ -37,14 +33,8 @@ export function loginRouter(
     onLogin = async () => {},
     onLogout = async () => {},
   }: {
-    onLogin?: (ctx: {
-      agent: SessionClient | null;
-      ctx: AppContext;
-    }) => Promise<void>;
-    onLogout?: (ctx: {
-      agent: SessionClient | null;
-      ctx: AppContext;
-    }) => Promise<void>;
+    onLogin?: (ctx: { agent: SessionClient | null; ctx: AppContext }) => Promise<void>;
+    onLogout?: (ctx: { agent: SessionClient | null; ctx: AppContext }) => Promise<void>;
   } = {},
 ) {
   // OAuth metadata (deprecated)
@@ -62,15 +52,9 @@ export function loginRouter(
     const callbackUrl = new URL(c.req.url);
     const params = callbackUrl.searchParams;
     try {
-      const { session, state } = await c
-        .get("ctx")
-        .oauthClient.callback(params);
+      const { session, state } = await c.get("ctx").oauthClient.callback(params);
 
-      const clientSession = await getIronSession<Session>(
-        c.req.raw,
-        c.res,
-        getSessionConfig(),
-      );
+      const clientSession = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
 
       clientSession.did = session.did as string;
       await clientSession.save();
@@ -85,10 +69,7 @@ export function loginRouter(
             handle: string;
           };
           const redirectTo = new URL(redirectUri);
-          if (
-            redirectTo.protocol !== "exp:" &&
-            redirectTo.protocol !== "bookhive:"
-          ) {
+          if (redirectTo.protocol !== "exp:" && redirectTo.protocol !== "bookhive:") {
             return c.html(
               <Layout>
                 <Error
@@ -104,10 +85,7 @@ export function loginRouter(
           redirectTo.searchParams.set("handle", handle);
           redirectTo.searchParams.set(
             "sid",
-            await sealData(
-              { did: session.did },
-              { password: env.COOKIE_SECRET },
-            ),
+            await sealData({ did: session.did }, { password: env.COOKIE_SECRET }),
           );
 
           return c.redirect(redirectTo.toString());
@@ -187,11 +165,7 @@ export function loginRouter(
 
       return c.html(
         <Layout>
-          <Error
-            message={errMsg}
-            description="Oauth authorization failed"
-            statusCode={400}
-          />
+          <Error message={errMsg} description="Oauth authorization failed" statusCode={400} />
         </Layout>,
         400,
       );
@@ -200,17 +174,11 @@ export function loginRouter(
 
   app.get("/mobile/refresh-token", async (c) => {
     try {
-      const session = await getIronSession<Session>(
-        c.req.raw,
-        c.res,
-        getSessionConfig(),
-      );
+      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
 
-      const oauthSession = await c
-        .get("ctx")
-        .oauthClient.restore(session.did as Did, {
-          refresh: "auto",
-        });
+      const oauthSession = await c.get("ctx").oauthClient.restore(session.did as Did, {
+        refresh: "auto",
+      });
       await oauthSession.getTokenInfo("auto");
       // Keep session TTL fixed at 24 hours for mobile sessions too
       session.updateConfig(getSessionConfig());
@@ -220,10 +188,7 @@ export function loginRouter(
         success: true,
         payload: {
           did: session.did,
-          sid: await sealData(
-            { did: session.did },
-            { password: env.COOKIE_SECRET },
-          ),
+          sid: await sealData({ did: session.did }, { password: env.COOKIE_SECRET }),
         },
       });
     } catch {
@@ -240,9 +205,7 @@ export function loginRouter(
           <Login
             handle={typeof handle === "string" ? handle : undefined}
             error={
-              "Handle `" +
-              (typeof handle === "string" ? handle : "[unknown]") +
-              "` is invalid"
+              "Handle `" + (typeof handle === "string" ? handle : "[unknown]") + "` is invalid"
             }
           />
         </Layout>,
@@ -267,11 +230,7 @@ export function loginRouter(
       });
       return c.html(
         <Layout>
-          <Error
-            message={errMsg}
-            description="OAuth authorization failed"
-            statusCode={400}
-          />
+          <Error message={errMsg} description="OAuth authorization failed" statusCode={400} />
         </Layout>,
         400,
       );
@@ -280,11 +239,7 @@ export function loginRouter(
 
   // Logout handler
   app.post("/logout", async (c) => {
-    const session = await getIronSession<Session>(
-      c.req.raw,
-      c.res,
-      getSessionConfig(),
-    );
+    const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
     if (session.did) {
       try {
         await c.get("ctx").oauthClient.revoke(session.did as Did);

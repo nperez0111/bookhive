@@ -9,9 +9,9 @@ export function hydrateUserBook<T extends { bookProgress: string | null }>(
   };
 }
 
-export function serializeUserBook<
-  T extends { bookProgress: BookProgress | null },
->(book: T): Omit<T, "bookProgress"> & { bookProgress: string | null } {
+export function serializeUserBook<T extends { bookProgress: BookProgress | null }>(
+  book: T,
+): Omit<T, "bookProgress"> & { bookProgress: string | null } {
   return {
     ...book,
     bookProgress: book.bookProgress ? JSON.stringify(book.bookProgress) : null,

@@ -4,20 +4,13 @@ export function PrivacyPolicy() {
       <h1 class="text-foreground mb-6 text-4xl font-bold">Privacy Policy</h1>
 
       <p class="text-muted-foreground mb-4">
-        This Privacy Policy explains how <strong>BookHive</strong> ("we", "us",
-        or "our") collects, uses, and shares information in connection with the
-        BookHive service available at
-        <a
-          href="https://bookhive.buzz"
-          class="text-primary ml-1 hover:underline"
-        >
+        This Privacy Policy explains how <strong>BookHive</strong> ("we", "us", or "our") collects,
+        uses, and shares information in connection with the BookHive service available at
+        <a href="https://bookhive.buzz" class="text-primary ml-1 hover:underline">
           https://bookhive.buzz
         </a>
         . If you have any questions, contact us at
-        <a
-          href="mailto:computers@nickthesick.com"
-          class="text-primary ml-1 hover:underline"
-        >
+        <a href="mailto:computers@nickthesick.com" class="text-primary ml-1 hover:underline">
           computers@nickthesick.com
         </a>
         .
@@ -25,59 +18,46 @@ export function PrivacyPolicy() {
 
       <h2 class="text-foreground mt-10 mb-2 text-2xl font-semibold">About BookHive</h2>
       <p class="text-muted-foreground mb-4">
-        BookHive is a book management and social application built on top of the
-        AT Protocol (ATProto), the same protocol used by Bluesky. ATProto is
-        designed so that your social data lives on your own Personal Data Server
-        (PDS).
+        BookHive is a book management and social application built on top of the AT Protocol
+        (ATProto), the same protocol used by Bluesky. ATProto is designed so that your social data
+        lives on your own Personal Data Server (PDS).
       </p>
 
       <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">Information We Collect</h2>
       <ul class="text-muted-foreground mb-4 list-inside list-disc">
         <li class="mb-2">
-          <strong>Cookies for authentication</strong>: We set cookies only after
-          you initiate a login session. These cookies are used strictly to keep
-          you logged in and to operate the service. We do not set any cookies
-          before you start a session, and we do not use cookies for advertising
-          or cross-site tracking.
+          <strong>Cookies for authentication</strong>: We set cookies only after you initiate a
+          login session. These cookies are used strictly to keep you logged in and to operate the
+          service. We do not set any cookies before you start a session, and we do not use cookies
+          for advertising or cross-site tracking.
         </li>
         <li class="mb-2">
-          <strong>Public ATProto data</strong>: BookHive displays and may cache
-          data that is already publicly available on ATProto (for example,
-          public profiles, posts, reviews, and book activity). We do not collect
-          or store private ATProto data.
+          <strong>Public ATProto data</strong>: BookHive displays and may cache data that is already
+          publicly available on ATProto (for example, public profiles, posts, reviews, and book
+          activity). We do not collect or store private ATProto data.
         </li>
       </ul>
 
       <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">How We Use Information</h2>
       <p class="text-muted-foreground mb-4">
-        We use authentication cookies to operate BookHive, maintain your
-        session, and provide functionality such as adding or viewing your book
-        activity. Any ATProto data we process is limited to information that is
-        already public.
+        We use authentication cookies to operate BookHive, maintain your session, and provide
+        functionality such as adding or viewing your book activity. Any ATProto data we process is
+        limited to information that is already public.
       </p>
 
-      <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">
-        Data Storage and Retention
-      </h2>
+      <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">Data Storage and Retention</h2>
       <p class="text-muted-foreground mb-4">
-        Your social graph and content live on your PDS via ATProto. We may
-        temporarily cache public data and minimal session information on our
-        servers to provide the service efficiently. We do not store non-public
-        ATProto data.
+        Your social graph and content live on your PDS via ATProto. We may temporarily cache public
+        data and minimal session information on our servers to provide the service efficiently. We
+        do not store non-public ATProto data.
       </p>
 
-      <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">
-        Your Choices and Deletion
-      </h2>
+      <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">Your Choices and Deletion</h2>
       <p class="text-muted-foreground mb-4">
-        Because your data lives on your PDS, you can remove your content at the
-        source using your ATProto/Bluesky client. If you would like us to delete
-        any information we hold on our servers (such as cached public data), you
-        can request deletion at
-        <a
-          href="mailto:computers@nickthesick.com"
-          class="text-primary ml-1 hover:underline"
-        >
+        Because your data lives on your PDS, you can remove your content at the source using your
+        ATProto/Bluesky client. If you would like us to delete any information we hold on our
+        servers (such as cached public data), you can request deletion at
+        <a href="mailto:computers@nickthesick.com" class="text-primary ml-1 hover:underline">
           computers@nickthesick.com
         </a>
         .
@@ -85,20 +65,18 @@ export function PrivacyPolicy() {
 
       <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">Children’s Privacy</h2>
       <p class="text-muted-foreground mb-4">
-        BookHive is not directed to children under 13, and we do not knowingly
-        collect personal information from children.
+        BookHive is not directed to children under 13, and we do not knowingly collect personal
+        information from children.
       </p>
 
       <h2 class="text-foreground mt-8 mb-2 text-2xl font-semibold">Changes to This Policy</h2>
       <p class="text-muted-foreground mb-8">
-        We may update this Privacy Policy from time to time. When we do, we will
-        revise the “Last updated” date below. Your continued use of BookHive
-        after an update means you accept the changes.
+        We may update this Privacy Policy from time to time. When we do, we will revise the “Last
+        updated” date below. Your continued use of BookHive after an update means you accept the
+        changes.
       </p>
 
-      <p class="text-muted-foreground text-sm">
-        Last updated: 2025-08-25
-      </p>
+      <p class="text-muted-foreground text-sm">Last updated: 2025-08-25</p>
     </div>
   );
 }

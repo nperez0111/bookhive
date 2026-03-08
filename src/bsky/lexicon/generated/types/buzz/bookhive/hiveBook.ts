@@ -25,9 +25,7 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @maxLength 5000
      */
     description: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [
-        /*#__PURE__*/ v.stringLength(0, 5000),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
     ),
     /**
      * The book's hive id, used to correlate user's books with the hive
@@ -45,9 +43,7 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @maximum 1000
      */
     rating: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(0, 1000),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 1000)]),
     ),
     /**
      * Number of ratings

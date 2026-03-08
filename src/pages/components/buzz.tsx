@@ -25,9 +25,7 @@ export const BuzzSection: FC<{
   viewAllAuthRequired,
   user,
 }) => {
-  const showViewAll =
-    viewAllHref &&
-    (!viewAllAuthRequired || (viewAllAuthRequired && user));
+  const showViewAll = viewAllHref && (!viewAllAuthRequired || (viewAllAuthRequired && user));
 
   return (
     <div class="mt-10 flex flex-col gap-2 px-4 sm:mt-12 sm:px-6 lg:mt-16 lg:px-8">
@@ -42,10 +40,7 @@ export const BuzzSection: FC<{
             </p>
           </div>
           {showViewAll && (
-            <a
-              href={viewAllHref}
-              class="text-primary shrink-0 text-sm hover:underline"
-            >
+            <a href={viewAllHref} class="text-primary shrink-0 text-sm hover:underline">
               {viewAllLabel}
             </a>
           )}
@@ -70,11 +65,8 @@ export const BuzzBook: FC<{
 }> = ({ book, userHandle }) => {
   const statusText =
     book.status && book.status in BOOK_STATUS_PAST_TENSE_MAP
-      ? BOOK_STATUS_PAST_TENSE_MAP[
-          book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP
-        ]
-      : book.status ||
-        BOOK_STATUS_PAST_TENSE_MAP[BOOK_STATUS.READING];
+      ? BOOK_STATUS_PAST_TENSE_MAP[book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP]
+      : book.status || BOOK_STATUS_PAST_TENSE_MAP[BOOK_STATUS.READING];
   const timeAgo = formatDistanceToNow(book.indexedAt, { addSuffix: true });
 
   return (
@@ -113,10 +105,7 @@ export const BuzzBook: FC<{
           )}
         </a>
         <div class="mt-2">
-          <UserBlock
-            handle={userHandle}
-            size="sm"
-          />
+          <UserBlock handle={userHandle} size="sm" />
         </div>
         <a href={`/books/${book.hiveId}`} class="mt-1 block text-sm">
           <span class="text-muted-foreground">{statusText} </span>

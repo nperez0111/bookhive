@@ -62,10 +62,7 @@ export function getLogger(level: unknown) {
       };
       return acc;
     },
-    {} as Record<
-      LogLevel,
-      (message?: unknown, ...optionalParams: unknown[]) => void
-    >,
+    {} as Record<LogLevel, (message?: unknown, ...optionalParams: unknown[]) => void>,
   );
 
   return logger;

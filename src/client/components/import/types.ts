@@ -1,10 +1,6 @@
 export type ImportService = "goodreads" | "storygraph";
 
-export type ImportStage =
-  | "initializing"
-  | "searching"
-  | "uploading"
-  | "complete";
+export type ImportStage = "initializing" | "searching" | "uploading" | "complete";
 
 export type ImportBookSuccess = {
   hiveId: string;

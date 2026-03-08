@@ -27,18 +27,20 @@ export const Explore: FC = async () => {
       .orderBy(sql`COUNT(*)`, "desc")
       .limit(6)
       .execute()
-      .then((r) => { endTime(c, "explore-genres"); return r; }),
-    getTopAuthors(db, 8)
-      .then((r) => { endTime(c, "explore-authors"); return r; }),
+      .then((r) => {
+        endTime(c, "explore-genres");
+        return r;
+      }),
+    getTopAuthors(db, 8).then((r) => {
+      endTime(c, "explore-authors");
+      return r;
+    }),
   ]);
 
   return (
     <div class="bg-background -mx-4 -my-4 min-h-full px-4 py-6 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-8">
       <div class="mx-auto max-w-5xl space-y-10">
-        <nav
-          class="text-muted-foreground flex items-center gap-2 text-sm"
-          aria-label="Breadcrumb"
-        >
+        <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
           <a href="/" class="hover:text-foreground transition-colors">
             Home
           </a>
@@ -47,9 +49,7 @@ export const Explore: FC = async () => {
         </nav>
 
         <div>
-          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
-            Explore
-          </h1>
+          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">Explore</h1>
           <p class="text-muted-foreground mt-2 text-base">
             Discover your next read by genre or author.
           </p>
@@ -135,9 +135,7 @@ export const Explore: FC = async () => {
                     {formatCount(author.bookCount)} books
                   </p>
                   {author.avgRating && (
-                    <p class="text-muted-foreground text-xs">
-                      ★ {author.avgRating.toFixed(1)}
-                    </p>
+                    <p class="text-muted-foreground text-xs">★ {author.avgRating.toFixed(1)}</p>
                   )}
                 </div>
               </a>

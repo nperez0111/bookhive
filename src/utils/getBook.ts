@@ -67,10 +67,7 @@ function inferBookStatusAndDates(updates: {
   let autoStatus = updates.status;
 
   // If user sets startedAt and status is "want to read" or unset, infer they're reading
-  if (
-    updates.startedAt &&
-    (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)
-  ) {
+  if (updates.startedAt && (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)) {
     autoStatus = BOOK_STATUS.READING;
   }
 
@@ -89,28 +86,12 @@ function inferBookStatusAndDates(updates: {
   if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
     const now = new Date();
     autoStartedAt = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
     ).toISOString();
   } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
     const now = new Date();
     autoFinishedAt = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
     ).toISOString();
   }
 
@@ -280,8 +261,7 @@ export async function updateBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    cover:
-      originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
+    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
     startedAt:
@@ -404,9 +384,7 @@ export async function updateBookRecords({
     .where("hiveId", "in", hiveIds)
     .selectAll()
     .execute();
-  const identifiersByHiveId = new Map(
-    idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]),
-  );
+  const identifiersByHiveId = new Map(idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]));
 
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
@@ -442,8 +420,7 @@ export async function updateBookRecords({
     const finalStatus = autoStatus || originalBook?.status;
 
     const idOutput = identifiersByHiveId.get(hiveId);
-    const identifiers =
-      idOutput && Object.keys(idOutput).length > 0 ? idOutput : undefined;
+    const identifiers = idOutput && Object.keys(idOutput).length > 0 ? idOutput : undefined;
 
     const book = BookRecord.validateRecord({
       $type: ids.BuzzBookhiveBook,
@@ -599,9 +576,7 @@ export async function getUserRepoRecords({
     params: { did },
     as: "bytes",
   });
-  const data: Uint8Array = res.ok
-    ? (res.data as Uint8Array)
-    : new Uint8Array(0);
+  const data: Uint8Array = res.ok ? (res.data as Uint8Array) : new Uint8Array(0);
 
   const books = new Map<string, BookRecord.Record>();
   const buzzes = new Map<string, BuzzRecord.Record>();

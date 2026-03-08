@@ -2,8 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { type Plugin, type ViteDevServer } from "vite";
 
 const VITE_DEV_MARKER = "<!-- INJECT_VITE_DEV -->";
-const VITE_CLIENT_SCRIPT =
-  '<script type="module" src="/@vite/client"></script>';
+const VITE_CLIENT_SCRIPT = '<script type="module" src="/@vite/client"></script>';
 
 /** Extensions that Vite serves as static/assets; paths ending with these are not proxied. */
 const STATIC_EXTENSIONS = new Set([
@@ -101,10 +100,7 @@ export function ssrHtmlTransform(): Plugin {
 
         try {
           // Collect request body for POST/PUT/PATCH so we can forward it
-          const hasBody =
-            req.method === "POST" ||
-            req.method === "PUT" ||
-            req.method === "PATCH";
+          const hasBody = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
           let body: Buffer | undefined;
           if (hasBody && req.headers["content-length"]) {
             const chunks: Buffer[] = [];
@@ -159,7 +155,8 @@ export function ssrHtmlTransform(): Plugin {
             bunRes.headers.forEach((value, key) => {
               const k = key.toLowerCase();
               // fetch() auto-decompresses; forwarding Content-Encoding would cause ERR_CONTENT_DECODING_FAILED
-              if (k === "transfer-encoding" || k === "content-encoding" || k === "content-length") return;
+              if (k === "transfer-encoding" || k === "content-encoding" || k === "content-length")
+                return;
               res.setHeader(key, value);
             });
             const buf = await bunRes.arrayBuffer();
@@ -173,7 +170,13 @@ export function ssrHtmlTransform(): Plugin {
           res.statusCode = bunRes.status;
           bunRes.headers.forEach((value, key) => {
             const k = key.toLowerCase();
-            if (k === "transfer-encoding" || k === "content-encoding" || k === "content-length" || k === "content-type") return;
+            if (
+              k === "transfer-encoding" ||
+              k === "content-encoding" ||
+              k === "content-length" ||
+              k === "content-type"
+            )
+              return;
             res.setHeader(key, value);
           });
           res.setHeader("Content-Type", "text/html");
@@ -184,9 +187,7 @@ export function ssrHtmlTransform(): Plugin {
           // Return 502 instead of falling through; avoids weird responses that can trigger reload loops
           res.statusCode = 502;
           res.setHeader("Content-Type", "text/plain");
-          res.end(
-            "Backend unavailable (Bun may be restarting). Refresh in a moment.",
-          );
+          res.end("Backend unavailable (Bun may be restarting). Refresh in a moment.");
           return;
         }
       });

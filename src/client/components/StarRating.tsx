@@ -21,10 +21,7 @@ export function calculateStars(rating: number): StarType[] {
   return stars;
 }
 
-export const StarRating: FC<StarRatingProps> = ({
-  initialRating = 0,
-  onChange,
-}) => {
+export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange }) => {
   const [rating, setRating] = useState(initialRating);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);

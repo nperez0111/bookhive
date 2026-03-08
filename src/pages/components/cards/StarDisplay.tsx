@@ -19,8 +19,7 @@ export const StarDisplay: FC<{
             <path
               style={{
                 clipPath: `inset(0 ${
-                  100 -
-                  Math.min(100, Math.max(0, (rating - (star - 1)) * 100))
+                  100 - Math.min(100, Math.max(0, (rating - (star - 1)) * 100))
                 }% 0 0)`,
               }}
               class="fill-current text-amber-500"
@@ -39,9 +38,5 @@ export const StarCount: FC<{
   class?: string;
 }> = ({ count, class: className }) => {
   if (count <= 0) return null;
-  return (
-    <span class={className ?? "text-amber-500"}>
-      {"★".repeat(Math.round(count))}
-    </span>
-  );
+  return <span class={className ?? "text-amber-500"}>{"★".repeat(Math.round(count))}</span>;
 };

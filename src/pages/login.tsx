@@ -13,13 +13,7 @@ export const Login: FC<{
       class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex items-center justify-center rounded-md p-2 lg:top-6 lg:left-6"
     >
       <span class="sr-only">Back to home</span>
-      <svg
-        class="size-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="2"
-        stroke="currentColor"
-      >
+      <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -68,9 +62,7 @@ export const Login: FC<{
           if (meta) {
             meta.setAttribute(
               "content",
-              document.documentElement.classList.contains("dark")
-                ? "#1c1917"
-                : "#d97706",
+              document.documentElement.classList.contains("dark") ? "#1c1917" : "#d97706",
             );
           }
         };
@@ -97,12 +89,7 @@ export const Login: FC<{
         </header>
 
         <section>
-          <form
-            action="/login"
-            method="post"
-            class="form flex flex-col gap-6"
-            id="login-form"
-          >
+          <form action="/login" method="post" class="form flex flex-col gap-6" id="login-form">
             <div class="field">
               <label for="handle" class="label">
                 Bluesky Handle
@@ -139,10 +126,7 @@ export const Login: FC<{
           <p class="text-muted-foreground text-center text-sm">
             Don't have an account?
             <br />
-            <a
-              href="https://bsky.app"
-              class="text-primary font-semibold hover:underline"
-            >
+            <a href="https://bsky.app" class="text-primary font-semibold hover:underline">
               Sign up for Bluesky
             </a>{" "}
             to create one now!
@@ -153,12 +137,8 @@ export const Login: FC<{
     <Script
       script={(document) => {
         const STORAGE_KEY = "bookhive_last_handle";
-        const handleInput = document.getElementById(
-          "handle",
-        ) as HTMLInputElement;
-        const loginForm = document.getElementById(
-          "login-form",
-        ) as HTMLFormElement;
+        const handleInput = document.getElementById("handle") as HTMLInputElement;
+        const loginForm = document.getElementById("login-form") as HTMLFormElement;
 
         // Load stored handle on page load
         if (handleInput && !handleInput.value) {

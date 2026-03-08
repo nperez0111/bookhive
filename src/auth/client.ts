@@ -23,16 +23,12 @@ export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
   const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
   const isLoopback =
-    !publicUrl ||
-    publicUrl.includes("127.0.0.1") ||
-    publicUrl.includes("localhost");
+    !publicUrl || publicUrl.includes("127.0.0.1") || publicUrl.includes("localhost");
   const redirectUris = [`${baseUrl}/oauth/callback`];
 
   return new OAuthClient({
     metadata: {
-      ...(isLoopback
-        ? {}
-        : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
+      ...(isLoopback ? {} : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
       redirect_uris: redirectUris,
       scope: OAUTH_SCOPES,
       ...(isLoopback
@@ -64,10 +60,7 @@ export async function createOAuthClient(kv: Storage) {
       }
       if (lock !== time) {
         return new Promise((resolve, reject) =>
-          setTimeout(
-            () => waitForLock(key, cb, attempt + 1).then(resolve, reject),
-            100,
-          ),
+          setTimeout(() => waitForLock(key, cb, attempt + 1).then(resolve, reject), 100),
         );
       }
       return cb();
@@ -82,21 +75,17 @@ export type SessionClient = {
     name: string,
     opts?: Record<string, unknown>,
   ) => Promise<
-    | { ok: true; data: unknown }
-    | { ok: false; data: { error: string; message?: string } }
+    { ok: true; data: unknown } | { ok: false; data: { error: string; message?: string } }
   >;
   post: (
     name: string,
     opts?: Record<string, unknown>,
   ) => Promise<
-    | { ok: true; data: unknown }
-    | { ok: false; data: { error: string; message?: string } }
+    { ok: true; data: unknown } | { ok: false; data: { error: string; message?: string } }
   >;
 };
 
-export function sessionClientFromOAuthSession(
-  session: OAuthSession,
-): SessionClient {
+export function sessionClientFromOAuthSession(session: OAuthSession): SessionClient {
   const client = new Client({ handler: session });
   return {
     get did() {

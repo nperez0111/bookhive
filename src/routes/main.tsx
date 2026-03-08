@@ -2,7 +2,7 @@
  * Main app router: context, auth, layout, images, then domain routes.
  * Composes pages, profile, books, comments, api and xrpc.
  */
-import { createIPX, ipxFSStorage, ipxHttpStorage } from "ipx";
+import { createIPX, createIPXFetchHandler, ipxFSStorage, ipxHttpStorage } from "ipx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
 import { endTime, startTime, timing } from "hono/timing";
@@ -19,8 +19,8 @@ import { createXrpcRouter } from "../xrpc/router";
 import {
   searchBooks,
   ensureBookIdentifiersCurrent,
-  refetchBuzzes,
   refetchBooks,
+  refetchBuzzes,
   syncFollowsIfNeeded,
 } from "./lib";
 import pages from "./pages";
@@ -72,14 +72,9 @@ export function mainRouter(deps: AppDeps): HonoServer {
   loginRouter(app, {
     onLogin: async ({ agent, ctx }) => {
       if (!agent) return;
-      await Promise.race([
-        Promise.all([
-          refetchBooks({ agent, ctx }).then(() =>
-            refetchBuzzes({ agent, ctx }),
-          ),
-          syncFollowsIfNeeded({ agent, ctx }),
-        ]),
-        new Promise((resolve) => setTimeout(resolve, 800)),
+      void Promise.all([
+        refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
+        syncFollowsIfNeeded({ agent, ctx }),
       ]);
     },
   });
@@ -92,11 +87,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
       endTime(c, "layout_get_profile");
       startTime(c, "layout_render");
       const result = (
-        <Layout
-          {...props}
-          assetUrls={c.get("assetUrls") ?? undefined}
-          url={c.req.url}
-        >
+        <Layout {...props} assetUrls={c.get("assetUrls") ?? undefined} url={c.req.url}>
           <div class="flex min-h-screen">
             <Sidebar
               currentPath={c.req.path}
@@ -111,11 +102,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
                   : undefined
               }
             />
-            <div
-              id="sidebar-backdrop"
-              class="sidebar-backdrop"
-              aria-hidden="true"
-            />
+            <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true" />
             <div class="layout-content flex flex-1 flex-col">
               <Navbar profile={profileData} />
               <main class="flex-1 p-4 lg:p-6">
