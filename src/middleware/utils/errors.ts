@@ -15,9 +15,7 @@ type LikelyNeonDbError = {
 /**
  * Quick and dirty type guard to check if an error is *likely* a NeonDbError
  */
-export function isLikelyNeonDbError(
-  error: unknown,
-): error is LikelyNeonDbError {
+export function isLikelyNeonDbError(error: unknown): error is LikelyNeonDbError {
   return (
     typeof error === "object" &&
     error !== null &&

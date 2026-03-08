@@ -18,14 +18,10 @@ document.addEventListener("DOMContentLoaded", () => {
       <StarRating
         initialRating={Number(starRating.dataset["rating"]) || 0}
         onChange={(rating) => {
-          const ratingInput = document.getElementById(
-            "rating-value",
-          ) as HTMLInputElement;
+          const ratingInput = document.getElementById("rating-value") as HTMLInputElement;
           ratingInput.value = rating.toString();
 
-          const ratingForm = document.getElementById(
-            "rating-form",
-          ) as HTMLFormElement;
+          const ratingForm = document.getElementById("rating-form") as HTMLFormElement;
 
           ratingForm.submit();
         }}
@@ -43,20 +39,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const tabInputs = document.querySelectorAll('input[name="tabs"]');
   if (tabInputs.length > 0) {
     const updateTitle = () => {
-      const activeTab = document.querySelector(
-        'input[name="tabs"]:checked',
-      ) as HTMLInputElement;
+      const activeTab = document.querySelector('input[name="tabs"]:checked') as HTMLInputElement;
       if (!activeTab) return;
 
       const baseTitle = "BookHive";
 
       // Find the corresponding label for this tab input
-      const tabLabel = document.querySelector(
-        `label[for="${activeTab.id}"]`,
-      ) as HTMLLabelElement;
-      const tabTitle = tabLabel
-        ? tabLabel.textContent?.trim() || "Home"
-        : "Home";
+      const tabLabel = document.querySelector(`label[for="${activeTab.id}"]`) as HTMLLabelElement;
+      const tabTitle = tabLabel ? tabLabel.textContent?.trim() || "Home" : "Home";
 
       document.title = `${baseTitle} | ${tabTitle}`;
     };

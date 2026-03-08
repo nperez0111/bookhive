@@ -17,11 +17,7 @@ import {
   type GoodreadsBook,
   type StorygraphBook,
 } from "../utils/csv";
-import {
-  getUserRepoRecords,
-  updateBookRecords,
-  updateBookRecord,
-} from "../utils/getBook";
+import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
 import { searchBooks } from "./lib";
 
 const importApp = new Hono<AppEnv>();
@@ -62,10 +58,7 @@ importApp.post(
         }),
       });
 
-      const [countStream, uploadStream] = exportFile
-        .stream()
-        .pipeThrough(parser)
-        .tee();
+      const [countStream, uploadStream] = exportFile.stream().pipeThrough(parser).tee();
 
       void countStream.pipeTo(
         new WritableStream({
@@ -152,25 +145,20 @@ importApp.post(
                           return null;
                         }
 
-                        const existingIdentifiers: BookIdentifiers =
-                          hiveBook.identifiers
-                            ? JSON.parse(hiveBook.identifiers)
-                            : {};
+                        const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                          ? JSON.parse(hiveBook.identifiers)
+                          : {};
                         const newIdentifiers: BookIdentifiers = {
                           ...existingIdentifiers,
                           hiveId: hiveBook.id,
-                          goodreadsId:
-                            book.bookId || existingIdentifiers.goodreadsId,
+                          goodreadsId: book.bookId || existingIdentifiers.goodreadsId,
                           isbn10: book.isbn || existingIdentifiers.isbn10,
                           isbn13: book.isbn13 || existingIdentifiers.isbn13,
                         };
                         if (
-                          newIdentifiers.goodreadsId !==
-                            existingIdentifiers.goodreadsId ||
-                          newIdentifiers.isbn10 !==
-                            existingIdentifiers.isbn10 ||
-                          newIdentifiers.isbn13 !==
-                            existingIdentifiers.isbn13 ||
+                          newIdentifiers.goodreadsId !== existingIdentifiers.goodreadsId ||
+                          newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                          newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
                           !existingIdentifiers.hiveId
                         ) {
                           await ctx.db
@@ -193,11 +181,8 @@ importApp.post(
                               : "buzz.bookhive.defs#wantToRead",
                             hiveId: hiveBook.id,
                             coverImage: hiveBook.cover ?? undefined,
-                            finishedAt:
-                              book.dateRead?.toISOString() ?? undefined,
-                            stars: book.myRating
-                              ? book.myRating * 2
-                              : undefined,
+                            finishedAt: book.dateRead?.toISOString() ?? undefined,
+                            stars: book.myRating ? book.myRating * 2 : undefined,
                             review: book.myReview ?? undefined,
                             alreadyExists: existingHiveIds.has(hiveBook.id),
                           },
@@ -259,10 +244,7 @@ importApp.post(
                     id: id++,
                   }),
                 });
-                if (
-                  book &&
-                  !(book as { alreadyExists?: boolean })["alreadyExists"]
-                ) {
+                if (book && !(book as { alreadyExists?: boolean })["alreadyExists"]) {
                   uploadedBooks++;
                 }
               }
@@ -292,11 +274,7 @@ importApp.post(
                       updates: bookUpdate,
                     });
                     individualSuccesses++;
-                    if (
-                      !(bookUpdate as { alreadyExists?: boolean })[
-                        "alreadyExists"
-                      ]
-                    ) {
+                    if (!(bookUpdate as { alreadyExists?: boolean })["alreadyExists"]) {
                       uploadedBooks++;
                     }
                   } catch (individualError) {
@@ -325,9 +303,7 @@ importApp.post(
                         numberOfPages: 0,
                         yearPublished: 0,
                         originalPublicationYear: 0,
-                        dateRead: bookUpdate.finishedAt
-                          ? new Date(bookUpdate.finishedAt)
-                          : null,
+                        dateRead: bookUpdate.finishedAt ? new Date(bookUpdate.finishedAt) : null,
                         dateAdded: new Date(),
                         bookshelves: [],
                         bookshelvesWithPositions: "",
@@ -386,9 +362,7 @@ importApp.post(
             isbn13: b.book.isbn13 || undefined,
             stars: b.book.myRating ? b.book.myRating * 2 : undefined,
             review: b.book.myReview || undefined,
-            finishedAt: b.book.dateRead
-              ? b.book.dateRead.toISOString()
-              : undefined,
+            finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
             status: b.book.dateRead ? "buzz.bookhive.defs#finished" : undefined,
             reason: b.reason,
           })),
@@ -438,10 +412,7 @@ importApp.post(
         }),
       });
 
-      const [countStream, uploadStream] = exportFile
-        .stream()
-        .pipeThrough(parser)
-        .tee();
+      const [countStream, uploadStream] = exportFile.stream().pipeThrough(parser).tee();
 
       void countStream.pipeTo(
         new WritableStream({
@@ -529,10 +500,9 @@ importApp.post(
                         }
 
                         if (book.isbn) {
-                          const existingIdentifiers: BookIdentifiers =
-                            hiveBook.identifiers
-                              ? JSON.parse(hiveBook.identifiers)
-                              : {};
+                          const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                            ? JSON.parse(hiveBook.identifiers)
+                            : {};
                           const cleanIsbn = book.isbn.replace(/[-\s]/g, "");
                           const newIdentifiers: BookIdentifiers = {
                             ...existingIdentifiers,
@@ -544,10 +514,8 @@ importApp.post(
                                 : {}),
                           };
                           if (
-                            newIdentifiers.isbn10 !==
-                              existingIdentifiers.isbn10 ||
-                            newIdentifiers.isbn13 !==
-                              existingIdentifiers.isbn13 ||
+                            newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
+                            newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
                             !existingIdentifiers.hiveId
                           ) {
                             await ctx.db
@@ -581,8 +549,7 @@ importApp.post(
                             status,
                             hiveId: hiveBook.id,
                             coverImage: hiveBook.cover ?? undefined,
-                            finishedAt:
-                              book.lastDateRead?.toISOString() ?? undefined,
+                            finishedAt: book.lastDateRead?.toISOString() ?? undefined,
                             stars: book.starRating
                               ? parseInt(String(book.starRating * 2))
                               : undefined,
@@ -647,10 +614,7 @@ importApp.post(
                     id: id++,
                   }),
                 });
-                if (
-                  book &&
-                  !(book as { alreadyExists?: boolean })["alreadyExists"]
-                ) {
+                if (book && !(book as { alreadyExists?: boolean })["alreadyExists"]) {
                   uploadedBooks++;
                 }
               }
@@ -680,11 +644,7 @@ importApp.post(
                       updates: bookUpdate,
                     });
                     individualSuccesses++;
-                    if (
-                      !(bookUpdate as { alreadyExists?: boolean })[
-                        "alreadyExists"
-                      ]
-                    ) {
+                    if (!(bookUpdate as { alreadyExists?: boolean })["alreadyExists"]) {
                       uploadedBooks++;
                     }
                   } catch (individualError) {
@@ -772,9 +732,7 @@ importApp.post(
             isbn13: b.book.isbn || undefined,
             stars: b.book.starRating ? b.book.starRating * 2 : undefined,
             review: b.book.review || undefined,
-            finishedAt: b.book.lastDateRead
-              ? b.book.lastDateRead.toISOString()
-              : undefined,
+            finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
             status:
               b.book.readStatus?.toLowerCase() === "read"
                 ? "buzz.bookhive.defs#finished"

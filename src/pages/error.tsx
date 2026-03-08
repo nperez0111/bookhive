@@ -24,11 +24,7 @@ export const Error: FC<{
   message?: string;
   description?: string;
   statusCode?: number;
-}> = ({
-  message = "Error occurred",
-  description = "Sorry, an error occurred.",
-  statusCode,
-}) => (
+}> = ({ message = "Error occurred", description = "Sorry, an error occurred.", statusCode }) => (
   <main class="grid min-h-full place-items-center px-6 py-24 sm:py-32 lg:px-8">
     <div class="empty flex flex-col items-center justify-center gap-4 text-center">
       <ErrorIcon />
@@ -41,9 +37,7 @@ export const Error: FC<{
         </h1>
       ) : undefined}
       {description ? (
-        <p class="text-muted-foreground max-w-md text-pretty text-sm sm:text-base">
-          {description}
-        </p>
+        <p class="text-muted-foreground max-w-md text-pretty text-sm sm:text-base">{description}</p>
       ) : undefined}
       <div class="mt-2 flex flex-wrap items-center justify-center gap-3">
         <a href="/" class="btn btn-primary">

@@ -19,9 +19,7 @@ export async function getProfile({
   did: string;
 }): Promise<ProfileViewDetailed | null> {
   const sessionClient = await ctx.getSessionAgent();
-  const client = sessionClient
-    ? sessionClient
-    : new Client({ handler: publicHandler });
+  const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
   const profile = await readThroughCache<ProfileViewDetailed | null>(
     ctx.kv,
     "profile:" + did,
@@ -60,9 +58,7 @@ export async function getProfiles({
     dids.map((did) => "profile:" + did),
   );
   const sessionClient = await ctx.getSessionAgent();
-  const client = sessionClient
-    ? sessionClient
-    : new Client({ handler: publicHandler });
+  const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
 
   const missingProfiles = profiles
     .filter((p) => p.value === null)
@@ -83,16 +79,11 @@ export async function getProfiles({
 
     profiles.forEach((p) => {
       if (p.value === null) {
-        p.value =
-          fetchedProfiles.find(
-            (f) => f.did === p.key.slice("profile:".length),
-          ) || null;
+        p.value = fetchedProfiles.find((f) => f.did === p.key.slice("profile:".length)) || null;
       }
     });
 
-    void ctx.kv.setItems(
-      fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })),
-    );
+    void ctx.kv.setItems(fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })));
     await Promise.all(
       fetchedProfiles
         .filter((p) => p.did && p.handle)
@@ -101,8 +92,6 @@ export async function getProfiles({
   }
 
   return profiles
-    .filter((p): p is { key: string; value: ProfileViewDetailed } =>
-      Boolean(p.value),
-    )
+    .filter((p): p is { key: string; value: ProfileViewDetailed } => Boolean(p.value))
     .map((p) => p.value);
 }

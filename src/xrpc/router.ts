@@ -3,12 +3,7 @@
  * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  XRPCRouter,
-  json,
-  XRPCError,
-  AuthRequiredError,
-} from "@atcute/xrpc-server";
+import { XRPCRouter, json, XRPCError, AuthRequiredError } from "@atcute/xrpc-server";
 import {
   BuzzBookhiveSearchBooks,
   BuzzBookhiveListGenres,
@@ -64,29 +59,22 @@ export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
     query: string;
     ctx: Pick<E, "db" | "kv" | "addWideEventContext">;
   }) => Promise<HiveId[]>;
-  ensureBookIdentifiersCurrent: (opts: {
-    ctx: E;
-    book: HiveBook;
-  }) => Promise<void>;
-  getProfile: (opts: {
-    ctx: E;
-    did: string;
-  }) => Promise<ProfileViewDetailed | null>;
+  ensureBookIdentifiersCurrent: (opts: { ctx: E; book: HiveBook }) => Promise<void>;
+  getProfile: (opts: { ctx: E; did: string }) => Promise<ProfileViewDetailed | null>;
 };
 
 const xrpcContextStorage = new AsyncLocalStorage<XrpcContext>();
 
 function getCtx(): XrpcContext {
   const ctx = xrpcContextStorage.getStore();
-  if (!ctx)
-    throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
+  if (!ctx) throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
   return ctx;
 }
 
-export function createXrpcRouter<
-  E extends XrpcContext,
-  V extends { ctx: E } = { ctx: E },
->(app: import("hono").Hono<{ Variables: V }>, deps: XrpcDeps<E>): void {
+export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = { ctx: E }>(
+  app: import("hono").Hono<{ Variables: V }>,
+  deps: XrpcDeps<E>,
+): void {
   const router = new XRPCRouter();
 
   router.addQuery(BuzzBookhiveSearchBooks, {
@@ -206,8 +194,7 @@ export function createXrpcRouter<
         throw new XRPCError({
           status: 400,
           error: "InvalidRequest",
-          description:
-            "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
+          description: "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
         });
       }
 
@@ -265,9 +252,7 @@ export function createXrpcRouter<
           });
         }
         const response: GetBookIdentifiersOutputSchema = {
-          bookIdentifiers: toBookIdentifiersOutput(
-            deriveBookIdentifiers(hiveBook),
-          ),
+          bookIdentifiers: toBookIdentifiersOutput(deriveBookIdentifiers(hiveBook)),
         };
         return json(response);
       }
@@ -391,9 +376,7 @@ export function createXrpcRouter<
           }
         : {
             hiveId: book.id,
-            ...toBookIdentifiersOutput(
-              await findBookIdentifiersByLookup({ ctx, hiveId: book.id }),
-            ),
+            ...toBookIdentifiersOutput(await findBookIdentifiersByLookup({ ctx, hiveId: book.id })),
           };
 
       const response: GetBookOutputSchema & {
@@ -492,11 +475,7 @@ export function createXrpcRouter<
       const friendsBuzzes = await ctx.db
         .selectFrom("user_book")
         .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .innerJoin(
-          "user_follows",
-          "user_book.userDid",
-          "user_follows.followsDid",
-        )
+        .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
         .select(BookFields)
         .where("user_follows.userDid", "=", did)
         .where("user_follows.isActive", "=", 1)
@@ -504,15 +483,10 @@ export function createXrpcRouter<
         .limit(50)
         .execute();
       const parsedBooks = books.map((book) => hydrateUserBook(book));
-      const parsedFriendsBuzzes = friendsBuzzes.map((book) =>
-        hydrateUserBook(book),
-      );
+      const parsedFriendsBuzzes = friendsBuzzes.map((book) => hydrateUserBook(book));
 
       const profileHiveIds = [
-        ...new Set([
-          ...books.map((b) => b.hiveId),
-          ...friendsBuzzes.map((b) => b.hiveId),
-        ]),
+        ...new Set([...books.map((b) => b.hiveId), ...friendsBuzzes.map((b) => b.hiveId)]),
       ];
       const profileIdRows =
         profileHiveIds.length > 0
@@ -528,11 +502,7 @@ export function createXrpcRouter<
 
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
-          new Set(
-            books
-              .map((c) => c.userDid)
-              .concat(friendsBuzzes.map((r) => r.userDid)),
-          ),
+          new Set(books.map((c) => c.userDid).concat(friendsBuzzes.map((r) => r.userDid))),
         ),
       );
 
@@ -559,8 +529,7 @@ export function createXrpcRouter<
             (b) =>
               b.status &&
               b.status in BOOK_STATUS_MAP &&
-              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] ===
-                "read",
+              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read",
           ).length,
           reviews: books.filter((b) => b.review).length,
           isFollowing,
@@ -607,10 +576,7 @@ export function createXrpcRouter<
           .reduce(
             (acc, b) => {
               const existing = acc.find((a) => a.hiveId === b.hiveId);
-              if (
-                !existing ||
-                new Date(b.createdAt) > new Date(existing.createdAt)
-              ) {
+              if (!existing || new Date(b.createdAt) > new Date(existing.createdAt)) {
                 if (existing) {
                   acc.splice(acc.indexOf(existing), 1);
                 }
@@ -618,9 +584,7 @@ export function createXrpcRouter<
                   type:
                     b.status &&
                     b.status in BOOK_STATUS_MAP &&
-                    BOOK_STATUS_MAP[
-                      b.status as keyof typeof BOOK_STATUS_MAP
-                    ] === "read"
+                    BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
                       ? "finished"
                       : b.review
                         ? "review"
@@ -643,10 +607,7 @@ export function createXrpcRouter<
               userHandle: string;
             }>,
           )
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .slice(0, 15),
       };
 
@@ -654,7 +615,5 @@ export function createXrpcRouter<
     },
   });
 
-  app.all("/xrpc/*", (c) =>
-    xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)),
-  );
+  app.all("/xrpc/*", (c) => xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)));
 }

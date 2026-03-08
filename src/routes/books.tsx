@@ -58,15 +58,13 @@ const app = new Hono<AppEnv>()
 
     const needsEnrichment =
       !book.enrichedAt ||
-      new Date(book.enrichedAt) <
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (needsEnrichment) {
       enrichBookWithDetailedData(book, c.get("ctx")).catch((error) => {
         c.get("ctx").addWideEventContext({
           enrichment_failed_book_view: true,
           bookId: book.id,
-          error:
-            error instanceof Error ? error.message : (String(error) as string),
+          error: error instanceof Error ? error.message : (String(error) as string),
         });
       });
     }
@@ -214,21 +212,11 @@ const app = new Hono<AppEnv>()
         } = c.req.valid("form");
 
         let bookProgress: Record<string, unknown> | undefined;
-        if (
-          currentPage ||
-          totalPages ||
-          currentChapter ||
-          totalChapters ||
-          percent !== undefined
-        ) {
+        if (currentPage || totalPages || currentChapter || totalChapters || percent !== undefined) {
           if (currentPage && totalPages && currentPage > totalPages) {
             throw new Error("Current page cannot exceed total pages");
           }
-          if (
-            currentChapter &&
-            totalChapters &&
-            currentChapter > totalChapters
-          ) {
+          if (currentChapter && totalChapters && currentChapter > totalChapters) {
             throw new Error("Current chapter cannot exceed total chapters");
           }
           bookProgress = {

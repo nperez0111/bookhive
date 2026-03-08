@@ -42,13 +42,7 @@ export function isAuthorizedExportRequest(opts: {
   return timingSafeEqualString(match[1]!, sharedSecret);
 }
 
-async function sqliteBackup({
-  sourcePath,
-  destPath,
-}: {
-  sourcePath: string;
-  destPath: string;
-}) {
+async function sqliteBackup({ sourcePath, destPath }: { sourcePath: string; destPath: string }) {
   const db = new DatabaseSync(sourcePath);
   try {
     db.exec("PRAGMA busy_timeout = 5000");
@@ -61,11 +55,7 @@ async function sqliteBackup({
 }
 
 function shouldExcludeTable(name: string): boolean {
-  return (
-    name === "auth_sessions" ||
-    name === "auth_state" ||
-    name.startsWith("auth_")
-  );
+  return name === "auth_sessions" || name === "auth_state" || name.startsWith("auth_");
 }
 
 async function createSanitizedKvCopy({
@@ -117,9 +107,9 @@ async function createSanitizedKvCopy({
         if (shouldExcludeTable(name)) continue;
         tableSql.push(obj.sql);
         const quotedTable = `"${name.replace(/"/g, '""')}"`;
-        const cols = src
-          .prepare(`PRAGMA table_info(${quotedTable})`)
-          .all() as Array<{ name: string }>;
+        const cols = src.prepare(`PRAGMA table_info(${quotedTable})`).all() as Array<{
+          name: string;
+        }>;
         if (cols.length === 0) {
           throw new Error(`Failed to retrieve column info for table: ${name}`);
         }
@@ -144,9 +134,10 @@ async function createSanitizedKvCopy({
       // Copy data by reading from src and inserting into dest (no ATTACH —
       // the app may have the source DB open, which would lock it)
       for (const { name, colList, colNames, quotedTable } of tablesToCopy) {
-        const rows = src
-          .prepare(`SELECT ${colList} FROM ${quotedTable}`)
-          .all() as Record<string, unknown>[];
+        const rows = src.prepare(`SELECT ${colList} FROM ${quotedTable}`).all() as Record<
+          string,
+          unknown
+        >[];
         if (rows.length === 0) continue;
         const placeholders = colNames.map(() => "?").join(", ");
         const safeName = `"${name.replace(/"/g, '""')}"`;
@@ -154,11 +145,7 @@ async function createSanitizedKvCopy({
           `INSERT INTO main.${safeName} (${colList}) VALUES (${placeholders})`,
         );
         for (const row of rows) {
-          insert.run(
-            ...colNames.map(
-              (col) => row[col] as string | number | bigint | null,
-            ),
-          );
+          insert.run(...colNames.map((col) => row[col] as string | number | bigint | null));
         }
       }
 
@@ -169,9 +156,7 @@ async function createSanitizedKvCopy({
       dest.exec("COMMIT");
     } catch (e) {
       dest.exec("ROLLBACK");
-      throw new Error(
-        `Failed to create sanitized KV copy: ${toError(e).message}`,
-      );
+      throw new Error(`Failed to create sanitized KV copy: ${toError(e).message}`);
     }
 
     dest.exec("VACUUM");
@@ -181,11 +166,7 @@ async function createSanitizedKvCopy({
   }
 }
 
-function createTgz(
-  cwd: string,
-  outputFile: string,
-  files: string[],
-): Promise<void> {
+function createTgz(cwd: string, outputFile: string, files: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("tar", ["-czf", outputFile, "-C", cwd, ...files], {
       stdio: ["ignore", "ignore", "pipe"],
@@ -196,11 +177,7 @@ function createTgz(
     proc.on("close", (code) =>
       code === 0
         ? resolve()
-        : reject(
-            new Error(
-              `tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`,
-            ),
-          ),
+        : reject(new Error(`tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`)),
     );
   });
 }
@@ -223,9 +200,7 @@ export function createTgzReadStream(
       callbacks?.onClose?.();
     } else {
       callbacks?.onError?.(
-        new Error(
-          `tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`,
-        ),
+        new Error(`tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`),
       );
     }
   });
@@ -237,9 +212,7 @@ function computeFileMd5(filePath: string): string {
   return crypto.createHash("md5").update(content).digest("hex");
 }
 
-async function getFileStats(
-  filePath: string,
-): Promise<{ md5: string; size: number }> {
+async function getFileStats(filePath: string): Promise<{ md5: string; size: number }> {
   const { size } = await fsp.stat(filePath);
   return { md5: computeFileMd5(filePath), size };
 }
@@ -278,9 +251,7 @@ export async function prepareSanitizedExportFiles(opts: {
     try {
       await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
     } catch (err) {
-      throw new Error(
-        `Failed to backup main database from ${dbPath}: ${toError(err).message}`,
-      );
+      throw new Error(`Failed to backup main database from ${dbPath}: ${toError(err).message}`);
     }
 
     const includedFiles: ExportManifest["files"] = [];
@@ -378,9 +349,7 @@ export async function createSanitizedExportArchive(opts: {
     try {
       await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
     } catch (err) {
-      throw new Error(
-        `Failed to backup main database from ${dbPath}: ${toError(err).message}`,
-      );
+      throw new Error(`Failed to backup main database from ${dbPath}: ${toError(err).message}`);
     }
 
     const includedFiles: ExportManifest["files"] = [];
@@ -450,11 +419,7 @@ export async function createSanitizedExportArchive(opts: {
 
     const manifestPath = path.join(tmpDir, "manifest.json");
     try {
-      await fsp.writeFile(
-        manifestPath,
-        JSON.stringify(manifest, null, 2) + "\n",
-        "utf8",
-      );
+      await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
     } catch (err) {
       throw new Error(`Failed to write manifest file: ${toError(err).message}`);
     }
@@ -490,10 +455,8 @@ export async function cleanupExportPaths(paths: {
   tmpDir?: string;
 }): Promise<void> {
   const promises: Promise<unknown>[] = [];
-  if (paths.archivePath)
-    promises.push(fsp.rm(paths.archivePath, { force: true }));
-  if (paths.tmpDir)
-    promises.push(fsp.rm(paths.tmpDir, { recursive: true, force: true }));
+  if (paths.archivePath) promises.push(fsp.rm(paths.archivePath, { force: true }));
+  if (paths.tmpDir) promises.push(fsp.rm(paths.tmpDir, { recursive: true, force: true }));
   await Promise.allSettled(promises);
 }
 

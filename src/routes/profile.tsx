@@ -72,9 +72,7 @@ const app = new Hono<AppEnv>()
   })
   .get("/profile/:handle/image", async (c) => {
     const handle = c.req.param("handle");
-    const did = isDid(handle)
-      ? handle
-      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     const profile = await getProfile({ ctx: c.get("ctx"), did: did! });
     if (!profile || !profile.avatar) {
       return c.html(
@@ -114,9 +112,7 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "resolveDid");
-    const did = isDid(handle)
-      ? handle
-      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     endTime(c, "resolveDid");
 
     if (!did) {
@@ -236,9 +232,7 @@ const app = new Hono<AppEnv>()
 
     let readingChallengeGoal: number | null = null;
     if (isOwnProfile) {
-      const goalStr = await c
-        .get("ctx")
-        .kv.getItem(`reading-challenge:${did}:${year}`);
+      const goalStr = await c.get("ctx").kv.getItem(`reading-challenge:${did}:${year}`);
       if (goalStr != null && typeof goalStr === "string") {
         const parsed = parseInt(goalStr, 10);
         if (!Number.isNaN(parsed) && parsed > 0) readingChallengeGoal = parsed;
@@ -271,18 +265,14 @@ const app = new Hono<AppEnv>()
   .get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
     startTime(c, "resolveDid");
-    const did = isDid(handle)
-      ? handle
-      : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     endTime(c, "resolveDid");
 
     if (!did) {
       return c.render(
         <Fragment>
           <h1>Profile {handle} not found</h1>
-          <p>
-            This profile may not exist or has not logged any books on bookhive
-          </p>
+          <p>This profile may not exist or has not logged any books on bookhive</p>
         </Fragment>,
         { title: "Profile Not Found" },
       );
@@ -337,11 +327,7 @@ const app = new Hono<AppEnv>()
     endTime(c, "session");
 
     // DIDs that have at least one book on BookHive (for following/followers filtering)
-    const buzzersSubquery = c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .select("userDid")
-      .distinct();
+    const buzzersSubquery = c.get("ctx").db.selectFrom("user_book").select("userDid").distinct();
 
     startTime(c, "followCounts");
     const [followingCountRes, followersCountRes] = await Promise.all([
@@ -392,12 +378,8 @@ const app = new Hono<AppEnv>()
     const followingDids = followingRows.map((r) => r.followsDid);
     const followersDids = followersRows.map((r) => r.userDid);
     const [followingProfiles, followersProfiles] = await Promise.all([
-      followingDids.length > 0
-        ? getProfiles({ ctx: c.get("ctx"), dids: followingDids })
-        : [],
-      followersDids.length > 0
-        ? getProfiles({ ctx: c.get("ctx"), dids: followersDids })
-        : [],
+      followingDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followingDids }) : [],
+      followersDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followersDids }) : [],
     ]);
     endTime(c, "followingFollowers");
 

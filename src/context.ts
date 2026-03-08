@@ -111,18 +111,9 @@ export async function createAppDeps(): Promise<AppDeps> {
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount(
-    "profile:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "profile" }),
-  );
-  kv.mount(
-    "identity:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "identity" }),
-  );
-  kv.mount(
-    "follows_sync:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync" }),
-  );
+  kv.mount("profile:", sqliteKv({ location: env.KV_DB_PATH, table: "profile" }));
+  kv.mount("identity:", sqliteKv({ location: env.KV_DB_PATH, table: "identity" }));
+  kv.mount("follows_sync:", sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync" }));
   kv.mount(
     "auth_session:",
     sqliteKv({
@@ -140,17 +131,9 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
   const oauthClient = await createOAuthClient(kv);
-  const baseIdResolver = createCachingBaseIdResolver(
-    kv,
-    createBaseIdResolver(),
-  );
-  const ingester = createIngester(db, kv, (wideEvent) =>
-    logger.info(wideEvent),
-  );
-  const resolver = createCachingBidirectionalResolver(
-    kv,
-    createBidirectionalResolverAtcute(),
-  );
+  const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
+  const ingester = createIngester(db, kv, (wideEvent) => logger.info(wideEvent));
+  const resolver = createCachingBidirectionalResolver(kv, createBidirectionalResolverAtcute());
 
   ingester.start();
 
@@ -172,10 +155,7 @@ export type SessionTiming = {
 };
 
 const SESSION_CLIENT_CACHE_TTL_MS = 30_000; // 30s in-memory cache to avoid restore+getTokenInfo on every request
-const sessionClientCache = new Map<
-  string,
-  { client: SessionClient; expiresAt: number }
->();
+const sessionClientCache = new Map<string, { client: SessionClient; expiresAt: number }>();
 
 function getCachedSessionClient(did: string): SessionClient | null {
   const entry = sessionClientCache.get(did);

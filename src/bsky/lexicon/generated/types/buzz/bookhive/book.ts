@@ -57,9 +57,7 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @maximum 10
      */
     stars: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 10),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
     ),
     /**
      * The date the user started reading the book

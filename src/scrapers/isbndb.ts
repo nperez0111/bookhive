@@ -99,18 +99,13 @@ export default class IsbnDb {
       if (!response.ok) throw new Error(response.statusText);
       const data = (await response.json()) as IsbnDbSearchResponse;
 
-      return data.books.map((result) =>
-        this.parseSearchResult(result, genericCover),
-      );
+      return data.books.map((result) => this.parseSearchResult(result, genericCover));
     } catch {
       return [];
     }
   }
 
-  private parseSearchResult(
-    book: IsbnDbBook,
-    genericCover: string,
-  ): BookResult {
+  private parseSearchResult(book: IsbnDbBook, genericCover: string): BookResult {
     return {
       id: `bk_${sha256base64(
         objectHash({
@@ -142,10 +137,7 @@ export default class IsbnDb {
     };
   }
 
-  async lookupIsbn(
-    isbn: string,
-    genericCover: string = "",
-  ): Promise<BookResult | null> {
+  async lookupIsbn(isbn: string, genericCover: string = ""): Promise<BookResult | null> {
     if (!this.active) return null;
 
     try {

@@ -47,10 +47,7 @@ export const GenresDirectory: FC = async () => {
     // Bleed edge-to-edge within main to cover the honeycomb background
     <div class="bg-background -mx-4 -my-4 min-h-full px-4 py-6 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-8">
       <div class="mx-auto max-w-5xl space-y-8">
-        <nav
-          class="text-muted-foreground flex items-center gap-2 text-sm"
-          aria-label="Breadcrumb"
-        >
+        <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
           <a href="/" class="hover:text-foreground transition-colors">
             Home
           </a>
@@ -66,9 +63,7 @@ export const GenresDirectory: FC = async () => {
           <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
             Explore Genres
           </h1>
-          <p class="text-muted-foreground mt-2 text-base">
-            Discover books by genre.
-          </p>
+          <p class="text-muted-foreground mt-2 text-base">Discover books by genre.</p>
         </div>
 
         {/* Featured genres — count as the hero number */}
@@ -122,33 +117,30 @@ export const GenresDirectory: FC = async () => {
             />
           </div>
 
-          <p
-            id="genre-empty"
-            class="hidden py-8 text-center text-sm text-muted-foreground"
-          >
+          <p id="genre-empty" class="hidden py-8 text-center text-sm text-muted-foreground">
             No genres match your search.
           </p>
 
           <div id="genre-list" class="card overflow-hidden">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {genres.map((genre) => (
-              <a
-                href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
-                data-genre={genre.genre.toLowerCase()}
-                class="group flex items-center gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/60"
-                style={`--genre-name: genre-${genre.genre}`}
-              >
-                <span class="w-7 shrink-0 text-center text-lg leading-none" aria-hidden="true">
-                  {getEmoji(genre.genre)}
-                </span>
-                <span class="genre-name flex-1 text-sm font-medium text-foreground group-hover:text-primary">
-                  {genre.genre}
-                </span>
-                <span class="text-muted-foreground shrink-0 text-xs tabular-nums">
-                  {formatCount(genre.count)}
-                </span>
-              </a>
-            ))}
+              {genres.map((genre) => (
+                <a
+                  href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
+                  data-genre={genre.genre.toLowerCase()}
+                  class="group flex items-center gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/60"
+                  style={`--genre-name: genre-${genre.genre}`}
+                >
+                  <span class="w-7 shrink-0 text-center text-lg leading-none" aria-hidden="true">
+                    {getEmoji(genre.genre)}
+                  </span>
+                  <span class="genre-name flex-1 text-sm font-medium text-foreground group-hover:text-primary">
+                    {genre.genre}
+                  </span>
+                  <span class="text-muted-foreground shrink-0 text-xs tabular-nums">
+                    {formatCount(genre.count)}
+                  </span>
+                </a>
+              ))}
             </div>
           </div>
         </section>

@@ -94,10 +94,7 @@ async function getAllAuthors(db: Kysely<DatabaseSchema>): Promise<AuthorStats[]>
   return result.rows;
 }
 
-const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({
-  thumbnail,
-  author,
-}) => {
+const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({ thumbnail, author }) => {
   if (thumbnail) {
     return (
       <img
@@ -110,9 +107,7 @@ const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({
   }
   return (
     <div class="bg-muted flex h-16 w-12 shrink-0 items-center justify-center rounded">
-      <span class="text-muted-foreground text-lg font-bold">
-        {author[0]?.toUpperCase() ?? "?"}
-      </span>
+      <span class="text-muted-foreground text-lg font-bold">{author[0]?.toUpperCase() ?? "?"}</span>
     </div>
   );
 };
@@ -126,19 +121,20 @@ export const AuthorDirectory: FC = async () => {
   startTime(c, "authors-list");
 
   const [featured, all] = await Promise.all([
-    getTopAuthors(db, FEATURED_COUNT)
-      .then((r) => { endTime(c, "authors-featured"); return r; }),
-    getAllAuthors(db)
-      .then((r) => { endTime(c, "authors-list"); return r; }),
+    getTopAuthors(db, FEATURED_COUNT).then((r) => {
+      endTime(c, "authors-featured");
+      return r;
+    }),
+    getAllAuthors(db).then((r) => {
+      endTime(c, "authors-list");
+      return r;
+    }),
   ]);
 
   return (
     <div class="bg-background -mx-4 -my-4 min-h-full px-4 py-6 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-8">
       <div class="mx-auto max-w-5xl space-y-8">
-        <nav
-          class="text-muted-foreground flex items-center gap-2 text-sm"
-          aria-label="Breadcrumb"
-        >
+        <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
           <a href="/" class="hover:text-foreground transition-colors">
             Home
           </a>
@@ -170,10 +166,7 @@ export const AuthorDirectory: FC = async () => {
                 href={`/authors/${encodeURIComponent(author.author)}`}
                 class="card group flex items-center gap-3 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
               >
-                <AuthorCover
-                  thumbnail={author.thumbnail}
-                  author={author.author}
-                />
+                <AuthorCover thumbnail={author.thumbnail} author={author.author} />
                 <div class="min-w-0">
                   <p class="truncate text-sm font-semibold leading-tight text-foreground group-hover:text-primary">
                     {author.author}
@@ -182,9 +175,7 @@ export const AuthorDirectory: FC = async () => {
                     {formatCount(author.bookCount)} books
                   </p>
                   {author.avgRating && (
-                    <p class="text-muted-foreground text-xs">
-                      ★ {author.avgRating.toFixed(1)}
-                    </p>
+                    <p class="text-muted-foreground text-xs">★ {author.avgRating.toFixed(1)}</p>
                   )}
                 </div>
               </a>
@@ -218,10 +209,7 @@ export const AuthorDirectory: FC = async () => {
             />
           </div>
 
-          <p
-            id="author-empty"
-            class="hidden py-8 text-center text-sm text-muted-foreground"
-          >
+          <p id="author-empty" class="hidden py-8 text-center text-sm text-muted-foreground">
             No authors match your search.
           </p>
 

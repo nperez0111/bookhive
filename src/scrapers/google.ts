@@ -63,8 +63,7 @@ class Google {
   private static readonly DESCRIPTION = "Google Books";
   private static readonly META_URL = "https://books.google.com/";
   private static readonly BOOK_URL = "https://books.google.com/books?id=";
-  private static readonly SEARCH_URL =
-    "https://www.googleapis.com/books/v1/volumes?q=";
+  private static readonly SEARCH_URL = "https://www.googleapis.com/books/v1/volumes?q=";
 
   private readonly active: boolean;
 
@@ -72,10 +71,7 @@ class Google {
     this.active = active;
   }
 
-  private getTitleTokens(
-    title: string,
-    stripJoiners: boolean = true,
-  ): string[] {
+  private getTitleTokens(title: string, stripJoiners: boolean = true): string[] {
     // Title patterns to clean up the search string
     const titlePatterns: [RegExp, string][] = [
       // Remove things like: (2010) (Omnibus) etc.
@@ -108,11 +104,7 @@ class Google {
       .split(/\s+/)
       .map((token) => token.trim().replace(/['"]/g, ""))
       .filter((token) => token.length > 0)
-      .filter(
-        (token) =>
-          !stripJoiners ||
-          !["a", "and", "the", "&"].includes(token.toLowerCase()),
-      );
+      .filter((token) => !stripJoiners || !["a", "and", "the", "&"].includes(token.toLowerCase()));
 
     return tokens;
   }
@@ -177,9 +169,7 @@ class Google {
     match.description = result.volumeInfo.description || "";
     match.languages = this.parseLanguages(result.volumeInfo, locale);
     match.publisher = result.volumeInfo.publisher || "";
-    match.publishedDate = this.parsePublishedDate(
-      result.volumeInfo.publishedDate,
-    );
+    match.publishedDate = this.parsePublishedDate(result.volumeInfo.publishedDate);
     match.rating = result.volumeInfo.averageRating || 0;
     match.series = "";
     match.series_index = 1;
@@ -203,10 +193,7 @@ class Google {
     }
   }
 
-  private parseCover(
-    volumeInfo: GoogleVolumeInfo,
-    genericCover: string,
-  ): string {
+  private parseCover(volumeInfo: GoogleVolumeInfo, genericCover: string): string {
     if (volumeInfo.imageLinks?.thumbnail) {
       let coverUrl = volumeInfo.imageLinks.thumbnail;
 
@@ -221,19 +208,11 @@ class Google {
     return genericCover;
   }
 
-  private parseLanguages(
-    volumeInfo: GoogleVolumeInfo,
-    locale: string,
-  ): string[] {
+  private parseLanguages(volumeInfo: GoogleVolumeInfo, locale: string): string[] {
     const languageIso2 = volumeInfo.language || "";
 
     return languageIso2
-      ? [
-          this.getLanguageName(
-            locale as keyof typeof LANGUAGE_NAMES,
-            this.getLang3(languageIso2),
-          ),
-        ]
+      ? [this.getLanguageName(locale as keyof typeof LANGUAGE_NAMES, this.getLang3(languageIso2))]
       : [];
   }
 
@@ -264,9 +243,7 @@ class Google {
       }
       // Convert 2-letter code to 3-letter code
       if (lang.length === 2) {
-        return (
-          languageMap[lang.toLowerCase() as keyof typeof languageMap] || lang
-        );
+        return languageMap[lang.toLowerCase() as keyof typeof languageMap] || lang;
       }
       return "";
     } catch {
@@ -274,10 +251,7 @@ class Google {
     }
   }
 
-  private getLanguageName(
-    locale: keyof typeof LANGUAGE_NAMES,
-    langCode: string,
-  ): string {
+  private getLanguageName(locale: keyof typeof LANGUAGE_NAMES, langCode: string): string {
     const UNKNOWN_TRANSLATION = "Unknown";
 
     try {

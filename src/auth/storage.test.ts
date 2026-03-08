@@ -73,10 +73,7 @@ describe("Auth Storage", () => {
       mockKv.get.mockResolvedValueOnce(testSession);
 
       await sessionStore.set("did:plc:test123" as any, testSession);
-      expect(mockKv.set).toHaveBeenCalledWith(
-        "auth_session:did:plc:test123",
-        testSession,
-      );
+      expect(mockKv.set).toHaveBeenCalledWith("auth_session:did:plc:test123", testSession);
 
       const result = await sessionStore.get("did:plc:test123" as any);
       expect(mockKv.get).toHaveBeenCalledWith("auth_session:did:plc:test123");

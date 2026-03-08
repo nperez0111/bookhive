@@ -48,28 +48,16 @@ const updateBookSchema = z.object({
         .object({
           percent: z.coerce.number().int().min(0).max(100).optional(),
           totalPages: z
-            .preprocess(
-              (val) => (val === "" ? undefined : val),
-              z.coerce.number().int().min(1),
-            )
+            .preprocess((val) => (val === "" ? undefined : val), z.coerce.number().int().min(1))
             .optional(),
           currentPage: z
-            .preprocess(
-              (val) => (val === "" ? undefined : val),
-              z.coerce.number().int().min(1),
-            )
+            .preprocess((val) => (val === "" ? undefined : val), z.coerce.number().int().min(1))
             .optional(),
           totalChapters: z
-            .preprocess(
-              (val) => (val === "" ? undefined : val),
-              z.coerce.number().int().min(1),
-            )
+            .preprocess((val) => (val === "" ? undefined : val), z.coerce.number().int().min(1))
             .optional(),
           currentChapter: z
-            .preprocess(
-              (val) => (val === "" ? undefined : val),
-              z.coerce.number().int().min(1),
-            )
+            .preprocess((val) => (val === "" ? undefined : val), z.coerce.number().int().min(1))
             .optional(),
         })
         .partial()
@@ -167,8 +155,7 @@ const app = new Hono<AppEnv>()
       if (!agent) {
         return c.json({ success: false, message: "Invalid Session" }, 401);
       }
-      const { hiveId, comment, parentUri, parentCid, uri } =
-        c.req.valid("json");
+      const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("json");
 
       const originalBuzz = uri
         ? await c
@@ -209,9 +196,7 @@ const app = new Hono<AppEnv>()
                 ? "com.atproto.repo.applyWrites#update"
                 : "com.atproto.repo.applyWrites#create",
               collection: ids.BuzzBookhiveBuzz,
-              rkey: originalBuzz
-                ? originalBuzz.uri.split("/").at(-1)!
-                : TID.now(),
+              rkey: originalBuzz ? originalBuzz.uri.split("/").at(-1)! : TID.now(),
               value: {
                 book: bookRef.value,
                 comment,
@@ -226,8 +211,7 @@ const app = new Hono<AppEnv>()
       const applyOut = response.data as {
         results?: Array<{ $type: string; uri?: string; cid?: string }>;
       } | null;
-      const firstResult =
-        response.ok && applyOut?.results?.[0] ? applyOut.results[0] : undefined;
+      const firstResult = response.ok && applyOut?.results?.[0] ? applyOut.results[0] : undefined;
       if (
         !response.ok ||
         !applyOut?.results ||
@@ -238,10 +222,7 @@ const app = new Hono<AppEnv>()
           firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
         )
       ) {
-        c.set(
-          "requestError",
-          new Error("Failed to write comment to the database"),
-        );
+        c.set("requestError", new Error("Failed to write comment to the database"));
         c.get("ctx").addWideEventContext({
           api_update_comment: "failed",
           hiveId,
@@ -303,207 +284,168 @@ const app = new Hono<AppEnv>()
       });
     },
   )
-  .post(
-    "/follow",
-    zValidator("json", z.object({ did: z.string() })),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
+  .post("/follow", zValidator("json", z.object({ did: z.string() })), async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.json({ success: false, message: "Invalid Session" }, 401);
+    }
+    const { did } = c.req.valid("json");
+    if (!did || did === agent.did) {
+      return c.json({ success: false, message: "Invalid DID" }, 400);
+    }
+    try {
+      const createdAt = new Date().toISOString();
+      const response = await agent.post("com.atproto.repo.applyWrites", {
+        input: {
+          repo: agent.did,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.now(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        },
+      });
+      const applyOut = response.data as {
+        results?: Array<{ $type: string }>;
+      } | null;
+      const firstResult = response.ok && applyOut?.results?.[0] ? applyOut.results[0] : undefined;
+      if (
+        !response.ok ||
+        !applyOut?.results ||
+        applyOut.results.length === 0 ||
+        !firstResult ||
+        firstResult.$type !== "com.atproto.repo.applyWrites#createResult"
+      ) {
+        throw new Error("Failed to follow user");
       }
-      const { did } = c.req.valid("json");
-      if (!did || did === agent.did) {
-        return c.json({ success: false, message: "Invalid DID" }, 400);
-      }
-      try {
-        const createdAt = new Date().toISOString();
-        const response = await agent.post("com.atproto.repo.applyWrites", {
-          input: {
-            repo: agent.did,
-            writes: [
-              {
-                $type: "com.atproto.repo.applyWrites#create",
-                collection: "app.bsky.graph.follow",
-                rkey: TID.now(),
-                value: { subject: did, createdAt },
-              },
-            ],
-          },
-        });
-        const applyOut = response.data as {
-          results?: Array<{ $type: string }>;
-        } | null;
-        const firstResult =
-          response.ok && applyOut?.results?.[0]
-            ? applyOut.results[0]
-            : undefined;
-        if (
-          !response.ok ||
-          !applyOut?.results ||
-          applyOut.results.length === 0 ||
-          !firstResult ||
-          firstResult.$type !== "com.atproto.repo.applyWrites#createResult"
-        ) {
-          throw new Error("Failed to follow user");
-        }
-        await c
-          .get("ctx")
-          .db.insertInto("user_follows")
-          .values({
-            userDid: agent.did,
-            followsDid: did,
-            followedAt: createdAt,
-            syncedAt: createdAt,
+      await c
+        .get("ctx")
+        .db.insertInto("user_follows")
+        .values({
+          userDid: agent.did,
+          followsDid: did,
+          followedAt: createdAt,
+          syncedAt: createdAt,
+          lastSeenAt: createdAt,
+          isActive: 1,
+        })
+        .onConflict((oc) =>
+          oc.columns(["userDid", "followsDid"]).doUpdateSet({
             lastSeenAt: createdAt,
             isActive: 1,
-          })
-          .onConflict((oc) =>
-            oc.columns(["userDid", "followsDid"]).doUpdateSet({
-              lastSeenAt: createdAt,
-              isActive: 1,
-            }),
-          )
-          .execute();
-        c.get("ctx").addWideEventContext({
-          api: "follow",
+          }),
+        )
+        .execute();
+      c.get("ctx").addWideEventContext({
+        api: "follow",
+        userDid: agent.did,
+        targetDid: did,
+      });
+      return c.json({ success: true });
+    } catch (e: unknown) {
+      c.get("ctx").addWideEventContext({
+        api_follow: "failed",
+        userDid: agent.did,
+        targetDid: did,
+        error: (e as Error)?.message ?? "Follow failed",
+      });
+      return c.json(
+        {
+          success: false,
+          message: (e as Error)?.message || "Follow failed",
+        },
+        400,
+      );
+    }
+  })
+  .post("/follow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.redirect("/", 302);
+    }
+    const { did } = c.req.valid("form");
+    let targetHandle = did;
+    try {
+      targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+    } catch {}
+    if (!did || did === agent.did) {
+      return c.redirect(`/profile/${targetHandle}`, 302);
+    }
+    try {
+      const createdAt = new Date().toISOString();
+      await agent.post("com.atproto.repo.applyWrites", {
+        input: {
+          repo: agent.did,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#create",
+              collection: "app.bsky.graph.follow",
+              rkey: TID.now(),
+              value: { subject: did, createdAt },
+            },
+          ],
+        },
+      });
+      const now = new Date().toISOString();
+      await c
+        .get("ctx")
+        .db.insertInto("user_follows")
+        .values({
           userDid: agent.did,
-          targetDid: did,
-        });
-        return c.json({ success: true });
-      } catch (e: unknown) {
-        c.get("ctx").addWideEventContext({
-          api_follow: "failed",
-          userDid: agent.did,
-          targetDid: did,
-          error: (e as Error)?.message ?? "Follow failed",
-        });
-        return c.json(
-          {
-            success: false,
-            message: (e as Error)?.message || "Follow failed",
-          },
-          400,
-        );
-      }
-    },
-  )
-  .post(
-    "/follow-form",
-    zValidator("form", z.object({ did: z.string() })),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.redirect("/", 302);
-      }
-      const { did } = c.req.valid("form");
-      let targetHandle = did;
-      try {
-        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
-      } catch {}
-      if (!did || did === agent.did) {
-        return c.redirect(`/profile/${targetHandle}`, 302);
-      }
-      try {
-        const createdAt = new Date().toISOString();
-        await agent.post("com.atproto.repo.applyWrites", {
-          input: {
-            repo: agent.did,
-            writes: [
-              {
-                $type: "com.atproto.repo.applyWrites#create",
-                collection: "app.bsky.graph.follow",
-                rkey: TID.now(),
-                value: { subject: did, createdAt },
-              },
-            ],
-          },
-        });
-        const now = new Date().toISOString();
-        await c
-          .get("ctx")
-          .db.insertInto("user_follows")
-          .values({
-            userDid: agent.did,
-            followsDid: did,
-            followedAt: createdAt,
-            syncedAt: now,
+          followsDid: did,
+          followedAt: createdAt,
+          syncedAt: now,
+          lastSeenAt: now,
+          isActive: 1,
+        })
+        .onConflict((oc) =>
+          oc.columns(["userDid", "followsDid"]).doUpdateSet({
             lastSeenAt: now,
             isActive: 1,
-          })
-          .onConflict((oc) =>
-            oc.columns(["userDid", "followsDid"]).doUpdateSet({
-              lastSeenAt: now,
-              isActive: 1,
-            }),
-          )
-          .execute();
-        c.get("ctx").addWideEventContext({
-          api: "follow_form",
-          userDid: agent.did,
-          targetDid: did,
-        });
-      } catch (e: unknown) {
-        c.get("ctx").addWideEventContext({
-          api_follow_form: "failed",
-          userDid: agent.did,
-          targetDid: did,
-          error: (e as Error)?.message ?? "Follow failed",
-        });
-      }
-      return c.redirect(`/profile/${targetHandle}`, 302);
-    },
-  )
-  .post(
-    "/unfollow",
-    zValidator("json", z.object({ did: z.string() })),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
-      }
-      const { did } = c.req.valid("json");
-      if (!did || did === agent.did) {
-        return c.json({ success: false, message: "Invalid DID" }, 400);
-      }
-      try {
-        const listRes = await agent.get("com.atproto.repo.listRecords", {
-          params: {
-            repo: agent.did,
-            collection: "app.bsky.graph.follow",
-            limit: 300,
-          },
-        });
-        if (!listRes.ok) throw new Error("Failed to list follows");
-        const data = listRes.data as {
-          records: Array<{ uri: string; value: { subject: string } }>;
-        };
-        const followRecord = data.records.find((r) => r.value?.subject === did);
-        if (!followRecord) {
-          await c
-            .get("ctx")
-            .db.updateTable("user_follows")
-            .set({ isActive: 0 })
-            .where("userDid", "=", agent.did)
-            .where("followsDid", "=", did)
-            .execute();
-          c.get("ctx").addWideEventContext({
-            api: "unfollow",
-            userDid: agent.did,
-            targetDid: did,
-          });
-          return c.json({ success: true });
-        }
-        await agent.post("com.atproto.repo.applyWrites", {
-          input: {
-            repo: agent.did,
-            writes: [
-              {
-                $type: "com.atproto.repo.applyWrites#delete",
-                uri: followRecord.uri,
-              },
-            ],
-          },
-        });
+          }),
+        )
+        .execute();
+      c.get("ctx").addWideEventContext({
+        api: "follow_form",
+        userDid: agent.did,
+        targetDid: did,
+      });
+    } catch (e: unknown) {
+      c.get("ctx").addWideEventContext({
+        api_follow_form: "failed",
+        userDid: agent.did,
+        targetDid: did,
+        error: (e as Error)?.message ?? "Follow failed",
+      });
+    }
+    return c.redirect(`/profile/${targetHandle}`, 302);
+  })
+  .post("/unfollow", zValidator("json", z.object({ did: z.string() })), async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.json({ success: false, message: "Invalid Session" }, 401);
+    }
+    const { did } = c.req.valid("json");
+    if (!did || did === agent.did) {
+      return c.json({ success: false, message: "Invalid DID" }, 400);
+    }
+    try {
+      const listRes = await agent.get("com.atproto.repo.listRecords", {
+        params: {
+          repo: agent.did,
+          collection: "app.bsky.graph.follow",
+          limit: 300,
+        },
+      });
+      if (!listRes.ok) throw new Error("Failed to list follows");
+      const data = listRes.data as {
+        records: Array<{ uri: string; value: { subject: string } }>;
+      };
+      const followRecord = data.records.find((r) => r.value?.subject === did);
+      if (!followRecord) {
         await c
           .get("ctx")
           .db.updateTable("user_follows")
@@ -517,89 +459,109 @@ const app = new Hono<AppEnv>()
           targetDid: did,
         });
         return c.json({ success: true });
-      } catch (e: unknown) {
-        c.get("ctx").addWideEventContext({
-          api_unfollow: "failed",
-          userDid: agent.did,
-          targetDid: did,
-          error: (e as Error)?.message ?? "Unfollow failed",
-        });
-        return c.json(
-          {
-            success: false,
-            message: (e as Error)?.message || "Unfollow failed",
-          },
-          400,
-        );
       }
-    },
-  )
-  .post(
-    "/unfollow-form",
-    zValidator("form", z.object({ did: z.string() })),
-    async (c) => {
-      const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) {
-        return c.redirect("/", 302);
-      }
-      const { did } = c.req.valid("form");
-      let targetHandle = did;
-      try {
-        targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
-      } catch {}
-      if (!did || did === agent.did) {
-        return c.redirect(`/profile/${targetHandle}`, 302);
-      }
-      try {
-        const listRes = await agent.get("com.atproto.repo.listRecords", {
-          params: {
-            repo: agent.did,
-            collection: "app.bsky.graph.follow",
-            limit: 300,
-          },
-        });
-        if (listRes.ok) {
-          const data = listRes.data as {
-            records: Array<{ uri: string; value: { subject: string } }>;
-          };
-          const followRecord = data.records.find((r) => r.value?.subject === did);
-          if (followRecord) {
-            await agent.post("com.atproto.repo.applyWrites", {
-              input: {
-                repo: agent.did,
-                writes: [
-                  {
-                    $type: "com.atproto.repo.applyWrites#delete",
-                    uri: followRecord.uri,
-                  },
-                ],
-              },
-            });
-          }
-        }
-        await c
-          .get("ctx")
-          .db.updateTable("user_follows")
-          .set({ isActive: 0 })
-          .where("userDid", "=", agent.did)
-            .where("followsDid", "=", did)
-            .execute();
-        c.get("ctx").addWideEventContext({
-          api: "unfollow_form",
-          userDid: agent.did,
-          targetDid: did,
-        });
-      } catch (e: unknown) {
-        c.get("ctx").addWideEventContext({
-          api_unfollow_form: "failed",
-          userDid: agent.did,
-          targetDid: did,
-          error: (e as Error)?.message ?? "Unfollow failed",
-        });
-      }
+      await agent.post("com.atproto.repo.applyWrites", {
+        input: {
+          repo: agent.did,
+          writes: [
+            {
+              $type: "com.atproto.repo.applyWrites#delete",
+              uri: followRecord.uri,
+            },
+          ],
+        },
+      });
+      await c
+        .get("ctx")
+        .db.updateTable("user_follows")
+        .set({ isActive: 0 })
+        .where("userDid", "=", agent.did)
+        .where("followsDid", "=", did)
+        .execute();
+      c.get("ctx").addWideEventContext({
+        api: "unfollow",
+        userDid: agent.did,
+        targetDid: did,
+      });
+      return c.json({ success: true });
+    } catch (e: unknown) {
+      c.get("ctx").addWideEventContext({
+        api_unfollow: "failed",
+        userDid: agent.did,
+        targetDid: did,
+        error: (e as Error)?.message ?? "Unfollow failed",
+      });
+      return c.json(
+        {
+          success: false,
+          message: (e as Error)?.message || "Unfollow failed",
+        },
+        400,
+      );
+    }
+  })
+  .post("/unfollow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      return c.redirect("/", 302);
+    }
+    const { did } = c.req.valid("form");
+    let targetHandle = did;
+    try {
+      targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
+    } catch {}
+    if (!did || did === agent.did) {
       return c.redirect(`/profile/${targetHandle}`, 302);
-    },
-  )
+    }
+    try {
+      const listRes = await agent.get("com.atproto.repo.listRecords", {
+        params: {
+          repo: agent.did,
+          collection: "app.bsky.graph.follow",
+          limit: 300,
+        },
+      });
+      if (listRes.ok) {
+        const data = listRes.data as {
+          records: Array<{ uri: string; value: { subject: string } }>;
+        };
+        const followRecord = data.records.find((r) => r.value?.subject === did);
+        if (followRecord) {
+          await agent.post("com.atproto.repo.applyWrites", {
+            input: {
+              repo: agent.did,
+              writes: [
+                {
+                  $type: "com.atproto.repo.applyWrites#delete",
+                  uri: followRecord.uri,
+                },
+              ],
+            },
+          });
+        }
+      }
+      await c
+        .get("ctx")
+        .db.updateTable("user_follows")
+        .set({ isActive: 0 })
+        .where("userDid", "=", agent.did)
+        .where("followsDid", "=", did)
+        .execute();
+      c.get("ctx").addWideEventContext({
+        api: "unfollow_form",
+        userDid: agent.did,
+        targetDid: did,
+      });
+    } catch (e: unknown) {
+      c.get("ctx").addWideEventContext({
+        api_unfollow_form: "failed",
+        userDid: agent.did,
+        targetDid: did,
+        error: (e as Error)?.message ?? "Unfollow failed",
+      });
+    }
+    return c.redirect(`/profile/${targetHandle}`, 302);
+  })
   .post(
     "/reading-challenge",
     zValidator(

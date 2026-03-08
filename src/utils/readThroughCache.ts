@@ -65,9 +65,7 @@ export async function readThroughCache<T extends StorageValue>(
   options: ReadThroughCacheOptions = {},
 ): Promise<T> {
   // Create rate limiter if requestsPerSecond is specified
-  const rateLimiter = options.requestsPerSecond
-    ? new RateLimiter(options.requestsPerSecond)
-    : null;
+  const rateLimiter = options.requestsPerSecond ? new RateLimiter(options.requestsPerSecond) : null;
 
   // TTL in ms, default to 1 day
   const ttl = options.ttl ?? 24 * 60 * 60 * 1000;
@@ -97,10 +95,7 @@ export async function readThroughCache<T extends StorageValue>(
 
       return fetch({ key })
         .then(async (fresh) => {
-          await Promise.all([
-            kv.set(key, fresh),
-            kv.setMeta(key, { timestamp: now }),
-          ]);
+          await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: now })]);
           return fresh;
         })
         .catch(() => {

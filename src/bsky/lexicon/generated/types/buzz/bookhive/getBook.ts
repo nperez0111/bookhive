@@ -30,9 +30,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        * Other users' activity on the book
        */
       get activity() {
-        return /*#__PURE__*/ v.optional(
-          /*#__PURE__*/ v.array(BuzzBookhiveDefs.activitySchema),
-        );
+        return /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(BuzzBookhiveDefs.activitySchema));
       },
       /**
        * The hive book's info
@@ -84,9 +82,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        * @maximum 10
        */
       stars: /*#__PURE__*/ v.optional(
-        /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-          /*#__PURE__*/ v.integerRange(1, 10),
-        ]),
+        /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
       ),
       /**
        * The date the user started reading the book

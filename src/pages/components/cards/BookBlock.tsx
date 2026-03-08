@@ -48,10 +48,7 @@ export const BookBlock: FC<{
 
   if (size === "coverOnly") {
     return (
-      <a
-        href={`/books/${hiveId}`}
-        class={className ?? "block"}
-      >
+      <a href={`/books/${hiveId}`} class={className ?? "block"}>
         {cover || thumbnail ? (
           <img
             src={cover || thumbnail || ""}
@@ -71,18 +68,19 @@ export const BookBlock: FC<{
     );
   }
 
-  const coverEl = cover || thumbnail ? (
-    <img
-      src={cover || thumbnail || ""}
-      alt=""
-      class={`${config.cover} rounded object-cover shrink-0`}
-    />
-  ) : (
-    <FallbackCover
-      className={`${config.cover} shrink-0 rounded`}
-      style={`--book-cover-name: book-cover-${hiveId}`}
-    />
-  );
+  const coverEl =
+    cover || thumbnail ? (
+      <img
+        src={cover || thumbnail || ""}
+        alt=""
+        class={`${config.cover} rounded object-cover shrink-0`}
+      />
+    ) : (
+      <FallbackCover
+        className={`${config.cover} shrink-0 rounded`}
+        style={`--book-cover-name: book-cover-${hiveId}`}
+      />
+    );
 
   return (
     <div class={className ? `flex gap-3 min-w-0 ${className}` : "flex gap-3 min-w-0"}>
@@ -96,17 +94,11 @@ export const BookBlock: FC<{
         >
           {title}
         </a>
-        <div class="text-muted-foreground text-xs mt-0.5">
-          {authorsDisplay(authors)}
-        </div>
+        <div class="text-muted-foreground text-xs mt-0.5">{authorsDisplay(authors)}</div>
         {(rating > 0 || statusLabel) && (
           <div class="mt-1 flex flex-wrap items-center gap-2">
-            {rating > 0 && (
-              <StarDisplay rating={rating} size="sm" class="flex" />
-            )}
-            {statusLabel && (
-              <span class="badge">{statusLabel}</span>
-            )}
+            {rating > 0 && <StarDisplay rating={rating} size="sm" class="flex" />}
+            {statusLabel && <span class="badge">{statusLabel}</span>}
           </div>
         )}
         {children}

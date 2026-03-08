@@ -6,10 +6,7 @@ export const CardActions: FC<{
   onclick?: string;
 }> = ({ class: className, children, onclick }) => {
   return (
-    <div
-      class={className ? `flex gap-2 ${className}` : "flex gap-2"}
-      onclick={onclick}
-    >
+    <div class={className ? `flex gap-2 ${className}` : "flex gap-2"} onclick={onclick}>
       {children}
     </div>
   );

@@ -3,10 +3,7 @@ import pino from "pino";
 import { env } from "../env";
 
 const openObserveTransport =
-  env.isDev ||
-  !env.OPEN_OBSERVE_URL ||
-  !env.OPEN_OBSERVE_USER ||
-  !env.OPEN_OBSERVE_PASSWORD
+  env.isDev || !env.OPEN_OBSERVE_URL || !env.OPEN_OBSERVE_USER || !env.OPEN_OBSERVE_PASSWORD
     ? undefined
     : {
         target: path.join(process.cwd(), "logger", "open-observe.js"),
@@ -33,10 +30,7 @@ export function getLogger(options: pino.LoggerOptions) {
     // Fallback when transport file is missing (e.g. wrong cwd or dev without build)
     if (!openObserveSkippedLogged) {
       openObserveSkippedLogged = true;
-      console.warn(
-        "Pino OpenObserve transport skipped:",
-        (err as Error).message,
-      );
+      console.warn("Pino OpenObserve transport skipped:", (err as Error).message);
     }
     return pino(base);
   }

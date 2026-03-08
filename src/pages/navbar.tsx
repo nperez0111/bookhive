@@ -40,140 +40,135 @@ export const Navbar: FC<{
 
         {/* Right group: theme toggle + user */}
         <div class="ml-auto flex shrink-0 items-center gap-2">
-        {/* Dark mode toggle */}
-        <button
-          type="button"
-          class="theme-toggle flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Toggle dark mode"
-          id="theme-toggle"
-        >
-          <svg
-            class="size-5 dark:hidden"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
+          {/* Dark mode toggle */}
+          <button
+            type="button"
+            class="theme-toggle flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Toggle dark mode"
+            id="theme-toggle"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M21.752 15.752A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.248z"
-            />
-          </svg>
-          <svg
-            class="hidden size-5 dark:block"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
-            />
-          </svg>
-        </button>
-
-        {/* User */}
-        {profile ? (
-          <div class="avatar-dropdown relative">
-            <button
-              class="avatar bg-secondary flex size-8 items-center justify-center rounded-full"
-              id="user-menu-button"
-              aria-expanded="false"
-              aria-haspopup="true"
+            <svg
+              class="size-5 dark:hidden"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
             >
-              {profile?.avatar ? (
-                <img
-                  class="size-8 rounded-full"
-                  src={`/images/w_100/${profile.avatar}`}
-                  alt=""
-                />
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="12" cy="10" r="3" />
-                  <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
-                </svg>
-              )}
-            </button>
-
-            <div
-              id="user-menu"
-              class="dropdown-menu bg-card ring-border absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-md shadow-lg ring-1"
-              role="menu"
-              aria-orientation="vertical"
-              aria-labelledby="user-menu-button"
-              tabindex={-1}
-              style="display: none;"
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M21.752 15.752A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.248z"
+              />
+            </svg>
+            <svg
+              class="hidden size-5 dark:block"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
             >
-              <a
-                href={`/profile/${profile.handle}`}
-                class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
-                role="menuitem"
-                tabindex={-1}
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
+              />
+            </svg>
+          </button>
+
+          {/* User */}
+          {profile ? (
+            <div class="avatar-dropdown relative">
+              <button
+                class="avatar bg-secondary flex size-8 items-center justify-center rounded-full"
+                id="user-menu-button"
+                aria-expanded="false"
+                aria-haspopup="true"
               >
-                Profile
-              </a>
-              <a
-                href="/refresh-books"
-                class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
-                role="menuitem"
+                {profile?.avatar ? (
+                  <img class="size-8 rounded-full" src={`/images/w_100/${profile.avatar}`} alt="" />
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="10" r="3" />
+                    <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
+                  </svg>
+                )}
+              </button>
+
+              <div
+                id="user-menu"
+                class="dropdown-menu bg-card ring-border absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-md shadow-lg ring-1"
+                role="menu"
+                aria-orientation="vertical"
+                aria-labelledby="user-menu-button"
                 tabindex={-1}
+                style="display: none;"
               >
-                Refresh Books
-              </a>
-              <form action="/logout" method="post">
-                <button
-                  type="submit"
-                  class="text-card-foreground hover:bg-muted block w-full cursor-pointer px-4 py-2 text-left text-sm"
+                <a
+                  href={`/profile/${profile.handle}`}
+                  class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
                   role="menuitem"
                   tabindex={-1}
                 >
-                  Sign out
-                </button>
-              </form>
+                  Profile
+                </a>
+                <a
+                  href="/refresh-books"
+                  class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
+                  role="menuitem"
+                  tabindex={-1}
+                >
+                  Refresh Books
+                </a>
+                <form action="/logout" method="post">
+                  <button
+                    type="submit"
+                    class="text-card-foreground hover:bg-muted block w-full cursor-pointer px-4 py-2 text-left text-sm"
+                    role="menuitem"
+                    tabindex={-1}
+                  >
+                    Sign out
+                  </button>
+                </form>
+              </div>
+
+              <Script
+                script={(document) => {
+                  const btn = document.getElementById("user-menu-button")!;
+                  const menu = document.getElementById("user-menu")!;
+
+                  // close the dropdown when clicking outside of it
+                  document.addEventListener("click", (e) => {
+                    if (e.target !== btn && !btn.contains(e.target as Node)) {
+                      btn.setAttribute("aria-expanded", "false");
+                      menu.style.display = "none";
+                    }
+                  });
+
+                  btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    const shouldExpand = btn.getAttribute("aria-expanded") !== "true";
+                    btn.setAttribute("aria-expanded", String(shouldExpand));
+                    menu.style.display = shouldExpand ? "block" : "none";
+                  });
+                }}
+              />
             </div>
-
-            <Script
-              script={(document) => {
-                const btn = document.getElementById("user-menu-button")!;
-                const menu = document.getElementById("user-menu")!;
-
-                // close the dropdown when clicking outside of it
-                document.addEventListener("click", (e) => {
-                  if (e.target !== btn && !btn.contains(e.target as Node)) {
-                    btn.setAttribute("aria-expanded", "false");
-                    menu.style.display = "none";
-                  }
-                });
-
-                btn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  const shouldExpand =
-                    btn.getAttribute("aria-expanded") !== "true";
-                  btn.setAttribute("aria-expanded", String(shouldExpand));
-                  menu.style.display = shouldExpand ? "block" : "none";
-                });
-              }}
-            />
-          </div>
-        ) : (
-          <a href="/login" class="btn btn-primary btn-sm">
-            Buzz in
-          </a>
-        )}
+          ) : (
+            <a href="/login" class="btn btn-primary btn-sm">
+              Buzz in
+            </a>
+          )}
         </div>
       </div>
       {/* Sidebar toggle + backdrop: runs for all users */}
@@ -209,9 +204,7 @@ export const Navbar: FC<{
             if (meta) {
               meta.setAttribute(
                 "content",
-                document.documentElement.classList.contains("dark")
-                  ? "#422006"
-                  : "#f9eabc",
+                document.documentElement.classList.contains("dark") ? "#422006" : "#f9eabc",
               );
             }
           };

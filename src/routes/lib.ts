@@ -11,10 +11,7 @@ import { readThroughCache } from "../utils/readThroughCache";
 import { findBookDetails } from "../scrapers";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { serializeUserBook } from "../utils/bookProgress";
-import {
-  upsertBookIdentifiers,
-  upsertBookIdentifiersBatch,
-} from "../utils/bookIdentifiers";
+import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
 
 export async function searchBooks({
   query,
@@ -268,10 +265,7 @@ export async function refetchBooks({
       if (!duplicatesByHiveId.has(hiveId)) {
         duplicatesByHiveId.set(hiveId, []);
       }
-      duplicatesByHiveId.set(hiveId, [
-        ...duplicatesByHiveId.get(hiveId)!,
-        record,
-      ]);
+      duplicatesByHiveId.set(hiveId, [...duplicatesByHiveId.get(hiveId)!, record]);
     }
   });
 
