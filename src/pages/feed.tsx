@@ -44,9 +44,7 @@ export const FeedPage: FC<FeedPageProps> = ({
   return (
     <div class="space-y-6 px-4 py-8 lg:px-8">
       <div>
-        <h1 class="text-foreground text-3xl font-bold tracking-tight">
-          Activity Feed
-        </h1>
+        <h1 class="text-foreground text-3xl font-bold tracking-tight">Activity Feed</h1>
       </div>
 
       {/* Tabs: link-based, no JS */}
@@ -116,10 +114,7 @@ export const FeedPage: FC<FeedPageProps> = ({
 
       {hasMore && (
         <div class="text-center">
-          <a
-            href={`/feed?tab=${currentTab}&page=${currentPage + 1}`}
-            class="btn btn-secondary"
-          >
+          <a href={`/feed?tab=${currentTab}&page=${currentPage + 1}`} class="btn btn-secondary">
             Load more
           </a>
         </div>

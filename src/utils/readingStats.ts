@@ -43,10 +43,7 @@ export function computeReadingStats(
   books: Book[],
   genreStats: { genre: string; count: number }[],
 ): ReadingStats {
-  const finished =
-    books.length > 0
-      ? books.filter((b) => b.status === BOOK_STATUS.FINISHED)
-      : [];
+  const finished = books.length > 0 ? books.filter((b) => b.status === BOOK_STATUS.FINISHED) : [];
 
   const booksCount = finished.length;
 
@@ -92,9 +89,7 @@ export function computeReadingStats(
     longestBook = byPages[byPages.length - 1] ?? null;
   }
   const averagePageCount =
-    booksWithPages.length > 0
-      ? Math.round(pagesRead / booksWithPages.length)
-      : null;
+    booksWithPages.length > 0 ? Math.round(pagesRead / booksWithPages.length) : null;
 
   const withPopularity = finished.filter(
     (b) => b.rating != null || (b.ratingsCount != null && b.ratingsCount > 0),
@@ -108,19 +103,18 @@ export function computeReadingStats(
   const mostPopularBook = sortedByPopularity[0] ?? null;
   const leastPopularBook =
     sortedByPopularity.length > 0
-      ? sortedByPopularity[sortedByPopularity.length - 1] ?? null
+      ? (sortedByPopularity[sortedByPopularity.length - 1] ?? null)
       : null;
 
   const withFinishedAt = finished.filter(
     (b): b is Book & { finishedAt: string } => b.finishedAt != null,
   );
   const byFinishedAt = [...withFinishedAt].sort(
-    (a, b) =>
-      new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
+    (a, b) => new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
   );
   const firstBookOfYear = byFinishedAt[0] ?? null;
   const lastBookOfYear =
-    byFinishedAt.length > 0 ? byFinishedAt[byFinishedAt.length - 1] ?? null : null;
+    byFinishedAt.length > 0 ? (byFinishedAt[byFinishedAt.length - 1] ?? null) : null;
 
   return {
     booksCount,
@@ -141,10 +135,7 @@ export function computeReadingStats(
 /**
  * Filter books to finished-in-year for a given year.
  */
-export function filterFinishedBooksByYear(
-  books: Book[],
-  year: number,
-): Book[] {
+export function filterFinishedBooksByYear(books: Book[], year: number): Book[] {
   return books.filter(
     (b) =>
       b.status === BOOK_STATUS.FINISHED &&

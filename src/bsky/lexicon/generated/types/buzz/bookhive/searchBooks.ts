@@ -19,9 +19,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.searchBooks", {
      * @default 25
      */
     limit: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 100),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 100)]),
       25,
     ),
     /**

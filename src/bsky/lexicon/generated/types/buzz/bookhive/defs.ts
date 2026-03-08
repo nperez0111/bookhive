@@ -2,13 +2,9 @@ import type {} from "@atcute/lexicons";
 import * as v from "@atcute/lexicons/validations";
 import * as ComAtprotoRepoStrongRef from "../../com/atproto/repo/strongRef.js";
 
-const _abandonedSchema = /*#__PURE__*/ v.literal(
-  "buzz.bookhive.defs#abandoned",
-);
+const _abandonedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#abandoned");
 const _activitySchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#activity"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#activity")),
   createdAt: /*#__PURE__*/ v.datetimeString(),
   /**
    * The hive id of the book
@@ -18,9 +14,7 @@ const _activitySchema = /*#__PURE__*/ v.object({
    * The title of the book
    */
   title: /*#__PURE__*/ v.string(),
-  type: /*#__PURE__*/ v.string<
-    "finished" | "rated" | "review" | "started" | (string & {})
-  >(),
+  type: /*#__PURE__*/ v.string<"finished" | "rated" | "review" | "started" | (string & {})>(),
   /**
    * The DID of the user who added the book
    */
@@ -31,9 +25,7 @@ const _activitySchema = /*#__PURE__*/ v.object({
   userHandle: /*#__PURE__*/ v.string(),
 });
 const _bookIdentifiersSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#bookIdentifiers"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#bookIdentifiers")),
   /**
    * Goodreads book ID
    */
@@ -52,26 +44,20 @@ const _bookIdentifiersSchema = /*#__PURE__*/ v.object({
   isbn13: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
 });
 const _bookProgressSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#bookProgress"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#bookProgress")),
   /**
    * Current chapter the user is on
    * @minimum 1
    */
   currentChapter: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
   ),
   /**
    * Current page the user is on
    * @minimum 1
    */
   currentPage: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
   ),
   /**
    * How far through the book the reader is (0-100)
@@ -79,27 +65,21 @@ const _bookProgressSchema = /*#__PURE__*/ v.object({
    * @maximum 100
    */
   percent: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(0, 100),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 100)]),
   ),
   /**
    * Total number of chapters in the book
    * @minimum 1
    */
   totalChapters: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
   ),
   /**
    * Total number of pages in the book
    * @minimum 1
    */
   totalPages: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
   ),
   /**
    * When the progress was last updated
@@ -107,9 +87,7 @@ const _bookProgressSchema = /*#__PURE__*/ v.object({
   updatedAt: /*#__PURE__*/ v.datetimeString(),
 });
 const _commentSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#comment"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#comment")),
   get book() {
     return ComAtprotoRepoStrongRef.mainSchema;
   },
@@ -141,9 +119,7 @@ const _commentSchema = /*#__PURE__*/ v.object({
 const _finishedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#finished");
 const _ownedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#owned");
 const _profileSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#profile"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#profile")),
   avatar: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * @minimum 0
@@ -163,9 +139,7 @@ const _profileSchema = /*#__PURE__*/ v.object({
 });
 const _readingSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#reading");
 const _reviewSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#review"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#review")),
   /**
    * The date the review was created
    */
@@ -188,9 +162,7 @@ const _reviewSchema = /*#__PURE__*/ v.object({
   stars: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
 });
 const _userBookSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.defs#userBook"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#userBook")),
   /**
    * The authors of the book (tab separated)
    * @minLength 1
@@ -215,9 +187,7 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    * @maxLength 5000
    */
   description: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [
-      /*#__PURE__*/ v.stringLength(0, 5000),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
   ),
   /**
    * The date the user finished reading the book
@@ -239,9 +209,7 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    * @maximum 1000
    */
   rating: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(0, 1000),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 1000)]),
   ),
   /**
    * The book's review
@@ -258,9 +226,7 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    * @maximum 10
    */
   stars: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1, 10),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
   ),
   /**
    * The date the user started reading the book
@@ -297,9 +263,7 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    */
   userHandle: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
 });
-const _wantToReadSchema = /*#__PURE__*/ v.literal(
-  "buzz.bookhive.defs#wantToRead",
-);
+const _wantToReadSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#wantToRead");
 
 type abandoned$schematype = typeof _abandonedSchema;
 type activity$schematype = typeof _activitySchema;
@@ -329,8 +293,7 @@ export interface wantToReadSchema extends wantToRead$schematype {}
 
 export const abandonedSchema = _abandonedSchema as abandonedSchema;
 export const activitySchema = _activitySchema as activitySchema;
-export const bookIdentifiersSchema =
-  _bookIdentifiersSchema as bookIdentifiersSchema;
+export const bookIdentifiersSchema = _bookIdentifiersSchema as bookIdentifiersSchema;
 export const bookProgressSchema = _bookProgressSchema as bookProgressSchema;
 export const commentSchema = _commentSchema as commentSchema;
 export const finishedSchema = _finishedSchema as finishedSchema;
@@ -343,9 +306,7 @@ export const wantToReadSchema = _wantToReadSchema as wantToReadSchema;
 
 export type Abandoned = v.InferInput<typeof abandonedSchema>;
 export interface Activity extends v.InferInput<typeof activitySchema> {}
-export interface BookIdentifiers extends v.InferInput<
-  typeof bookIdentifiersSchema
-> {}
+export interface BookIdentifiers extends v.InferInput<typeof bookIdentifiersSchema> {}
 export interface BookProgress extends v.InferInput<typeof bookProgressSchema> {}
 export interface Comment extends v.InferInput<typeof commentSchema> {}
 export type Finished = v.InferInput<typeof finishedSchema>;

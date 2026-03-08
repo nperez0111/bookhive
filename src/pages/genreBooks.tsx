@@ -48,9 +48,7 @@ const NO_BOOKS_FOUND = (genre: string) => (
   <div class="card">
     <section class="py-12 text-center">
       <h3 class="text-xl font-semibold text-foreground">No books found</h3>
-      <p class="text-muted-foreground mt-2">
-        No books found in the "{genre}" genre yet.
-      </p>
+      <p class="text-muted-foreground mt-2">No books found in the "{genre}" genre yet.</p>
     </section>
   </div>
 );
@@ -70,11 +68,17 @@ export const GenreBooks: FC<GenreBooksProps> = ({
   return (
     <div class="space-y-6">
       <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-        <a href="/" class="hover:text-foreground transition-colors">Home</a>
+        <a href="/" class="hover:text-foreground transition-colors">
+          Home
+        </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore" class="hover:text-foreground transition-colors">Explore</a>
+        <a href="/explore" class="hover:text-foreground transition-colors">
+          Explore
+        </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore/genres" class="hover:text-foreground transition-colors">Genres</a>
+        <a href="/explore/genres" class="hover:text-foreground transition-colors">
+          Genres
+        </a>
         <span aria-hidden="true">›</span>
         <span class="text-foreground font-medium">{genre}</span>
       </nav>
@@ -119,10 +123,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
             </div>
 
             {totalPages > 1 && (
-              <nav
-                class="flex flex-wrap items-center justify-center gap-2"
-                aria-label="Pagination"
-              >
+              <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
                 {currentPage > 1 ? (
                   <a
                     href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage - 1}`}
@@ -220,9 +221,7 @@ export async function getBooksByGenre(
 
   switch (sortBy) {
     case "popularity":
-      query = query
-        .orderBy("hive_book.ratingsCount", "desc")
-        .orderBy("hive_book.rating", "desc");
+      query = query.orderBy("hive_book.ratingsCount", "desc").orderBy("hive_book.rating", "desc");
       break;
     case "relevance":
       query = query.orderBy(
@@ -234,9 +233,7 @@ export async function getBooksByGenre(
       );
       break;
     case "reviews":
-      query = query
-        .orderBy("hive_book.rating", "desc")
-        .orderBy("hive_book.ratingsCount", "desc");
+      query = query.orderBy("hive_book.rating", "desc").orderBy("hive_book.ratingsCount", "desc");
       break;
   }
 

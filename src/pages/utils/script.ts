@@ -7,9 +7,9 @@ export const Script: FC<{
 }> = ({ script: interactivity, onDomContentLoaded = true }) => {
   /* What a hack to get nice highlighting of interactive JS */
   return html`<script type="text/javascript" defer>
-    ${onDomContentLoaded
-      ? raw`document.addEventListener("DOMContentLoaded", function () {`
-      : ""}(${raw(interactivity.toString())})(document);
+    ${
+      onDomContentLoaded ? raw`document.addEventListener("DOMContentLoaded", function () {` : ""
+    }(${raw(interactivity.toString())})(document);
     ${onDomContentLoaded ? `});` : ""};
   </script>`;
 };

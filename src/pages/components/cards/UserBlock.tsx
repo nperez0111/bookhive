@@ -15,15 +15,7 @@ export const UserBlock: FC<{
   class?: string;
   /** When true, do not render links (for use inside a parent link e.g. profile chip) */
   noLink?: boolean;
-}> = ({
-  handle,
-  displayName,
-  avatar,
-  size = "md",
-  suffix,
-  class: className,
-  noLink = false,
-}) => {
+}> = ({ handle, displayName, avatar, size = "md", suffix, class: className, noLink = false }) => {
   const { avatar: avatarClass, showDisplayName } = sizeMap[size];
   const showName = showDisplayName && (displayName ?? null);
 
@@ -40,9 +32,7 @@ export const UserBlock: FC<{
   const handleEl = (
     <>
       <span class="text-foreground font-semibold truncate block">@{handle}</span>
-      {showName && (
-        <div class="text-muted-foreground text-xs truncate">{displayName}</div>
-      )}
+      {showName && <div class="text-muted-foreground text-xs truncate">{displayName}</div>}
     </>
   );
 
@@ -67,15 +57,11 @@ export const UserBlock: FC<{
             >
               @{handle}
             </a>
-            {showName && (
-              <div class="text-muted-foreground text-xs truncate">{displayName}</div>
-            )}
+            {showName && <div class="text-muted-foreground text-xs truncate">{displayName}</div>}
           </>
         )}
       </div>
-      {suffix && (
-        <span class="text-muted-foreground shrink-0 text-sm">{suffix}</span>
-      )}
+      {suffix && <span class="text-muted-foreground shrink-0 text-sm">{suffix}</span>}
     </div>
   );
 };

@@ -10,13 +10,7 @@ import { hydrateUserBook } from "../utils/bookProgress";
 import { CommentsSection } from "./comments";
 import { Script } from "./utils/script";
 
-async function Recommendations({
-  book,
-  did,
-}: {
-  book: HiveBook;
-  did: string | null;
-}) {
+async function Recommendations({ book, did }: { book: HiveBook; did: string | null }) {
   const c = useRequestContext();
   startTime(c, "db_peer_books");
   const peerBooks = await c
@@ -53,9 +47,7 @@ async function Recommendations({
 
   return (
     <Fragment>
-      <h3 class="my-5 px-2 text-xl leading-6">
-        Who else is reading this book?
-      </h3>
+      <h3 class="my-5 px-2 text-xl leading-6">Who else is reading this book?</h3>
       <div class="flex flex-col gap-2">
         {peerBooks.map((related) => {
           const handle = didHandleMap[related.userDid] || related.userDid;
@@ -67,9 +59,7 @@ async function Recommendations({
             >
               <span class="text-primary font-medium">@{handle}</span> - marked as{" "}
               {related.status && related.status in BOOK_STATUS_MAP
-                ? BOOK_STATUS_MAP[
-                    related.status as keyof typeof BOOK_STATUS_MAP
-                  ]
+                ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
                 : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
               {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
               {related.stars && <span> - rated {related.stars / 2}</span>}
@@ -95,19 +85,13 @@ const UpdateBookForm: FC<
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
       <input type="hidden" name="hiveId" value={book.id} />
-      {book.cover && (
-        <input type="hidden" name="coverImage" value={book.cover} />
+      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
+      {userBook?.startedAt && editing !== "startedAt" && editing !== "status" && (
+        <input type="hidden" name="startedAt" value={userBook.startedAt} />
       )}
-      {userBook?.startedAt &&
-        editing !== "startedAt" &&
-        editing !== "status" && (
-          <input type="hidden" name="startedAt" value={userBook.startedAt} />
-        )}
-      {userBook?.finishedAt &&
-        editing !== "finishedAt" &&
-        editing !== "status" && (
-          <input type="hidden" name="finishedAt" value={userBook.finishedAt} />
-        )}
+      {userBook?.finishedAt && editing !== "finishedAt" && editing !== "status" && (
+        <input type="hidden" name="finishedAt" value={userBook.finishedAt} />
+      )}
       {userBook?.stars && editing !== "stars" && (
         <input type="hidden" name="stars" value={String(userBook.stars)} />
       )}
@@ -120,12 +104,7 @@ const UpdateBookForm: FC<
       {editing === "status" && (
         <>
           <input type="hidden" name="startedAt" id="auto-started-at" value="" />
-          <input
-            type="hidden"
-            name="finishedAt"
-            id="auto-finished-at"
-            value=""
-          />
+          <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
         </>
       )}
       {children}
@@ -157,16 +136,11 @@ const BookStatusButton: FC<{
             className="peer w-full cursor-pointer rounded-md bg-card px-3 py-2 text-left text-sm font-medium text-foreground shadow-sm ring-1 ring-border ring-inset hover:bg-muted focus:ring-2 focus:ring-primary focus:outline-none"
             id="status-dropdown"
           >
-            <span
-              id="status-label"
-              className="flex items-center justify-between capitalize"
-            >
+            <span id="status-label" className="flex items-center justify-between capitalize">
               <span>
                 {(usersBook?.status &&
                   (usersBook.status in BOOK_STATUS_MAP
-                    ? BOOK_STATUS_MAP[
-                        usersBook.status as keyof typeof BOOK_STATUS_MAP
-                      ]
+                    ? BOOK_STATUS_MAP[usersBook.status as keyof typeof BOOK_STATUS_MAP]
                     : usersBook.status)) ||
                   "Add to shelf"}
               </span>
@@ -229,11 +203,7 @@ const BookStatusButton: FC<{
                       className="absolute inset-y-0 right-2 flex items-center"
                       aria-hidden="true"
                     >
-                      <svg
-                        className="h-4 w-4"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
+                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                         <path
                           fillRule="evenodd"
                           d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -251,15 +221,11 @@ const BookStatusButton: FC<{
         <Script
           script={(document) => {
             const dropdown = document.getElementById("status-dropdown")!;
-            const dropdownMenu = document.getElementById(
-              "status-dropdown-menu",
-            )!;
+            const dropdownMenu = document.getElementById("status-dropdown-menu")!;
             dropdown.addEventListener("click", () => {
               dropdown.setAttribute(
                 "aria-expanded",
-                dropdown.getAttribute("aria-expanded") === "true"
-                  ? "false"
-                  : "true",
+                dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
               );
             });
             document.addEventListener("click", (e) => {
@@ -438,11 +404,7 @@ export const BookInfo: FC<{
                     </svg>
                   ))}
                 </div>
-                {book.rating && (
-                  <span className="text-xl font-semibold">
-                    {book.rating / 1000}
-                  </span>
-                )}
+                {book.rating && <span className="text-xl font-semibold">{book.rating / 1000}</span>}
                 {book.ratingsCount && (
                   <span className="text-sm text-gray-500 dark:text-gray-300">
                     ({book.ratingsCount.toLocaleString()} ratings)
@@ -459,39 +421,32 @@ export const BookInfo: FC<{
 
               {book.genres && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
-                    Genres
-                  </h3>
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Genres</h3>
                   <div className="flex flex-wrap gap-2">
-                    {JSON.parse(book.genres).map(
-                      (genre: string, index: number) => (
-                        <a
-                          key={index}
-                          href={`/genres/${encodeURIComponent(genre)}`}
-                          className="genre-name rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
-                          style={`--genre-name: genre-${genre}`}
-                        >
-                          {genre}
-                        </a>
-                      ),
-                    )}
+                    {JSON.parse(book.genres).map((genre: string, index: number) => (
+                      <a
+                        key={index}
+                        href={`/genres/${encodeURIComponent(genre)}`}
+                        className="genre-name rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
+                        style={`--genre-name: genre-${genre}`}
+                      >
+                        {genre}
+                      </a>
+                    ))}
                   </div>
                 </div>
               )}
 
               {book.series && (
                 <div className="mb-4">
-                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
-                    Series
-                  </h3>
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Series</h3>
                   <div className="text-sm text-muted-foreground">
                     {(() => {
                       const seriesData = JSON.parse(book.series);
                       return (
                         <span>
                           {seriesData.title}
-                          {seriesData.position &&
-                            ` (Book ${seriesData.position})`}
+                          {seriesData.position && ` (Book ${seriesData.position})`}
                         </span>
                       );
                     })()}
@@ -556,15 +511,12 @@ export const BookInfo: FC<{
                           Additional Authors
                         </h3>
                         <div className="text-sm text-muted-foreground">
-                          {meta.secondaryAuthors.map(
-                            (author: any, index: number) => (
-                              <span key={index}>
-                                {author.name}
-                                {index < meta.secondaryAuthors.length - 1 &&
-                                  ", "}
-                              </span>
-                            ),
-                          )}
+                          {meta.secondaryAuthors.map((author: any, index: number) => (
+                            <span key={index}>
+                              {author.name}
+                              {index < meta.secondaryAuthors.length - 1 && ", "}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     )
@@ -601,9 +553,7 @@ export const BookInfo: FC<{
             <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-6 shadow-md md:flex-row">
               <div class="md:w-1/3 lg:w-1/4">
                 <h2 className="text-xl leading-2 font-bold">
-                  {usersBook?.stars
-                    ? `You Rated: ${usersBook?.stars / 2}`
-                    : "Rating"}
+                  {usersBook?.stars ? `You Rated: ${usersBook?.stars / 2}` : "Rating"}
                 </h2>
                 <div className="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                   Click to rate this book
@@ -656,10 +606,7 @@ export const BookInfo: FC<{
                         {usersBook?.review || " "}
                       </div>
                     </div>
-                    <button
-                      type="submit"
-                      class="mt-2 btn btn-primary"
-                    >
+                    <button type="submit" class="mt-2 btn btn-primary">
                       Save
                     </button>
                   </UpdateBookForm>
@@ -670,263 +617,235 @@ export const BookInfo: FC<{
 
           {did && usersBook?.status !== BOOK_STATUS.FINISHED && (
             <div className="card mt-8">
-            <div className="card-body">
-              <h2 className="mb-2 text-xl font-bold text-foreground">Reading Progress</h2>
-              {usersBook?.bookProgress && (
-                <p className="mb-3 text-sm text-muted-foreground">
-                  {[
-                    usersBook.bookProgress.percent !== undefined
-                      ? `${usersBook.bookProgress.percent}% complete`
-                      : null,
-                    usersBook.bookProgress.currentPage &&
-                    usersBook.bookProgress.totalPages
-                      ? `${usersBook.bookProgress.currentPage}/${usersBook.bookProgress.totalPages} pages`
-                      : usersBook.bookProgress.currentPage
-                        ? `${usersBook.bookProgress.currentPage} pages`
+              <div className="card-body">
+                <h2 className="mb-2 text-xl font-bold text-foreground">Reading Progress</h2>
+                {usersBook?.bookProgress && (
+                  <p className="mb-3 text-sm text-muted-foreground">
+                    {[
+                      usersBook.bookProgress.percent !== undefined
+                        ? `${usersBook.bookProgress.percent}% complete`
                         : null,
-                    usersBook.bookProgress.updatedAt
-                      ? `Updated ${formatDistanceToNow(
-                          usersBook.bookProgress.updatedAt,
-                          { addSuffix: true },
-                        )}`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              )}
-              <UpdateBookForm book={book} userBook={usersBook}>
-                <div className="flex flex-col gap-4">
-                  {/* Pages */}
-                  <div className="flex-1">
-                    <label className="mb-1 block text-sm font-semibold text-foreground">
-                      Pages read <span className="font-normal">/</span> Total
-                      pages
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        id="progress-pages-current"
-                        name="currentPage"
-                        value={usersBook?.bookProgress?.currentPage ?? ""}
-                        min={0}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-                        placeholder="Current"
-                      />
-                      <span className="text-lg font-semibold text-muted-foreground">
-                        /
-                      </span>
-                      <input
-                        type="number"
-                        id="progress-pages-total"
-                        name="totalPages"
-                        value={
-                          usersBook?.bookProgress?.totalPages ??
-                          (() => {
-                            if (!book.meta) return "";
-                            try {
-                              const meta = JSON.parse(book.meta);
-                              return meta?.numPages ? meta.numPages : "";
-                            } catch {
-                              return "";
-                            }
-                          })()
-                        }
-                        min={1}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-                        placeholder="Total"
-                      />
-                    </div>
-                  </div>
-                  {/* Chapters */}
-                  <div className="flex-1">
-                    <label className="mb-1 block text-sm font-semibold text-foreground">
-                      Chapters read <span className="font-normal">/</span> Total
-                      chapters
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        id="progress-chapters-current"
-                        name="currentChapter"
-                        value={usersBook?.bookProgress?.currentChapter ?? ""}
-                        min={1}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-                        placeholder="Current"
-                      />
-                      <span className="text-lg font-semibold text-muted-foreground">
-                        /
-                      </span>
-                      <input
-                        type="number"
-                        id="progress-chapters-total"
-                        name="totalChapters"
-                        value={usersBook?.bookProgress?.totalChapters ?? ""}
-                        min={1}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-                        placeholder="Total"
-                      />
-                    </div>
-                  </div>
-                  {/* Percent */}
-                  <div className="flex flex-1 flex-col justify-between">
-                    <div>
+                      usersBook.bookProgress.currentPage && usersBook.bookProgress.totalPages
+                        ? `${usersBook.bookProgress.currentPage}/${usersBook.bookProgress.totalPages} pages`
+                        : usersBook.bookProgress.currentPage
+                          ? `${usersBook.bookProgress.currentPage} pages`
+                          : null,
+                      usersBook.bookProgress.updatedAt
+                        ? `Updated ${formatDistanceToNow(usersBook.bookProgress.updatedAt, {
+                            addSuffix: true,
+                          })}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
+                <UpdateBookForm book={book} userBook={usersBook}>
+                  <div className="flex flex-col gap-4">
+                    {/* Pages */}
+                    <div className="flex-1">
                       <label className="mb-1 block text-sm font-semibold text-foreground">
-                        Percent
+                        Pages read <span className="font-normal">/</span> Total pages
                       </label>
-                      <input
-                        type="number"
-                        id="progress-percent"
-                        name="percent"
-                        value={usersBook?.bookProgress?.percent ?? ""}
-                        min={0}
-                        max={100}
-                        className="w-full rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-                        placeholder="Auto-calculated"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          id="progress-pages-current"
+                          name="currentPage"
+                          value={usersBook?.bookProgress?.currentPage ?? ""}
+                          min={0}
+                          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          placeholder="Current"
+                        />
+                        <span className="text-lg font-semibold text-muted-foreground">/</span>
+                        <input
+                          type="number"
+                          id="progress-pages-total"
+                          name="totalPages"
+                          value={
+                            usersBook?.bookProgress?.totalPages ??
+                            (() => {
+                              if (!book.meta) return "";
+                              try {
+                                const meta = JSON.parse(book.meta);
+                                return meta?.numPages ? meta.numPages : "";
+                              } catch {
+                                return "";
+                              }
+                            })()
+                          }
+                          min={1}
+                          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          placeholder="Total"
+                        />
+                      </div>
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Percent auto-fills from pages or chapters but can be
-                      overridden.
-                    </p>
+                    {/* Chapters */}
+                    <div className="flex-1">
+                      <label className="mb-1 block text-sm font-semibold text-foreground">
+                        Chapters read <span className="font-normal">/</span> Total chapters
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          id="progress-chapters-current"
+                          name="currentChapter"
+                          value={usersBook?.bookProgress?.currentChapter ?? ""}
+                          min={1}
+                          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          placeholder="Current"
+                        />
+                        <span className="text-lg font-semibold text-muted-foreground">/</span>
+                        <input
+                          type="number"
+                          id="progress-chapters-total"
+                          name="totalChapters"
+                          value={usersBook?.bookProgress?.totalChapters ?? ""}
+                          min={1}
+                          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          placeholder="Total"
+                        />
+                      </div>
+                    </div>
+                    {/* Percent */}
+                    <div className="flex flex-1 flex-col justify-between">
+                      <div>
+                        <label className="mb-1 block text-sm font-semibold text-foreground">
+                          Percent
+                        </label>
+                        <input
+                          type="number"
+                          id="progress-percent"
+                          name="percent"
+                          value={usersBook?.bookProgress?.percent ?? ""}
+                          min={0}
+                          max={100}
+                          className="w-full rounded-md border border-border bg-card px-3 py-2 text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          placeholder="Auto-calculated"
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Percent auto-fills from pages or chapters but can be overridden.
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <button
-                  type="submit"
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  Save progress
-                </button>
-              </UpdateBookForm>
-              <Script
-                script={(document) => {
-                  const pageCurrent = document.getElementById(
-                    "progress-pages-current",
-                  ) as HTMLInputElement;
-                  const pageTotal = document.getElementById(
-                    "progress-pages-total",
-                  ) as HTMLInputElement;
-                  const chapterCurrent = document.getElementById(
-                    "progress-chapters-current",
-                  ) as HTMLInputElement;
-                  const chapterTotal = document.getElementById(
-                    "progress-chapters-total",
-                  ) as HTMLInputElement;
-                  const percentInput = document.getElementById(
-                    "progress-percent",
-                  ) as HTMLInputElement;
-                  function parseNumber(value: string | null) {
-                    const parsed = Number(value);
-                    return Number.isFinite(parsed) ? parsed : null;
-                  }
-                  function updatePercent() {
-                    if (!percentInput) return;
-                    const currentPage = parseNumber(pageCurrent?.value);
-                    const totalPages = parseNumber(pageTotal?.value);
-                    const currentChapter = parseNumber(chapterCurrent?.value);
-                    const totalChapters = parseNumber(chapterTotal?.value);
-                    let percent = null;
-                    if (currentPage !== null && totalPages && totalPages > 0) {
-                      percent = Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          Math.round((currentPage / totalPages) * 100),
-                        ),
-                      );
-                    } else if (
-                      currentChapter !== null &&
-                      totalChapters &&
-                      totalChapters > 0
-                    ) {
-                      percent = Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          Math.round((currentChapter / totalChapters) * 100),
-                        ),
-                      );
+                  <button
+                    type="submit"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Save progress
+                  </button>
+                </UpdateBookForm>
+                <Script
+                  script={(document) => {
+                    const pageCurrent = document.getElementById(
+                      "progress-pages-current",
+                    ) as HTMLInputElement;
+                    const pageTotal = document.getElementById(
+                      "progress-pages-total",
+                    ) as HTMLInputElement;
+                    const chapterCurrent = document.getElementById(
+                      "progress-chapters-current",
+                    ) as HTMLInputElement;
+                    const chapterTotal = document.getElementById(
+                      "progress-chapters-total",
+                    ) as HTMLInputElement;
+                    const percentInput = document.getElementById(
+                      "progress-percent",
+                    ) as HTMLInputElement;
+                    function parseNumber(value: string | null) {
+                      const parsed = Number(value);
+                      return Number.isFinite(parsed) ? parsed : null;
                     }
-                    if (percent !== null) {
-                      percentInput.value = percent.toString();
+                    function updatePercent() {
+                      if (!percentInput) return;
+                      const currentPage = parseNumber(pageCurrent?.value);
+                      const totalPages = parseNumber(pageTotal?.value);
+                      const currentChapter = parseNumber(chapterCurrent?.value);
+                      const totalChapters = parseNumber(chapterTotal?.value);
+                      let percent = null;
+                      if (currentPage !== null && totalPages && totalPages > 0) {
+                        percent = Math.min(
+                          100,
+                          Math.max(0, Math.round((currentPage / totalPages) * 100)),
+                        );
+                      } else if (currentChapter !== null && totalChapters && totalChapters > 0) {
+                        percent = Math.min(
+                          100,
+                          Math.max(0, Math.round((currentChapter / totalChapters) * 100)),
+                        );
+                      }
+                      if (percent !== null) {
+                        percentInput.value = percent.toString();
+                      }
                     }
-                  }
-                  [
-                    pageCurrent,
-                    pageTotal,
-                    chapterCurrent,
-                    chapterTotal,
-                  ].forEach((input) => {
-                    input?.addEventListener("input", updatePercent);
-                  });
-                }}
-              />
-            </div>
+                    [pageCurrent, pageTotal, chapterCurrent, chapterTotal].forEach((input) => {
+                      input?.addEventListener("input", updatePercent);
+                    });
+                  }}
+                />
+              </div>
             </div>
           )}
 
           {/* Reading Dates Section */}
           {did && usersBook && (
             <div className="card mt-8">
-            <div className="card-body">
-              <h2 className="mb-4 text-xl font-bold text-foreground">Reading Dates</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="field">
-                  <label className="field-label mb-2 block text-sm font-medium text-foreground">
-                    Started Reading
-                  </label>
-                  <UpdateBookForm
-                    book={book}
-                    userBook={usersBook}
-                    editing="startedAt"
-                    formId="started-date-form"
-                  >
-                    <input
-                      type="date"
-                      name="startedAt"
-                      value={
-                        usersBook.startedAt
-                          ? new Date(usersBook.startedAt)
-                              .toISOString()
-                              .slice(0, 10)
-                          : ""
-                      }
-                      className="input w-full"
-                    />
-                    <button type="submit" className="btn btn-primary btn-sm mt-2">
-                      Save
-                    </button>
-                  </UpdateBookForm>
-                </div>
-                <div className="field">
-                  <label className="field-label mb-2 block text-sm font-medium text-foreground">
-                    Finished Reading
-                  </label>
-                  <UpdateBookForm
-                    book={book}
-                    userBook={usersBook}
-                    editing="finishedAt"
-                    formId="finished-date-form"
-                  >
-                    <input
-                      type="date"
-                      name="finishedAt"
-                      value={
-                        usersBook.finishedAt
-                          ? new Date(usersBook.finishedAt)
-                              .toISOString()
-                              .slice(0, 10)
-                          : ""
-                      }
-                      className="input w-full"
-                    />
-                    <button type="submit" className="btn btn-primary btn-sm mt-2">
-                      Save
-                    </button>
-                  </UpdateBookForm>
+              <div className="card-body">
+                <h2 className="mb-4 text-xl font-bold text-foreground">Reading Dates</h2>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="field">
+                    <label className="field-label mb-2 block text-sm font-medium text-foreground">
+                      Started Reading
+                    </label>
+                    <UpdateBookForm
+                      book={book}
+                      userBook={usersBook}
+                      editing="startedAt"
+                      formId="started-date-form"
+                    >
+                      <input
+                        type="date"
+                        name="startedAt"
+                        value={
+                          usersBook.startedAt
+                            ? new Date(usersBook.startedAt).toISOString().slice(0, 10)
+                            : ""
+                        }
+                        className="input w-full"
+                      />
+                      <button type="submit" className="btn btn-primary btn-sm mt-2">
+                        Save
+                      </button>
+                    </UpdateBookForm>
+                  </div>
+                  <div className="field">
+                    <label className="field-label mb-2 block text-sm font-medium text-foreground">
+                      Finished Reading
+                    </label>
+                    <UpdateBookForm
+                      book={book}
+                      userBook={usersBook}
+                      editing="finishedAt"
+                      formId="finished-date-form"
+                    >
+                      <input
+                        type="date"
+                        name="finishedAt"
+                        value={
+                          usersBook.finishedAt
+                            ? new Date(usersBook.finishedAt).toISOString().slice(0, 10)
+                            : ""
+                        }
+                        className="input w-full"
+                      />
+                      <button type="submit" className="btn btn-primary btn-sm mt-2">
+                        Save
+                      </button>
+                    </UpdateBookForm>
+                  </div>
                 </div>
               </div>
-            </div>
             </div>
           )}
         </div>
@@ -951,11 +870,7 @@ export const BookInfo: FC<{
               <div class="card-body">
                 <div class="flex gap-4 overflow-x-auto pb-2">
                   {otherBooksByAuthor.slice(0, 5).map((other) => (
-                    <a
-                      key={other.id}
-                      href={`/books/${other.id}`}
-                      class="shrink-0"
-                    >
+                    <a key={other.id} href={`/books/${other.id}`} class="shrink-0">
                       {other.cover || other.thumbnail ? (
                         <img
                           src={other.cover || other.thumbnail || ""}

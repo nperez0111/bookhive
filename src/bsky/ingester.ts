@@ -5,7 +5,7 @@ import { env } from "../env";
 import { searchBooks } from "../routes/index";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
-import { createBidirectionalResolverAtcute } from "./id-resolver";
+import { createActorResolver, createBidirectionalResolverAtcute } from "./id-resolver";
 import { ids, Book, Buzz } from "./lexicon";
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
@@ -58,12 +58,134 @@ export type Ingester = {
   destroy(): Promise<void>;
 };
 
-export function createIngester(
+const BACKFILL_DONE_PREFIX = "backfill_done:";
+const JETSTREAM_CURSOR_KEY = "jetstream:cursor";
+
+async function backfillUserRepo(
+  did: string,
   db: Database,
   kv: Storage,
   emitWideEvent: EmitWideEvent,
-): Ingester {
+): Promise<void> {
+  try {
+    const actor = await createActorResolver().resolve(
+      did as Parameters<ReturnType<typeof createActorResolver>["resolve"]>[0],
+    );
+    const pds = actor.pds;
+
+    for (const collection of [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz]) {
+      let cursor: string | undefined;
+      do {
+        const url = new URL(`${pds}/xrpc/com.atproto.repo.listRecords`);
+        url.searchParams.set("repo", did);
+        url.searchParams.set("collection", collection);
+        url.searchParams.set("limit", "100");
+        if (cursor) url.searchParams.set("cursor", cursor);
+
+        const res = await fetch(url);
+        if (!res.ok) break;
+        const data = (await res.json()) as {
+          records: Array<{ uri: string; cid: string; value: unknown }>;
+          cursor?: string;
+        };
+
+        const now = new Date();
+        for (const record of data.records) {
+          // Insert directly to avoid duplicate wide events
+          if (collection === ids.BuzzBookhiveBook) {
+            const asBook = Book.validateRecord(record.value);
+            if (!asBook.success) continue;
+            const book = asBook.value;
+            const hiveId = (
+              await db
+                .selectFrom("hive_book")
+                .select("id")
+                .where("id", "=", (record.value as Record<string, unknown>)["hiveId"] as HiveId)
+                .executeTakeFirst()
+            )?.id;
+            if (!hiveId) continue;
+            await db
+              .insertInto("user_book")
+              .values(
+                serializeUserBook({
+                  uri: record.uri,
+                  cid: record.cid,
+                  userDid: did,
+                  hiveId: book.hiveId as HiveId,
+                  createdAt: book.createdAt,
+                  indexedAt: now.toISOString(),
+                  title: book.title,
+                  authors: book.authors,
+                  startedAt: book.startedAt ?? null,
+                  finishedAt: book.finishedAt ?? null,
+                  status: book.status ?? null,
+                  review: book.review ?? null,
+                  stars: book.stars ?? null,
+                  bookProgress: book.bookProgress ?? null,
+                } satisfies UserBook),
+              )
+              .onConflict((oc) => oc.column("uri").doNothing())
+              .execute();
+          } else if (collection === ids.BuzzBookhiveBuzz) {
+            const asBuzz = Buzz.validateRecord(record.value);
+            if (!asBuzz.success) continue;
+            const buzz = asBuzz.value;
+            const hiveId = (
+              await db
+                .selectFrom("user_book")
+                .select("hiveId")
+                .where("uri", "=", buzz.book.uri)
+                .executeTakeFirst()
+            )?.hiveId;
+            if (!hiveId) continue;
+            await db
+              .insertInto("buzz")
+              .values({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                hiveId,
+                createdAt: buzz.createdAt,
+                indexedAt: now.toISOString(),
+                bookCid: buzz.book.cid,
+                bookUri: buzz.book.uri,
+                comment: buzz.comment,
+                parentCid: buzz.parent.cid,
+                parentUri: buzz.parent.uri,
+              } satisfies BuzzRecord)
+              .onConflict((oc) => oc.column("uri").doNothing())
+              .execute();
+          }
+        }
+
+        cursor = data.cursor;
+        if (cursor) await new Promise((r) => setTimeout(r, 100));
+      } while (cursor);
+    }
+
+    await kv.set(BACKFILL_DONE_PREFIX + did, "1");
+    emitWideEvent({
+      msg: "ingester",
+      outcome: "backfill_complete",
+      did,
+      timestamp: new Date().toISOString(),
+      env: { node_env: env.NODE_ENV },
+    });
+  } catch (err) {
+    emitWideEvent({
+      msg: "ingester",
+      outcome: "backfill_error",
+      did,
+      error: { message: err instanceof Error ? err.message : String(err) },
+      timestamp: new Date().toISOString(),
+      env: { node_env: env.NODE_ENV },
+    });
+  }
+}
+
+export function createIngester(db: Database, kv: Storage, emitWideEvent: EmitWideEvent): Ingester {
   const bidirectionalResolver = createBidirectionalResolverAtcute();
+  const backfilledDids = new Set<string>();
   let subscription: JetstreamSubscription | null = null;
   let abortController: AbortController | null = null;
 
@@ -98,11 +220,7 @@ export function createIngester(
             await db
               .selectFrom("hive_book")
               .select("id")
-              .where(
-                "id",
-                "=",
-                (record as Record<string, unknown>)["hiveId"] as HiveId,
-              )
+              .where("id", "=", (record as Record<string, unknown>)["hiveId"] as HiveId)
               .executeTakeFirst()
           )?.id;
           if (!hiveId) {
@@ -117,6 +235,7 @@ export function createIngester(
             };
             return;
           }
+          const isNewDid = !backfilledDids.has(evt.did);
           await db
             .insertInto("user_book")
             .values(
@@ -155,6 +274,17 @@ export function createIngester(
               })),
             )
             .execute();
+
+          // Proactively backfill full repo for newly-discovered DIDs
+          if (isNewDid) {
+            backfilledDids.add(evt.did);
+            void kv.get(BACKFILL_DONE_PREFIX + evt.did).then((done) => {
+              if (!done) {
+                void backfillUserRepo(evt.did, db, kv, emitWideEvent);
+              }
+            });
+          }
+
           wideEvent["outcome"] = "success";
           return;
         }
@@ -221,18 +351,12 @@ export function createIngester(
       }
       if (evt.event === "delete") {
         if (evt.collection === ids.BuzzBookhiveBook) {
-          await db
-            .deleteFrom("user_book")
-            .where("uri", "=", evt.uri.toString())
-            .execute();
+          await db.deleteFrom("user_book").where("uri", "=", evt.uri.toString()).execute();
           wideEvent["outcome"] = "success";
           return;
         }
         if (evt.collection === ids.BuzzBookhiveBuzz) {
-          await db
-            .deleteFrom("buzz")
-            .where("uri", "=", evt.uri.toString())
-            .execute();
+          await db.deleteFrom("buzz").where("uri", "=", evt.uri.toString()).execute();
           wideEvent["outcome"] = "success";
           return;
         }
@@ -258,6 +382,8 @@ export function createIngester(
         if (event.kind !== "commit") continue;
         const evt = commitToEvent(event.did, event.commit);
         await handleEvent(evt);
+        // Persist cursor after each processed event
+        void kv.set(JETSTREAM_CURSOR_KEY, String(event.time_us));
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
@@ -273,16 +399,19 @@ export function createIngester(
       });
       setTimeout(() => {
         if (abortController?.signal.aborted) return;
-        start();
+        void start();
       }, 3000);
     }
   };
 
-  function start() {
+  async function start() {
     abortController = new AbortController();
+    const storedCursor = await kv.get<string>(JETSTREAM_CURSOR_KEY);
+    const cursor = storedCursor ? Number(storedCursor) : undefined;
     subscription = new JetstreamSubscription({
       url: JETSTREAM_URL,
       wantedCollections: WANTED_COLLECTIONS,
+      cursor,
       ws: {
         connectionTimeout: 20_000,
       },
@@ -291,10 +420,7 @@ export function createIngester(
           msg: "ingester",
           outcome: "connection_error",
           error: {
-            message:
-              event.error instanceof Error
-                ? event.error.message
-                : String(event.error),
+            message: event.error instanceof Error ? event.error.message : String(event.error),
           },
           timestamp: new Date().toISOString(),
           env: { node_env: env.NODE_ENV },
@@ -305,7 +431,7 @@ export function createIngester(
   }
 
   return {
-    start,
+    start: () => void start(),
     async destroy() {
       abortController?.abort();
       subscription = null;

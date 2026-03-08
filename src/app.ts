@@ -10,12 +10,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { timing } from "hono/timing";
 
 import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
-import {
-  createContextMiddleware,
-  type AppDeps,
-  type AppEnv,
-  type HonoServer,
-} from "./context";
+import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
@@ -31,15 +26,9 @@ export type CreateAppOptions = {
   productionPublicRoot?: string;
 };
 
-export function createApp({
-  startTime,
-  deps,
-  productionPublicRoot,
-}: CreateAppOptions): HonoServer {
+export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
-  const assetRoot =
-    productionPublicRoot ??
-    (env.isProduction ? "dist/public" : "public");
+  const assetRoot = productionPublicRoot ?? (env.isProduction ? "dist/public" : "public");
 
   app.use(timing());
   if (env.isDevelopment) {
@@ -79,8 +68,7 @@ export function createApp({
       "/assets/*",
       serveStatic({
         root: publicRoot,
-        rewriteRequestPath: (path) =>
-          path.startsWith("/assets") ? path.slice(1) : path,
+        rewriteRequestPath: (path) => (path.startsWith("/assets") ? path.slice(1) : path),
       }),
     );
   }

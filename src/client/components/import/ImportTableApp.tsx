@@ -2,12 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "hono/jsx/dom";
 
 import { BOOK_STATUS_MAP } from "../../../constants";
 import { StarRating } from "../StarRating";
-import type {
-  ImportEvent,
-  ImportRow,
-  BookUploadEvent,
-  BookFailedEvent,
-} from "./types";
+import type { ImportEvent, ImportRow, BookUploadEvent, BookFailedEvent } from "./types";
 
 const STORAGE_KEY = "bookhive_import_results";
 
@@ -15,7 +10,9 @@ const StatusBadge: FC<{ success: boolean }> = ({ success }) => (
   <span
     className={
       "badge " +
-      (success ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300")
+      (success
+        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300")
     }
   >
     {success ? "Success" : "Failed"}
@@ -34,10 +31,7 @@ const FailedRow: FC<{
     review?: string;
     reason?: string;
   };
-  onResolved: (
-    success: Extract<ImportRow, { success: true }>,
-    failedKey: string,
-  ) => void;
+  onResolved: (success: Extract<ImportRow, { success: true }>, failedKey: string) => void;
 }> = ({ row, onResolved }) => {
   const getReasonText = (reason?: string): string | null => {
     if (!reason || reason === "no_match") return null;
@@ -59,9 +53,7 @@ const FailedRow: FC<{
   const search = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/xrpc/buzz.bookhive.searchBooks?q=${query}&limit=20`,
-      );
+      const res = await fetch(`/xrpc/buzz.bookhive.searchBooks?q=${query}&limit=20`);
       const data = await res.json();
       const results = Array.isArray(data) ? data : (data?.books ?? []);
       if (!results.length) {
@@ -99,9 +91,7 @@ const FailedRow: FC<{
         }),
       });
       if (!res.ok) return;
-      const bookRes = await fetch(
-        `/xrpc/buzz.bookhive.searchBooks?id=${hiveId}&limit=1`,
-      );
+      const bookRes = await fetch(`/xrpc/buzz.bookhive.searchBooks?id=${hiveId}&limit=1`);
       const data = await bookRes.json();
       const arr = Array.isArray(data) ? data : (data?.books ?? []);
       const b = arr[0] ?? null;
@@ -141,17 +131,9 @@ const FailedRow: FC<{
             <div className="flex items-center gap-3">
               <StatusBadge success={false} />
               <div className="text-sm">
-                <div className="font-medium text-foreground">
-                  {row.title}
-                </div>
-                <div className="text-muted-foreground">
-                  {row.author}
-                </div>
-                {reasonText && (
-                  <div className="mt-1 text-xs text-destructive">
-                    {reasonText}
-                  </div>
-                )}
+                <div className="font-medium text-foreground">{row.title}</div>
+                <div className="text-muted-foreground">{row.author}</div>
+                {reasonText && <div className="mt-1 text-xs text-destructive">{reasonText}</div>}
               </div>
             </div>
             <button
@@ -168,13 +150,9 @@ const FailedRow: FC<{
           {isOpen && (
             <div className="rounded-md border border-border bg-card p-2">
               {loading ? (
-                <div className="px-2 py-1 text-sm text-muted-foreground">
-                  Searching…
-                </div>
+                <div className="px-2 py-1 text-sm text-muted-foreground">Searching…</div>
               ) : results.length === 0 ? (
-                <div className="px-2 py-1 text-sm text-muted-foreground">
-                  No results
-                </div>
+                <div className="px-2 py-1 text-sm text-muted-foreground">No results</div>
               ) : (
                 <ul className="space-y-2">
                   {results.map((b) => (
@@ -184,26 +162,17 @@ const FailedRow: FC<{
                     >
                       <div className="flex items-center gap-3">
                         {b.thumbnail && (
-                          <img
-                            src={b.thumbnail}
-                            className="h-10 w-7 rounded object-cover"
-                            alt=""
-                          />
+                          <img src={b.thumbnail} className="h-10 w-7 rounded object-cover" alt="" />
                         )}
                         <div>
-                          <div className="text-sm font-medium text-foreground">
-                            {b.title}
-                          </div>
+                          <div className="text-sm font-medium text-foreground">{b.title}</div>
                           <div className="text-xs text-muted-foreground">
                             {(b.authors || "").split("\t").join(", ")}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <a
-                          href={`/books/${b.id}`}
-                          className="text-sm text-primary hover:underline"
-                        >
+                        <a href={`/books/${b.id}`} className="text-sm text-primary hover:underline">
                           View
                         </a>
                         <button
@@ -292,15 +261,8 @@ const StatusDropdown: FC<{
               >
                 <span className="block truncate">{item.label}</span>
                 {status === item.value && (
-                  <span
-                    className="absolute inset-y-0 right-2 flex items-center"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
+                  <span className="absolute inset-y-0 right-2 flex items-center" aria-hidden="true">
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path
                         fill-rule="evenodd"
                         d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -352,9 +314,7 @@ const SuccessRowView: FC<{
           </div>
         </div>
       </td>
-      <td className="px-4 py-2 text-sm text-muted-foreground">
-        {authors.split("\t").join(", ")}
-      </td>
+      <td className="px-4 py-2 text-sm text-muted-foreground">{authors.split("\t").join(", ")}</td>
       <td className="px-4 py-2">
         <div className="flex items-center space-x-1">
           <StarRating
@@ -487,9 +447,7 @@ export const ImportTableApp: FC = () => {
           });
           if (ev.book) {
             setRows((prev) => {
-              const next = prev.some(
-                (r) => r.success && r.hiveId === ev.book.hiveId,
-              )
+              const next = prev.some((r) => r.success && r.hiveId === ev.book.hiveId)
                 ? prev
                 : prev.concat([{ success: true, ...ev.book }]);
               return next;
@@ -502,13 +460,9 @@ export const ImportTableApp: FC = () => {
           setRows((prev) => {
             const exists = prev.some(
               (r) =>
-                !r.success &&
-                r.title === ev.failedBook.title &&
-                r.author === ev.failedBook.author,
+                !r.success && r.title === ev.failedBook.title && r.author === ev.failedBook.author,
             );
-            return exists
-              ? prev
-              : prev.concat([{ success: false, ...ev.failedBook }]);
+            return exists ? prev : prev.concat([{ success: false, ...ev.failedBook }]);
           });
           break;
         }
@@ -525,15 +479,12 @@ export const ImportTableApp: FC = () => {
       }
     };
     window.addEventListener("bookhive:import-event" as any, handler);
-    return () =>
-      window.removeEventListener("bookhive:import-event" as any, handler);
+    return () => window.removeEventListener("bookhive:import-event" as any, handler);
   }, []);
 
   const updateRow = (hiveId: string, next: Partial<ImportRow>) => {
     setRows((prev) =>
-      prev.map((r) =>
-        r.success && r.hiveId === hiveId ? ({ ...r, ...next } as ImportRow) : r,
-      ),
+      prev.map((r) => (r.success && r.hiveId === hiveId ? ({ ...r, ...next } as ImportRow) : r)),
     );
   };
   const deleteRow = (hiveId: string) => {
@@ -555,15 +506,11 @@ export const ImportTableApp: FC = () => {
     () =>
       rows
         .filter((r) => !r.success)
-        .sort((a, b) =>
-          a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-        ),
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" })),
     [rows],
   );
 
-  const alreadyCount = (successRows as any[]).filter(
-    (r) => r.alreadyExists,
-  ).length;
+  const alreadyCount = (successRows as any[]).filter((r) => r.alreadyExists).length;
 
   return (
     <div className="mt-8 space-y-6">
@@ -572,32 +519,22 @@ export const ImportTableApp: FC = () => {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="card p-4 text-center">
             <div className="text-sm text-muted-foreground">Imported</div>
-            <div className="text-2xl font-semibold text-foreground">
-              {successRows.length}
-            </div>
+            <div className="text-2xl font-semibold text-foreground">{successRows.length}</div>
           </div>
           <div className="card p-4 text-center">
             <div className="text-sm text-muted-foreground">Failed</div>
-            <div className="text-2xl font-semibold text-foreground">
-              {failedRows.length}
-            </div>
+            <div className="text-2xl font-semibold text-foreground">{failedRows.length}</div>
           </div>
           <div className="card p-4 text-center">
-            <div className="text-sm text-muted-foreground">
-              Already in library
-            </div>
-            <div className="text-2xl font-semibold text-foreground">
-              {alreadyCount}
-            </div>
+            <div className="text-sm text-muted-foreground">Already in library</div>
+            <div className="text-2xl font-semibold text-foreground">{alreadyCount}</div>
           </div>
         </div>
       )}
 
       {/* Progress */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-foreground">
-          Imported books
-        </h3>
+        <h3 className="text-lg font-semibold text-foreground">Imported books</h3>
         <div className="flex items-center gap-2">
           {progress && (
             <div className="w-56">
@@ -619,11 +556,7 @@ export const ImportTableApp: FC = () => {
               </div>
             </div>
           )}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => setRows([])}
-          >
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows([])}>
             Clear list
           </button>
         </div>
@@ -631,68 +564,56 @@ export const ImportTableApp: FC = () => {
 
       {/* Failed table */}
       <div className="card overflow-hidden">
-        <div className="card-header border-b border-border">
-          Failed imports
-        </div>
+        <div className="card-header border-b border-border">Failed imports</div>
         <div className="overflow-x-auto">
           <table className="table w-full">
             <thead className="sticky top-0 z-10 bg-muted/50">
               <tr>
-                <th className="text-left text-sm font-semibold text-foreground">
-                  Book
-                </th>
+                <th className="text-left text-sm font-semibold text-foreground">Book</th>
               </tr>
             </thead>
             <tbody>
-            {failedRows.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-muted-foreground">
-                  No failed books
-                </td>
-              </tr>
-            )}
-            {failedRows.map((row) => (
-              <FailedRow
-                key={`${row.title}-${row.author}`}
-                row={row}
-                onResolved={(success, failedKey) => {
-                  const normalize = (s: string) =>
-                    s
-                      ?.normalize("NFKC")
-                      .toLowerCase()
-                      .replace(/\s+/g, " ")
-                      .trim();
-                  const [fkTitle, fkAuthor] = failedKey.split("::");
-                  const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
+              {failedRows.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground">No failed books</td>
+                </tr>
+              )}
+              {failedRows.map((row) => (
+                <FailedRow
+                  key={`${row.title}-${row.author}`}
+                  row={row}
+                  onResolved={(success, failedKey) => {
+                    const normalize = (s: string) =>
+                      s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+                    const [fkTitle, fkAuthor] = failedKey.split("::");
+                    const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
 
-                  setRows((prev) => {
-                    const next = prev
-                      .filter((r) => {
-                        const isFailed = !(r as any).success;
-                        if (!isFailed) return true;
-                        const rt = normalize((r as any).title || "");
-                        const ra = normalize((r as any).author || "");
-                        return `${rt}::${ra}` !== failedKeyNorm;
-                      })
-                      .concat([success as any]);
-                    try {
-                      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-                    } catch {}
-                    return next;
-                  });
-                }}
-              />
-            ))}
-          </tbody>
+                    setRows((prev) => {
+                      const next = prev
+                        .filter((r) => {
+                          const isFailed = !(r as any).success;
+                          if (!isFailed) return true;
+                          const rt = normalize((r as any).title || "");
+                          const ra = normalize((r as any).author || "");
+                          return `${rt}::${ra}` !== failedKeyNorm;
+                        })
+                        .concat([success as any]);
+                      try {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+                      } catch {}
+                      return next;
+                    });
+                  }}
+                />
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
 
       {/* Successful table */}
       <div className="card overflow-hidden">
-        <div className="card-header border-b border-border">
-          Successfully imported
-        </div>
+        <div className="card-header border-b border-border">Successfully imported</div>
         <div className="overflow-x-auto">
           <table className="table w-full">
             <thead className="sticky top-0 z-10 bg-muted/50">
@@ -703,39 +624,30 @@ export const ImportTableApp: FC = () => {
                 >
                   Book
                 </th>
-                <th className="text-left text-sm font-semibold text-foreground">
-                  Rating
-                </th>
-                <th className="text-left text-sm font-semibold text-foreground">
-                  Status
-                </th>
-                <th className="text-left text-sm font-semibold text-foreground">
-                  Actions
-                </th>
+                <th className="text-left text-sm font-semibold text-foreground">Rating</th>
+                <th className="text-left text-sm font-semibold text-foreground">Status</th>
+                <th className="text-left text-sm font-semibold text-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
-            {successRows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-6 text-center text-muted-foreground"
-                >
-                  Imported books will appear here as they are processed.
-                </td>
-              </tr>
-            )}
-            {successRows.map((row) => (
-              <SuccessRowView
-                key={(row as any).hiveId}
-                row={row}
-                onUpdate={(next: Partial<ImportRow>) => {
-                  if (row.success) updateRow(row.hiveId, next);
-                }}
-                onDelete={(hiveId: string) => deleteRow(hiveId)}
-              />
-            ))}
-          </tbody>
+              {successRows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                    Imported books will appear here as they are processed.
+                  </td>
+                </tr>
+              )}
+              {successRows.map((row) => (
+                <SuccessRowView
+                  key={(row as any).hiveId}
+                  row={row}
+                  onUpdate={(next: Partial<ImportRow>) => {
+                    if (row.success) updateRow(row.hiveId, next);
+                  }}
+                  onDelete={(hiveId: string) => deleteRow(hiveId)}
+                />
+              ))}
+            </tbody>
           </table>
         </div>
       </div>

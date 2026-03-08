@@ -6,9 +6,7 @@ import { FallbackCover } from "./fallbackCover";
 import { StarDisplay } from "./cards";
 import { hydrateUserBook } from "../../utils/bookProgress";
 
-const NO_BOOKS_FOUND = (
-  <p className="text-center text-lg">No books in this list</p>
-);
+const NO_BOOKS_FOUND = <p className="text-center text-lg">No books in this list</p>;
 
 export const BookList: FC<{
   books?: Book[];
@@ -46,19 +44,10 @@ export const BookList: FC<{
     <div class="relative overflow-hidden rounded-lg bg-card pb-16">
       <input type="radio" id="tab-read" name="tabs" class="peer/read hidden" />
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
-      <input
-        type="radio"
-        id="tab-reading"
-        name="tabs"
-        class="peer/reading hidden"
-        checked
-      />
+      <input type="radio" id="tab-reading" name="tabs" class="peer/reading hidden" checked />
 
       <div class="mb-4 border-b border-border peer-checked/read:[&_label[for='tab-read']]:border-primary peer-checked/read:[&_label[for='tab-read']]:text-primary peer-checked/reading:[&_label[for='tab-reading']]:border-primary peer-checked/reading:[&_label[for='tab-reading']]:text-primary peer-checked/want:[&_label[for='tab-want']]:border-primary peer-checked/want:[&_label[for='tab-want']]:text-primary">
-        <ul
-          class="-mb-px flex flex-wrap text-center text-sm font-medium"
-          role="tablist"
-        >
+        <ul class="-mb-px flex flex-wrap text-center text-sm font-medium" role="tablist">
           <li class="me-2" role="presentation">
             <label
               for="tab-reading"
@@ -111,10 +100,7 @@ export const BookList: FC<{
                 if (!a.finishedAt && !b.finishedAt) return 0;
                 if (!a.finishedAt) return 1;
                 if (!b.finishedAt) return -1;
-                return (
-                  new Date(b.finishedAt).getTime() -
-                  new Date(a.finishedAt).getTime()
-                );
+                return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
               })
               .map((book) => <BookListItem book={book} />),
           )}
@@ -133,10 +119,8 @@ export const BookList: FC<{
               .sort((a, b) => {
                 // Sort by most recent progress update first
                 // Fall back to startedAt, then createdAt for books without progress
-                const aDate =
-                  a.bookProgress?.updatedAt || a.startedAt || a.createdAt;
-                const bDate =
-                  b.bookProgress?.updatedAt || b.startedAt || b.createdAt;
+                const aDate = a.bookProgress?.updatedAt || a.startedAt || a.createdAt;
+                const bDate = b.bookProgress?.updatedAt || b.startedAt || b.createdAt;
                 return new Date(bDate).getTime() - new Date(aDate).getTime();
               })
               .map((book) => <BookListItem book={book} />),
@@ -194,22 +178,18 @@ export const BookListItem: FC<{
         )}
         <div className="absolute inset-0 rounded-lg bg-gradient-to-t from-black/80 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
           <div className="absolute bottom-0 p-4 text-white">
-            <p className="text-md font-bold">
-              {book.authors.split("\t").join(", ")}
-            </p>
+            <p className="text-md font-bold">{book.authors.split("\t").join(", ")}</p>
             <div className="flex items-center">
               <StarDisplay rating={rating} />
               <span class="ms-3 rounded bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-200 dark:text-blue-800">
                 {rating ? rating : "N/A"}
               </span>
             </div>
-            {"status" in book &&
-              book.status !== null &&
-              book.status in BOOK_STATUS_MAP && (
-                <span className="mt-1 mr-1 inline-block rounded-full bg-white/20 px-2 py-1 text-xs capitalize">
-                  {BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]}
-                </span>
-              )}
+            {"status" in book && book.status !== null && book.status in BOOK_STATUS_MAP && (
+              <span className="mt-1 mr-1 inline-block rounded-full bg-white/20 px-2 py-1 text-xs capitalize">
+                {BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]}
+              </span>
+            )}
             {"stars" in book && book.stars !== null && (
               <span className="mt-1 mr-1 inline-block rounded-full bg-white/20 px-2 py-1 text-xs capitalize">
                 rated

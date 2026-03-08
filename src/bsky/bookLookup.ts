@@ -28,10 +28,7 @@ export type HiveBookOutput = {
  * Map a hive book + identifiers to the lexicon hiveBook output shape.
  * Use this when you already have resolved identifiers (e.g. from findBookIdentifiersByLookup).
  */
-export function toHiveBookOutput(
-  book: HiveBook,
-  identifiers: BookIdentifiers,
-): HiveBookOutput {
+export function toHiveBookOutput(book: HiveBook, identifiers: BookIdentifiers): HiveBookOutput {
   return {
     $type: "buzz.bookhive.hiveBook",
     id: book.id,
@@ -74,9 +71,7 @@ export function transformBookWithIdentifiers<
 >(book: T): HiveBookOutput {
   const identifiers: BookIdentifiers = {
     hiveId: book.id,
-    ...(book.identifiers
-      ? (JSON.parse(book.identifiers) as BookIdentifiers)
-      : {}),
+    ...(book.identifiers ? (JSON.parse(book.identifiers) as BookIdentifiers) : {}),
   };
   return toHiveBookOutput(book as unknown as HiveBook, identifiers);
 }

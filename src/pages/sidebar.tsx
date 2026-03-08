@@ -45,10 +45,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
             (item.href === "/explore" && currentPath.startsWith("/explore"));
           return (
             <li>
-              <a
-                href={item.href}
-                aria-current={isActive ? "page" : undefined}
-              >
+              <a href={item.href} aria-current={isActive ? "page" : undefined}>
                 {item.label}
               </a>
             </li>
@@ -63,10 +60,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
             <li>
               <a href={`/profile/${user.handle}`}>
                 <div class="avatar">
-                  <img
-                    src={user.avatar || "/default-avatar.png"}
-                    alt=""
-                  />
+                  <img src={user.avatar || "/default-avatar.png"} alt="" />
                 </div>
                 <span>@{user.handle}</span>
               </a>

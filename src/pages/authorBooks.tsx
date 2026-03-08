@@ -5,10 +5,7 @@ import { BookListItem } from "./components/book";
 import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
-import {
-  buildAuthorLikePatterns,
-  calculatePagination,
-} from "../utils/authorMatching";
+import { buildAuthorLikePatterns, calculatePagination } from "../utils/authorMatching";
 
 type SortOption = "popularity" | "reviews";
 
@@ -51,9 +48,7 @@ const NO_BOOKS_FOUND = (author: string) => (
   <div class="card">
     <section class="py-12 text-center">
       <h3 class="text-xl font-semibold text-foreground">No books found</h3>
-      <p class="text-muted-foreground mt-2">
-        No books found by "{author}" yet.
-      </p>
+      <p class="text-muted-foreground mt-2">No books found by "{author}" yet.</p>
     </section>
   </div>
 );
@@ -73,19 +68,23 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
   return (
     <div class="space-y-6">
       <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-        <a href="/" class="hover:text-foreground transition-colors">Home</a>
+        <a href="/" class="hover:text-foreground transition-colors">
+          Home
+        </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore" class="hover:text-foreground transition-colors">Explore</a>
+        <a href="/explore" class="hover:text-foreground transition-colors">
+          Explore
+        </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore/authors" class="hover:text-foreground transition-colors">Authors</a>
+        <a href="/explore/authors" class="hover:text-foreground transition-colors">
+          Authors
+        </a>
         <span aria-hidden="true">›</span>
         <span class="text-foreground font-medium">{author}</span>
       </nav>
 
       <div class="flex flex-col gap-4">
-        <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
-          {author}
-        </h1>
+        <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">{author}</h1>
 
         {books.length > 0 && (
           <div class="mb-4 flex flex-wrap items-center gap-2">
@@ -119,10 +118,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
             </div>
 
             {totalPages > 1 && (
-              <nav
-                class="flex flex-wrap items-center justify-center gap-2"
-                aria-label="Pagination"
-              >
+              <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
                 {currentPage > 1 ? (
                   <a
                     href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${currentPage - 1}`}

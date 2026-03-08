@@ -126,10 +126,7 @@ migrations["002"] = {
 
 migrations["003"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("rawTitle", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("rawTitle", "text").execute();
   },
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("hive_book").dropColumn("rawTitle").execute();
@@ -174,22 +171,13 @@ migrations["004"] = {
 
 migrations["005"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("genres", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
 
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("series", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("series", "text").execute();
 
     await db.schema.alterTable("hive_book").addColumn("meta", "text").execute();
 
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("enrichedAt", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("enrichedAt", "text").execute();
   },
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("hive_book").dropColumn("genres").execute();
@@ -204,16 +192,10 @@ migrations["005"] = {
 
 migrations["006"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("user_book")
-      .addColumn("bookProgress", "text")
-      .execute();
+    await db.schema.alterTable("user_book").addColumn("bookProgress", "text").execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("user_book")
-      .dropColumn("bookProgress")
-      .execute();
+    await db.schema.alterTable("user_book").dropColumn("bookProgress").execute();
   },
 };
 
@@ -227,19 +209,13 @@ migrations["008"] = {
       .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema
-      .dropIndex("idx_user_book_created_at")
-      .on("user_book")
-      .execute();
+    await db.schema.dropIndex("idx_user_book_created_at").on("user_book").execute();
   },
 };
 
 migrations["007"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("identifiers", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("identifiers", "text").execute();
 
     await db.schema
       .createTable("book_id_map")
@@ -250,11 +226,7 @@ migrations["007"] = {
       .addColumn("updatedAt", "text", (col) => col.notNull())
       .execute();
 
-    await db.schema
-      .createIndex("idx_book_id_map_isbn")
-      .on("book_id_map")
-      .column("isbn")
-      .execute();
+    await db.schema.createIndex("idx_book_id_map_isbn").on("book_id_map").column("isbn").execute();
 
     await db.schema
       .createIndex("idx_book_id_map_isbn13")
@@ -375,14 +347,11 @@ migrations["010"] = {
       if (batch.length === 0) break;
       const updates = batch.map((row) => ({
         hiveId: row.id as HiveId,
-        goodreadsId: deriveBookIdentifiers(
-          row as Parameters<typeof deriveBookIdentifiers>[0],
-        ).goodreadsId as string | null,
+        goodreadsId: deriveBookIdentifiers(row as Parameters<typeof deriveBookIdentifiers>[0])
+          .goodreadsId as string | null,
       }));
       const hiveIds = updates.map((u) => u.hiveId) as HiveId[];
-      const caseFragments = updates.map(
-        (u) => sql`WHEN ${u.hiveId} THEN ${u.goodreadsId}`,
-      );
+      const caseFragments = updates.map((u) => sql`WHEN ${u.hiveId} THEN ${u.goodreadsId}`);
       await db
         // @ts-ignore - migration uses unknown schema; set uses raw CASE, where uses hiveIds
         .updateTable("book_id_map")
@@ -406,9 +375,9 @@ migrations["010"] = {
 export const createDb = (location: string): Database => {
   const sqlite = new DatabaseSync(location);
   sqlite.exec("PRAGMA journal_mode = WAL");
-  sqlite.exec("PRAGMA synchronous = NORMAL");  // safe with WAL; skips redundant fsyncs
-  sqlite.exec("PRAGMA cache_size = -65536");   // 64 MB page cache (default is ~2 MB)
-  sqlite.exec("PRAGMA temp_store = MEMORY");   // temp B-trees (sorts, GROUP BY) in RAM
+  sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
+  sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
+  sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
   // mmap intentionally omitted: prod DB is ~800 MB and growing; mmap_size = 0 (default)
   // keeps memory usage bounded and predictable. The 64 MB page cache covers the full
   // hot index working set (~56 MB: genre + thumbnail + author-ratings indexes).

@@ -19,10 +19,7 @@ interface BookMeta {
   ratingsDistribution: number[];
 }
 
-export async function enrichBookWithDetailedData(
-  book: HiveBook,
-  ctx: AppContext,
-): Promise<void> {
+export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext): Promise<void> {
   try {
     // Skip if already enriched recently (within 30 days)
     if (book.enrichedAt) {
@@ -71,9 +68,7 @@ export async function enrichBookWithDetailedData(
 
     // Map ParsedGoodreadsData to database fields
     const genres =
-      detailedData.book.genres.length > 0
-        ? JSON.stringify(detailedData.book.genres)
-        : null;
+      detailedData.book.genres.length > 0 ? JSON.stringify(detailedData.book.genres) : null;
 
     const series = detailedData.book.series
       ? JSON.stringify({

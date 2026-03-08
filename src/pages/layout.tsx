@@ -41,8 +41,7 @@ export const Layout: FC<
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
   // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
-  const isDevVite =
-    assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
+  const isDevVite = assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
 
   return html`<!doctype html>
     <html lang="en" class="bg-background text-foreground h-full">
@@ -140,9 +139,7 @@ export const Layout: FC<
             --padding-menu: 4px;
           }`)}
         </style>
-        ${jsUrls.map(
-          (src) => html`<script type="module" src="${src}"></script>`,
-        )}
+        ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
         <script type="module" src="/js/actor-typeahead.js"></script>
       </head>
       <body class="bg-background text-foreground min-h-full">

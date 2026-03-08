@@ -5,9 +5,7 @@ import { resolveProductionPublicRoot } from "./utils/manifest";
 
 const deps = await createAppDeps();
 const startTime = new Date().toISOString();
-const productionPublicRoot = env.isProduction
-  ? await resolveProductionPublicRoot()
-  : undefined;
+const productionPublicRoot = env.isProduction ? await resolveProductionPublicRoot() : undefined;
 
 const app = createApp({
   startTime,

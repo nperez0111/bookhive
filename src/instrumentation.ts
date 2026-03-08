@@ -9,10 +9,7 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { env } from "./env";
 
 const traceExporter =
-  !env.isDev &&
-  env.OPEN_OBSERVE_URL &&
-  env.OPEN_OBSERVE_USER &&
-  env.OPEN_OBSERVE_PASSWORD
+  !env.isDev && env.OPEN_OBSERVE_URL && env.OPEN_OBSERVE_USER && env.OPEN_OBSERVE_PASSWORD
     ? new OTLPTraceExporter({
         url: `${env.OPEN_OBSERVE_URL}/api/bookhive/v1/traces`,
         headers: {

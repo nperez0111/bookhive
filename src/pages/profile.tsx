@@ -55,11 +55,9 @@ export const ProfilePage: FC<{
           2
         ).toFixed(1)
       : "—";
-  const totalRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED)
-    .length;
+  const totalRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const monthsActive = 12; // could derive from first book date
-  const booksPerMonth =
-    totalRead > 0 ? (totalRead / monthsActive).toFixed(1) : "0";
+  const booksPerMonth = totalRead > 0 ? (totalRead / monthsActive).toFixed(1) : "0";
   const pagesRead = books.reduce((sum, b) => {
     const p = b.bookProgress;
     return sum + (p?.totalPages ?? 0);
@@ -88,23 +86,15 @@ export const ProfilePage: FC<{
             <div class="card-body">
               <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
-                    {booksThisYear}
-                  </div>
-                  <div class="text-muted-foreground text-sm">
-                    Books in {year}
-                  </div>
+                  <div class="text-3xl font-bold text-foreground">{booksThisYear}</div>
+                  <div class="text-muted-foreground text-sm">Books in {year}</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
-                    {avgRating}
-                  </div>
+                  <div class="text-3xl font-bold text-foreground">{avgRating}</div>
                   <div class="text-muted-foreground text-sm">Avg Rating</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
-                    {booksPerMonth}
-                  </div>
+                  <div class="text-3xl font-bold text-foreground">{booksPerMonth}</div>
                   <div class="text-muted-foreground text-sm">Books/Month</div>
                 </div>
                 <div class="text-center">
@@ -122,22 +112,15 @@ export const ProfilePage: FC<{
                   </h3>
                   <div class="space-y-1">
                     {genreStats.map((g) => (
-                      <div
-                        key={g.genre}
-                        class="flex items-center gap-2"
-                      >
-                        <span class="text-foreground w-24 truncate text-sm">
-                          {g.genre}
-                        </span>
+                      <div key={g.genre} class="flex items-center gap-2">
+                        <span class="text-foreground w-24 truncate text-sm">{g.genre}</span>
                         <div class="bg-muted h-4 flex-1 rounded">
                           <div
                             class="bg-primary h-4 rounded"
                             style={`width: ${(g.count / totalBooksForGenre) * 100}%`}
                           />
                         </div>
-                        <span class="text-muted-foreground text-sm">
-                          {g.count}
-                        </span>
+                        <span class="text-muted-foreground text-sm">{g.count}</span>
                       </div>
                     ))}
                   </div>
@@ -157,14 +140,9 @@ export const ProfilePage: FC<{
 
           {/* Library */}
           <section>
-            <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">
-              Library
-            </h2>
+            <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
             {isOwnProfile ? (
-              <EditableLibraryTable
-                books={books}
-                redirectUrl={`/profile/${handle}`}
-              />
+              <EditableLibraryTable books={books} redirectUrl={`/profile/${handle}`} />
             ) : (
               <BookList books={books} />
             )}
@@ -173,9 +151,7 @@ export const ProfilePage: FC<{
           {/* Reviews */}
           {books.some((book) => book.review) && (
             <section>
-              <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">
-                Reviews
-              </h2>
+              <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Reviews</h2>
               <div class="space-y-4">
                 {books
                   .filter((book) => book.review)
@@ -200,12 +176,7 @@ export const ProfilePage: FC<{
                 Following ({followingCount})
               </label>
 
-              <input
-                type="radio"
-                name="social-tabs"
-                id="tab-followers"
-                class="peer sr-only"
-              />
+              <input type="radio" name="social-tabs" id="tab-followers" class="peer sr-only" />
               <label for="tab-followers" class="tab-label">
                 Followers ({followersCount})
               </label>
@@ -254,9 +225,7 @@ export const ProfilePage: FC<{
           )}
         </>
       ) : (
-        <div class="text-muted-foreground text-center">
-          This user has no books on BookHive yet.
-        </div>
+        <div class="text-muted-foreground text-center">This user has no books on BookHive yet.</div>
       )}
     </div>
   );

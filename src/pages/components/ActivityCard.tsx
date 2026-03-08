@@ -75,9 +75,7 @@ export const ActivityCard: FC<ActivityCardProps> = ({ activity, user, timeAgo })
         </div>
 
         {activity.review && (
-          <p class="text-muted-foreground line-clamp-3 text-sm italic">
-            "{activity.review}"
-          </p>
+          <p class="text-muted-foreground line-clamp-3 text-sm italic">"{activity.review}"</p>
         )}
 
         <div class="bg-muted rounded p-3">
@@ -93,12 +91,7 @@ export const ActivityCard: FC<ActivityCardProps> = ({ activity, user, timeAgo })
         </div>
 
         <CardActions>
-          <a
-            href={shareUrl}
-            class="btn btn-sm btn-ghost"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={shareUrl} class="btn btn-sm btn-ghost" target="_blank" rel="noopener noreferrer">
             Share
           </a>
         </CardActions>

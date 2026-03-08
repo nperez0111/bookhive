@@ -40,8 +40,7 @@ const app = new Hono<AppEnv>()
           401,
         );
       }
-      const { hiveId, comment, parentUri, parentCid, uri } =
-        c.req.valid("form");
+      const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("form");
 
       const originalBuzz = uri
         ? await c
@@ -84,9 +83,7 @@ const app = new Hono<AppEnv>()
                 ? "com.atproto.repo.applyWrites#update"
                 : "com.atproto.repo.applyWrites#create",
               collection: ids.BuzzBookhiveBuzz,
-              rkey: originalBuzz
-                ? originalBuzz.uri.split("/").at(-1)!
-                : TID.now(),
+              rkey: originalBuzz ? originalBuzz.uri.split("/").at(-1)! : TID.now(),
               value: {
                 book: bookRef.value,
                 comment,
@@ -102,8 +99,7 @@ const app = new Hono<AppEnv>()
         results?: Array<{ $type: string; uri?: string; cid?: string }>;
       };
       const out = response.data as ApplyWritesOut | null;
-      const firstResult =
-        response.ok && out?.results?.[0] ? out.results[0] : undefined;
+      const firstResult = response.ok && out?.results?.[0] ? out.results[0] : undefined;
       if (
         !response.ok ||
         !out?.results ||
@@ -114,10 +110,7 @@ const app = new Hono<AppEnv>()
           firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
         )
       ) {
-        c.set(
-          "requestError",
-          new Error("Failed to write comment to the database"),
-        );
+        c.set("requestError", new Error("Failed to write comment to the database"));
         c.get("ctx").addWideEventContext({
           comment_post: "failed",
           hiveId,

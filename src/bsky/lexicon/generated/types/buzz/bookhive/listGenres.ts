@@ -24,9 +24,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.listGenres", {
      * @default 50
      */
     limit: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 100),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 100)]),
       50,
     ),
     /**
@@ -60,13 +58,10 @@ type main$schematype = typeof _mainSchema;
 export interface genreWithCountSchema extends genreWithCount$schematype {}
 export interface mainSchema extends main$schematype {}
 
-export const genreWithCountSchema =
-  _genreWithCountSchema as genreWithCountSchema;
+export const genreWithCountSchema = _genreWithCountSchema as genreWithCountSchema;
 export const mainSchema = _mainSchema as mainSchema;
 
-export interface GenreWithCount extends v.InferInput<
-  typeof genreWithCountSchema
-> {}
+export interface GenreWithCount extends v.InferInput<typeof genreWithCountSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
 export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}

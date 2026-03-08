@@ -222,7 +222,5 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         owned: true,
       });
     });
-
-
   });
 });

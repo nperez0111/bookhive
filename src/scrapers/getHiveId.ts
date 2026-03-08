@@ -1,13 +1,7 @@
 import { objectHash, sha256base64 } from "ohash";
 import type { HiveId } from "../types";
 
-export function getHiveId({
-  title,
-  authors,
-}: {
-  title: string;
-  authors: string;
-}): HiveId {
+export function getHiveId({ title, authors }: { title: string; authors: string }): HiveId {
   return `bk_${sha256base64(
     objectHash({
       title: title.toLowerCase(),

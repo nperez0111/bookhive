@@ -57,9 +57,7 @@ export async function loadViteManifest(): Promise<ViteManifest | null> {
         const file = Bun.file(absPath);
         if (await file.exists()) {
           manifestFile = await file.text();
-          cachedProductionPublicRoot = absPath.includes("/dist/public/")
-            ? "dist/public"
-            : "public";
+          cachedProductionPublicRoot = absPath.includes("/dist/public/") ? "dist/public" : "public";
           break;
         }
       } catch {
@@ -79,9 +77,7 @@ export async function loadViteManifest(): Promise<ViteManifest | null> {
  * Get asset URLs from Vite manifest for production.
  * In development, returns Vite dev server URLs (manifest is null).
  */
-export function getAssetUrlsFromManifest(
-  manifest: ViteManifest | null,
-): BundleAssetUrls {
+export function getAssetUrlsFromManifest(manifest: ViteManifest | null): BundleAssetUrls {
   if (!manifest) {
     if (env.NODE_ENV !== "production") {
       // Dev mode: Vite serves CSS from client entry at port 5173
