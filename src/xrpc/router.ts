@@ -10,6 +10,10 @@ import {
   BuzzBookhiveGetBookIdentifiers,
   BuzzBookhiveGetBook,
   BuzzBookhiveGetProfile,
+  BuzzBookhiveGetExplore,
+  BuzzBookhiveGetFeed,
+  BuzzBookhiveGetAuthorBooks,
+  BuzzBookhiveGetReadingStats,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -27,6 +31,12 @@ import { BookFields } from "../db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
+import { getTopAuthors } from "../pages/authorDirectory";
+import {
+  computeReadingStats,
+  filterFinishedBooksByYear,
+  filterFinishedBooksAllTime,
+} from "../utils/readingStats";
 import {
   deriveBookIdentifiers,
   normalizeGoodreadsId,
@@ -612,6 +622,290 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       };
 
       return json(response as unknown as GetProfileOutputSchema);
+    },
+  });
+
+<<<<<<< HEAD
+  router.addQuery(BuzzBookhiveGetExplore, {
+    async handler() {
+      const ctx = getCtx();
+
+      const [genreRows, topAuthors] = await Promise.all([
+        ctx.db
+          .selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(6)
+          .execute(),
+        getTopAuthors(ctx.db, 8),
+      ]);
+
+      return json({
+        genres: genreRows.map((g) => ({ genre: g.genre, count: g.count })),
+        topAuthors: topAuthors.map((a) => ({
+          author: a.author,
+          bookCount: a.bookCount,
+          thumbnail: a.thumbnail ?? undefined,
+          // avgRating from DB is already 0-5 (ROUND(AVG(...)/1000, 1)); scale by 10 for integer transport
+          avgRating:
+            a.avgRating != null ? Math.round(a.avgRating * 10) : undefined,
+        })),
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetFeed, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+
+      const tab = (params.tab as "friends" | "all" | "tracking") || "friends";
+      const page = Math.max(1, params.page ?? 1);
+      const limit = Math.min(50, params.limit ?? 25);
+      const offset = (page - 1) * limit;
+
+      if ((tab === "friends" || tab === "tracking") && !agent) {
+        throw new AuthRequiredError({
+          description: `The ${tab} feed requires authentication`,
+        });
+      }
+
+      let query = ctx.db
+        .selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(limit + 1)
+        .offset(offset);
+
+      if (tab === "friends" && agent) {
+        query = query.where(
+          "user_book.userDid",
+          "in",
+          ctx.db
+            .selectFrom("user_follows")
+            .where("user_follows.userDid", "=", agent.did)
+            .where("user_follows.isActive", "=", 1)
+            .select("user_follows.followsDid"),
+        ) as typeof query;
+      } else if (tab === "tracking" && agent) {
+        query = query.where(
+          "user_book.hiveId",
+          "in",
+          ctx.db
+            .selectFrom("user_book as ub2")
+            .where("ub2.userDid", "=", agent.did)
+            .select("ub2.hiveId"),
+        ) as typeof query;
+      }
+
+      const rows = await query.execute();
+      const hasMore = rows.length > limit;
+      const activities = rows.slice(0, limit);
+
+      const allDids = [...new Set(activities.map((a) => a.userDid))];
+      const didToHandle =
+        allDids.length > 0
+          ? await ctx.resolver.resolveDidsToHandles(allDids)
+          : {};
+
+      return json({
+        activities: activities.map((a) => ({
+          userDid: a.userDid,
+          userHandle: didToHandle[a.userDid] ?? a.userDid,
+          hiveId: a.hiveId,
+          title: a.title,
+          authors: a.authors,
+          status: a.status ?? undefined,
+          stars: a.stars ?? undefined,
+          review: a.review ?? undefined,
+          createdAt: a.createdAt,
+          thumbnail: a.thumbnail || "",
+          cover: a.cover ?? a.thumbnail ?? undefined,
+        })),
+        hasMore,
+        page,
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetAuthorBooks, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { author, page = 1, limit = 50, sort = "popularity" } = params;
+
+      const pageSize = Math.min(100, limit);
+      const offset = (Math.max(1, page) - 1) * pageSize;
+
+      // Build author matching condition (authors stored tab-separated)
+      const exact = author;
+      const first = `${author}\t%`;
+      const middle = `%\t${author}\t%`;
+      const last = `%\t${author}`;
+      const authorCondition = sql`(
+        authors = ${exact}
+        OR authors LIKE ${first}
+        OR authors LIKE ${middle}
+        OR authors LIKE ${last}
+      )`;
+
+      const [totalCountResult, books] = await Promise.all([
+        ctx.db
+          .selectFrom("hive_book")
+          .select(sql<number>`COUNT(*)`.as("count"))
+          .where(authorCondition as any)
+          .executeTakeFirst(),
+        ctx.db
+          .selectFrom("hive_book")
+          .selectAll()
+          .where(authorCondition as any)
+          .orderBy(
+            sort === "reviews" ? "rating" : "ratingsCount",
+            "desc",
+          )
+          .orderBy(
+            sort === "reviews" ? "ratingsCount" : "rating",
+            "desc",
+          )
+          .limit(pageSize)
+          .offset(offset)
+          .execute(),
+      ]);
+
+      const totalBooks = Number(totalCountResult?.count ?? 0);
+      const totalPages = Math.max(1, Math.ceil(totalBooks / pageSize));
+
+      return json({
+        author,
+        books: books.map((b) => transformBookWithIdentifiers(b)),
+        totalBooks,
+        totalPages,
+        page: Math.max(1, page),
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetReadingStats, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { handle, year: yearParam } = params;
+      const year = yearParam ?? new Date().getFullYear();
+
+      // Resolve handle → DID
+      let did: string | undefined;
+      if (handle.startsWith("did:")) {
+        did = handle;
+      } else {
+        did = await ctx.baseIdResolver.handle.resolve(handle);
+      }
+
+      if (!did) {
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "User not found",
+        });
+      }
+
+      const books = await ctx.db
+        .selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .where("user_book.userDid", "=", did)
+        .orderBy("user_book.indexedAt", "desc")
+        .limit(10_000)
+        .execute();
+      const parsedBooks = books.map((b) => hydrateUserBook(b));
+
+      const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
+
+      let genreStatsForYear: { genre: string; count: number }[] = [];
+      if (finishedInYear.length > 0) {
+        const hiveIds = finishedInYear.map((b) => b.hiveId);
+        const rows = await ctx.db
+          .selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .where("hiveId", "in", hiveIds)
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(15)
+          .execute();
+        genreStatsForYear = rows.map((r) => ({
+          genre: r.genre,
+          count: Number(r.count),
+        }));
+      }
+
+      const stats = computeReadingStats(finishedInYear, genreStatsForYear);
+
+      const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
+      const yearSet = new Set(
+        finishedAllTime
+          .map((b) =>
+            b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0,
+          )
+          .filter((y) => y >= 2000 && y <= 2100),
+      );
+      const currentYear = new Date().getFullYear();
+      if (!yearSet.has(currentYear)) yearSet.add(currentYear);
+      const availableYears = [...yearSet].sort((a, b) => b - a);
+
+      // Fetch reading challenge goal if authenticated
+      const agent = await ctx.getSessionAgent();
+      let readingChallengeGoal: number | undefined;
+      if (agent?.did === did) {
+        const goalStr = await ctx.kv.getItem(
+          `reading-challenge:${did}:${year}`,
+        );
+        if (goalStr != null && typeof goalStr === "string") {
+          const parsed = parseInt(goalStr, 10);
+          if (!Number.isNaN(parsed) && parsed > 0)
+            readingChallengeGoal = parsed;
+        }
+      }
+
+      const toBookSummary = (b: { hiveId: string; title: string; authors: string; cover?: string | null; thumbnail?: string | null; bookProgress?: { totalPages?: number | null } | null; rating?: number | null } | null) => {
+        if (!b) return undefined;
+        return {
+          hiveId: b.hiveId,
+          title: b.title,
+          authors: b.authors,
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          thumbnail: b.thumbnail ?? undefined,
+          pageCount: b.bookProgress?.totalPages ?? undefined,
+          rating: b.rating ?? undefined,
+        };
+      };
+
+      return json({
+        stats: {
+          booksCount: stats.booksCount,
+          pagesRead: stats.pagesRead,
+          averageRating:
+            stats.averageRating != null
+              ? Math.round(stats.averageRating * 10)
+              : undefined,
+          averagePageCount: stats.averagePageCount ?? undefined,
+          ratingDistribution: {
+            one: stats.ratingDistribution[1],
+            two: stats.ratingDistribution[2],
+            three: stats.ratingDistribution[3],
+            four: stats.ratingDistribution[4],
+            five: stats.ratingDistribution[5],
+          },
+          topGenres: stats.topGenres.slice(0, 5),
+          shortestBook: toBookSummary(stats.shortestBook),
+          longestBook: toBookSummary(stats.longestBook),
+          firstBookOfYear: toBookSummary(stats.firstBookOfYear),
+          lastBookOfYear: toBookSummary(stats.lastBookOfYear),
+          mostPopularBook: toBookSummary(stats.mostPopularBook),
+          leastPopularBook: toBookSummary(stats.leastPopularBook),
+        },
+        availableYears,
+        year,
+        readingChallengeGoal,
+      });
     },
   });
 

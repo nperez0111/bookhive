@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getFeed",
+  "defs": {
+    "feedActivity": {
+      "type": "object",
+      "required": ["userDid", "hiveId", "title", "authors", "createdAt", "thumbnail"],
+      "properties": {
+        "userDid": { "type": "string" },
+        "userHandle": { "type": "string" },
+        "hiveId": { "type": "string" },
+        "title": { "type": "string" },
+        "authors": { "type": "string" },
+        "status": { "type": "string" },
+        "stars": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "review": { "type": "string" },
+        "createdAt": { "type": "string", "format": "datetime" },
+        "thumbnail": { "type": "string" },
+        "cover": { "type": "string" },
+        "userAvatar": { "type": "string" }
+      }
+    },
+    "main": {
+      "type": "query",
+      "description": "Get the activity feed. Requires authentication for the friends and tracking tabs.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "tab": {
+            "type": "string",
+            "knownValues": ["friends", "all", "tracking"],
+            "description": "Which feed tab to show. Defaults to friends."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Page number for pagination"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 25
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["activities", "hasMore"],
+          "properties": {
+            "activities": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "buzz.bookhive.getFeed#feedActivity" }
+            },
+            "hasMore": { "type": "boolean" },
+            "page": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

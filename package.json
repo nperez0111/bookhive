@@ -84,5 +84,8 @@
   "private": true,
   "workspaces": [
     "app"
-  ]
+  ],
+  "patchedDependencies": {
+    "ipx@4.0.0-alpha.1": "patches/ipx@4.0.0-alpha.1.patch"
+  }
 }

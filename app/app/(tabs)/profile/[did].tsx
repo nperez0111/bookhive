@@ -312,6 +312,20 @@ export default function ProfileScreen() {
               </View>
             </View>
           </ThemedCard>
+
+          <Pressable
+            onPress={() =>
+              router.push(`/profile/${did}/stats` as any)
+            }
+            style={[
+              styles.statsButton,
+              { backgroundColor: colors.activeBackground },
+            ]}
+          >
+            <ThemedText type="label" style={{ color: colors.primary }}>
+              View Reading Stats →
+            </ThemedText>
+          </Pressable>
         </View>
 
         {/* Currently Reading Section */}
@@ -527,9 +541,15 @@ const styles = StyleSheet.create({
   },
   profileSection: {
     margin: 20,
+    gap: 12,
   },
   profileCard: {
     padding: 24,
+  },
+  statsButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
   },
   profileImageContainer: {
     width: 80,

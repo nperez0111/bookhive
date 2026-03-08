@@ -116,6 +116,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "ipx@4.0.0-alpha.1": "patches/ipx@4.0.0-alpha.1.patch",
+  },
   "packages": {
     "@0no-co/graphql.web": ["@0no-co/graphql.web@1.1.2", "", { "optionalDependencies": { "graphql": "16.8.1" } }, "sha512-N2NGsU5FLBhT8NZ+3l2YrzZSHITjNXNuDhC4iDiikv0IujaJ0Xc6xIxQZ/Ek3Cb+rgPjnLHYyJm11tInuJn+cw=="],
 

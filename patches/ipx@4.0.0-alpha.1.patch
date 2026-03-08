@@ -1,0 +1,26 @@
+diff --git a/dist/_chunks/node-fs.mjs b/dist/_chunks/node-fs.mjs
+index 13ca6906fc408af4e93e602df8064f3f2849a60d..19830ad2fdbea2129a722f41ac3e9cb765183665 100644
+--- a/dist/_chunks/node-fs.mjs
++++ b/dist/_chunks/node-fs.mjs
+@@ -14,6 +14,7 @@ function VArg(argument) {
+ 		const t = typeof val;
+ 		if (t === "boolean" || t === "number" || t === "string" || val === null) return val;
+ 	} catch {}
++	return argument;
+ }
+ function parseArgs(arguments_, mappers) {
+ 	const vargs = arguments_.split("_");
+@@ -460,9 +461,10 @@ function createIPX(userOptions) {
+ 					name,
+ 					args: arguments_
+ 				})).filter((h$1) => h$1.handler).sort((a, b$1) => {
+-					const aKey = (a.handler.order || a.name || "").toString();
+-					const bKey = (b$1.handler.order || b$1.name || "").toString();
+-					return aKey.localeCompare(bKey);
++					const aOrder = typeof a.handler.order === "number" ? a.handler.order : Infinity;
++					const bOrder = typeof b$1.handler.order === "number" ? b$1.handler.order : Infinity;
++					if (aOrder !== bOrder) return aOrder - bOrder;
++					return (a.name || "").localeCompare(b$1.name || "");
+ 				});
+ 				const handlerContext = { meta: imageMeta$1 };
+ 				for (const h$1 of handlers) sharp = applyHandler(handlerContext, sharp, h$1.handler, h$1.args.toString()) || sharp;

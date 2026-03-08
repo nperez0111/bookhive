@@ -1,0 +1,53 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getAuthorBooks",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get books by a specific author.",
+      "parameters": {
+        "type": "params",
+        "required": ["author"],
+        "properties": {
+          "author": {
+            "type": "string",
+            "description": "The author name to look up"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          },
+          "sort": {
+            "type": "string",
+            "knownValues": ["popularity", "reviews"],
+            "description": "Sort order. Defaults to popularity."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["author", "books", "totalBooks", "totalPages"],
+          "properties": {
+            "author": { "type": "string" },
+            "books": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "buzz.bookhive.hiveBook#main" }
+            },
+            "totalBooks": { "type": "integer" },
+            "totalPages": { "type": "integer" },
+            "page": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

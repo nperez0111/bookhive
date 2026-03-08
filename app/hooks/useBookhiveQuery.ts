@@ -273,3 +273,158 @@ export const useDeleteBook = () => {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 };
+
+export const useExplore = () => {
+  return useQuery({
+    queryKey: ["explore"] as const,
+    queryFn: async () => {
+      return await enhancedAuthFetch<{
+        genres: { genre: string; count: number }[];
+        topAuthors: {
+          author: string;
+          bookCount: number;
+          thumbnail?: string;
+          avgRating?: number;
+        }[];
+      }>(`/xrpc/buzz.bookhive.getExplore`);
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+};
+
+export const useFeed = (
+  tab: "friends" | "all" | "tracking" = "friends",
+  page: number = 1,
+) => {
+  return useQuery({
+    queryKey: ["feed", tab, page] as const,
+    queryFn: async ({ queryKey: [, t, p] }) => {
+      return await enhancedAuthFetch<{
+        activities: {
+          userDid: string;
+          userHandle?: string;
+          hiveId: string;
+          title: string;
+          authors: string;
+          status?: string;
+          stars?: number;
+          review?: string;
+          createdAt: string;
+          thumbnail: string;
+          cover?: string;
+        }[];
+        hasMore: boolean;
+        page: number;
+      }>(`/xrpc/buzz.bookhive.getFeed?tab=${t}&page=${p}`);
+    },
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAuthorBooks = (author: string, page: number = 1) => {
+  return useQuery({
+    queryKey: ["authorBooks", author, page] as const,
+    queryFn: async ({ queryKey: [, a, p] }) => {
+      return await enhancedAuthFetch<{
+        author: string;
+        books: {
+          id: string;
+          title: string;
+          authors: string;
+          thumbnail?: string;
+          cover?: string;
+          rating?: number;
+          ratingsCount?: number;
+        }[];
+        totalBooks: number;
+        totalPages: number;
+        page: number;
+      }>(
+        `/xrpc/buzz.bookhive.getAuthorBooks?author=${encodeURIComponent(String(a))}&page=${p}`,
+      );
+    },
+    enabled: Boolean(author),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+};
+
+export const useReadingStats = (handle: string, year: number) => {
+  return useQuery({
+    queryKey: ["readingStats", handle, year] as const,
+    queryFn: async ({ queryKey: [, h, y] }) => {
+      return await enhancedAuthFetch<{
+        stats: {
+          booksCount: number;
+          pagesRead: number;
+          averageRating?: number;
+          averagePageCount?: number;
+          ratingDistribution: {
+            one: number;
+            two: number;
+            three: number;
+            four: number;
+            five: number;
+          };
+          topGenres: { genre: string; count: number }[];
+          shortestBook?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+            pageCount?: number;
+          };
+          longestBook?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+            pageCount?: number;
+          };
+          firstBookOfYear?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+          };
+          lastBookOfYear?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+          };
+          mostPopularBook?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+            rating?: number;
+          };
+          leastPopularBook?: {
+            hiveId: string;
+            title: string;
+            authors: string;
+            cover?: string;
+            thumbnail?: string;
+            rating?: number;
+          };
+        };
+        availableYears: number[];
+        year: number;
+        readingChallengeGoal?: number;
+      }>(
+        `/xrpc/buzz.bookhive.getReadingStats?handle=${encodeURIComponent(String(h))}&year=${y}`,
+      );
+    },
+    enabled: Boolean(handle),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};

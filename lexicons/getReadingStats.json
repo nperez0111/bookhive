@@ -1,0 +1,101 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getReadingStats",
+  "defs": {
+    "ratingDistribution": {
+      "type": "object",
+      "required": ["one", "two", "three", "four", "five"],
+      "properties": {
+        "one": { "type": "integer", "minimum": 0 },
+        "two": { "type": "integer", "minimum": 0 },
+        "three": { "type": "integer", "minimum": 0 },
+        "four": { "type": "integer", "minimum": 0 },
+        "five": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "genreStat": {
+      "type": "object",
+      "required": ["genre", "count"],
+      "properties": {
+        "genre": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "bookSummary": {
+      "type": "object",
+      "required": ["hiveId", "title", "authors"],
+      "properties": {
+        "hiveId": { "type": "string" },
+        "title": { "type": "string" },
+        "authors": { "type": "string" },
+        "cover": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "pageCount": { "type": "integer" },
+        "rating": { "type": "integer" }
+      }
+    },
+    "readingStats": {
+      "type": "object",
+      "required": ["booksCount", "ratingDistribution", "topGenres"],
+      "properties": {
+        "booksCount": { "type": "integer", "minimum": 0 },
+        "pagesRead": { "type": "integer", "minimum": 0 },
+        "averageRating": { "type": "integer", "description": "Average rating * 10 (e.g. 42 = 4.2 stars)" },
+        "averagePageCount": { "type": "integer" },
+        "ratingDistribution": {
+          "type": "ref",
+          "ref": "buzz.bookhive.getReadingStats#ratingDistribution"
+        },
+        "topGenres": {
+          "type": "array",
+          "items": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#genreStat" }
+        },
+        "shortestBook": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" },
+        "longestBook": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" },
+        "firstBookOfYear": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" },
+        "lastBookOfYear": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" },
+        "mostPopularBook": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" },
+        "leastPopularBook": { "type": "ref", "ref": "buzz.bookhive.getReadingStats#bookSummary" }
+      }
+    },
+    "main": {
+      "type": "query",
+      "description": "Get reading statistics for a user for a given year.",
+      "parameters": {
+        "type": "params",
+        "required": ["handle"],
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "The user handle or DID"
+          },
+          "year": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 2100,
+            "description": "The year to fetch stats for. Defaults to current year."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["stats", "availableYears", "year"],
+          "properties": {
+            "stats": {
+              "type": "ref",
+              "ref": "buzz.bookhive.getReadingStats#readingStats"
+            },
+            "availableYears": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "year": { "type": "integer" },
+            "readingChallengeGoal": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

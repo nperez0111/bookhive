@@ -1,0 +1,49 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getExplore",
+  "defs": {
+    "genreItem": {
+      "type": "object",
+      "required": ["genre", "count"],
+      "properties": {
+        "genre": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "authorItem": {
+      "type": "object",
+      "required": ["author", "bookCount"],
+      "properties": {
+        "author": { "type": "string" },
+        "bookCount": { "type": "integer", "minimum": 0 },
+        "thumbnail": { "type": "string" },
+        "avgRating": { "type": "integer", "description": "Average rating * 10 (e.g. 42 = 4.2 stars)", "minimum": 0, "maximum": 50 }
+      }
+    },
+    "main": {
+      "type": "query",
+      "description": "Get featured genres and top authors for the explore hub.",
+      "parameters": {
+        "type": "params",
+        "properties": {}
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["genres", "topAuthors"],
+          "properties": {
+            "genres": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "buzz.bookhive.getExplore#genreItem" }
+            },
+            "topAuthors": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "buzz.bookhive.getExplore#authorItem" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
