@@ -25,7 +25,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { ListItem } from "@/components/ListItem";
 
 export default function ProfileScreen() {
-  const { signOut } = useAuth();
+  const { signOut, authState } = useAuth();
   const { data: profile } = useProfile();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -152,6 +152,14 @@ export default function ProfileScreen() {
             />
             <View style={styles.settingsList}>
               <ThemeToggle style={styles.settingItem} />
+              <ListItem
+                icon="bar-chart"
+                title="Reading Stats"
+                onPress={() =>
+                  authState?.did &&
+                  router.push(`/profile/${authState.did}/stats` as any)
+                }
+              />
               {/* <ListItem
                 icon="document-text"
                 title="Terms of Service"

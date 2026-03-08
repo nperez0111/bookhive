@@ -2,12 +2,7 @@
  * Main app router: context, auth, layout, images, then domain routes.
  * Composes pages, profile, books, comments, api and xrpc.
  */
-import {
-  createIPX,
-  createIPXFetchHandler,
-  ipxFSStorage,
-  ipxHttpStorage,
-} from "ipx";
+import { createIPX, ipxFSStorage, ipxHttpStorage } from "ipx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
 import { endTime, startTime, timing } from "hono/timing";
@@ -44,17 +39,28 @@ declare module "hono" {
   }
 }
 
-const ipxHandler = createIPXFetchHandler(
-  createIPX({
-    maxAge: 60 * 60 * 24 * 30,
-    storage: ipxFSStorage({ dir: "./public" }),
-    httpStorage: ipxHttpStorage({
-      domains: ["i.gr-assets.com", "cdn.bsky.app"],
-      ignoreCacheControl: true,
-      maxAge: 60 * 60 * 24 * 30,
-    }),
+const MAX_AGE = 60 * 60 * 24 * 30;
+
+const ipx = createIPX({
+  maxAge: MAX_AGE,
+  storage: ipxFSStorage({ dir: "./public" }),
+  httpStorage: ipxHttpStorage({
+    domains: ["i.gr-assets.com", "cdn.bsky.app"],
+    ignoreCacheControl: true,
+    maxAge: MAX_AGE,
   }),
-);
+});
+
+const FORMAT_MIME: Record<string, string> = {
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  avif: "image/avif",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+  tiff: "image/tiff",
+};
 
 export function mainRouter(deps: AppDeps): HonoServer {
   const app = new Hono<AppEnv>();
@@ -125,18 +131,37 @@ export function mainRouter(deps: AppDeps): HonoServer {
   );
 
   app.use("/images/*", async (c) => {
-    // Use pathname only so behavior is identical behind proxies (fixes production IPX errors)
+    // Use pathname only so behavior is identical behind proxies
     const pathname = new URL(c.req.url).pathname;
     const ipxPath = pathname.replace(/^\/images/, "") || "/";
-    const ipxUrl = new URL(ipxPath, "http://localhost").href;
-    const res = await ipxHandler(ipxUrl);
-    const headers = new Headers(res.headers);
-    headers.set("X-Request-Id", c.get("requestId"));
-    return new Response(res.body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers,
-    });
+
+    // Parse IPX URL: /modifiersString/image-id
+    const [modifiersString = "_", ...idSegments] = ipxPath.slice(1).split("/");
+    // Joining preserves double-slash in https:// URLs (["https:", "", "host"] => "https://host")
+    const id = decodeURIComponent(idSegments.join("/"));
+
+    // Parse modifier key=value pairs from the URL segment
+    const modifiers: Record<string, string> = Object.create(null);
+    if (modifiersString !== "_") {
+      for (const p of modifiersString.split(/[&,]/g)) {
+        const [key, ...values] = p.split("_");
+        if (key) modifiers[key] = values.join("_");
+      }
+    }
+
+    try {
+      const { data, format } = await ipx(id, modifiers).process();
+      return new Response(data as BodyInit, {
+        headers: {
+          "Content-Type": FORMAT_MIME[format ?? ""] ?? "image/jpeg",
+          "Cache-Control": `public, max-age=${MAX_AGE}`,
+          "X-Request-Id": c.get("requestId"),
+        },
+      });
+    } catch (err) {
+      console.error("[IPX] Image processing error:", err);
+      return new Response("Image processing error", { status: 500 });
+    }
   });
 
   app.use("/books/:hiveId", methodOverride({ app }));

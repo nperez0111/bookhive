@@ -369,7 +369,7 @@ function BookInfoContent({
     >
       {/* Back Navigation Header */}
       <BackNavigationHeader
-        title="Book Info"
+        title={book.title}
         onBackPress={
           fromStatus
             ? () => {
