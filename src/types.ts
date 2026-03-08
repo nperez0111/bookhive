@@ -167,6 +167,10 @@ export type HiveBook = {
    * External identifiers stored as JSON string
    */
   identifiers: string | null;
+  /**
+   * AT-URI of the corresponding catalogBook record in @bookhive.buzz
+   */
+  hiveBookAtUri: string | null;
 };
 
 /** Row shape for hive_book_genre (denormalized for fast /genres listing). */

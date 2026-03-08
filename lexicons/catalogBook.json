@@ -1,0 +1,92 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.catalogBook",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "any",
+      "description": "A canonical book record in the BookHive catalog",
+      "record": {
+        "type": "object",
+        "required": ["id", "title", "authors", "thumbnail", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The book's hive id"
+          },
+          "title": {
+            "type": "string",
+            "description": "The title of the book",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "authors": {
+            "type": "string",
+            "description": "The authors of the book (tab separated)",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "thumbnail": {
+            "type": "string",
+            "description": "URL to thumbnail image"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "description": {
+            "type": "string",
+            "description": "Book description/summary",
+            "maxLength": 5000
+          },
+          "cover": {
+            "type": "string",
+            "description": "URL to full-size cover image"
+          },
+          "source": {
+            "type": "string",
+            "description": "The source service name (e.g. Goodreads)"
+          },
+          "sourceUrl": {
+            "type": "string",
+            "description": "URL to the book on the source service"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the book in the source service"
+          },
+          "rating": {
+            "type": "integer",
+            "description": "Average rating (0-1000)",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "ratingsCount": {
+            "type": "integer",
+            "description": "Number of ratings"
+          },
+          "genres": {
+            "type": "array",
+            "description": "Genres of the book",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "string",
+            "description": "Series name if the book is part of a series"
+          },
+          "identifiers": {
+            "description": "External identifiers for the book",
+            "type": "ref",
+            "ref": "buzz.bookhive.defs#bookIdentifiers"
+          }
+        }
+      }
+    }
+  }
+}

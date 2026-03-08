@@ -1,5 +1,6 @@
 export * as BuzzBookhiveBook from "./types/buzz/bookhive/book.js";
 export * as BuzzBookhiveBuzz from "./types/buzz/bookhive/buzz.js";
+export * as BuzzBookhiveCatalogBook from "./types/buzz/bookhive/catalogBook.js";
 export * as BuzzBookhiveDefs from "./types/buzz/bookhive/defs.js";
 export * as BuzzBookhiveGetAuthorBooks from "./types/buzz/bookhive/getAuthorBooks.js";
 export * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook.js";

@@ -12,13 +12,14 @@ import { findBookDetails } from "../scrapers";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { serializeUserBook } from "../utils/bookProgress";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
+import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 
 export async function searchBooks({
   query,
   ctx,
 }: {
   query: string;
-  ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext">;
+  ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext"> & { serviceAccountAgent?: AppContext["serviceAccountAgent"] };
 }) {
   return await readThroughCache<HiveId[]>(
     ctx.kv,
@@ -64,6 +65,21 @@ export async function searchBooks({
         );
 
         void Promise.allSettled(enrichmentPromises);
+
+        if (ctx.serviceAccountAgent) {
+          const catalogCtx = { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent };
+          Promise.allSettled(
+            res.data.map((book) =>
+              writeCatalogBookIfNeeded(catalogCtx, book).catch((error) => {
+                ctx.addWideEventContext({
+                  catalog_book_write_failed: true,
+                  bookId: book.id,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }),
+            ),
+          );
+        }
       }
 
       // Backfill from local DB with ILIKE to reach up to 20 results
@@ -250,11 +266,13 @@ export async function refetchBooks({
   ctx,
   cursor,
   uris = [],
+  booksNeedingHiveUri = [],
 }: {
   agent: SessionClient;
   ctx: AppContext;
   cursor?: string;
   uris?: string[];
+  booksNeedingHiveUri?: Array<{ rkey: string; hiveId: HiveId; record: import("../bsky/lexicon").Book.Record }>;
 }) {
   if (!agent) {
     return;
@@ -326,6 +344,11 @@ export async function refetchBooks({
 
     uris.push(record.uri);
 
+    if (!book.hiveBookUri) {
+      const rkey = record.uri.split("/").at(-1)!;
+      booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId as HiveId, record: book });
+    }
+
     await ctx.db
       .insertInto("user_book")
       .values(
@@ -374,6 +397,7 @@ export async function refetchBooks({
       ctx,
       cursor: listData.cursor,
       uris,
+      booksNeedingHiveUri,
     });
   } else {
     await ctx.db
@@ -381,5 +405,37 @@ export async function refetchBooks({
       .where("userDid", "=", agent.did)
       .where("uri", "not in", uris)
       .execute();
+
+    // Backfill hiveBookUri on user's book records if any are missing it
+    if (booksNeedingHiveUri.length > 0) {
+      const hiveIds = [
+        ...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId)),
+      ];
+      const hiveBookRows = await ctx.db
+        .selectFrom("hive_book")
+        .select(["id", "hiveBookAtUri"])
+        .where("id", "in", hiveIds)
+        .execute();
+      const hiveBookUriMap = new Map(
+        hiveBookRows
+          .filter((r) => r.hiveBookAtUri)
+          .map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
+      );
+
+      const writes = booksNeedingHiveUri
+        .filter((b) => hiveBookUriMap.has(b.hiveId as HiveId))
+        .map((b) => ({
+          $type: "com.atproto.repo.applyWrites#update",
+          collection: ids.BuzzBookhiveBook,
+          rkey: b.rkey,
+          value: { ...b.record, hiveBookUri: hiveBookUriMap.get(b.hiveId as HiveId) },
+        }));
+
+      for (let i = 0; i < writes.length; i += 200) {
+        await agent.post("com.atproto.repo.applyWrites", {
+          input: { repo: agent.did, writes: writes.slice(i, i + 200) },
+        });
+      }
+    }
   }
 }

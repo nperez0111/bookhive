@@ -254,6 +254,12 @@ export async function updateBookRecord({
   const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
   const identifiers = toBookIdentifiersOutput(identifiersRow);
 
+  const hiveBookRow = await ctx.db
+    .selectFrom("hive_book")
+    .select(["hiveBookAtUri"])
+    .where("id", "=", hiveId)
+    .executeTakeFirst();
+
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -286,6 +292,7 @@ export async function updateBookRecord({
           ? updates.bookProgress
           : originalBook?.bookProgress,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
+    hiveBookUri: hiveBookRow?.hiveBookAtUri || originalBook?.hiveBookUri,
   };
 
   const book = BookRecord.validateRecord(bookData);

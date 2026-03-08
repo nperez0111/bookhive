@@ -76,6 +76,10 @@
             "description": "External identifiers for the book",
             "type": "ref",
             "ref": "buzz.bookhive.defs#bookIdentifiers"
+          },
+          "hiveBookUri": {
+            "type": "string",
+            "description": "AT-URI of the canonical catalogBook record in @bookhive.buzz"
           }
         }
       }
