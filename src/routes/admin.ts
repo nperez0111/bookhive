@@ -33,18 +33,10 @@ const admin = new Hono<AppEnv>()
       );
     }
 
+    const logger = c.get("appLogger");
     // Run in background — do not await
-    backfillCatalogBooks(ctx).then(({ written, batches }) => {
-      ctx.addWideEventContext({
-        backfill_catalog: "completed",
-        backfill_catalog_written: written,
-        backfill_catalog_batches: batches,
-      });
-    }).catch((err) => {
-      ctx.addWideEventContext({
-        backfill_catalog: "error",
-        error: err instanceof Error ? err.message : String(err),
-      });
+    backfillCatalogBooks({ ...ctx, logger }).catch((err) => {
+      logger.error({ err }, "[backfill-catalog] Backfill failed");
     });
 
     ctx.addWideEventContext({ backfill_catalog: "started" });

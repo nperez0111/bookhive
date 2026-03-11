@@ -1,8 +1,12 @@
 import { Client, CredentialManager } from "@atcute/client";
+import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import type { Logger } from "pino";
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
+import { createActorResolver } from "../bsky/id-resolver";
 import { ids } from "../bsky/lexicon/ids";
 import type { HiveBook } from "../types";
+import { type BlobRef, uploadImageBlob } from "./uploadImageBlob";
 
 export async function createServiceAccountAgent(
   handle: string,
@@ -10,7 +14,8 @@ export async function createServiceAccountAgent(
 ): Promise<SessionClient | null> {
   if (!handle || !appPassword) return null;
   try {
-    const manager = new CredentialManager({ service: "https://bsky.social" });
+    const actor = await createActorResolver().resolve(handle as ActorIdentifier);
+    const manager = new CredentialManager({ service: actor.pds });
     await manager.login({ identifier: handle, password: appPassword });
     const client = new Client({ handler: manager });
     return {
@@ -31,13 +36,19 @@ export async function createServiceAccountAgent(
 
 type CatalogCtx = Pick<AppContext, "db"> & {
   serviceAccountAgent: AppContext["serviceAccountAgent"] | undefined;
+  logger?: Logger;
 };
 
 type ApplyWritesOut = {
   results?: Array<{ $type: string; uri?: string; cid?: string }>;
 };
 
-function buildCatalogBookValue(book: HiveBook) {
+interface CatalogBlobs {
+  thumbnailBlob?: BlobRef;
+  coverBlob?: BlobRef;
+}
+
+function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
   return {
     $type: ids.BuzzBookhiveCatalogBook,
     id: book.id,
@@ -46,10 +57,12 @@ function buildCatalogBookValue(book: HiveBook) {
     thumbnail: book.thumbnail,
     createdAt: book.createdAt,
     updatedAt: book.updatedAt,
+    ...(blobs?.thumbnailBlob ? { thumbnailBlob: blobs.thumbnailBlob } : {}),
     ...(book.description
       ? { description: book.description.slice(0, 5000) }
       : {}),
     ...(book.cover ? { cover: book.cover } : {}),
+    ...(blobs?.coverBlob ? { coverBlob: blobs.coverBlob } : {}),
     ...(book.source ? { source: book.source } : {}),
     ...(book.sourceUrl ? { sourceUrl: book.sourceUrl } : {}),
     ...(book.sourceId ? { sourceId: book.sourceId } : {}),
@@ -90,6 +103,11 @@ export async function writeCatalogBookIfNeeded(
 
   const agent = ctx.serviceAccountAgent;
 
+  const [thumbnailBlob, coverBlob] = await Promise.all([
+    uploadImageBlob(book.thumbnail, agent),
+    uploadImageBlob(book.cover, agent),
+  ]);
+
   const response = await agent.post("com.atproto.repo.applyWrites", {
     input: {
       repo: agent.did,
@@ -98,7 +116,7 @@ export async function writeCatalogBookIfNeeded(
           $type: "com.atproto.repo.applyWrites#create",
           collection: ids.BuzzBookhiveCatalogBook,
           rkey: book.id,
-          value: buildCatalogBookValue(book),
+          value: buildCatalogBookValue(book, { thumbnailBlob, coverBlob }),
         },
       ],
     },
@@ -131,18 +149,33 @@ export async function writeCatalogBooksBatch(
 
   if (creates.length === 0 && updates.length === 0) return;
 
+  // Upload blobs for all books in parallel
+  const allBooks = [...creates, ...updates];
+  const blobResults = await Promise.all(
+    allBooks.map(async (book) => {
+      const [thumbnailBlob, coverBlob] = await Promise.all([
+        uploadImageBlob(book.thumbnail, agent),
+        uploadImageBlob(book.cover, agent),
+      ]);
+      return { thumbnailBlob, coverBlob };
+    }),
+  );
+  const blobMap = new Map(
+    allBooks.map((book, i) => [book.id, blobResults[i]!]),
+  );
+
   const writes = [
     ...creates.map((book) => ({
       $type: "com.atproto.repo.applyWrites#create",
       collection: ids.BuzzBookhiveCatalogBook,
       rkey: book.id,
-      value: buildCatalogBookValue(book),
+      value: buildCatalogBookValue(book, blobMap.get(book.id)),
     })),
     ...updates.map((book) => ({
       $type: "com.atproto.repo.applyWrites#update",
       collection: ids.BuzzBookhiveCatalogBook,
       rkey: book.id,
-      value: buildCatalogBookValue(book),
+      value: buildCatalogBookValue(book, blobMap.get(book.id)),
     })),
   ];
 
@@ -150,7 +183,17 @@ export async function writeCatalogBooksBatch(
     input: { repo: agent.did, writes },
   });
 
-  const applyData = response.ok ? (response.data as ApplyWritesOut) : null;
+  if (!response.ok) {
+    ctx.logger?.error({
+      job: "catalog_book_apply_writes",
+      outcome: "error",
+      status: response.status,
+      error: response.data,
+    });
+    return;
+  }
+
+  const applyData = response.data as ApplyWritesOut;
   if (!applyData?.results) return;
 
   // Creates come first in results, then updates
@@ -179,29 +222,46 @@ export async function backfillCatalogBooks(
 ): Promise<{ written: number; batches: number }> {
   if (!ctx.serviceAccountAgent) return { written: 0, batches: 0 };
 
-  const BATCH_SIZE = 200;
+  const BATCH_SIZE = 25;
   let lastId = "";
   let written = 0;
   let batches = 0;
+  const startTime = Date.now();
 
-  while (true) {
-    const batch = await ctx.db
-      .selectFrom("hive_book")
-      .selectAll()
-      .where("hiveBookAtUri", "is", null)
-      .where("id", ">", lastId)
-      .orderBy("id")
-      .limit(BATCH_SIZE)
-      .execute();
+  const wideEvent: Record<string, unknown> = {
+    job: "backfill_catalog_books",
+  };
 
-    if (batch.length === 0) break;
+  try {
+    while (true) {
+      const batch = await ctx.db
+        .selectFrom("hive_book")
+        .selectAll()
+        .where("hiveBookAtUri", "is", null)
+        .where("id", ">", lastId)
+        .orderBy("id")
+        .limit(BATCH_SIZE)
+        .execute();
 
-    await writeCatalogBooksBatch(ctx, batch);
-    await new Promise((r) => setTimeout(r, 500));
-    lastId = batch[batch.length - 1]!.id;
-    written += batch.length;
-    batches++;
+      if (batch.length === 0) break;
+
+      await writeCatalogBooksBatch(ctx, batch);
+      await new Promise((r) => setTimeout(r, 500));
+      lastId = batch[batch.length - 1]!.id;
+      written += batch.length;
+      batches++;
+    }
+
+    wideEvent.outcome = "success";
+    return { written, batches };
+  } catch (err) {
+    wideEvent.outcome = "error";
+    wideEvent.error = err instanceof Error ? { message: err.message, type: err.name } : String(err);
+    throw err;
+  } finally {
+    wideEvent.written = written;
+    wideEvent.batches = batches;
+    wideEvent.duration_ms = Date.now() - startTime;
+    ctx.logger?.info(wideEvent);
   }
-
-  return { written, batches };
 }

@@ -30,6 +30,12 @@
             "type": "string",
             "description": "URL to thumbnail image"
           },
+          "thumbnailBlob": {
+            "type": "blob",
+            "description": "Uploaded thumbnail image blob",
+            "accept": ["image/png", "image/jpeg"],
+            "maxSize": 1000000
+          },
           "createdAt": {
             "type": "string",
             "format": "datetime"
@@ -46,6 +52,12 @@
           "cover": {
             "type": "string",
             "description": "URL to full-size cover image"
+          },
+          "coverBlob": {
+            "type": "blob",
+            "description": "Uploaded full-size cover image blob",
+            "accept": ["image/png", "image/jpeg"],
+            "maxSize": 2000000
           },
           "source": {
             "type": "string",

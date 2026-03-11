@@ -267,7 +267,7 @@ export async function updateBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
+    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent, 800)),
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
     startedAt:
@@ -502,6 +502,7 @@ export async function updateBookRecords({
         u.record.cover = (await uploadImageBlob(
           u.originalUpdate.coverImage,
           agent,
+          800,
         )) as typeof u.record.cover;
       }
       return u;

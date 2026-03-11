@@ -19,22 +19,24 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * URL to full-size cover image
      */
     cover: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    /**
+     * Uploaded full-size cover image blob
+     * @accept image/png, image/jpeg
+     * @maxSize 2000000
+     */
+    coverBlob: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
     createdAt: /*#__PURE__*/ v.datetimeString(),
     /**
      * Book description/summary
      * @maxLength 5000
      */
     description: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [
-        /*#__PURE__*/ v.stringLength(0, 5000),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
     ),
     /**
      * Genres of the book
      */
-    genres: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.array(/*#__PURE__*/ v.string()),
-    ),
+    genres: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(/*#__PURE__*/ v.string())),
     /**
      * The book's hive id
      */
@@ -51,9 +53,7 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @maximum 1000
      */
     rating: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(0, 1000),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 1000)]),
     ),
     /**
      * Number of ratings
@@ -79,6 +79,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * URL to thumbnail image
      */
     thumbnail: /*#__PURE__*/ v.string(),
+    /**
+     * Uploaded thumbnail image blob
+     * @accept image/png, image/jpeg
+     * @maxSize 1000000
+     */
+    thumbnailBlob: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
     /**
      * The title of the book
      * @minLength 1

@@ -15,9 +15,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getAuthorBooks", {
      * @default 50
      */
     limit: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 100),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 100)]),
       50,
     ),
     /**
@@ -25,9 +23,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getAuthorBooks", {
      * @default 1
      */
     page: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
       1,
     ),
     /**
