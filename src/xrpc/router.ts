@@ -625,7 +625,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-<<<<<<< HEAD
   router.addQuery(BuzzBookhiveGetExplore, {
     async handler() {
       const ctx = getCtx();

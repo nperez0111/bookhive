@@ -2,7 +2,7 @@
  * Main app router: context, auth, layout, images, then domain routes.
  * Composes pages, profile, books, comments, api and xrpc.
  */
-import { createIPX, createIPXFetchHandler, ipxFSStorage, ipxHttpStorage } from "ipx";
+import { createIPX, ipxFSStorage, ipxHttpStorage } from "ipx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
 import { endTime, startTime, timing } from "hono/timing";
