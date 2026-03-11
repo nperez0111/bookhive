@@ -84,7 +84,7 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
 
 /**
  * Writes a single book to the @bookhive.buzz ATProto repo as a catalogBook record.
- * Skips if already written. Safe to call fire-and-forget.
+ * Skips if already written or not yet enriched. Safe to call fire-and-forget.
  */
 export async function writeCatalogBookIfNeeded(
   ctx: CatalogCtx,
@@ -95,11 +95,12 @@ export async function writeCatalogBookIfNeeded(
   // Check current DB value — passed-in book may be from scraper without hiveBookAtUri
   const row = await ctx.db
     .selectFrom("hive_book")
-    .select(["hiveBookAtUri"])
+    .select(["hiveBookAtUri", "enrichedAt"])
     .where("id", "=", book.id)
     .executeTakeFirst();
 
   if (row?.hiveBookAtUri) return;
+  if (!row?.enrichedAt && !book.enrichedAt) return;
 
   const agent = ctx.serviceAccountAgent;
 
@@ -214,8 +215,8 @@ export async function writeCatalogBooksBatch(
 }
 
 /**
- * Iterates all hive_book rows without hiveBookAtUri, writing them to @bookhive.buzz
- * in batches of 200 with a 500ms pause between batches.
+ * Iterates all enriched hive_book rows without hiveBookAtUri, writing them to @bookhive.buzz
+ * in batches of 25 with a 500ms pause between batches.
  */
 export async function backfillCatalogBooks(
   ctx: CatalogCtx,
@@ -238,6 +239,7 @@ export async function backfillCatalogBooks(
         .selectFrom("hive_book")
         .selectAll()
         .where("hiveBookAtUri", "is", null)
+        .where("enrichedAt", "is not", null)
         .where("id", ">", lastId)
         .orderBy("id")
         .limit(BATCH_SIZE)
