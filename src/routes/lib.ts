@@ -253,11 +253,18 @@ export async function refetchBuzzes({
     await new Promise((r) => setTimeout(r, 100));
     return refetchBuzzes({ agent, ctx, cursor: buzzes.data?.cursor, uris });
   } else {
-    await ctx.db
-      .deleteFrom("buzz")
-      .where("userDid", "=", agent.did)
-      .where("uri", "not in", uris)
-      .execute();
+    if (uris.length === 0) {
+      await ctx.db
+        .deleteFrom("buzz")
+        .where("userDid", "=", agent.did)
+        .execute();
+    } else {
+      await ctx.db
+        .deleteFrom("buzz")
+        .where("userDid", "=", agent.did)
+        .where("uri", "not in", uris)
+        .execute();
+    }
   }
 }
 
@@ -400,11 +407,18 @@ export async function refetchBooks({
       booksNeedingHiveUri,
     });
   } else {
-    await ctx.db
-      .deleteFrom("user_book")
-      .where("userDid", "=", agent.did)
-      .where("uri", "not in", uris)
-      .execute();
+    if (uris.length === 0) {
+      await ctx.db
+        .deleteFrom("user_book")
+        .where("userDid", "=", agent.did)
+        .execute();
+    } else {
+      await ctx.db
+        .deleteFrom("user_book")
+        .where("userDid", "=", agent.did)
+        .where("uri", "not in", uris)
+        .execute();
+    }
 
     // Backfill hiveBookUri on user's book records if any are missing it
     if (booksNeedingHiveUri.length > 0) {

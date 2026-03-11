@@ -466,7 +466,8 @@ const app = new Hono<AppEnv>()
           writes: [
             {
               $type: "com.atproto.repo.applyWrites#delete",
-              uri: followRecord.uri,
+              collection: "app.bsky.graph.follow",
+              rkey: followRecord.uri.split("/").at(-1)!,
             },
           ],
         },
@@ -533,7 +534,8 @@ const app = new Hono<AppEnv>()
               writes: [
                 {
                   $type: "com.atproto.repo.applyWrites#delete",
-                  uri: followRecord.uri,
+                  collection: "app.bsky.graph.follow",
+                  rkey: followRecord.uri.split("/").at(-1)!,
                 },
               ],
             },
