@@ -32,6 +32,14 @@ export const env = cleanEnv(process.env, {
   OPEN_OBSERVE_URL: str({ devDefault: "" }),
   OPEN_OBSERVE_USER: str({ devDefault: "" }),
   OPEN_OBSERVE_PASSWORD: str({ devDefault: "" }),
+  PDS_URL: str({
+    default: "",
+    desc: "Internal URL to reach the PDS (e.g. http://pds:3000). Empty disables signup.",
+  }),
+  PDS_ADMIN_PASSWORD: str({
+    default: "",
+    desc: "Admin password for the PDS, used to mint invite codes.",
+  }),
   /** Optional: set in CI/deploy for observability (e.g. git rev-parse HEAD) */
   BUILD_SHA: str({ default: "", desc: "Commit or build identifier" }),
 });
