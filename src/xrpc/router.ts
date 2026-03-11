@@ -134,18 +134,40 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const bookIds = await deps.searchBooks({ query: q, ctx });
 
-      if (!bookIds.length) {
+      // For limits beyond the cached 20, backfill live with ILIKE
+      let allIds = bookIds;
+      if (limit > 20 && bookIds.length < limit) {
+        const pattern = `%${q}%`;
+        let extraQuery = ctx.db
+          .selectFrom("hive_book")
+          .select("id")
+          .where((eb) =>
+            eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]),
+          )
+          .orderBy("ratingsCount", "desc")
+          .orderBy("rating", "desc")
+          .limit(limit - bookIds.length);
+
+        if (bookIds.length > 0) {
+          extraQuery = extraQuery.where("id", "not in", bookIds);
+        }
+
+        const extra = await extraQuery.execute();
+        allIds = [...bookIds, ...extra.map((r) => r.id)];
+      }
+
+      if (!allIds.length) {
         return json({ books: [] });
       }
 
       const books = await ctx.db
         .selectFrom("hive_book")
         .selectAll()
-        .where("id", "in", bookIds)
+        .where("id", "in", allIds)
         .limit(limit * off + limit)
         .execute();
 
-      books.sort((a, b) => bookIds.indexOf(a.id) - bookIds.indexOf(b.id));
+      books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
 
       const slice = books.slice(off, off + limit);
       return json({
