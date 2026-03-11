@@ -23,13 +23,12 @@ export async function searchBooks({
   return await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
-    () =>
-      findBookDetails(query).then(async (res) => {
-        if (!res.success) {
-          return [];
-        }
+    async () => {
+      let goodreadsIds: HiveId[] = [];
 
-        const bookIds = await ctx.db
+      const res = await findBookDetails(query);
+      if (res.success) {
+        goodreadsIds = await ctx.db
           .insertInto("hive_book")
           .values(res.data)
           .onConflict((oc) =>
@@ -43,9 +42,7 @@ export async function searchBooks({
             }),
           )
           .execute()
-          .then(() => {
-            return res.data.map((book) => book.id);
-          });
+          .then(() => res.data.map((book) => book.id));
 
         try {
           await upsertBookIdentifiersBatch(ctx.db, res.data);
@@ -67,9 +64,27 @@ export async function searchBooks({
         );
 
         void Promise.allSettled(enrichmentPromises);
+      }
 
-        return bookIds;
-      }),
+      // Backfill from local DB with ILIKE to reach up to 20 results
+      const pattern = `%${query}%`;
+      const dbRows = await ctx.db
+        .selectFrom("hive_book")
+        .select("id")
+        .where((eb) => eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]))
+        .orderBy("ratingsCount", "desc")
+        .orderBy("rating", "desc")
+        .limit(20)
+        .execute();
+
+      const combined = [...goodreadsIds];
+      for (const { id } of dbRows) {
+        if (combined.length >= 20) break;
+        if (!combined.includes(id)) combined.push(id);
+      }
+
+      return combined;
+    },
     [] as HiveId[],
     {
       requestsPerSecond: 5,

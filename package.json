@@ -17,7 +17,7 @@
     "typecheck": "oxlint src --type-aware --type-check --tsconfig tsconfig.json",
     "format": "oxfmt src",
     "lexgen": "lex-cli generate",
-    "postlexgen": "oxfmt --write ./src/bsky/lexicon/**/*.ts",
+    "postlexgen": "oxfmt ./src/bsky/lexicon/",
     "start": "bun run src/index.ts",
     "ios": "bun run --cwd app ios",
     "android": "bun run --cwd app android",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
+    "@tanstack/hotkeys": "0.4.1",
     "basecoat-css": "0.3.11",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",
