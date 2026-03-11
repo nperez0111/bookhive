@@ -1,11 +1,11 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-export const Login: FC<{
+export const Signup: FC<{
   error?: string;
+  email?: string;
   handle?: string;
-  signupUrl?: string;
-}> = ({ error, handle, signupUrl = "/signup" }) => (
+}> = ({ error, email, handle }) => (
   <div class="animate-fade relative flex min-h-full flex-col items-center justify-center px-6 py-12 duration-300 lg:px-8">
     <a
       href="/"
@@ -85,97 +85,122 @@ export const Login: FC<{
       <div class="card w-full overflow-visible pt-52">
         <header class="flex flex-col items-center gap-4">
           <h2 class="text-foreground text-center text-xl font-semibold tracking-tight">
-            Buzz in to your account
+            Create your account
           </h2>
         </header>
 
         <section>
-          <form action="/login" method="post" class="form flex flex-col gap-6" id="login-form">
+          <form action="/signup" method="post" class="form flex flex-col gap-5" id="signup-form">
+            {error ? (
+              <p class="text-destructive text-sm">
+                Error: <i>{error}</i>
+              </p>
+            ) : undefined}
+
+            <div class="field">
+              <label for="email" class="label">
+                Email
+              </label>
+              <input
+                autofocus
+                id="email"
+                type="email"
+                name="email"
+                value={email}
+                placeholder="you@example.com"
+                required
+                class="input"
+              />
+            </div>
+
             <div class="field">
               <label for="handle" class="label">
-                Bluesky Handle
+                Handle
               </label>
-              {error ? (
-                <p class="text-destructive text-sm">
-                  Error: <i>{error}</i>
-                </p>
-              ) : undefined}
-              <actor-typeahead>
+              <div class="flex items-stretch">
                 <input
-                  autofocus
                   id="handle"
                   type="text"
                   name="handle"
                   value={handle}
-                  placeholder="Enter your handle (eg buzzer.bsky.social)"
+                  placeholder="yourname"
                   required
-                  class="input"
+                  pattern="[a-zA-Z0-9\-]{3,20}"
+                  title="3-20 characters, letters, numbers, and hyphens only"
+                  class="input rounded-r-none border-r-0"
                 />
-              </actor-typeahead>
+                <span class="bg-muted text-muted-foreground inline-flex items-center rounded-r-md border px-3 text-sm">
+                  .bookhive.social
+                </span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="password" class="label">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                name="password"
+                placeholder="At least 8 characters"
+                required
+                minlength={8}
+                class="input"
+              />
+            </div>
+
+            <div class="field">
+              <label for="confirmPassword" class="label">
+                Confirm Password
+              </label>
+              <input
+                id="confirmPassword"
+                type="password"
+                name="confirmPassword"
+                placeholder="Re-enter your password"
+                required
+                minlength={8}
+                class="input"
+              />
             </div>
 
             <button
               type="submit"
               class="btn w-full bg-amber-600 text-white shadow-xs hover:bg-amber-500 focus-visible:ring-amber-600"
             >
-              Buzz in
+              Create account
             </button>
           </form>
         </section>
 
         <footer class="justify-center border-t pt-6">
           <p class="text-muted-foreground text-center text-sm">
-            Don't have an account?{" "}
-            <a href={signupUrl} class="text-primary font-semibold hover:underline">
-              {signupUrl === "/signup" ? "Create a BookHive account" : "Create a Bluesky account"}
+            Already have an account?{" "}
+            <a href="/login" class="text-primary font-semibold hover:underline">
+              Buzz in
             </a>
-            {signupUrl === "/signup" && (
-              <>
-                <br />
-                <span class="text-xs">
-                  or sign in with an existing{" "}
-                  <a href="https://bsky.app" class="text-primary hover:underline">
-                    Bluesky
-                  </a>{" "}
-                  account
-                </span>
-              </>
-            )}
           </p>
         </footer>
       </div>
     </div>
     <Script
       script={(document) => {
-        const STORAGE_KEY = "bookhive_last_handle";
-        const handleInput = document.getElementById("handle") as HTMLInputElement;
-        const loginForm = document.getElementById("login-form") as HTMLFormElement;
+        const form = document.getElementById("signup-form") as HTMLFormElement;
+        const password = document.getElementById("password") as HTMLInputElement;
+        const confirm = document.getElementById("confirmPassword") as HTMLInputElement;
 
-        // Load stored handle on page load
-        if (handleInput && !handleInput.value) {
-          try {
-            const storedHandle = localStorage.getItem(STORAGE_KEY);
-            if (storedHandle) {
-              handleInput.value = storedHandle;
-            }
-          } catch (error) {
-            console.error("Failed to load stored handle:", error);
+        form?.addEventListener("submit", (e) => {
+          if (password.value !== confirm.value) {
+            e.preventDefault();
+            confirm.setCustomValidity("Passwords do not match");
+            confirm.reportValidity();
           }
-        }
+        });
 
-        // Save handle on form submit
-        if (loginForm && handleInput) {
-          loginForm.addEventListener("submit", function () {
-            try {
-              const handleValue = handleInput.value.trim();
-              if (handleValue) {
-                localStorage.setItem(STORAGE_KEY, handleValue);
-              }
-            } catch (error) {
-              console.error("Failed to save handle:", error);
-            }
-          });
-        }
+        confirm?.addEventListener("input", () => {
+          confirm.setCustomValidity("");
+        });
       }}
     />
   </div>
