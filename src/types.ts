@@ -1,5 +1,7 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
 
+export type BlobRef = { ref: { $link: string }; mimeType: string };
+
 export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
 
 export type * as GetBook from "./bsky/lexicon/generated/types/buzz/bookhive/getBook";

@@ -1,7 +1,8 @@
 import type { SessionClient } from "../auth/client";
+import type { BlobRef } from "../types";
 import sharp from "sharp";
 
-export type BlobRef = { ref: { $link: string }; mimeType: string };
+export type { BlobRef };
 
 export async function uploadImageBlob(
   image: string | undefined | null,

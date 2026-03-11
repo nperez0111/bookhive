@@ -68,7 +68,7 @@ export async function searchBooks({
 
         if (ctx.serviceAccountAgent) {
           const catalogCtx = { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent };
-          Promise.allSettled(
+          void Promise.allSettled(
             res.data.map((book) =>
               writeCatalogBookIfNeeded(catalogCtx, book).catch((error) => {
                 ctx.addWideEventContext({
@@ -446,9 +446,14 @@ export async function refetchBooks({
         }));
 
       for (let i = 0; i < writes.length; i += 200) {
-        await agent.post("com.atproto.repo.applyWrites", {
+        const response = await agent.post("com.atproto.repo.applyWrites", {
           input: { repo: agent.did, writes: writes.slice(i, i + 200) },
         });
+        if (!response.ok) {
+          throw new Error(
+            `applyWrites hiveBookUri backfill failed: status=${response.status} data=${JSON.stringify(response.data)}`,
+          );
+        }
       }
     }
   }

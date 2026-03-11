@@ -5,8 +5,8 @@ import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
 import { createActorResolver } from "../bsky/id-resolver";
 import { ids } from "../bsky/lexicon/ids";
-import type { HiveBook } from "../types";
-import { type BlobRef, uploadImageBlob } from "./uploadImageBlob";
+import type { BlobRef, HiveBook } from "../types";
+import { uploadImageBlob } from "./uploadImageBlob";
 
 export async function createServiceAccountAgent(
   handle: string,
@@ -20,7 +20,10 @@ export async function createServiceAccountAgent(
     const client = new Client({ handler: manager });
     return {
       get did() {
-        return manager.session!.did;
+        if (!manager.session?.did) {
+          throw new Error("[catalogBookService] No active session on service account agent");
+        }
+        return manager.session.did;
       },
       get: client.get.bind(client) as SessionClient["get"],
       post: client.post.bind(client) as SessionClient["post"],
@@ -48,6 +51,15 @@ interface CatalogBlobs {
   coverBlob?: BlobRef;
 }
 
+function safeJsonParse<T>(json: string, fallback: T, context: string): T {
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    console.warn(`[catalogBookService] JSON.parse failed for ${context}:`, json);
+    return fallback;
+  }
+}
+
 function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
   return {
     $type: ids.BuzzBookhiveCatalogBook,
@@ -73,11 +85,11 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
       ? { ratingsCount: book.ratingsCount }
       : {}),
     ...(book.genres
-      ? { genres: JSON.parse(book.genres) as string[] }
+      ? { genres: safeJsonParse<string[]>(book.genres, [], `book ${book.id} genres`) }
       : {}),
     ...(book.series ? { series: book.series } : {}),
     ...(book.identifiers
-      ? { identifiers: JSON.parse(book.identifiers) as Record<string, string> }
+      ? { identifiers: safeJsonParse<Record<string, string>>(book.identifiers, {}, `book ${book.id} identifiers`) }
       : {}),
   };
 }

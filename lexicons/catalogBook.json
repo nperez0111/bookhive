@@ -73,9 +73,9 @@
           },
           "rating": {
             "type": "integer",
-            "description": "Average rating (0-1000)",
+            "description": "Average rating (0-5000, where 1000 == 1.0)",
             "minimum": 0,
-            "maximum": 1000
+            "maximum": 5000
           },
           "ratingsCount": {
             "type": "integer",
