@@ -74,7 +74,7 @@ const app = new Hono<AppEnv>()
     const reviewId = c.req.query("review-id") ?? undefined;
     const res = c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
-      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      image: `${new URL(c.req.url).origin}/og/book/${hiveId}`,
       description: `See ${book.title} by ${authors.join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
       ogType: "book",
       ogExtra: (
@@ -319,7 +319,7 @@ const app = new Hono<AppEnv>()
     const reviewId = c.req.query("review-id") ?? undefined;
     return c.render(<CommentsSection book={book} reviewId={reviewId} />, {
       title: "BookHive | Comments " + book.title,
-      image: `${new URL(c.req.url).origin}/images/s_1190x665,fit_contain,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+      image: `${new URL(c.req.url).origin}/og/book/${c.req.param("hiveId")}`,
       description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
     });
   });

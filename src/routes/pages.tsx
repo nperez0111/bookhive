@@ -246,6 +246,7 @@ const app = new Hono<AppEnv>()
       {
         title: `BookHive | ${genre} Books`,
         description: `Discover ${result.totalBooks} ${genre} books on BookHive`,
+        image: `${new URL(c.req.url).origin}/og/genre/${encodeURIComponent(genre)}`,
       },
     );
   })
@@ -282,6 +283,7 @@ const app = new Hono<AppEnv>()
       {
         title: `BookHive | Books by ${author}`,
         description: `Discover ${result.totalBooks} books by ${author} on BookHive`,
+        image: `${new URL(c.req.url).origin}/og/author/${encodeURIComponent(author)}`,
       },
     );
   });

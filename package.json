@@ -28,10 +28,13 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
+    "@takumi-rs/image-response": "0.71.5",
     "@tanstack/hotkeys": "0.4.1",
     "basecoat-css": "0.3.11",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "sharp": "0.34.5"
   },
   "devDependencies": {
@@ -61,6 +64,8 @@
     "@tailwindcss/vite": "4.2.1",
     "@tsconfig/strictest": "2.0.8",
     "@types/bun": "latest",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@types/shimmer": "^1.2.0",
     "csv-parse": "5.6.0",
     "date-fns": "4.1.0",
