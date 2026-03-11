@@ -85,6 +85,15 @@ export const SearchPalette: FC<{
     item?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
+  const focusInput = () => inputRef.current?.focus();
+
+  const getSelectedButtons = (): HTMLElement[] => {
+    const list = listRef.current;
+    if (!list) return [];
+    const item = list.children[selectedIndex] as HTMLElement | undefined;
+    return item ? Array.from(item.querySelectorAll<HTMLElement>("button")) : [];
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
     switch (e.key) {
       case "ArrowDown":
@@ -94,6 +103,15 @@ export const SearchPalette: FC<{
       case "ArrowUp":
         e.preventDefault();
         setSelectedIndex((i) => Math.max(i - 1, 0));
+        break;
+      case "Tab":
+        if (isLoggedIn && books.length > 0) {
+          const buttons = getSelectedButtons();
+          if (buttons.length > 0) {
+            e.preventDefault();
+            buttons[0].focus();
+          }
+        }
         break;
       case "Enter":
         e.preventDefault();
@@ -106,6 +124,35 @@ export const SearchPalette: FC<{
       case "Escape":
         e.preventDefault();
         close();
+        break;
+    }
+  };
+
+  const handleStatusKeyDown = (e: KeyboardEvent, buttonIndex: number) => {
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowDown": {
+        e.preventDefault();
+        e.stopPropagation();
+        const buttons = getSelectedButtons();
+        buttons[Math.min(buttonIndex + 1, buttons.length - 1)]?.focus();
+        break;
+      }
+      case "ArrowLeft":
+      case "ArrowUp": {
+        e.preventDefault();
+        e.stopPropagation();
+        if (buttonIndex === 0) {
+          focusInput();
+        } else {
+          getSelectedButtons()[buttonIndex - 1]?.focus();
+        }
+        break;
+      }
+      case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
+        focusInput();
         break;
     }
   };
@@ -226,6 +273,9 @@ export const SearchPalette: FC<{
                     class="shrink-0"
                     tabIndex={-1}
                     onClick={close}
+                    onKeyDown={(e) => {
+                      if ((e as unknown as KeyboardEvent).key === "Escape") close();
+                    }}
                   >
                     <img
                       class="h-16 w-auto rounded-sm object-cover shadow-sm aspect-2/3"
@@ -239,6 +289,7 @@ export const SearchPalette: FC<{
                   <a
                     href={`/books/${book.id}`}
                     class="flex-1 min-w-0 group"
+                    tabIndex={-1}
                     onClick={close}
                   >
                     <p class="text-sm font-semibold text-foreground truncate group-hover:text-primary">
@@ -252,17 +303,21 @@ export const SearchPalette: FC<{
                   {/* Status buttons */}
                   {isLoggedIn && (
                     <div class="flex shrink-0 items-center gap-1.5 ml-auto">
-                      {STATUS_OPTIONS.map(({ value, label }) => {
+                      {STATUS_OPTIONS.map(({ value, label }, btnIndex) => {
                         const isActive = currentStatus === value;
                         return (
                           <button
                             key={value}
                             type="button"
+                            tabIndex={-1}
                             disabled={isPending}
                             onClick={(e) => {
                               e.stopPropagation();
                               void handleStatusClick(book.id, value);
                             }}
+                            onKeyDown={(e) =>
+                              handleStatusKeyDown(e as unknown as KeyboardEvent, btnIndex)
+                            }
                             class={`rounded px-2 py-1 text-[11px] font-medium transition-colors border ${
                               isActive
                                 ? "bg-primary text-primary-foreground border-primary"

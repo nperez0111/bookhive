@@ -24,7 +24,7 @@ export const SearchTrigger: FC<{ onOpen: () => void }> = ({ onOpen }) => {
       </svg>
       <span class="flex-1 text-left">Search books...</span>
       <kbd class="hidden sm:inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium">
-        ⌘K
+        <span class="text-[13px] leading-none">⌘</span>K
       </kbd>
     </button>
   );
