@@ -4,6 +4,8 @@
  * /explore/authors, /authors/:author.
  */
 import { Hono } from "hono";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 
 import type { AppEnv } from "../context";
 import { BookFields } from "../db";
@@ -130,76 +132,95 @@ const app = new Hono<AppEnv>()
     });
   })
   // Search results page
-  .get("/search", async (c) => {
-    const query = c.req.query("q") ?? "";
-    const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10));
-    const pageSize = 150;
+  .get(
+    "/search",
+    zValidator(
+      "query",
+      z.object({
+        q: z.string().optional().default(""),
+        page: z.coerce.number().int().min(1).catch(1),
+      }),
+    ),
+    async (c) => {
+      const { q: query, page } = c.req.valid("query");
+      const pageSize = 100;
 
-    if (!query) {
-      return c.render(<SearchResults query="" books={[]} currentPage={1} totalPages={0} totalBooks={0} pageSize={pageSize} />, {
-        title: "BookHive | Search",
-        description: "Search for books on BookHive",
-      });
-    }
+      if (!query) {
+        return c.render(
+          <SearchResults
+            query=""
+            books={[]}
+            currentPage={1}
+            totalPages={0}
+            totalBooks={0}
+            pageSize={pageSize}
+          />,
+          {
+            title: "BookHive | Search",
+            description: "Search for books on BookHive",
+          },
+        );
+      }
 
-    const ctx = c.get("ctx");
+      const ctx = c.get("ctx");
 
-    // Run external search (cached) and local DB text search in parallel
-    const pattern = `%${query}%`;
-    const [externalIds, localBooks] = await Promise.all([
-      searchBooks({ query, ctx }),
-      ctx.db
-        .selectFrom("hive_book")
-        .selectAll()
-        .where((eb) =>
-          eb.or([
-            eb("rawTitle", "like", pattern),
-            eb("title", "like", pattern),
-            eb("authors", "like", pattern),
-          ]),
-        )
-        .orderBy("ratingsCount", "desc")
-        .limit(pageSize)
-        .execute(),
-    ]);
-
-    // Merge: external results first (relevance-ranked), then local DB hits not already included
-    const externalIdSet = new Set(externalIds);
-    const localOnly = localBooks.filter((b) => !externalIdSet.has(b.id));
-
-    const externalBooks = externalIds.length
-      ? await ctx.db
+      // Run external search (cached) and local DB text search in parallel
+      const pattern = `%${query}%`;
+      const [externalIds, localBooks] = await Promise.all([
+        searchBooks({ query, ctx }),
+        ctx.db
           .selectFrom("hive_book")
           .selectAll()
-          .where("id", "in", externalIds)
-          .execute()
-          .then((rows) => {
-            rows.sort((a, b) => externalIds.indexOf(a.id) - externalIds.indexOf(b.id));
-            return rows;
-          })
-      : [];
+          .where((eb) =>
+            eb.or([
+              eb("rawTitle", "like", pattern),
+              eb("title", "like", pattern),
+              eb("authors", "like", pattern),
+            ]),
+          )
+          .orderBy("ratingsCount", "desc")
+          .limit(500)
+          .execute(),
+      ]);
 
-    const allBooks = [...externalBooks, ...localOnly].slice(0, pageSize);
-    const offset = (page - 1) * pageSize;
-    const totalBooks = allBooks.length;
-    const totalPages = Math.ceil(totalBooks / pageSize);
-    const books = allBooks.slice(offset, offset + pageSize);
+      // Merge: external results first (relevance-ranked), then local DB hits not already included
+      const externalIdSet = new Set(externalIds);
+      const localOnly = localBooks.filter((b) => !externalIdSet.has(b.id));
 
-    return c.render(
-      <SearchResults
-        query={query}
-        books={books}
-        currentPage={page}
-        totalPages={totalPages}
-        totalBooks={totalBooks}
-        pageSize={pageSize}
-      />,
-      {
-        title: `BookHive | Search: ${query}`,
-        description: `Search results for "${query}" on BookHive`,
-      },
-    );
-  })
+      const externalBooks = externalIds.length
+        ? await ctx.db
+            .selectFrom("hive_book")
+            .selectAll()
+            .where("id", "in", externalIds)
+            .execute()
+            .then((rows) => {
+              rows.sort((a, b) => externalIds.indexOf(a.id) - externalIds.indexOf(b.id));
+              return rows;
+            })
+        : [];
+
+      const allBooks = [...externalBooks, ...localOnly];
+      const totalBooks = allBooks.length;
+      const totalPages = Math.ceil(totalBooks / pageSize);
+      const offset = (page - 1) * pageSize;
+      const books = allBooks.slice(offset, offset + pageSize);
+
+      return c.render(
+        <SearchResults
+          query={query}
+          books={books}
+          currentPage={page}
+          totalPages={totalPages}
+          totalBooks={totalBooks}
+          pageSize={pageSize}
+        />,
+        {
+          title: `BookHive | Search: ${query}`,
+          description: `Search results for "${query}" on BookHive`,
+        },
+      );
+    },
+  )
   // Explore hub
   .get("/explore", (c) =>
     c.render(<Explore />, {

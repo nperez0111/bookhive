@@ -29,6 +29,13 @@ export const SearchPalette: FC<{
   const bookResults = useSearchBooks(debouncedQuery, debouncedQuery.length > 2, 20);
   const books = bookResults.data ?? [];
 
+  // Seed statusMap from server-provided user statuses when results change
+  useEffect(() => {
+    if (bookResults.userStatuses && Object.keys(bookResults.userStatuses).length > 0) {
+      setStatusMap((prev) => ({ ...bookResults.userStatuses, ...prev }));
+    }
+  }, [bookResults.userStatuses]);
+
   const open = () => setIsOpen(true);
   const close = () => setIsOpen(false);
 
@@ -109,7 +116,7 @@ export const SearchPalette: FC<{
           const buttons = getSelectedButtons();
           if (buttons.length > 0) {
             e.preventDefault();
-            buttons[0].focus();
+            buttons[0]?.focus();
           }
         }
         break;
@@ -215,7 +222,7 @@ export const SearchPalette: FC<{
               placeholder="Search books..."
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-              class="flex-1 bg-transparent py-4 text-foreground placeholder:text-muted-foreground outline-none text-base"
+              class="flex-1 bg-transparent py-4 my-[3px] text-foreground placeholder:text-muted-foreground [outline:none] border border-border focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 focus:ring-offset-0 rounded text-base"
               autocomplete="off"
               role="combobox"
               aria-expanded={books.length > 0}

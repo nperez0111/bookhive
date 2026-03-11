@@ -141,9 +141,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         let extraQuery = ctx.db
           .selectFrom("hive_book")
           .select("id")
-          .where((eb) =>
-            eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]),
-          )
+          .where((eb) => eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]))
           .orderBy("ratingsCount", "desc")
           .orderBy("rating", "desc")
           .limit(limit - bookIds.length);
@@ -170,9 +168,30 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
 
       const slice = books.slice(off, off + limit);
+
+      // Include current user's statuses if logged in
+      const agent = await ctx.getSessionAgent();
+      let userStatuses: Record<string, string> | undefined;
+      if (agent && slice.length > 0) {
+        const userBooks = await ctx.db
+          .selectFrom("user_book")
+          .select(["hiveId", "status"])
+          .where("userDid", "=", agent.did)
+          .where(
+            "hiveId",
+            "in",
+            slice.map((b) => b.id),
+          )
+          .execute();
+        userStatuses = Object.fromEntries(
+          userBooks.filter((ub) => ub.status).map((ub) => [ub.hiveId, ub.status!]),
+        );
+      }
+
       return json({
         books: slice.map((b) => transformBookWithIdentifiers(b)),
         offset: off + slice.length,
+        userStatuses,
       });
     },
   });

@@ -17,7 +17,7 @@
     "typecheck": "oxlint src --type-aware --type-check --tsconfig tsconfig.json",
     "format": "oxfmt src",
     "lexgen": "lex-cli generate",
-    "postlexgen": "oxfmt --write ./src/bsky/lexicon/**/*.ts",
+    "postlexgen": "oxfmt ./src/bsky/lexicon/",
     "start": "bun run src/index.ts",
     "ios": "bun run --cwd app ios",
     "android": "bun run --cwd app android",
