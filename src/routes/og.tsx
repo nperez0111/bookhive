@@ -107,7 +107,7 @@ function BrandMark({ size = 32 }: { size?: number }) {
 
 /** Strip HTML tags from a string (descriptions from Goodreads contain markup) */
 function stripHtml(str: string): string {
-  return str.replace(/<[^>]*>/g, "").replace(/&[a-z]+;/gi, (e) => {
+  return str.replace(/<[^>]*>/g, "").replace(/&(?:[a-z]+|#\d+);/gi, (e) => {
     const map: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
     return map[e] ?? e;
   });
