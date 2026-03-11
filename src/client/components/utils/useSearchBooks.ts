@@ -10,6 +10,7 @@ type SearchState =
 export function useSearchBooks(
   query: string,
   enabled: boolean,
+  limit = 10,
 ): { data: HiveBook[]; isFetching: boolean; isError: boolean; status: string } {
   const [state, setState] = useState<SearchState>({
     status: "idle",
@@ -31,7 +32,7 @@ export function useSearchBooks(
       data: prev.data,
     }));
 
-    fetch(`/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=10`, {
+    fetch(`/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=${limit}`, {
       signal: ac.signal,
     })
       .then((res) => {

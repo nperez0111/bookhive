@@ -35,8 +35,34 @@ export const Navbar: FC<{
           <span class="ml-2 font-bold">BookHive</span>
         </a>
 
-        {/* Search */}
-        <div id="mount-search-box" class="min-w-0 max-w-md flex-1"></div>
+        {/* Search — form is the no-JS fallback; JS replaces it with the palette trigger */}
+        <div id="mount-search-box" class="min-w-0 max-w-md flex-1">
+          <form action="/search" method="get" class="relative w-full">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <svg
+                class="size-4 text-muted-foreground"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z"
+                />
+              </svg>
+            </div>
+            <input
+              type="search"
+              name="q"
+              placeholder="Search books..."
+              autocomplete="off"
+              class="block w-full min-w-0 rounded-md border border-border bg-card py-1.5 pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </form>
+        </div>
 
         {/* Right group: theme toggle + user */}
         <div class="ml-auto flex shrink-0 items-center gap-2">

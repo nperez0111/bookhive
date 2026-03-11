@@ -99,6 +99,10 @@ export function mainRouter(deps: AppDeps): HonoServer {
               </main>
             </div>
           </div>
+          <div
+            id="mount-search-palette"
+            data-logged-in={profileData ? "true" : "false"}
+          />
         </Layout>
       );
       endTime(c, "layout_render");

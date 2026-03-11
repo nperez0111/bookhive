@@ -53,6 +53,7 @@ class Goodreads {
       const params = new URLSearchParams({
         format: "json",
         q: query,
+        limit: "20",
       });
 
       const response = await fetch(`${Goodreads.SEARCH_URL}?${params.toString()}`, {

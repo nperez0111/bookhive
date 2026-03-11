@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@atcute/xrpc-server": "0.1.9",
+    "@tanstack/hotkeys": "0.4.1",
     "basecoat-css": "0.3.11",
     "pino": "^10.1.0",
     "pino-abstract-transport": "2.0.0",

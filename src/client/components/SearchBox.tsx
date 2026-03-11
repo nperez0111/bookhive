@@ -1,142 +1,31 @@
-import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
+import { type FC } from "hono/jsx/dom";
 
-import { ProgressBar } from "./ProgressBar";
-import { useDebounce } from "./utils/useDebounce";
-import { useSearchBooks } from "./utils/useSearchBooks";
-
-export const SearchBox: FC = () => {
-  const [isOpened, setIsOpened] = useState(false);
-  const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const debouncedQuery = useDebounce(query, 300);
-
-  const bookResults = useSearchBooks(debouncedQuery, query.length > 2);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsOpened(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (debouncedQuery) {
-      setIsOpened(true);
-      setSelectedIndex(-1);
-    }
-  }, [debouncedQuery]);
-
-  const handleFocus = () => {
-    if ((bookResults.data?.length || 0) > 0) {
-      setIsOpened(true);
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    const books = bookResults.data || [];
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setSelectedIndex((prev) => Math.min(prev + 1, books.length - 1));
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setSelectedIndex((prev) => Math.max(prev - 1, -1));
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (selectedIndex >= 0 && books[selectedIndex]) {
-          window.location.href = `/books/${books[selectedIndex].id}`;
-        }
-        break;
-      case "Escape":
-        setIsOpened(false);
-        break;
-    }
-  };
-
+export const SearchTrigger: FC<{ onOpen: () => void }> = ({ onOpen }) => {
   return (
-    <div ref={searchRef} className="relative w-full">
-      <div className="relative rounded-md shadow-xs">
-        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-          <span className="text-muted-foreground sm:text-sm">🔍</span>
-        </div>
-        <input
-          type="search"
-          role="combobox"
-          aria-expanded={isOpened}
-          aria-controls="search-results"
-          aria-activedescendant={selectedIndex >= 0 ? `book-${selectedIndex}` : undefined}
-          autocomplete="off"
-          placeholder="Search books..."
-          id="search-books"
-          className="block w-full min-w-0 rounded-md border-0 py-1.5 pl-8 pr-3 text-foreground ring-1 ring-border ring-inset placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-inset sm:text-sm/6 bg-card"
-          value={query}
-          onFocus={handleFocus}
-          onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => handleKeyDown(e as unknown as KeyboardEvent)}
+    <button
+      type="button"
+      onClick={onOpen}
+      class="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted cursor-pointer transition-colors"
+      aria-label="Search books (Cmd+K)"
+    >
+      <svg
+        class="size-4 shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        aria-hidden="true"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z"
         />
-      </div>
-      {isOpened && (
-        <ul
-          id="search-results"
-          role="listbox"
-          className="absolute -left-12 z-50 mt-2 w-[calc(100vw-40px)] origin-top-right rounded-md py-1 shadow-lg ring-1 ring-border focus:outline-hidden sm:left-0 sm:w-[calc(100%+64px)] overflow-hidden [&>li+li]:border-t [&>li+li]:border-border"
-          style={{ background: "var(--card)" }}
-        >
-          <ProgressBar isActive={bookResults.isFetching} />
-          {bookResults.isError && (
-            <li className="bg-card px-4 py-2 text-red-500">Failed to search books</li>
-          )}
-          {(bookResults.status === "success" || bookResults.status === "loading") &&
-            bookResults.data.map((book, index) => (
-              <li
-                key={book.id}
-                id={`book-${index}`}
-                role="option"
-                aria-selected={index === selectedIndex}
-                className={`bg-card px-1 py-2 ${index === selectedIndex ? "bg-muted" : ""}`}
-              >
-                <a
-                  href={`/books/${book.id}`}
-                  class="group flex w-full items-center justify-between gap-x-6 space-x-4 rounded-md px-2 py-3 text-left text-foreground hover:bg-muted"
-                >
-                  <div className="flex items-center justify-between space-x-4">
-                    <img
-                      className="book-cover aspect-2/3 h-20 rounded-sm object-cover shadow-xs transition-transform group-hover:scale-105 group-hover:shadow-md"
-                      src={`${book.thumbnail || book.cover || ""}`}
-                      // src={`/images/w_300/${book.thumbnail || book.cover || ""}`}
-                      alt={`Cover of ${book.title}`}
-                      style={`--book-cover-name: book-cover-${book.id}`}
-                      loading="lazy"
-                    />
-                    <div>
-                      <p
-                        className="book-title text-sm font-semibold"
-                        style={`--book-title-name: book-title-${book.id}`}
-                      >
-                        {book.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        by {book.authors.split("\t").join(", ")}
-                      </p>
-                    </div>
-                  </div>
-                </a>
-              </li>
-            ))}
-          {debouncedQuery.length > 2 && bookResults.data?.length === 0 && (
-            <li className="bg-card px-4 py-2 text-muted-foreground">No results found</li>
-          )}
-          {debouncedQuery.length <= 2 && (
-            <li className="bg-card px-4 py-2 text-muted-foreground">Type more to search...</li>
-          )}
-        </ul>
-      )}
-    </div>
+      </svg>
+      <span class="flex-1 text-left">Search books...</span>
+      <kbd class="hidden sm:inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+        ⌘K
+      </kbd>
+    </button>
   );
 };
