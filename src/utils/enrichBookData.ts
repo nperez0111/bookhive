@@ -3,6 +3,7 @@ import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "../context";
 import { upsertBookIdentifiers } from "./bookIdentifiers";
+import { writeCatalogBookIfNeeded } from "./catalogBookService";
 
 interface BookMeta {
   publisher: string;
@@ -135,6 +136,15 @@ export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext
       has_series: !!detailedData.book.series,
       has_author_bio: !!detailedData.book.primaryAuthor.description,
     });
+
+    if (ctx.serviceAccountAgent) {
+      writeCatalogBookIfNeeded(
+        { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent },
+        book.id,
+      ).catch(() => {
+        // fire-and-forget; catalog write failures shouldn't affect enrichment
+      });
+    }
   } catch (error) {
     ctx.addWideEventContext({
       enrichment: "error",

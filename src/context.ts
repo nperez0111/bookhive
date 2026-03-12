@@ -136,10 +136,7 @@ export async function createAppDeps(): Promise<AppDeps> {
 
   const oauthClient = await createOAuthClient(kv);
   const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
-  const ingester = createIngester(db, kv, (wideEvent) => logger.info(wideEvent));
   const resolver = createCachingBidirectionalResolver(kv, createBidirectionalResolverAtcute());
-
-  ingester.start();
 
   const serviceAccountAgent =
     env.BOOKHIVE_SERVICE_HANDLE && env.BOOKHIVE_APP_PASSWORD
@@ -148,6 +145,9 @@ export async function createAppDeps(): Promise<AppDeps> {
           env.BOOKHIVE_APP_PASSWORD,
         )
       : null;
+
+  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) => logger.info(wideEvent));
+  ingester.start();
 
   return {
     db,

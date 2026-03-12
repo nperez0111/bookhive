@@ -21,7 +21,7 @@ export async function searchBooks({
   query: string;
   ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext"> & { serviceAccountAgent?: AppContext["serviceAccountAgent"] };
 }) {
-  return await readThroughCache<HiveId[]>(
+  const combinedIds = await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
     async () => {
@@ -65,21 +65,6 @@ export async function searchBooks({
         );
 
         void Promise.allSettled(enrichmentPromises);
-
-        if (ctx.serviceAccountAgent) {
-          const catalogCtx = { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent };
-          void Promise.allSettled(
-            res.data.map((book) =>
-              writeCatalogBookIfNeeded(catalogCtx, book).catch((error) => {
-                ctx.addWideEventContext({
-                  catalog_book_write_failed: true,
-                  bookId: book.id,
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              }),
-            ),
-          );
-        }
       }
 
       // Backfill from local DB with ILIKE to reach up to 20 results
@@ -106,6 +91,25 @@ export async function searchBooks({
       requestsPerSecond: 5,
     },
   );
+
+  // Run catalog writes outside the cache so they fire on every call, including
+  // cache hits where books may have been enriched since the result was cached.
+  if (ctx.serviceAccountAgent && combinedIds.length > 0) {
+    const catalogCtx = { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent };
+    void Promise.allSettled(
+      combinedIds.map((bookId) =>
+        writeCatalogBookIfNeeded(catalogCtx, bookId).catch((error) => {
+          ctx.addWideEventContext({
+            catalog_book_write_failed: true,
+            bookId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      ),
+    );
+  }
+
+  return combinedIds;
 }
 
 export async function ensureBookIdentifiersCurrent({
@@ -451,7 +455,7 @@ export async function refetchBooks({
         });
         if (!response.ok) {
           throw new Error(
-            `applyWrites hiveBookUri backfill failed: status=${response.status} data=${JSON.stringify(response.data)}`,
+            `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
           );
         }
       }

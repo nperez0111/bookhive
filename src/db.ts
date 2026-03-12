@@ -334,6 +334,21 @@ migrations["012"] = {
   },
 };
 
+migrations["013"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .addColumn("hiveBookCatalogUpdatedAt", "text")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .dropColumn("hiveBookCatalogUpdatedAt")
+      .execute();
+  },
+};
+
 migrations["010"] = {
   async up(db: Kysely<unknown>) {
     const MIGRATION_010_BATCH_SIZE = 500;

@@ -108,6 +108,7 @@ class Goodreads {
         goodreadsId: result.bookId,
       }),
       hiveBookAtUri: null,
+      hiveBookCatalogUpdatedAt: null,
     };
   }
 

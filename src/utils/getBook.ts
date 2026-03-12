@@ -12,6 +12,7 @@ import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 import { hydrateUserBook, serializeUserBook } from "./bookProgress";
+import { ensureBookCataloged } from "./ensureBookCataloged";
 
 /**
  * Normalize a date string to ISO format at midnight UTC
@@ -254,11 +255,10 @@ export async function updateBookRecord({
   const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
   const identifiers = toBookIdentifiersOutput(identifiersRow);
 
-  const hiveBookRow = await ctx.db
-    .selectFrom("hive_book")
-    .select(["hiveBookAtUri"])
-    .where("id", "=", hiveId)
-    .executeTakeFirst();
+  // Ensure the book is cataloged before writing to the user's PDS so we can embed
+  // hiveBookUri. Fast path (expected): already cataloged, one DB read, no network.
+  // Slow path (last resort): enrich + catalog with timeouts if it slipped through.
+  const hiveBookAtUri = await ensureBookCataloged(ctx, hiveId);
 
   const bookData = {
     $type: ids.BuzzBookhiveBook,
@@ -292,7 +292,7 @@ export async function updateBookRecord({
           ? updates.bookProgress
           : originalBook?.bookProgress,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
-    hiveBookUri: hiveBookRow?.hiveBookAtUri || originalBook?.hiveBookUri,
+    hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
   };
 
   const book = BookRecord.validateRecord(bookData);
@@ -393,6 +393,18 @@ export async function updateBookRecords({
     .execute();
   const identifiersByHiveId = new Map(idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]));
 
+  // Ensure all books are cataloged before writing to the user's PDS.
+  // Fast path (expected): already cataloged via backfill/searchBooks — just a DB read.
+  // Runs in parallel across all books; failures are swallowed inside ensureBookCataloged.
+  const hiveBookUriMap = new Map<HiveId, string | undefined>();
+  if (ctx.serviceAccountAgent) {
+    await Promise.allSettled(
+      hiveIds.map(async (hiveId) => {
+        hiveBookUriMap.set(hiveId, await ensureBookCataloged(ctx, hiveId));
+      }),
+    );
+  }
+
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
       bookMap.entries().find(([_rkey, book]) => book.hiveId === hiveId) ?? [];
@@ -461,6 +473,7 @@ export async function updateBookRecords({
             ? update.bookProgress
             : originalBook?.bookProgress,
       identifiers,
+      hiveBookUri: hiveBookUriMap.get(hiveId) ?? originalBook?.hiveBookUri,
     });
 
     if (!book.success) {
