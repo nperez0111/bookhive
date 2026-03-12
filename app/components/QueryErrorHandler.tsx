@@ -30,8 +30,7 @@ export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
   const textColor = useThemeColor({}, "text");
 
   // Classify the error
-  const networkError: NetworkError =
-    error?.networkError || classifyNetworkError(error);
+  const networkError: NetworkError = error?.networkError || classifyNetworkError(error);
 
   // If we're offline and it's a network error, show offline message
   if (!isConnected && networkError.type === "network") {
@@ -39,9 +38,7 @@ export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
       <ThemedView style={[styles.container, { backgroundColor }]}>
         <View style={styles.content}>
           <Ionicons name="wifi-outline" size={64} color="#FBBF24" />
-          <ThemedText style={[styles.title, { color: textColor }]}>
-            You're Offline
-          </ThemedText>
+          <ThemedText style={[styles.title, { color: textColor }]}>You're Offline</ThemedText>
           <ThemedText style={[styles.message, { color: textColor }]}>
             Please check your internet connection and try again.
           </ThemedText>

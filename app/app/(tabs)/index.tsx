@@ -55,18 +55,10 @@ function BookSection({
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderContent}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: colors.activeBackground },
-              ]}
-            >
+            <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
               <Ionicons name={icon as any} size={20} color={colors.primary} />
             </View>
-            <ThemedText
-              style={[styles.sectionTitle, { color: colors.primaryText }]}
-              type="heading"
-            >
+            <ThemedText style={[styles.sectionTitle, { color: colors.primaryText }]} type="heading">
               {title}
             </ThemedText>
           </View>
@@ -81,28 +73,13 @@ function BookSection({
             },
           ]}
         >
-          <View
-            style={[
-              styles.emptyIconContainer,
-              { backgroundColor: colors.inactiveBackground },
-            ]}
-          >
-            <Ionicons
-              name="book-outline"
-              size={32}
-              color={colors.tertiaryText}
-            />
+          <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
+            <Ionicons name="book-outline" size={32} color={colors.tertiaryText} />
           </View>
-          <ThemedText
-            style={[styles.emptyTitle, { color: colors.primaryText }]}
-            type="heading"
-          >
+          <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
             {emptyMessage}
           </ThemedText>
-          <ThemedText
-            style={[styles.emptySubtitle, { color: colors.secondaryText }]}
-            type="body"
-          >
+          <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
             {emptySubtitle}
           </ThemedText>
         </ThemedView>
@@ -207,10 +184,7 @@ export default function HomeScreen() {
     return (
       <ThemedView style={[styles.loadingContainer, { backgroundColor }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <ThemedText
-          style={[styles.loadingText, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]} type="body">
           Loading your library...
         </ThemedText>
       </ThemedView>
@@ -231,44 +205,28 @@ export default function HomeScreen() {
   if (!profile.data) {
     return (
       <ThemedView style={[styles.errorContainer, { backgroundColor }]}>
-        <Ionicons
-          name="alert-circle-outline"
-          size={64}
-          color={colors.primary}
-        />
-        <ThemedText
-          style={[styles.errorTitle, { color: colors.primaryText }]}
-          type="heading"
-        >
+        <Ionicons name="alert-circle-outline" size={64} color={colors.primary} />
+        <ThemedText style={[styles.errorTitle, { color: colors.primaryText }]} type="heading">
           No Profile Data
         </ThemedText>
-        <ThemedText
-          style={[styles.errorMessage, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.errorMessage, { color: colors.secondaryText }]} type="body">
           Unable to load your profile. Please try refreshing.
         </ThemedText>
       </ThemedView>
     );
   }
 
-  const readingBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.READING,
-  );
+  const readingBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.READING);
   const wantToReadBooks = profile.data.books.filter(
     (book) => book.status === BOOK_STATUS.WANTTOREAD,
   );
-  const finishedBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.FINISHED,
-  );
+  const finishedBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED);
 
   const totalBooks = profile.data.books.length;
   const friendActivity = profile.data.friendActivity ?? [];
 
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
-    >
+    <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -301,15 +259,10 @@ export default function HomeScreen() {
                 ]}
                 type="title"
               >
-                {profile.data.profile.displayName ||
-                  profile.data.profile.handle}
+                {profile.data.profile.displayName || profile.data.profile.handle}
               </ThemedText>
               <View style={styles.quickActionsRow}>
-                <QuickAction
-                  icon="search"
-                  label="Search"
-                  onPress={() => router.push("/search")}
-                />
+                <QuickAction icon="search" label="Search" onPress={() => router.push("/search")} />
                 <QuickAction
                   icon="compass"
                   label="Explore"

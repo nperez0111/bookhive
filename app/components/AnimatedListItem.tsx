@@ -1,9 +1,5 @@
 import React from "react";
-import Animated, {
-  FadeInDown,
-  FadeOutUp,
-  LinearTransition,
-} from "react-native-reanimated";
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
 
 type AnimatedListItemProps = {
   index: number;

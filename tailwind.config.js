@@ -9,12 +9,9 @@ export default {
   theme: {
     extend: {
       colors: {
-        yello: '#f9eabc',
+        yello: "#f9eabc",
       },
     },
   },
-  plugins: [
-    tailwindAnimated,
-    forms,
-  ],
+  plugins: [tailwindAnimated, forms],
 };

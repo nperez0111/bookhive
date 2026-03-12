@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -29,10 +23,7 @@ export default function AuthorBooksScreen() {
   const backgroundColor = useThemeColor({}, "background");
 
   const decodedAuthor = decodeURIComponent(author ?? "");
-  const { data, isLoading, error, refetch } = useAuthorBooks(
-    decodedAuthor,
-    page,
-  );
+  const { data, isLoading, error, refetch } = useAuthorBooks(decodedAuthor, page);
 
   const books = data?.books ?? [];
   const hasMore = page < (data?.totalPages ?? 1);
@@ -47,12 +38,7 @@ export default function AuthorBooksScreen() {
 
   if (error) {
     return (
-      <QueryErrorHandler
-        error={error}
-        onRetry={() => refetch()}
-        showRetryButton
-        showGoBackButton
-      />
+      <QueryErrorHandler error={error} onRetry={() => refetch()} showRetryButton showGoBackButton />
     );
   }
 
@@ -61,10 +47,7 @@ export default function AuthorBooksScreen() {
       <GradientView variant="warm" style={styles.header}>
         <BackNavigationHeader title={decodedAuthor} />
         <ThemedText
-          style={[
-            styles.bookCount,
-            { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
-          ]}
+          style={[styles.bookCount, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
           type="caption"
         >
           {data?.totalBooks ?? 0} books
@@ -96,10 +79,7 @@ export default function AuthorBooksScreen() {
           hasMore ? (
             <Pressable
               onPress={() => setPage((p) => p + 1)}
-              style={[
-                styles.loadMoreButton,
-                { backgroundColor: colors.activeBackground },
-              ]}
+              style={[styles.loadMoreButton, { backgroundColor: colors.activeBackground }]}
             >
               <ThemedText type="label" style={{ color: colors.primary }}>
                 Load more

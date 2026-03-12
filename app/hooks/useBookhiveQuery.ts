@@ -1,12 +1,6 @@
 import { authFetch } from "@/context/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  HiveBook,
-  HiveId,
-  GetBook,
-  GetProfile,
-  UserBook,
-} from "../../src/types";
+import { HiveBook, HiveId, GetBook, GetProfile, UserBook } from "../../src/types";
 import { useEffect, useState } from "react";
 import { classifyNetworkError } from "@/utils/networkErrorHandler";
 
@@ -49,9 +43,7 @@ export const useSearchBooks = (query: string) => {
   return useQuery({
     queryKey: ["searchBooks", query] as const,
     queryFn: async ({ queryKey: [, q] }) => {
-      return await enhancedAuthFetch<HiveBook[]>(
-        `/xrpc/buzz.bookhive.searchBooks?q=${q}`,
-      );
+      return await enhancedAuthFetch<HiveBook[]>(`/xrpc/buzz.bookhive.searchBooks?q=${q}`);
     },
     enabled: Boolean(debouncedQuery),
     retry: (failureCount, error: any) => {
@@ -162,16 +154,13 @@ export const useUpdateBook = () => {
       Partial<UserBook>,
       "hiveId" | "uri" | "cid" | "userDid" | "indexedAt" | "createdAt"
     >) => {
-      return await enhancedAuthFetch<{ success: boolean; message: string }>(
-        `/api/update-book`,
-        {
-          method: "POST",
-          body: {
-            hiveId,
-            ...rest,
-          },
+      return await enhancedAuthFetch<{ success: boolean; message: string }>(`/api/update-book`, {
+        method: "POST",
+        body: {
+          hiveId,
+          ...rest,
         },
-      );
+      });
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate the book query to refetch latest data
@@ -211,19 +200,16 @@ export const useUpdateComment = () => {
       parentCid: string;
       uri?: string;
     }) => {
-      return await enhancedAuthFetch<{ success: boolean; message: string }>(
-        `/api/update-comment`,
-        {
-          method: "POST",
-          body: {
-            uri,
-            hiveId,
-            comment,
-            parentUri,
-            parentCid,
-          },
+      return await enhancedAuthFetch<{ success: boolean; message: string }>(`/api/update-comment`, {
+        method: "POST",
+        body: {
+          uri,
+          hiveId,
+          comment,
+          parentUri,
+          parentCid,
         },
-      );
+      });
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate the book query to refetch latest data
@@ -251,13 +237,10 @@ export const useDeleteBook = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ hiveId }: { hiveId: HiveId }) => {
-      return await enhancedAuthFetch<{ success: boolean; hiveId: string }>(
-        `/books/${hiveId}`,
-        {
-          method: "DELETE",
-          headers: { Accept: "application/json" },
-        },
-      );
+      return await enhancedAuthFetch<{ success: boolean; hiveId: string }>(`/books/${hiveId}`, {
+        method: "DELETE",
+        headers: { Accept: "application/json" },
+      });
     },
     onSuccess: (_, { hiveId }) => {
       // Invalidate and refetch book and profile data
@@ -293,10 +276,7 @@ export const useExplore = () => {
   });
 };
 
-export const useFeed = (
-  tab: "friends" | "all" | "tracking" = "friends",
-  page: number = 1,
-) => {
+export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", page: number = 1) => {
   return useQuery({
     queryKey: ["feed", tab, page] as const,
     queryFn: async ({ queryKey: [, t, p] }) => {
@@ -341,9 +321,7 @@ export const useAuthorBooks = (author: string, page: number = 1) => {
         totalBooks: number;
         totalPages: number;
         page: number;
-      }>(
-        `/xrpc/buzz.bookhive.getAuthorBooks?author=${encodeURIComponent(String(a))}&page=${p}`,
-      );
+      }>(`/xrpc/buzz.bookhive.getAuthorBooks?author=${encodeURIComponent(String(a))}&page=${p}`);
     },
     enabled: Boolean(author),
     staleTime: 10 * 60 * 1000,
@@ -419,9 +397,7 @@ export const useReadingStats = (handle: string, year: number) => {
         availableYears: number[];
         year: number;
         readingChallengeGoal?: number;
-      }>(
-        `/xrpc/buzz.bookhive.getReadingStats?handle=${encodeURIComponent(String(h))}&year=${y}`,
-      );
+      }>(`/xrpc/buzz.bookhive.getReadingStats?handle=${encodeURIComponent(String(h))}&year=${y}`);
     },
     enabled: Boolean(handle),
     staleTime: 5 * 60 * 1000,

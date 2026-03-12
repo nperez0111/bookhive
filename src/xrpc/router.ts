@@ -688,8 +688,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           bookCount: a.bookCount,
           thumbnail: a.thumbnail ?? undefined,
           // avgRating from DB is already 0-5 (ROUND(AVG(...)/1000, 1)); scale by 10 for integer transport
-          avgRating:
-            a.avgRating != null ? Math.round(a.avgRating * 10) : undefined,
+          avgRating: a.avgRating != null ? Math.round(a.avgRating * 10) : undefined,
         })),
       });
     },
@@ -746,9 +745,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const allDids = [...new Set(activities.map((a) => a.userDid))];
       const didToHandle =
-        allDids.length > 0
-          ? await ctx.resolver.resolveDidsToHandles(allDids)
-          : {};
+        allDids.length > 0 ? await ctx.resolver.resolveDidsToHandles(allDids) : {};
 
       return json({
         activities: activities.map((a) => ({
@@ -800,14 +797,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .selectFrom("hive_book")
           .selectAll()
           .where(authorCondition as any)
-          .orderBy(
-            sort === "reviews" ? "rating" : "ratingsCount",
-            "desc",
-          )
-          .orderBy(
-            sort === "reviews" ? "ratingsCount" : "rating",
-            "desc",
-          )
+          .orderBy(sort === "reviews" ? "rating" : "ratingsCount", "desc")
+          .orderBy(sort === "reviews" ? "ratingsCount" : "rating", "desc")
           .limit(pageSize)
           .offset(offset)
           .execute(),
@@ -882,9 +873,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
       const yearSet = new Set(
         finishedAllTime
-          .map((b) =>
-            b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0,
-          )
+          .map((b) => (b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0))
           .filter((y) => y >= 2000 && y <= 2100),
       );
       const currentYear = new Date().getFullYear();
@@ -895,17 +884,24 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const agent = await ctx.getSessionAgent();
       let readingChallengeGoal: number | undefined;
       if (agent?.did === did) {
-        const goalStr = await ctx.kv.getItem(
-          `reading-challenge:${did}:${year}`,
-        );
+        const goalStr = await ctx.kv.getItem(`reading-challenge:${did}:${year}`);
         if (goalStr != null && typeof goalStr === "string") {
           const parsed = parseInt(goalStr, 10);
-          if (!Number.isNaN(parsed) && parsed > 0)
-            readingChallengeGoal = parsed;
+          if (!Number.isNaN(parsed) && parsed > 0) readingChallengeGoal = parsed;
         }
       }
 
-      const toBookSummary = (b: { hiveId: string; title: string; authors: string; cover?: string | null; thumbnail?: string | null; bookProgress?: { totalPages?: number | null } | null; rating?: number | null } | null) => {
+      const toBookSummary = (
+        b: {
+          hiveId: string;
+          title: string;
+          authors: string;
+          cover?: string | null;
+          thumbnail?: string | null;
+          bookProgress?: { totalPages?: number | null } | null;
+          rating?: number | null;
+        } | null,
+      ) => {
         if (!b) return undefined;
         return {
           hiveId: b.hiveId,
@@ -923,9 +919,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           booksCount: stats.booksCount,
           pagesRead: stats.pagesRead,
           averageRating:
-            stats.averageRating != null
-              ? Math.round(stats.averageRating * 10)
-              : undefined,
+            stats.averageRating != null ? Math.round(stats.averageRating * 10) : undefined,
           averagePageCount: stats.averagePageCount ?? undefined,
           ratingDistribution: {
             one: stats.ratingDistribution[1],

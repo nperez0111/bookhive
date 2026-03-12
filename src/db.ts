@@ -321,31 +321,19 @@ migrations["011"] = {
 
 migrations["012"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("hiveBookAtUri", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("hiveBookAtUri", "text").execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .dropColumn("hiveBookAtUri")
-      .execute();
+    await db.schema.alterTable("hive_book").dropColumn("hiveBookAtUri").execute();
   },
 };
 
 migrations["013"] = {
   async up(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .addColumn("hiveBookCatalogUpdatedAt", "text")
-      .execute();
+    await db.schema.alterTable("hive_book").addColumn("hiveBookCatalogUpdatedAt", "text").execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema
-      .alterTable("hive_book")
-      .dropColumn("hiveBookCatalogUpdatedAt")
-      .execute();
+    await db.schema.alterTable("hive_book").dropColumn("hiveBookCatalogUpdatedAt").execute();
   },
 };
 

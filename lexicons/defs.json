@@ -114,14 +114,7 @@
     },
     "activity": {
       "type": "object",
-      "required": [
-        "type",
-        "createdAt",
-        "hiveId",
-        "title",
-        "userDid",
-        "userHandle"
-      ],
+      "required": ["type", "createdAt", "hiveId", "title", "userDid", "userHandle"],
       "properties": {
         "type": {
           "type": "string",
@@ -151,14 +144,7 @@
     },
     "userBook": {
       "type": "object",
-      "required": [
-        "userDid",
-        "title",
-        "authors",
-        "hiveId",
-        "createdAt",
-        "thumbnail"
-      ],
+      "required": ["userDid", "title", "authors", "hiveId", "createdAt", "thumbnail"],
       "properties": {
         "userDid": {
           "type": "string",

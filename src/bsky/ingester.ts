@@ -185,7 +185,12 @@ async function backfillUserRepo(
   }
 }
 
-export function createIngester(db: Database, kv: Storage, serviceAccountAgent: SessionClient | null, emitWideEvent: EmitWideEvent): Ingester {
+export function createIngester(
+  db: Database,
+  kv: Storage,
+  serviceAccountAgent: SessionClient | null,
+  emitWideEvent: EmitWideEvent,
+): Ingester {
   const bidirectionalResolver = createBidirectionalResolverAtcute();
   const backfilledDids = new Set<string>();
   let subscription: JetstreamSubscription | null = null;

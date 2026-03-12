@@ -73,10 +73,7 @@ export default function ProfileScreen() {
     return (
       <ThemedView style={[styles.loadingContainer, { backgroundColor }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <ThemedText
-          style={[styles.loadingText, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]} type="body">
           Loading profile...
         </ThemedText>
       </ThemedView>
@@ -97,21 +94,11 @@ export default function ProfileScreen() {
   if (!profile.data) {
     return (
       <ThemedView style={[styles.errorContainer, { backgroundColor }]}>
-        <Ionicons
-          name="alert-circle-outline"
-          size={64}
-          color={colors.primary}
-        />
-        <ThemedText
-          style={[styles.errorTitle, { color: colors.primaryText }]}
-          type="heading"
-        >
+        <Ionicons name="alert-circle-outline" size={64} color={colors.primary} />
+        <ThemedText style={[styles.errorTitle, { color: colors.primaryText }]} type="heading">
           Profile Not Found
         </ThemedText>
-        <ThemedText
-          style={[styles.errorMessage, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.errorMessage, { color: colors.secondaryText }]} type="body">
           Unable to load this profile. Please check the URL and try again.
         </ThemedText>
       </ThemedView>
@@ -181,10 +168,7 @@ export default function ProfileScreen() {
         {book.stars && (
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={14} color={colors.primary} />
-            <ThemedText
-              style={[styles.ratingText, { color: colors.secondaryText }]}
-              type="caption"
-            >
+            <ThemedText style={[styles.ratingText, { color: colors.secondaryText }]} type="caption">
               {book.stars / 10}
             </ThemedText>
           </View>
@@ -197,33 +181,23 @@ export default function ProfileScreen() {
     <ThemedView style={[styles.container, { backgroundColor }]}>
       <ScrollView
         style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {/* Header Section with Gradient */}
         <GradientView variant="warm" style={styles.headerSection}>
           <View style={styles.headerContent}>
             <View
-              style={[
-                styles.profileImageContainer,
-                { backgroundColor: colors.inactiveBackground },
-              ]}
+              style={[styles.profileImageContainer, { backgroundColor: colors.inactiveBackground }]}
             >
               {profile.data.profile.avatar ? (
-                <Image
-                  source={{ uri: profile.data.profile.avatar }}
-                  style={styles.profileImage}
-                />
+                <Image source={{ uri: profile.data.profile.avatar }} style={styles.profileImage} />
               ) : (
                 <Ionicons name="person" size={40} color={colors.tertiaryText} />
               )}
             </View>
             <View style={styles.headerInfo}>
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-              >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <ThemedText
                   style={[
                     styles.headerTitle,
@@ -262,10 +236,7 @@ export default function ProfileScreen() {
             </View>
           </View>
           <ThemedText
-            style={[
-              styles.headerBio,
-              { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
-            ]}
+            style={[styles.headerBio, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
             type="body"
           >
             {profile.data.profile.description || "No bio available"}
@@ -277,10 +248,7 @@ export default function ProfileScreen() {
           <ThemedCard variant="elevated" style={styles.profileCard}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                  type="title"
-                >
+                <ThemedText style={[styles.statNumber, { color: colors.primary }]} type="title">
                   {readBooks.length}
                 </ThemedText>
                 <ThemedText
@@ -290,17 +258,9 @@ export default function ProfileScreen() {
                   Books Read
                 </ThemedText>
               </View>
-              <View
-                style={[
-                  styles.statDivider,
-                  { backgroundColor: colors.cardBorder },
-                ]}
-              />
+              <View style={[styles.statDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                  type="title"
-                >
+                <ThemedText style={[styles.statNumber, { color: colors.primary }]} type="title">
                   {profile.data.profile.reviews || 0}
                 </ThemedText>
                 <ThemedText
@@ -314,13 +274,8 @@ export default function ProfileScreen() {
           </ThemedCard>
 
           <Pressable
-            onPress={() =>
-              router.push(`/profile/${did}/stats` as any)
-            }
-            style={[
-              styles.statsButton,
-              { backgroundColor: colors.activeBackground },
-            ]}
+            onPress={() => router.push(`/profile/${did}/stats` as any)}
+            style={[styles.statsButton, { backgroundColor: colors.activeBackground }]}
           >
             <ThemedText type="label" style={{ color: colors.primary }}>
               View Reading Stats →
@@ -333,12 +288,7 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionHeaderContent}>
-                <View
-                  style={[
-                    styles.iconContainer,
-                    { backgroundColor: colors.activeBackground },
-                  ]}
-                >
+                <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
                   <Ionicons name="book" size={20} color={colors.primary} />
                 </View>
                 <ThemedText
@@ -371,12 +321,7 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionHeaderContent}>
-                <View
-                  style={[
-                    styles.iconContainer,
-                    { backgroundColor: colors.activeBackground },
-                  ]}
-                >
+                <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
                   <Ionicons name="bookmark" size={20} color={colors.primary} />
                 </View>
                 <ThemedText
@@ -409,17 +354,8 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionHeaderContent}>
-                <View
-                  style={[
-                    styles.iconContainer,
-                    { backgroundColor: colors.activeBackground },
-                  ]}
-                >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={colors.primary}
-                  />
+                <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                 </View>
                 <ThemedText
                   style={[styles.sectionTitle, { color: colors.primaryText }]}
@@ -447,36 +383,21 @@ export default function ProfileScreen() {
         )}
 
         {/* Empty State */}
-        {readingBooks.length === 0 &&
-          wantToReadBooks.length === 0 &&
-          readBooks.length === 0 && (
-            <View style={styles.emptyState}>
-              <View
-                style={[
-                  styles.emptyIconContainer,
-                  { backgroundColor: colors.inactiveBackground },
-                ]}
-              >
-                <Ionicons
-                  name="library-outline"
-                  size={48}
-                  color={colors.tertiaryText}
-                />
-              </View>
-              <ThemedText
-                style={[styles.emptyTitle, { color: colors.primaryText }]}
-                type="heading"
-              >
-                No Books Yet
-              </ThemedText>
-              <ThemedText
-                style={[styles.emptySubtitle, { color: colors.secondaryText }]}
-                type="body"
-              >
-                This user hasn't added any books to their library yet.
-              </ThemedText>
+        {readingBooks.length === 0 && wantToReadBooks.length === 0 && readBooks.length === 0 && (
+          <View style={styles.emptyState}>
+            <View
+              style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}
+            >
+              <Ionicons name="library-outline" size={48} color={colors.tertiaryText} />
             </View>
-          )}
+            <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
+              No Books Yet
+            </ThemedText>
+            <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
+              This user hasn't added any books to their library yet.
+            </ThemedText>
+          </View>
+        )}
 
         <View style={styles.bottomSpacing} />
       </ScrollView>

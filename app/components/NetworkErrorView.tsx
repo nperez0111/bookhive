@@ -7,13 +7,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useRouter } from "expo-router";
 
 export interface NetworkError {
-  type:
-    | "network"
-    | "server"
-    | "timeout"
-    | "unauthorized"
-    | "not_found"
-    | "unknown";
+  type: "network" | "server" | "timeout" | "unauthorized" | "not_found" | "unknown";
   message: string;
   retryable: boolean;
   statusCode?: number;
@@ -100,13 +94,9 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
       <View style={styles.content}>
         <Ionicons name={getErrorIcon()} size={64} color="#FBBF24" />
 
-        <ThemedText style={[styles.title, { color: textColor }]}>
-          {getErrorTitle()}
-        </ThemedText>
+        <ThemedText style={[styles.title, { color: textColor }]}>{getErrorTitle()}</ThemedText>
 
-        <ThemedText style={[styles.message, { color: textColor }]}>
-          {getErrorMessage()}
-        </ThemedText>
+        <ThemedText style={[styles.message, { color: textColor }]}>{getErrorMessage()}</ThemedText>
 
         {error.statusCode && (
           <ThemedText style={[styles.statusCode, { color: textColor }]}>
@@ -130,14 +120,9 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
           )}
 
           {showGoBackButton && onGoBack && (
-            <Pressable
-              style={[styles.goBackButton, { borderColor: textColor }]}
-              onPress={onGoBack}
-            >
+            <Pressable style={[styles.goBackButton, { borderColor: textColor }]} onPress={onGoBack}>
               <Ionicons name="arrow-back" size={20} color={textColor} />
-              <ThemedText
-                style={[styles.goBackButtonText, { color: textColor }]}
-              >
+              <ThemedText style={[styles.goBackButtonText, { color: textColor }]}>
                 Go Back
               </ThemedText>
             </Pressable>

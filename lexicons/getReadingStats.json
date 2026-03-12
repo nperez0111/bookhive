@@ -40,7 +40,10 @@
       "properties": {
         "booksCount": { "type": "integer", "minimum": 0 },
         "pagesRead": { "type": "integer", "minimum": 0 },
-        "averageRating": { "type": "integer", "description": "Average rating * 10 (e.g. 42 = 4.2 stars)" },
+        "averageRating": {
+          "type": "integer",
+          "description": "Average rating * 10 (e.g. 42 = 4.2 stars)"
+        },
         "averagePageCount": { "type": "integer" },
         "ratingDistribution": {
           "type": "ref",

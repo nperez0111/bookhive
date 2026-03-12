@@ -14,12 +14,7 @@ type AnimatedTabIconProps = {
   focused: boolean;
 };
 
-export function AnimatedTabIcon({
-  name,
-  color,
-  size = 28,
-  focused,
-}: AnimatedTabIconProps) {
+export function AnimatedTabIcon({ name, color, size = 28, focused }: AnimatedTabIconProps) {
   const scale = useSharedValue(1);
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(0.9);

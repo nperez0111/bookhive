@@ -18,12 +18,7 @@ const MAPPING = {
   "paperplane.fill": "send",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
-} as Partial<
-  Record<
-    SymbolViewProps["name"],
-    React.ComponentProps<typeof MaterialIcons>["name"]
-  >
->;
+} as Partial<Record<SymbolViewProps["name"], React.ComponentProps<typeof MaterialIcons>["name"]>>;
 
 export type IconSymbolName = keyof typeof MAPPING;
 
@@ -44,12 +39,5 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
-  return (
-    <MaterialIcons
-      color={color}
-      size={size}
-      name={MAPPING[name]}
-      style={style}
-    />
-  );
+  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
 }

@@ -31,17 +31,11 @@ export function GradientView({
       case "primary":
         return themeColors.primaryGradient;
       case "secondary":
-        return colorScheme === "dark"
-          ? ["#2d3748", "#4a5568"]
-          : ["#f7fafc", "#edf2f7"];
+        return colorScheme === "dark" ? ["#2d3748", "#4a5568"] : ["#f7fafc", "#edf2f7"];
       case "warm":
-        return colorScheme === "dark"
-          ? ["#744210", "#92400e"]
-          : ["#fed7aa", "#fdba74"];
+        return colorScheme === "dark" ? ["#744210", "#92400e"] : ["#fed7aa", "#fdba74"];
       case "cool":
-        return colorScheme === "dark"
-          ? ["#1e3a8a", "#3730a3"]
-          : ["#dbeafe", "#bfdbfe"];
+        return colorScheme === "dark" ? ["#1e3a8a", "#3730a3"] : ["#dbeafe", "#bfdbfe"];
       default:
         return themeColors.primaryGradient;
     }
@@ -55,10 +49,7 @@ export function GradientView({
       colors={getGradientColors()}
       start={start}
       end={end}
-      style={[
-        styles.container,
-        StyleSheet.flatten([{ borderRadius: 24 }, style]),
-      ]}
+      style={[styles.container, StyleSheet.flatten([{ borderRadius: 24 }, style])]}
       {...restProps}
     >
       {children}

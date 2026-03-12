@@ -140,13 +140,12 @@ export async function createAppDeps(): Promise<AppDeps> {
 
   const serviceAccountAgent =
     env.BOOKHIVE_SERVICE_HANDLE && env.BOOKHIVE_APP_PASSWORD
-      ? await createServiceAccountAgent(
-          env.BOOKHIVE_SERVICE_HANDLE,
-          env.BOOKHIVE_APP_PASSWORD,
-        )
+      ? await createServiceAccountAgent(env.BOOKHIVE_SERVICE_HANDLE, env.BOOKHIVE_APP_PASSWORD)
       : null;
 
-  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) => logger.info(wideEvent));
+  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) =>
+    logger.info(wideEvent),
+  );
   ingester.start();
 
   return {

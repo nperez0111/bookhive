@@ -85,9 +85,7 @@ export function BackNavigationHeader({
           </View>
         )}
 
-        {rightElement ? (
-          <View style={styles.rightContainer}>{rightElement}</View>
-        ) : null}
+        {rightElement ? <View style={styles.rightContainer}>{rightElement}</View> : null}
       </View>
     </View>
   );

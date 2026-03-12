@@ -43,19 +43,13 @@ export function BookCard({
           shadowColor: colors.shadowLight,
           flexDirection: isHorizontal ? "column" : "row",
           alignItems: isHorizontal ? "center" : "flex-start",
-          width:
-            isHorizontal && !style?.width ? horizontalDefaultWidth : undefined,
+          width: isHorizontal && !style?.width ? horizontalDefaultWidth : undefined,
           paddingBottom: isHorizontal ? 10 : 8,
         },
         style,
       ]}
     >
-      <View
-        style={[
-          styles.coverWrap,
-          isHorizontal ? styles.coverTop : styles.coverLeft,
-        ]}
-      >
+      <View style={[styles.coverWrap, isHorizontal ? styles.coverTop : styles.coverLeft]}>
         <FadeInImage
           source={{ uri: imageUri }}
           style={isHorizontal ? styles.cover : styles.coverSmall}

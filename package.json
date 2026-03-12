@@ -1,9 +1,11 @@
 {
   "name": "bookhive",
+  "private": true,
+  "workspaces": [
+    "app"
+  ],
   "type": "module",
-  "engines": {
-    "bun": ">=1.3.9"
-  },
+  "module": "src/index.ts",
   "scripts": {
     "seed:db": "bun run src/initialize.ts",
     "dev": "bun run --parallel dev:server dev:vite",
@@ -14,7 +16,7 @@
     "test": "bun test src",
     "test:run": "bun test src --no-watch",
     "lint": "oxlint src",
-    "typecheck": "oxlint src --type-aware --type-check --tsconfig tsconfig.json",
+    "typecheck": "oxlint src --type-aware --type-check --tsconfig tsconfig.json && oxfmt --write",
     "format": "oxfmt src",
     "lexgen": "lex-cli generate",
     "postlexgen": "oxfmt ./src/bsky/lexicon/",
@@ -81,11 +83,9 @@
     "vite": "7.3.1",
     "zod": "^3.25.76"
   },
-  "module": "src/index.ts",
-  "private": true,
-  "workspaces": [
-    "app"
-  ],
+  "engines": {
+    "bun": ">=1.3.9"
+  },
   "patchedDependencies": {
     "ipx@4.0.0-alpha.1": "patches/ipx@4.0.0-alpha.1.patch"
   }

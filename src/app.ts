@@ -63,6 +63,7 @@ export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOp
     ? join(process.cwd(), assetRoot)
     : join(process.cwd(), "public");
   app.use("/robots.txt", serveStatic({ root: publicRoot }));
+  app.get("/favicon.ico", serveStatic({ root: publicRoot }));
   if (env.isProduction) {
     app.use(
       "/assets/*",

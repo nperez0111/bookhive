@@ -19,7 +19,9 @@ export async function searchBooks({
   ctx,
 }: {
   query: string;
-  ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext"> & { serviceAccountAgent?: AppContext["serviceAccountAgent"] };
+  ctx: Pick<AppContext, "db" | "kv" | "addWideEventContext"> & {
+    serviceAccountAgent?: AppContext["serviceAccountAgent"];
+  };
 }) {
   const combinedIds = await readThroughCache<HiveId[]>(
     ctx.kv,
@@ -258,10 +260,7 @@ export async function refetchBuzzes({
     return refetchBuzzes({ agent, ctx, cursor: buzzes.data?.cursor, uris });
   } else {
     if (uris.length === 0) {
-      await ctx.db
-        .deleteFrom("buzz")
-        .where("userDid", "=", agent.did)
-        .execute();
+      await ctx.db.deleteFrom("buzz").where("userDid", "=", agent.did).execute();
     } else {
       await ctx.db
         .deleteFrom("buzz")
@@ -283,7 +282,11 @@ export async function refetchBooks({
   ctx: AppContext;
   cursor?: string;
   uris?: string[];
-  booksNeedingHiveUri?: Array<{ rkey: string; hiveId: HiveId; record: import("../bsky/lexicon").Book.Record }>;
+  booksNeedingHiveUri?: Array<{
+    rkey: string;
+    hiveId: HiveId;
+    record: import("../bsky/lexicon").Book.Record;
+  }>;
 }) {
   if (!agent) {
     return;
@@ -412,10 +415,7 @@ export async function refetchBooks({
     });
   } else {
     if (uris.length === 0) {
-      await ctx.db
-        .deleteFrom("user_book")
-        .where("userDid", "=", agent.did)
-        .execute();
+      await ctx.db.deleteFrom("user_book").where("userDid", "=", agent.did).execute();
     } else {
       await ctx.db
         .deleteFrom("user_book")
@@ -426,18 +426,14 @@ export async function refetchBooks({
 
     // Backfill hiveBookUri on user's book records if any are missing it
     if (booksNeedingHiveUri.length > 0) {
-      const hiveIds = [
-        ...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId)),
-      ];
+      const hiveIds = [...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId))];
       const hiveBookRows = await ctx.db
         .selectFrom("hive_book")
         .select(["id", "hiveBookAtUri"])
         .where("id", "in", hiveIds)
         .execute();
       const hiveBookUriMap = new Map(
-        hiveBookRows
-          .filter((r) => r.hiveBookAtUri)
-          .map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
+        hiveBookRows.filter((r) => r.hiveBookAtUri).map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
       );
 
       const writes = booksNeedingHiveUri

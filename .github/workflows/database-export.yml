@@ -40,4 +40,3 @@ jobs:
           name: bookhive-export-${{ env.EXPORT_DATE }}
           path: bookhive-export.tgz
           retention-days: 30
-

@@ -16,9 +16,7 @@ interface DeleteConfirmationModalProps {
   isPending?: boolean;
 }
 
-export const DeleteConfirmationModal: React.FC<
-  DeleteConfirmationModalProps
-> = ({
+export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
   visible,
   onClose,
   onConfirm,
@@ -30,12 +28,7 @@ export const DeleteConfirmationModal: React.FC<
   const colors = Colors[colorScheme ?? "light"];
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <ThemedView
           style={[
@@ -51,17 +44,12 @@ export const DeleteConfirmationModal: React.FC<
               styles.modalHeader,
               {
                 borderBottomColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : "rgba(0, 0, 0, 0.1)",
+                  colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
               },
             ]}
           >
             <ThemedText
-              style={[
-                styles.modalTitle,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
+              style={[styles.modalTitle, { color: colorScheme === "dark" ? "white" : colors.text }]}
               type="heading"
             >
               {title}
@@ -80,8 +68,7 @@ export const DeleteConfirmationModal: React.FC<
               style={[
                 styles.messageText,
                 {
-                  color:
-                    colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
+                  color: colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
                 },
               ]}
               type="body"

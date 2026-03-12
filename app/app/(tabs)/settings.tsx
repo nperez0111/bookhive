@@ -6,14 +6,7 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-import {
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ScrollView,
-  View,
-  Pressable,
-} from "react-native";
+import { StyleSheet, Image, TouchableOpacity, ScrollView, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
@@ -33,20 +26,12 @@ export default function ProfileScreen() {
   const bottom = useBottomTabOverflow();
 
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
-    >
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
+    <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header Section with Gradient */}
         <GradientView variant="warm" style={styles.headerSection}>
           <ThemedText
-            style={[
-              styles.headerTitle,
-              { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-            ]}
+            style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
             type="title"
           >
             Profile
@@ -73,16 +58,9 @@ export default function ProfileScreen() {
                 ]}
               >
                 {profile?.profile.avatar ? (
-                  <Image
-                    source={{ uri: profile.profile.avatar }}
-                    style={styles.profileImage}
-                  />
+                  <Image source={{ uri: profile.profile.avatar }} style={styles.profileImage} />
                 ) : (
-                  <Ionicons
-                    name="person"
-                    size={40}
-                    color={colors.tertiaryText}
-                  />
+                  <Ionicons name="person" size={40} color={colors.tertiaryText} />
                 )}
               </View>
               <View style={styles.profileInfo}>
@@ -105,10 +83,7 @@ export default function ProfileScreen() {
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                  type="title"
-                >
+                <ThemedText style={[styles.statNumber, { color: colors.primary }]} type="title">
                   {profile?.profile.booksRead || 0}
                 </ThemedText>
                 <ThemedText
@@ -118,17 +93,9 @@ export default function ProfileScreen() {
                   Books Read
                 </ThemedText>
               </View>
-              <View
-                style={[
-                  styles.statDivider,
-                  { backgroundColor: colors.cardBorder },
-                ]}
-              />
+              <View style={[styles.statDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.statItem}>
-                <ThemedText
-                  style={[styles.statNumber, { color: colors.primary }]}
-                  type="title"
-                >
+                <ThemedText style={[styles.statNumber, { color: colors.primary }]} type="title">
                   {profile?.profile.reviews || 0}
                 </ThemedText>
                 <ThemedText
@@ -156,8 +123,7 @@ export default function ProfileScreen() {
                 icon="bar-chart"
                 title="Reading Stats"
                 onPress={() =>
-                  authState?.did &&
-                  router.push(`/profile/${authState.did}/stats` as any)
+                  authState?.did && router.push(`/profile/${authState.did}/stats` as any)
                 }
               />
               {/* <ListItem
@@ -185,9 +151,7 @@ export default function ProfileScreen() {
             title="Sign Out"
             onPress={signOut}
             variant="outline"
-            leftIcon={
-              <Ionicons name="log-out" size={20} color={colors.error} />
-            }
+            leftIcon={<Ionicons name="log-out" size={20} color={colors.error} />}
             style={styles.signOutButton}
             textStyle={{ color: colors.error }}
           />

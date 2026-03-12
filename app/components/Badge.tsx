@@ -30,13 +30,7 @@ export function Badge({ label, tone = "neutral", style }: BadgeProps) {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: backgroundByTone[tone] },
-        style,
-      ]}
-    >
+    <View style={[styles.container, { backgroundColor: backgroundByTone[tone] }, style]}>
       <ThemedText type="overline" style={{ color: textByTone[tone] }}>
         {String(label)}
       </ThemedText>

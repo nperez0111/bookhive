@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -31,15 +25,7 @@ type BookSummary = {
   rating?: number;
 };
 
-function MiniBookCard({
-  book,
-  label,
-  colors,
-}: {
-  book: BookSummary;
-  label: string;
-  colors: any;
-}) {
+function MiniBookCard({ book, label, colors }: { book: BookSummary; label: string; colors: any }) {
   return (
     <Pressable
       onPress={() => router.push(`/book/${book.hiveId}` as any)}
@@ -54,17 +40,10 @@ function MiniBookCard({
         }}
         style={styles.miniBookCover}
       />
-      <ThemedText
-        type="overline"
-        style={{ color: colors.secondaryText, marginTop: 6 }}
-      >
+      <ThemedText type="overline" style={{ color: colors.secondaryText, marginTop: 6 }}>
         {label}
       </ThemedText>
-      <ThemedText
-        type="caption"
-        style={{ color: colors.primaryText }}
-        numberOfLines={2}
-      >
+      <ThemedText type="caption" style={{ color: colors.primaryText }} numberOfLines={2}>
         {book.title}
       </ThemedText>
     </Pressable>
@@ -83,10 +62,7 @@ export default function ReadingStatsScreen() {
   const backgroundColor = useThemeColor({}, "background");
 
   const statsHandle = handle ?? did ?? "";
-  const { data, isLoading, error, refetch } = useReadingStats(
-    statsHandle,
-    selectedYear,
-  );
+  const { data, isLoading, error, refetch } = useReadingStats(statsHandle, selectedYear);
 
   const stats = data?.stats;
   const availableYears = data?.availableYears ?? [currentYear];
@@ -122,10 +98,7 @@ export default function ReadingStatsScreen() {
             style={[
               styles.yearChip,
               {
-                backgroundColor:
-                  year === selectedYear
-                    ? colors.primary
-                    : colors.inactiveBackground,
+                backgroundColor: year === selectedYear ? colors.primary : colors.inactiveBackground,
               },
             ]}
           >
@@ -154,24 +127,13 @@ export default function ReadingStatsScreen() {
         />
       ) : !stats || stats.booksCount === 0 ? (
         <View style={styles.emptyState}>
-          <View
-            style={[
-              styles.emptyIcon,
-              { backgroundColor: colors.inactiveBackground },
-            ]}
-          >
+          <View style={[styles.emptyIcon, { backgroundColor: colors.inactiveBackground }]}>
             <Ionicons name="book-outline" size={40} color={colors.tertiaryText} />
           </View>
-          <ThemedText
-            type="heading"
-            style={[styles.emptyTitle, { color: colors.primaryText }]}
-          >
+          <ThemedText type="heading" style={[styles.emptyTitle, { color: colors.primaryText }]}>
             No books finished in {selectedYear}
           </ThemedText>
-          <ThemedText
-            type="body"
-            style={{ color: colors.secondaryText, textAlign: "center" }}
-          >
+          <ThemedText type="body" style={{ color: colors.secondaryText, textAlign: "center" }}>
             Finish at least 3 books to see your Year in Books.
           </ThemedText>
         </View>
@@ -190,51 +152,31 @@ export default function ReadingStatsScreen() {
               },
             ]}
           >
-            <ThemedText
-              type="overline"
-              style={[styles.heroYear, { color: colors.primary }]}
-            >
+            <ThemedText type="overline" style={[styles.heroYear, { color: colors.primary }]}>
               {selectedYear} Year in Books
             </ThemedText>
             <View style={styles.heroStats}>
               <View style={styles.heroStat}>
-                <ThemedText
-                  type="title"
-                  style={{ color: colors.primaryText }}
-                >
+                <ThemedText type="title" style={{ color: colors.primaryText }}>
                   {stats.booksCount}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                   Books
                 </ThemedText>
               </View>
-              <View
-                style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]}
-              />
+              <View style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.heroStat}>
-                <ThemedText
-                  type="title"
-                  style={{ color: colors.primaryText }}
-                >
-                  {stats.pagesRead > 0
-                    ? stats.pagesRead.toLocaleString()
-                    : "—"}
+                <ThemedText type="title" style={{ color: colors.primaryText }}>
+                  {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                   Pages
                 </ThemedText>
               </View>
-              <View
-                style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]}
-              />
+              <View style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.heroStat}>
-                <ThemedText
-                  type="title"
-                  style={{ color: colors.primaryText }}
-                >
-                  {stats.averageRating
-                    ? (stats.averageRating / 10).toFixed(1)
-                    : "—"}
+                <ThemedText type="title" style={{ color: colors.primaryText }}>
+                  {stats.averageRating ? (stats.averageRating / 10).toFixed(1) : "—"}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                   Avg ★
@@ -247,18 +189,12 @@ export default function ReadingStatsScreen() {
               <View style={styles.challengeRow}>
                 <ThemedText type="label" style={{ color: colors.secondaryText }}>
                   Reading challenge:{" "}
-                  <ThemedText
-                    type="label"
-                    style={{ color: colors.primary }}
-                  >
+                  <ThemedText type="label" style={{ color: colors.primary }}>
                     {stats.booksCount}/{data.readingChallengeGoal}
                   </ThemedText>
                 </ThemedText>
                 <View
-                  style={[
-                    styles.challengeTrack,
-                    { backgroundColor: colors.inactiveBackground },
-                  ]}
+                  style={[styles.challengeTrack, { backgroundColor: colors.inactiveBackground }]}
                 >
                   <View
                     style={[
@@ -300,10 +236,7 @@ export default function ReadingStatsScreen() {
                     {bucket.label}
                   </ThemedText>
                   <View
-                    style={[
-                      styles.ratingTrack,
-                      { backgroundColor: colors.inactiveBackground },
-                    ]}
+                    style={[styles.ratingTrack, { backgroundColor: colors.inactiveBackground }]}
                   >
                     <View
                       style={[
@@ -347,10 +280,7 @@ export default function ReadingStatsScreen() {
                 {stats.topGenres.map((g) => (
                   <View
                     key={g.genre}
-                    style={[
-                      styles.genreChip,
-                      { backgroundColor: colors.activeBackground },
-                    ]}
+                    style={[styles.genreChip, { backgroundColor: colors.activeBackground }]}
                   >
                     <ThemedText type="caption" style={{ color: colors.primary }}>
                       {g.genre}
@@ -380,18 +310,10 @@ export default function ReadingStatsScreen() {
               </ThemedText>
               <View style={styles.bookPair}>
                 {stats.firstBookOfYear && (
-                  <MiniBookCard
-                    book={stats.firstBookOfYear}
-                    label="First"
-                    colors={colors}
-                  />
+                  <MiniBookCard book={stats.firstBookOfYear} label="First" colors={colors} />
                 )}
                 {stats.lastBookOfYear && (
-                  <MiniBookCard
-                    book={stats.lastBookOfYear}
-                    label="Last"
-                    colors={colors}
-                  />
+                  <MiniBookCard book={stats.lastBookOfYear} label="Last" colors={colors} />
                 )}
               </View>
             </View>

@@ -130,9 +130,7 @@ function FilteredBooksContent({ status }: { status: string }) {
 
   const filteredBooks = useMemo(() => {
     if (!profile.data) return [];
-    const filtered = profile.data.books.filter(
-      (book) => book.status === config.status,
-    );
+    const filtered = profile.data.books.filter((book) => book.status === config.status);
     return sortBooks(filtered, sortBy, sortOrder, config.status);
   }, [profile.data, config.status, sortBy, sortOrder]);
 
@@ -146,9 +144,7 @@ function FilteredBooksContent({ status }: { status: string }) {
       // BookCard width is 180px, so calculate how many can fit
       const bookCardWidth = 180;
       const gap = 16; // Space between items
-      const maxColumns = Math.floor(
-        (availableWidth + gap) / (bookCardWidth + gap),
-      );
+      const maxColumns = Math.floor((availableWidth + gap) / (bookCardWidth + gap));
       const columns = Math.max(2, Math.min(maxColumns, 4)); // Between 2-4 columns
 
       setNumColumns(columns);
@@ -156,10 +152,7 @@ function FilteredBooksContent({ status }: { status: string }) {
 
     calculateColumns();
 
-    const subscription = Dimensions.addEventListener(
-      "change",
-      calculateColumns,
-    );
+    const subscription = Dimensions.addEventListener("change", calculateColumns);
     return () => subscription?.remove();
   }, []);
 
@@ -167,10 +160,7 @@ function FilteredBooksContent({ status }: { status: string }) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <ThemedText
-          style={[styles.loadingText, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]} type="body">
           Loading books...
         </ThemedText>
       </View>
@@ -192,21 +182,11 @@ function FilteredBooksContent({ status }: { status: string }) {
   if (!config) {
     return (
       <View style={[styles.errorContainer, { backgroundColor }]}>
-        <Ionicons
-          name="alert-circle-outline"
-          size={64}
-          color={colors.primary}
-        />
-        <ThemedText
-          style={[styles.errorTitle, { color: colors.primaryText }]}
-          type="heading"
-        >
+        <Ionicons name="alert-circle-outline" size={64} color={colors.primary} />
+        <ThemedText style={[styles.errorTitle, { color: colors.primaryText }]} type="heading">
           Invalid Status
         </ThemedText>
-        <ThemedText
-          style={[styles.errorMessage, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.errorMessage, { color: colors.secondaryText }]} type="body">
           The requested book status is not valid.
         </ThemedText>
       </View>
@@ -215,9 +195,7 @@ function FilteredBooksContent({ status }: { status: string }) {
 
   if (filteredBooks.length === 0) {
     return (
-      <View
-        style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
-      >
+      <View style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
         <BackNavigationHeader title={config.title} />
 
         <View style={styles.emptyContainer}>
@@ -231,27 +209,14 @@ function FilteredBooksContent({ status }: { status: string }) {
             ]}
           >
             <View
-              style={[
-                styles.emptyIconContainer,
-                { backgroundColor: colors.inactiveBackground },
-              ]}
+              style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}
             >
-              <Ionicons
-                name={config.icon as any}
-                size={48}
-                color={colors.tertiaryText}
-              />
+              <Ionicons name={config.icon as any} size={48} color={colors.tertiaryText} />
             </View>
-            <ThemedText
-              style={[styles.emptyTitle, { color: colors.primaryText }]}
-              type="heading"
-            >
+            <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
               {config.emptyMessage}
             </ThemedText>
-            <ThemedText
-              style={[styles.emptySubtitle, { color: colors.secondaryText }]}
-              type="body"
-            >
+            <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
               {config.emptySubtitle}
             </ThemedText>
           </ThemedView>
@@ -271,9 +236,7 @@ function FilteredBooksContent({ status }: { status: string }) {
     } else {
       // Set new sort and default to desc for dates, asc for text
       setSortBy(newSortBy);
-      setSortOrder(
-        newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc",
-      );
+      setSortOrder(newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc");
     }
   };
 
@@ -289,9 +252,7 @@ function FilteredBooksContent({ status }: { status: string }) {
   ];
 
   return (
-    <View
-      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
-    >
+    <View style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
       <BackNavigationHeader title={config.title} />
 
       <View style={styles.sortContainer}>
@@ -309,12 +270,8 @@ function FilteredBooksContent({ status }: { status: string }) {
                 style={[
                   styles.sortButton,
                   {
-                    backgroundColor: isActive
-                      ? colors.primary
-                      : colors.buttonBackground,
-                    borderColor: isActive
-                      ? colors.primary
-                      : colors.buttonBorder,
+                    backgroundColor: isActive ? colors.primary : colors.buttonBackground,
+                    borderColor: isActive ? colors.primary : colors.buttonBorder,
                   },
                 ]}
               >
@@ -349,10 +306,7 @@ function FilteredBooksContent({ status }: { status: string }) {
       </View>
 
       <View style={styles.header}>
-        <ThemedText
-          style={[styles.bookCount, { color: colors.secondaryText }]}
-          type="body"
-        >
+        <ThemedText style={[styles.bookCount, { color: colors.secondaryText }]} type="body">
           {filteredBooks.length} {filteredBooks.length === 1 ? "book" : "books"}
         </ThemedText>
       </View>

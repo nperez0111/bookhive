@@ -59,15 +59,10 @@ export default function FeedScreen() {
   const activities = feed.data?.activities ?? [];
 
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
-    >
+    <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
       <GradientView variant="warm" style={[styles.header, { paddingTop: top + 12 }]}>
         <ThemedText
-          style={[
-            styles.headerTitle,
-            { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-          ]}
+          style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
           type="title"
         >
           Activity Feed
@@ -75,9 +70,7 @@ export default function FeedScreen() {
       </GradientView>
 
       {/* Tab Selector */}
-      <View
-        style={[styles.tabRow, { borderBottomColor: colors.cardBorder }]}
-      >
+      <View style={[styles.tabRow, { borderBottomColor: colors.cardBorder }]}>
         {TABS.map((tab) => (
           <Pressable
             key={tab.key}
@@ -93,10 +86,7 @@ export default function FeedScreen() {
             <ThemedText
               type="label"
               style={{
-                color:
-                  activeTab === tab.key
-                    ? colors.primary
-                    : colors.secondaryText,
+                color: activeTab === tab.key ? colors.primary : colors.secondaryText,
               }}
             >
               {tab.label}
@@ -118,32 +108,17 @@ export default function FeedScreen() {
         />
       ) : activities.length === 0 ? (
         <View style={styles.emptyState}>
-          <View
-            style={[
-              styles.emptyIconContainer,
-              { backgroundColor: colors.inactiveBackground },
-            ]}
-          >
-            <Ionicons
-              name="people-outline"
-              size={40}
-              color={colors.tertiaryText}
-            />
+          <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
+            <Ionicons name="people-outline" size={40} color={colors.tertiaryText} />
           </View>
-          <ThemedText
-            style={[styles.emptyTitle, { color: colors.primaryText }]}
-            type="heading"
-          >
+          <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
             {activeTab === "friends"
               ? "No friend activity yet"
               : activeTab === "tracking"
                 ? "No activity on tracked books"
                 : "No activity yet"}
           </ThemedText>
-          <ThemedText
-            style={[styles.emptySubtitle, { color: colors.secondaryText }]}
-            type="body"
-          >
+          <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
             {activeTab === "friends"
               ? "Follow users to see their reading activity"
               : activeTab === "tracking"
@@ -207,10 +182,7 @@ export default function FeedScreen() {
                     {item.authors}
                   </ThemedText>
                   {item.stars != null && (
-                    <ThemedText
-                      type="caption"
-                      style={{ color: colors.primary, marginTop: 4 }}
-                    >
+                    <ThemedText type="caption" style={{ color: colors.primary, marginTop: 4 }}>
                       {"★".repeat(Math.round(item.stars / 2))}
                     </ThemedText>
                   )}

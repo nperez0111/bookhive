@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -54,10 +48,7 @@ export default function GenreBooksScreen() {
   const backgroundColor = useThemeColor({}, "background");
 
   const decodedGenre = decodeURIComponent(genre ?? "");
-  const { data, isLoading, error, refetch } = useGenreBooks(
-    decodedGenre,
-    offset,
-  );
+  const { data, isLoading, error, refetch } = useGenreBooks(decodedGenre, offset);
 
   const books = data?.books ?? [];
   const hasMore = books.length === PAGE_SIZE;
@@ -72,12 +63,7 @@ export default function GenreBooksScreen() {
 
   if (error) {
     return (
-      <QueryErrorHandler
-        error={error}
-        onRetry={() => refetch()}
-        showRetryButton
-        showGoBackButton
-      />
+      <QueryErrorHandler error={error} onRetry={() => refetch()} showRetryButton showGoBackButton />
     );
   }
 
@@ -86,10 +72,7 @@ export default function GenreBooksScreen() {
       <GradientView variant="warm" style={styles.header}>
         <BackNavigationHeader title={decodedGenre} />
         <ThemedText
-          style={[
-            styles.bookCount,
-            { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
-          ]}
+          style={[styles.bookCount, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
           type="caption"
         >
           {books.length}+ books
@@ -121,15 +104,9 @@ export default function GenreBooksScreen() {
           hasMore ? (
             <Pressable
               onPress={() => setOffset((o) => o + PAGE_SIZE)}
-              style={[
-                styles.loadMoreButton,
-                { backgroundColor: colors.activeBackground },
-              ]}
+              style={[styles.loadMoreButton, { backgroundColor: colors.activeBackground }]}
             >
-              <ThemedText
-                type="label"
-                style={{ color: colors.primary }}
-              >
+              <ThemedText type="label" style={{ color: colors.primary }}>
                 Load more
               </ThemedText>
             </Pressable>

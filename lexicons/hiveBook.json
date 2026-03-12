@@ -8,14 +8,7 @@
       "description": "A book within the hive",
       "record": {
         "type": "object",
-        "required": [
-          "id",
-          "title",
-          "authors",
-          "createdAt",
-          "updatedAt",
-          "thumbnail"
-        ],
+        "required": ["id", "title", "authors", "createdAt", "updatedAt", "thumbnail"],
         "properties": {
           "title": {
             "type": "string",

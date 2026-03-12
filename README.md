@@ -1,4 +1,3 @@
-
 # 🐝 BookHive
 
 <p align="center">

@@ -21,15 +21,8 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ style }) => {
   return (
     <View style={[styles.container, style]}>
       <View style={styles.settingLeft}>
-        <Ionicons
-          name={isDark ? "moon" : "sunny"}
-          size={20}
-          color={colors.secondaryText}
-        />
-        <ThemedText
-          style={[styles.settingText, { color: colors.primaryText }]}
-          type="body"
-        >
+        <Ionicons name={isDark ? "moon" : "sunny"} size={20} color={colors.secondaryText} />
+        <ThemedText style={[styles.settingText, { color: colors.primaryText }]} type="body">
           Dark Mode
         </ThemedText>
       </View>

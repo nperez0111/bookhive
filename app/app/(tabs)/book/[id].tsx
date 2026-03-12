@@ -10,11 +10,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
-import {
-  useBookInfo,
-  useDeleteBook,
-  useUpdateBook,
-} from "@/hooks/useBookhiveQuery";
+import { useBookInfo, useDeleteBook, useUpdateBook } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,11 +27,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Animated, {
-  FadeInDown,
-  FadeInUp,
-  LinearTransition,
-} from "react-native-reanimated";
+import Animated, { FadeInDown, FadeInUp, LinearTransition } from "react-native-reanimated";
 import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 
@@ -44,13 +36,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { BookProgress } from "../../../../src/types";
 import { calculatePercentFromProgressValues } from "@/utils/calculatePercentFromProgressValues";
 
-function BookInfoContent({
-  hiveId,
-  fromStatus,
-}: {
-  hiveId: HiveId;
-  fromStatus?: string;
-}) {
+function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: string }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const textColor = useThemeColor({}, "text");
@@ -93,8 +79,7 @@ function BookInfoContent({
     setCurrentChapterInput(storedProgress?.currentChapter?.toString() ?? "");
     setTotalChaptersInput(storedProgress?.totalChapters?.toString() ?? "");
     setTotalPagesInput(
-      storedProgress?.totalPages?.toString() ??
-        (meta?.numPages ? String(meta.numPages) : ""),
+      storedProgress?.totalPages?.toString() ?? (meta?.numPages ? String(meta.numPages) : ""),
     );
 
     const autoPercent = calculatePercentFromProgressValues({
@@ -266,10 +251,7 @@ function BookInfoContent({
     router.push(`/profile/${userDid}`);
   };
 
-  const handleReplyClick = (
-    commentId: string,
-    replyFormRef: React.RefObject<View>,
-  ) => {
+  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View>) => {
     // Scroll to the reply form after a short delay to ensure it's rendered
     setTimeout(() => {
       if (replyFormRef.current && scrollViewRef.current) {
@@ -329,11 +311,9 @@ function BookInfoContent({
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;
   const review = userReviewText || userBook.review;
-  const existingProgress =
-    (userBook.bookProgress as BookProgress | undefined) ?? undefined;
+  const existingProgress = (userBook.bookProgress as BookProgress | undefined) ?? undefined;
   const percentDisplay =
-    existingProgress?.percent ??
-    (autoPercent !== null ? autoPercent : undefined);
+    existingProgress?.percent ?? (autoPercent !== null ? autoPercent : undefined);
   const progressTicks: string[] = [];
   if (existingProgress?.currentPage) {
     progressTicks.push(
@@ -345,9 +325,7 @@ function BookInfoContent({
   if (existingProgress?.currentChapter) {
     progressTicks.push(
       `${existingProgress.currentChapter}${
-        existingProgress.totalChapters
-          ? `/${existingProgress.totalChapters}`
-          : ""
+        existingProgress.totalChapters ? `/${existingProgress.totalChapters}` : ""
       } chapters`,
     );
   }
@@ -364,9 +342,7 @@ function BookInfoContent({
       : null;
 
   return (
-    <View
-      style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}
-    >
+    <View style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}>
       {/* Back Navigation Header */}
       <BackNavigationHeader
         title={book.title}
@@ -393,19 +369,13 @@ function BookInfoContent({
             styles.backgroundOverlay,
             {
               backgroundColor:
-                colorScheme === "dark"
-                  ? "rgba(0, 0, 0, 0.7)"
-                  : "rgba(255, 255, 255, 0.7)",
+                colorScheme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(255, 255, 255, 0.7)",
             },
           ]}
         />
       </ImageBackground>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView ref={scrollViewRef} style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
           <Animated.View
@@ -425,18 +395,12 @@ function BookInfoContent({
 
             <View style={styles.bookInfo}>
               <ThemedText
-                style={[
-                  styles.title,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
+                style={[styles.title, { color: colorScheme === "dark" ? "white" : colors.text }]}
               >
                 {book.title}
               </ThemedText>
               <ThemedText
-                style={[
-                  styles.author,
-                  { color: colorScheme === "dark" ? "#E5E7EB" : colors.icon },
-                ]}
+                style={[styles.author, { color: colorScheme === "dark" ? "#E5E7EB" : colors.icon }]}
               >
                 {book.authors.split("\t").join(", ")}
               </ThemedText>
@@ -444,9 +408,7 @@ function BookInfoContent({
               {/* Rating Display */}
               {book.rating && book.ratingsCount && (
                 <View style={styles.ratingDisplay}>
-                  <ThemedText
-                    style={[styles.ratingText, { color: colors.primary }]}
-                  >
+                  <ThemedText style={[styles.ratingText, { color: colors.primary }]}>
                     {rating.toFixed(1)} ★
                   </ThemedText>
                   <ThemedText
@@ -474,13 +436,9 @@ function BookInfoContent({
                 styles.actionButton,
                 {
                   backgroundColor:
-                    colorScheme === "dark"
-                      ? "rgba(255, 255, 255, 0.1)"
-                      : "rgba(0, 0, 0, 0.1)",
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
                   borderColor:
-                    colorScheme === "dark"
-                      ? "rgba(255, 255, 255, 0.2)"
-                      : "rgba(0, 0, 0, 0.2)",
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
                 },
               ]}
               onPress={handleShare}
@@ -505,13 +463,9 @@ function BookInfoContent({
                 styles.actionButton,
                 {
                   backgroundColor:
-                    colorScheme === "dark"
-                      ? "rgba(255, 255, 255, 0.1)"
-                      : "rgba(0, 0, 0, 0.1)",
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
                   borderColor:
-                    colorScheme === "dark"
-                      ? "rgba(255, 255, 255, 0.2)"
-                      : "rgba(0, 0, 0, 0.2)",
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
                 },
               ]}
               onPress={handleViewOnGoodreads}
@@ -601,11 +555,7 @@ function BookInfoContent({
 
             <BookActionCard
               type="rating"
-              title={
-                userBook.stars
-                  ? `Your Rating: ${userBook.stars / 2}/5`
-                  : "Rate this book"
-              }
+              title={userBook.stars ? `Your Rating: ${userBook.stars / 2}/5` : "Rate this book"}
               icon="star-outline"
               rating={userBook.stars}
               onRatingChange={handleRatingUpdate}
@@ -635,19 +585,13 @@ function BookInfoContent({
             layout={LinearTransition.springify().damping(18).stiffness(180)}
           >
             <View style={styles.progressHeader}>
-              <ThemedText style={styles.progressTitle}>
-                Reading Progress
-              </ThemedText>
+              <ThemedText style={styles.progressTitle}>Reading Progress</ThemedText>
               {percentDisplay !== undefined && (
-                <ThemedText style={styles.progressPercent}>
-                  {percentDisplay}% complete
-                </ThemedText>
+                <ThemedText style={styles.progressPercent}>{percentDisplay}% complete</ThemedText>
               )}
             </View>
             {progressSummary && (
-              <ThemedText style={styles.progressSubtitle}>
-                {progressSummary}
-              </ThemedText>
+              <ThemedText style={styles.progressSubtitle}>{progressSummary}</ThemedText>
             )}
             <View style={styles.progressRow}>
               <View style={styles.progressField}>
@@ -657,9 +601,7 @@ function BookInfoContent({
                   onChangeText={setCurrentPageInput}
                   keyboardType="numeric"
                   placeholder="Current"
-                  placeholderTextColor={
-                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-                  }
+                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
                   style={[
                     styles.progressInput,
                     { color: colorScheme === "dark" ? "#fff" : "#111" },
@@ -667,17 +609,13 @@ function BookInfoContent({
                 />
               </View>
               <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>
-                  Total pages
-                </ThemedText>
+                <ThemedText style={styles.progressLabel}>Total pages</ThemedText>
                 <TextInput
                   value={totalPagesInput}
                   onChangeText={setTotalPagesInput}
                   keyboardType="numeric"
                   placeholder="Total"
-                  placeholderTextColor={
-                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-                  }
+                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
                   style={[
                     styles.progressInput,
                     { color: colorScheme === "dark" ? "#fff" : "#111" },
@@ -687,17 +625,13 @@ function BookInfoContent({
             </View>
             <View style={styles.progressRow}>
               <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>
-                  Chapters read
-                </ThemedText>
+                <ThemedText style={styles.progressLabel}>Chapters read</ThemedText>
                 <TextInput
                   value={currentChapterInput}
                   onChangeText={setCurrentChapterInput}
                   keyboardType="numeric"
                   placeholder="Current"
-                  placeholderTextColor={
-                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-                  }
+                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
                   style={[
                     styles.progressInput,
                     { color: colorScheme === "dark" ? "#fff" : "#111" },
@@ -705,17 +639,13 @@ function BookInfoContent({
                 />
               </View>
               <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>
-                  Total chapters
-                </ThemedText>
+                <ThemedText style={styles.progressLabel}>Total chapters</ThemedText>
                 <TextInput
                   value={totalChaptersInput}
                   onChangeText={setTotalChaptersInput}
                   keyboardType="numeric"
                   placeholder="Total"
-                  placeholderTextColor={
-                    colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-                  }
+                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
                   style={[
                     styles.progressInput,
                     { color: colorScheme === "dark" ? "#fff" : "#111" },
@@ -730,43 +660,27 @@ function BookInfoContent({
                 onChangeText={setPercentInput}
                 keyboardType="numeric"
                 placeholder="Auto-calculated"
-                placeholderTextColor={
-                  colorScheme === "dark" ? "#9CA3AF" : "#6B7280"
-                }
-                style={[
-                  styles.progressInput,
-                  { color: colorScheme === "dark" ? "#fff" : "#111" },
-                ]}
+                placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
+                style={[styles.progressInput, { color: colorScheme === "dark" ? "#fff" : "#111" }]}
               />
             </View>
             <ThemedText style={styles.progressHint}>
               Percent auto-updates when pages or chapters change.
             </ThemedText>
-            {progressError && (
-              <ThemedText style={styles.progressError}>
-                {progressError}
-              </ThemedText>
-            )}
+            {progressError && <ThemedText style={styles.progressError}>{progressError}</ThemedText>}
             {progressSuccess && (
-              <ThemedText style={styles.progressSuccess}>
-                {progressSuccess}
-              </ThemedText>
+              <ThemedText style={styles.progressSuccess}>{progressSuccess}</ThemedText>
             )}
             <View style={styles.progressButtonContainer}>
               <Pressable
-                style={[
-                  styles.progressButton,
-                  isProgressSaving && styles.progressButtonDisabled,
-                ]}
+                style={[styles.progressButton, isProgressSaving && styles.progressButtonDisabled]}
                 onPress={handleSaveProgress}
                 disabled={isProgressSaving}
               >
                 {isProgressSaving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <ThemedText style={styles.progressButtonText}>
-                    Save progress
-                  </ThemedText>
+                  <ThemedText style={styles.progressButtonText}>Save progress</ThemedText>
                 )}
               </Pressable>
             </View>
@@ -806,9 +720,7 @@ function BookInfoContent({
                         ? ("chatbubble-ellipses-outline" as const)
                         : ("book-outline" as const);
                   const userDid = (item as any).userDid as string | undefined;
-                  const userHandle = (item as any).userHandle as
-                    | string
-                    | undefined;
+                  const userHandle = (item as any).userHandle as string | undefined;
                   const title = `@${userHandle ?? userDid ?? "user"}`;
                   const subtitle = `${t.charAt(0).toUpperCase()}${t.slice(1)} · ${new Date(item.createdAt).toLocaleDateString()}`;
                   return (
@@ -816,15 +728,11 @@ function BookInfoContent({
                       key={`${item.hiveId}-${userDid ?? idx}-${item.createdAt}`}
                       icon={iconName}
                       avatarUri={
-                        userHandle
-                          ? `${getBaseUrl()}/profile/${userHandle}/image`
-                          : undefined
+                        userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
                       }
                       title={title}
                       subtitle={subtitle}
-                      onPress={
-                        userDid ? () => handleUserPress(userDid) : undefined
-                      }
+                      onPress={userDid ? () => handleUserPress(userDid) : undefined}
                     />
                   );
                 })}

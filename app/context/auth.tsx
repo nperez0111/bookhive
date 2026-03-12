@@ -24,9 +24,7 @@ export type AuthState = {
 };
 
 export const getBaseUrl = () => {
-  return process.env.NODE_ENV === "development"
-    ? "http://localhost:8080"
-    : "https://bookhive.buzz";
+  return process.env.NODE_ENV === "development" ? "http://localhost:8080" : "https://bookhive.buzz";
 };
 
 const AuthContext = createContext<
@@ -94,10 +92,7 @@ const initialAuthPromise = (async () => {
         if (nextAuthState.did && nextAuthState.handle && nextAuthState.sid) {
           currentAuthState = nextAuthState;
         }
-        await AsyncStorage.setItem(
-          "authState",
-          JSON.stringify(currentAuthState),
-        );
+        await AsyncStorage.setItem("authState", JSON.stringify(currentAuthState));
       }
     }
   } catch (error) {
@@ -113,9 +108,7 @@ export function AuthProvider({
   setCacheBustKey: (key: string) => void;
   children: React.ReactNode;
 }) {
-  const [authState, setAuthState] = useState<AuthState | null>(() =>
-    getAuthState(),
-  );
+  const [authState, setAuthState] = useState<AuthState | null>(() => getAuthState());
 
   // Perhaps it had not been loaded yet
   useEffect(() => {
@@ -162,9 +155,7 @@ export function AuthProvider({
       : ({ isAuthenticated: true, authState, signIn, signOut } as const);
   }, [authState]);
 
-  return (
-    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);

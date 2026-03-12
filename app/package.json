@@ -1,7 +1,8 @@
 {
   "name": "bookhive-app",
-  "main": "expo-router/entry",
   "version": "1.0.3",
+  "private": true,
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -14,9 +15,6 @@
     "update:development": "pnpx eas-cli update --branch development",
     "ios:build": "pnpx eas-cli build --platform ios",
     "ios:submit": "pnpx eas-cli submit --platform ios"
-  },
-  "jest": {
-    "preset": "jest-expo"
   },
   "dependencies": {
     "@expo/vector-icons": "~15.0.3",
@@ -68,5 +66,7 @@
     "jest-expo": "~54.0.17",
     "react-test-renderer": "^19.2.0"
   },
-  "private": true
+  "jest": {
+    "preset": "jest-expo"
+  }
 }

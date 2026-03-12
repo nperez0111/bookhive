@@ -29,10 +29,7 @@ export async function createServiceAccountAgent(
       post: client.post.bind(client) as SessionClient["post"],
     };
   } catch (err) {
-    console.error(
-      "[catalogBookService] Failed to create service account agent:",
-      err,
-    );
+    console.error("[catalogBookService] Failed to create service account agent:", err);
     return null;
   }
 }
@@ -66,9 +63,7 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
     createdAt: book.createdAt,
     updatedAt: book.updatedAt,
     ...(blobs?.thumbnailBlob ? { thumbnailBlob: blobs.thumbnailBlob } : {}),
-    ...(book.description
-      ? { description: book.description.slice(0, 5000) }
-      : {}),
+    ...(book.description ? { description: book.description.slice(0, 5000) } : {}),
     ...(book.cover ? { cover: book.cover } : {}),
     ...(blobs?.coverBlob ? { coverBlob: blobs.coverBlob } : {}),
     ...(book.source ? { source: book.source } : {}),
@@ -85,7 +80,13 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
       : {}),
     ...(book.series ? { series: book.series } : {}),
     ...(book.identifiers
-      ? { identifiers: safeJsonParse<Record<string, string>>(book.identifiers, {}, `book ${book.id} identifiers`) }
+      ? {
+          identifiers: safeJsonParse<Record<string, string>>(
+            book.identifiers,
+            {},
+            `book ${book.id} identifiers`,
+          ),
+        }
       : {}),
   };
 }
@@ -95,10 +96,7 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
  * Skips if not yet enriched, or if already synced and updatedAt hasn't changed since.
  * Safe to call fire-and-forget.
  */
-export async function writeCatalogBookIfNeeded(
-  ctx: CatalogCtx,
-  bookId: HiveId,
-): Promise<void> {
+export async function writeCatalogBookIfNeeded(ctx: CatalogCtx, bookId: HiveId): Promise<void> {
   if (!ctx.serviceAccountAgent) return;
 
   // Fetch the full book fresh from DB to avoid races where enrichment runs
@@ -109,11 +107,13 @@ export async function writeCatalogBookIfNeeded(
     .selectAll()
     .where("id", "=", bookId)
     .where("enrichedAt", "is not", null)
-    .where((eb) => eb.or([
-      eb("hiveBookAtUri", "is", null),
-      eb("hiveBookCatalogUpdatedAt", "is", null),
-      eb(eb.ref("hiveBookCatalogUpdatedAt"), "<", eb.ref("updatedAt")),
-    ]))
+    .where((eb) =>
+      eb.or([
+        eb("hiveBookAtUri", "is", null),
+        eb("hiveBookCatalogUpdatedAt", "is", null),
+        eb(eb.ref("hiveBookCatalogUpdatedAt"), "<", eb.ref("updatedAt")),
+      ]),
+    )
     .executeTakeFirst();
 
   if (!freshBook) return;
@@ -151,10 +151,7 @@ export async function writeCatalogBookIfNeeded(
  * putRecord is idempotent (create-or-update), so this is safe to retry if the
  * process crashes between the ATProto write and the local DB update.
  */
-export async function writeCatalogBooksBatch(
-  ctx: CatalogCtx,
-  books: HiveBook[],
-): Promise<void> {
+export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[]): Promise<void> {
   if (!ctx.serviceAccountAgent || books.length === 0) return;
 
   const agent = ctx.serviceAccountAgent;
@@ -169,9 +166,7 @@ export async function writeCatalogBooksBatch(
       return { thumbnailBlob, coverBlob };
     }),
   );
-  const blobMap = new Map(
-    books.map((book, i) => [book.id, blobResults[i]!]),
-  );
+  const blobMap = new Map(books.map((book, i) => [book.id, blobResults[i]!]));
 
   // Use putRecord (idempotent) for each book, limited to 5 concurrent to avoid rate limits
   const CONCURRENCY = 5;
@@ -254,7 +249,8 @@ export async function backfillCatalogBooks(
     return { written, batches };
   } catch (err) {
     wideEvent["outcome"] = "error";
-    wideEvent["error"] = err instanceof Error ? { message: err.message, type: err.name } : String(err);
+    wideEvent["error"] =
+      err instanceof Error ? { message: err.message, type: err.name } : String(err);
     throw err;
   } finally {
     wideEvent["written"] = written;

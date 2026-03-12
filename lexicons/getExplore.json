@@ -17,7 +17,12 @@
         "author": { "type": "string" },
         "bookCount": { "type": "integer", "minimum": 0 },
         "thumbnail": { "type": "string" },
-        "avgRating": { "type": "integer", "description": "Average rating * 10 (e.g. 42 = 4.2 stars)", "minimum": 0, "maximum": 50 }
+        "avgRating": {
+          "type": "integer",
+          "description": "Average rating * 10 (e.g. 42 = 4.2 stars)",
+          "minimum": 0,
+          "maximum": 50
+        }
       }
     },
     "main": {

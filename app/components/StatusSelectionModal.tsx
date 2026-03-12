@@ -12,11 +12,7 @@ import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
-import {
-  BOOK_STATUS_MAP,
-  BOOK_STATUS,
-  type BookStatus,
-} from "@/constants/index";
+import { BOOK_STATUS_MAP, BOOK_STATUS, type BookStatus } from "@/constants/index";
 
 const STATUS_OPTIONS = [
   BOOK_STATUS.FINISHED,
@@ -44,12 +40,7 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
   const colors = Colors[colorScheme ?? "light"];
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <ThemedView
           style={[
@@ -81,8 +72,7 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
                 style={[
                   styles.loadingSubtext,
                   {
-                    color:
-                      colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
+                    color: colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
                   },
                 ]}
                 type="caption"
@@ -98,9 +88,7 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
                   styles.modalHeader,
                   {
                     borderBottomColor:
-                      colorScheme === "dark"
-                        ? "rgba(255, 255, 255, 0.1)"
-                        : "rgba(0, 0, 0, 0.1)",
+                      colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
                   },
                 ]}
               >
@@ -137,8 +125,7 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
                         style={[
                           styles.modalOptionText,
                           {
-                            color:
-                              colorScheme === "dark" ? "white" : colors.text,
+                            color: colorScheme === "dark" ? "white" : colors.text,
                           },
                           currentStatus === item && {
                             color: colors.primary,
@@ -150,11 +137,7 @@ export const StatusSelectionModal: React.FC<StatusSelectionModalProps> = ({
                         {BOOK_STATUS_MAP[item]}
                       </ThemedText>
                       {currentStatus === item && (
-                        <Ionicons
-                          name="checkmark"
-                          size={20}
-                          color={colors.primary}
-                        />
+                        <Ionicons name="checkmark" size={20} color={colors.primary} />
                       )}
                     </TouchableOpacity>
                     {index < STATUS_OPTIONS.length - 1 && (

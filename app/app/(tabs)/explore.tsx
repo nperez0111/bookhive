@@ -56,19 +56,13 @@ export default function ExploreScreen() {
     <ThemedView style={[styles.container, { backgroundColor }]}>
       <GradientView variant="warm" style={[styles.header, { paddingTop: top + 12 }]}>
         <ThemedText
-          style={[
-            styles.headerTitle,
-            { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-          ]}
+          style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
           type="title"
         >
           Explore
         </ThemedText>
         <ThemedText
-          style={[
-            styles.headerSubtitle,
-            { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
-          ]}
+          style={[styles.headerSubtitle, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
           type="body"
         >
           Discover by genre or author
@@ -77,27 +71,18 @@ export default function ExploreScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: 20 + bottom },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 20 + bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Top Genres */}
         <View style={styles.section}>
-          <SectionHeader
-            icon={"bookmark" as any}
-            title="Top Genres"
-            style={{ marginBottom: 16 }}
-          />
+          <SectionHeader icon={"bookmark" as any} title="Top Genres" style={{ marginBottom: 16 }} />
           <View style={styles.genreGrid}>
             {genres.map((item) => (
               <Pressable
                 key={item.genre}
                 onPress={() =>
-                  router.push(
-                    `/explore/genres/${encodeURIComponent(item.genre)}` as any,
-                  )
+                  router.push(`/explore/genres/${encodeURIComponent(item.genre)}` as any)
                 }
                 style={({ pressed }) => [
                   styles.genreCard,
@@ -108,10 +93,7 @@ export default function ExploreScreen() {
                   },
                 ]}
               >
-                <ThemedText
-                  style={[styles.genreCount, { color: colors.primary }]}
-                  type="heading"
-                >
+                <ThemedText style={[styles.genreCount, { color: colors.primary }]} type="heading">
                   {formatCount(item.count)}
                 </ThemedText>
                 <ThemedText
@@ -128,11 +110,7 @@ export default function ExploreScreen() {
 
         {/* Top Authors */}
         <View style={styles.section}>
-          <SectionHeader
-            icon={"person" as any}
-            title="Top Authors"
-            style={{ marginBottom: 16 }}
-          />
+          <SectionHeader icon={"person" as any} title="Top Authors" style={{ marginBottom: 16 }} />
           <View
             style={[
               styles.authorsCard,
@@ -146,9 +124,7 @@ export default function ExploreScreen() {
               <Pressable
                 key={author.author}
                 onPress={() =>
-                  router.push(
-                    `/explore/authors/${encodeURIComponent(author.author)}` as any,
-                  )
+                  router.push(`/explore/authors/${encodeURIComponent(author.author)}` as any)
                 }
                 style={({ pressed }) => [
                   styles.authorRow,
@@ -160,16 +136,10 @@ export default function ExploreScreen() {
                 ]}
               >
                 {author.thumbnail ? (
-                  <FadeInImage
-                    source={{ uri: author.thumbnail }}
-                    style={styles.authorThumbnail}
-                  />
+                  <FadeInImage source={{ uri: author.thumbnail }} style={styles.authorThumbnail} />
                 ) : (
                   <View
-                    style={[
-                      styles.authorInitial,
-                      { backgroundColor: colors.activeBackground },
-                    ]}
+                    style={[styles.authorInitial, { backgroundColor: colors.activeBackground }]}
                   >
                     <ThemedText
                       style={[styles.authorInitialText, { color: colors.primary }]}
@@ -192,16 +162,10 @@ export default function ExploreScreen() {
                     type="caption"
                   >
                     {formatCount(author.bookCount)} books
-                    {author.avgRating
-                      ? ` · ★ ${(author.avgRating / 10).toFixed(1)}`
-                      : ""}
+                    {author.avgRating ? ` · ★ ${(author.avgRating / 10).toFixed(1)}` : ""}
                   </ThemedText>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={16}
-                  color={colors.tertiaryText}
-                />
+                <Ionicons name="chevron-forward" size={16} color={colors.tertiaryText} />
               </Pressable>
             ))}
           </View>

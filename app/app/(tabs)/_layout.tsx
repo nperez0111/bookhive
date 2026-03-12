@@ -60,11 +60,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="house.fill"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="house.fill" color={color} focused={focused} />
           ),
         }}
       />
@@ -73,11 +69,7 @@ export default function TabLayout() {
         options={{
           title: "Feed",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="person.2.fill"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="person.2.fill" color={color} focused={focused} />
           ),
         }}
       />
@@ -86,11 +78,7 @@ export default function TabLayout() {
         options={{
           title: "Explore",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="safari.fill"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="safari.fill" color={color} focused={focused} />
           ),
         }}
       />
@@ -99,11 +87,7 @@ export default function TabLayout() {
         options={{
           title: "Search",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="magnifyingglass"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="magnifyingglass" color={color} focused={focused} />
           ),
         }}
       />
@@ -112,11 +96,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="person.circle.fill"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="person.circle.fill" color={color} focused={focused} />
           ),
         }}
       />
