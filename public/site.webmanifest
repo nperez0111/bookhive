@@ -1,7 +1,7 @@
 {
   "name": "BookHive - Goodreads Alternative",
   "short_name": "BookHive",
-  "description": "Goodreads but better. Built on top of Blue Sky.",
+  "description": "Goodreads but better.",
   "start_url": "/",
   "scope": "/",
   "icons": [
