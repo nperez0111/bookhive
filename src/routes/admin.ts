@@ -10,8 +10,39 @@ import {
   prepareSanitizedExportFiles,
   isAuthorizedExportRequest,
 } from "../utils/dbExport";
+import { backfillCatalogBooks } from "../utils/catalogBookService";
 
-const admin = new Hono<AppEnv>().get("/export", async (c) => {
+const admin = new Hono<AppEnv>()
+  .post("/backfill-catalog", async (c) => {
+    const ctx = c.get("ctx");
+    const authorization = c.req.header("authorization");
+    if (
+      !env.EXPORT_SHARED_SECRET ||
+      !isAuthorizedExportRequest({
+        authorizationHeader: authorization,
+        sharedSecret: env.EXPORT_SHARED_SECRET,
+      })
+    ) {
+      return c.json({ message: "Not Found" }, 404);
+    }
+
+    if (!ctx.serviceAccountAgent) {
+      return c.json(
+        { message: "Service account not configured" },
+        503,
+      );
+    }
+
+    const logger = c.get("appLogger");
+    // Run in background — do not await
+    backfillCatalogBooks({ ...ctx, logger }).catch((err) => {
+      logger.error({ err }, "[backfill-catalog] Backfill failed");
+    });
+
+    ctx.addWideEventContext({ backfill_catalog: "started" });
+    return c.json({ message: "Backfill started" }, 202);
+  })
+  .get("/export", async (c) => {
   const ctx = c.get("ctx");
   const clientIp =
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||

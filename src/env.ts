@@ -34,4 +34,12 @@ export const env = cleanEnv(process.env, {
   OPEN_OBSERVE_PASSWORD: str({ devDefault: "" }),
   /** Optional: set in CI/deploy for observability (e.g. git rev-parse HEAD) */
   BUILD_SHA: str({ default: "", desc: "Commit or build identifier" }),
+  BOOKHIVE_SERVICE_HANDLE: str({
+    default: "",
+    desc: "Handle for @bookhive.buzz service account (app password auth)",
+  }),
+  BOOKHIVE_APP_PASSWORD: str({
+    default: "",
+    desc: "App password for @bookhive.buzz service account",
+  }),
 });

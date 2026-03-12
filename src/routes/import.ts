@@ -18,6 +18,7 @@ import {
   type StorygraphBook,
 } from "../utils/csv";
 import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
+import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 import { searchBooks } from "./lib";
 
 const importApp = new Hono<AppEnv>();
@@ -165,9 +166,16 @@ importApp.post(
                             .updateTable("hive_book")
                             .set({
                               identifiers: JSON.stringify(newIdentifiers),
+                              updatedAt: new Date().toISOString(),
                             })
                             .where("id", "=", hiveBook.id)
                             .execute();
+                          if (ctx.serviceAccountAgent) {
+                            void writeCatalogBookIfNeeded(
+                              { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent },
+                              hiveBook.id,
+                            ).catch(() => {});
+                          }
                         }
 
                         const existingHiveIds = await existingHiveIdsPromise;
@@ -522,9 +530,16 @@ importApp.post(
                               .updateTable("hive_book")
                               .set({
                                 identifiers: JSON.stringify(newIdentifiers),
+                                updatedAt: new Date().toISOString(),
                               })
                               .where("id", "=", hiveBook.id)
                               .execute();
+                            if (ctx.serviceAccountAgent) {
+                              void writeCatalogBookIfNeeded(
+                                { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent },
+                                hiveBook.id,
+                              ).catch(() => {});
+                            }
                           }
                         }
 

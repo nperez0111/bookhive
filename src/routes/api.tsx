@@ -460,17 +460,26 @@ const app = new Hono<AppEnv>()
         });
         return c.json({ success: true });
       }
-      await agent.post("com.atproto.repo.applyWrites", {
+      const applyResult = await agent.post("com.atproto.repo.applyWrites", {
         input: {
           repo: agent.did,
           writes: [
             {
               $type: "com.atproto.repo.applyWrites#delete",
-              uri: followRecord.uri,
+              collection: "app.bsky.graph.follow",
+              rkey: followRecord.uri.split("/").at(-1)!,
             },
           ],
         },
       });
+      if (!applyResult.ok) {
+        c.get("ctx").addWideEventContext({
+          applyWrites_unfollow_error: "remote delete failed",
+          followUri: followRecord.uri,
+          userDid: agent.did,
+        });
+        throw new Error("Failed to delete follow record on remote");
+      }
       await c
         .get("ctx")
         .db.updateTable("user_follows")
@@ -521,32 +530,44 @@ const app = new Hono<AppEnv>()
           limit: 300,
         },
       });
+      let remoteDeleteSucceeded = true;
       if (listRes.ok) {
         const data = listRes.data as {
           records: Array<{ uri: string; value: { subject: string } }>;
         };
         const followRecord = data.records.find((r) => r.value?.subject === did);
         if (followRecord) {
-          await agent.post("com.atproto.repo.applyWrites", {
+          const applyResult = await agent.post("com.atproto.repo.applyWrites", {
             input: {
               repo: agent.did,
               writes: [
                 {
                   $type: "com.atproto.repo.applyWrites#delete",
-                  uri: followRecord.uri,
+                  collection: "app.bsky.graph.follow",
+                  rkey: followRecord.uri.split("/").at(-1)!,
                 },
               ],
             },
           });
+          if (!applyResult.ok) {
+            remoteDeleteSucceeded = false;
+            c.get("ctx").addWideEventContext({
+              applyWrites_unfollow_form_error: "remote delete failed",
+              followUri: followRecord.uri,
+              userDid: agent.did,
+            });
+          }
         }
       }
-      await c
-        .get("ctx")
-        .db.updateTable("user_follows")
-        .set({ isActive: 0 })
-        .where("userDid", "=", agent.did)
-        .where("followsDid", "=", did)
-        .execute();
+      if (remoteDeleteSucceeded) {
+        await c
+          .get("ctx")
+          .db.updateTable("user_follows")
+          .set({ isActive: 0 })
+          .where("userDid", "=", agent.did)
+          .where("followsDid", "=", did)
+          .execute();
+      }
       c.get("ctx").addWideEventContext({
         api: "unfollow_form",
         userDid: agent.did,

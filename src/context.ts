@@ -16,6 +16,7 @@ import {
   sessionClientFromOAuthSession,
   type SessionClient,
 } from "./auth/client";
+import { createServiceAccountAgent } from "./utils/catalogBookService";
 import { getSessionConfig } from "./auth/router";
 import {
   createBaseIdResolver,
@@ -46,6 +47,8 @@ export type AppContext = {
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
+  /** Service account agent for @bookhive.buzz ATProto writes. Null if env vars not set. */
+  serviceAccountAgent: SessionClient | null;
   /** Add fields to the one wide event logged per request (observability). */
   addWideEventContext: AddWideEventContext;
 };
@@ -90,6 +93,7 @@ export type AppDeps = {
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   ingester: Ingester;
   resolver: BidirectionalResolver;
+  serviceAccountAgent: SessionClient | null;
 };
 
 export async function createAppDeps(): Promise<AppDeps> {
@@ -132,9 +136,17 @@ export async function createAppDeps(): Promise<AppDeps> {
 
   const oauthClient = await createOAuthClient(kv);
   const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
-  const ingester = createIngester(db, kv, (wideEvent) => logger.info(wideEvent));
   const resolver = createCachingBidirectionalResolver(kv, createBidirectionalResolverAtcute());
 
+  const serviceAccountAgent =
+    env.BOOKHIVE_SERVICE_HANDLE && env.BOOKHIVE_APP_PASSWORD
+      ? await createServiceAccountAgent(
+          env.BOOKHIVE_SERVICE_HANDLE,
+          env.BOOKHIVE_APP_PASSWORD,
+        )
+      : null;
+
+  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) => logger.info(wideEvent));
   ingester.start();
 
   return {
@@ -145,6 +157,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     baseIdResolver,
     ingester,
     resolver,
+    serviceAccountAgent,
   };
 }
 

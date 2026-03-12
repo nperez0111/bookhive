@@ -1,25 +1,32 @@
 import type { SessionClient } from "../auth/client";
+import type { BlobRef } from "../types";
 import sharp from "sharp";
 
-export async function uploadImageBlob(image: string | undefined, agent: SessionClient) {
+export type { BlobRef };
+
+export async function uploadImageBlob(
+  image: string | undefined | null,
+  agent: SessionClient,
+  maxWidth?: number,
+): Promise<BlobRef | undefined> {
   try {
     if (image) {
-      const data = await fetch(image as string).then((res) => res.arrayBuffer());
+      const fetchResponse = await fetch(image, { signal: AbortSignal.timeout(10_000) });
+      if (!fetchResponse.ok) return undefined;
+      const contentType = fetchResponse.headers.get("content-type") ?? "";
+      if (!contentType.startsWith("image/")) return undefined;
+      const data = await fetchResponse.arrayBuffer();
 
-      const resizedImage = await sharp(Buffer.from(data))
-        .resize({ width: 800, withoutEnlargement: true })
+      const encoded = await sharp(Buffer.from(data))
+        .resize(maxWidth ? { width: maxWidth, withoutEnlargement: true } : undefined)
         .jpeg()
         .toBuffer();
 
       const uploadResponse = await agent.post("com.atproto.repo.uploadBlob", {
-        input: new Blob([new Uint8Array(resizedImage)], { type: "image/jpeg" }),
+        input: new Blob([new Uint8Array(encoded)], { type: "image/jpeg" }),
       });
       if (uploadResponse.ok) {
-        return (
-          uploadResponse.data as {
-            blob?: { ref: { $link: string }; mimeType: string };
-          }
-        )?.blob;
+        return (uploadResponse.data as { blob?: BlobRef })?.blob;
       }
     }
   } catch {

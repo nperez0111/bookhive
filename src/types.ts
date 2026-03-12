@@ -1,5 +1,7 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
 
+export type BlobRef = { ref: { $link: string }; mimeType: string };
+
 export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
 
 export type * as GetBook from "./bsky/lexicon/generated/types/buzz/bookhive/getBook";
@@ -167,6 +169,15 @@ export type HiveBook = {
    * External identifiers stored as JSON string
    */
   identifiers: string | null;
+  /**
+   * AT-URI of the corresponding catalogBook record in @bookhive.buzz
+   */
+  hiveBookAtUri: string | null;
+  /**
+   * The book's updatedAt value at the time it was last written to the ATProto catalog.
+   * Used to determine if the catalog record needs to be updated.
+   */
+  hiveBookCatalogUpdatedAt: string | null;
 };
 
 /** Row shape for hive_book_genre (denormalized for fast /genres listing). */

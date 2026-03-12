@@ -3,9 +3,7 @@ import * as v from "@atcute/lexicons/validations";
 import type {} from "@atcute/lexicons/ambient";
 
 const _authorItemSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.getExplore#authorItem"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.getExplore#authorItem")),
   author: /*#__PURE__*/ v.string(),
   /**
    * Average rating * 10 (e.g. 42 = 4.2 stars)
@@ -13,9 +11,7 @@ const _authorItemSchema = /*#__PURE__*/ v.object({
    * @maximum 50
    */
   avgRating: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(0, 50),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 50)]),
   ),
   /**
    * @minimum 0
@@ -24,9 +20,7 @@ const _authorItemSchema = /*#__PURE__*/ v.object({
   thumbnail: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
 });
 const _genreItemSchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.getExplore#genreItem"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.getExplore#genreItem")),
   /**
    * @minimum 0
    */

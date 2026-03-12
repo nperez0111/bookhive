@@ -3,9 +3,7 @@ import * as v from "@atcute/lexicons/validations";
 import type {} from "@atcute/lexicons/ambient";
 
 const _feedActivitySchema = /*#__PURE__*/ v.object({
-  $type: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.literal("buzz.bookhive.getFeed#feedActivity"),
-  ),
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.getFeed#feedActivity")),
   authors: /*#__PURE__*/ v.string(),
   cover: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   createdAt: /*#__PURE__*/ v.datetimeString(),
@@ -16,9 +14,7 @@ const _feedActivitySchema = /*#__PURE__*/ v.object({
    * @maximum 10
    */
   stars: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-      /*#__PURE__*/ v.integerRange(1, 10),
-    ]),
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
   ),
   status: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   thumbnail: /*#__PURE__*/ v.string(),
@@ -35,9 +31,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getFeed", {
      * @default 25
      */
     limit: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 50),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 50)]),
       25,
     ),
     /**
@@ -46,9 +40,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getFeed", {
      * @default 1
      */
     page: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
       1,
     ),
     /**

@@ -33,6 +33,10 @@ const _mainSchema = /*#__PURE__*/ v.record(
      */
     finishedAt: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.datetimeString()),
     /**
+     * AT-URI of the canonical catalogBook record in \@bookhive.buzz
+     */
+    hiveBookUri: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    /**
      * The book's hive id, used to correlate user's books with the hive
      */
     hiveId: /*#__PURE__*/ v.string(),

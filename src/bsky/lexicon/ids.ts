@@ -4,6 +4,7 @@
 export const ids = {
   BuzzBookhiveBook: "buzz.bookhive.book",
   BuzzBookhiveBuzz: "buzz.bookhive.buzz",
+  BuzzBookhiveCatalogBook: "buzz.bookhive.catalogBook",
   BuzzBookhiveDefs: "buzz.bookhive.defs",
   BuzzBookhiveGetBook: "buzz.bookhive.getBook",
   BuzzBookhiveGetBookIdentifiers: "buzz.bookhive.getBookIdentifiers",

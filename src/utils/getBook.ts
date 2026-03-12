@@ -12,6 +12,7 @@ import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 import { hydrateUserBook, serializeUserBook } from "./bookProgress";
+import { ensureBookCataloged } from "./ensureBookCataloged";
 
 /**
  * Normalize a date string to ISO format at midnight UTC
@@ -254,6 +255,11 @@ export async function updateBookRecord({
   const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
   const identifiers = toBookIdentifiersOutput(identifiersRow);
 
+  // Ensure the book is cataloged before writing to the user's PDS so we can embed
+  // hiveBookUri. Fast path (expected): already cataloged, one DB read, no network.
+  // Slow path (last resort): enrich + catalog with timeouts if it slipped through.
+  const hiveBookAtUri = await ensureBookCataloged(ctx, hiveId);
+
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -261,7 +267,7 @@ export async function updateBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
+    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent, 800)),
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
     startedAt:
@@ -286,6 +292,7 @@ export async function updateBookRecord({
           ? updates.bookProgress
           : originalBook?.bookProgress,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
+    hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
   };
 
   const book = BookRecord.validateRecord(bookData);
@@ -386,6 +393,18 @@ export async function updateBookRecords({
     .execute();
   const identifiersByHiveId = new Map(idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]));
 
+  // Ensure all books are cataloged before writing to the user's PDS.
+  // Fast path (expected): already cataloged via backfill/searchBooks — just a DB read.
+  // Runs in parallel across all books; failures are swallowed inside ensureBookCataloged.
+  const hiveBookUriMap = new Map<HiveId, string | undefined>();
+  if (ctx.serviceAccountAgent) {
+    await Promise.allSettled(
+      hiveIds.map(async (hiveId) => {
+        hiveBookUriMap.set(hiveId, await ensureBookCataloged(ctx, hiveId));
+      }),
+    );
+  }
+
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
       bookMap.entries().find(([_rkey, book]) => book.hiveId === hiveId) ?? [];
@@ -454,6 +473,7 @@ export async function updateBookRecords({
             ? update.bookProgress
             : originalBook?.bookProgress,
       identifiers,
+      hiveBookUri: hiveBookUriMap.get(hiveId) ?? originalBook?.hiveBookUri,
     });
 
     if (!book.success) {
@@ -495,6 +515,7 @@ export async function updateBookRecords({
         u.record.cover = (await uploadImageBlob(
           u.originalUpdate.coverImage,
           agent,
+          800,
         )) as typeof u.record.cover;
       }
       return u;

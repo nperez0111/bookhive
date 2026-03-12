@@ -136,15 +136,12 @@ export interface readingStatsSchema extends readingStats$schematype {}
 export const bookSummarySchema = _bookSummarySchema as bookSummarySchema;
 export const genreStatSchema = _genreStatSchema as genreStatSchema;
 export const mainSchema = _mainSchema as mainSchema;
-export const ratingDistributionSchema =
-  _ratingDistributionSchema as ratingDistributionSchema;
+export const ratingDistributionSchema = _ratingDistributionSchema as ratingDistributionSchema;
 export const readingStatsSchema = _readingStatsSchema as readingStatsSchema;
 
 export interface BookSummary extends v.InferInput<typeof bookSummarySchema> {}
 export interface GenreStat extends v.InferInput<typeof genreStatSchema> {}
-export interface RatingDistribution extends v.InferInput<
-  typeof ratingDistributionSchema
-> {}
+export interface RatingDistribution extends v.InferInput<typeof ratingDistributionSchema> {}
 export interface ReadingStats extends v.InferInput<typeof readingStatsSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}

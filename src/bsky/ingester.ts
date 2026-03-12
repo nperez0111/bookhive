@@ -5,6 +5,8 @@ import { env } from "../env";
 import { searchBooks } from "../routes/index";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
+import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
+import type { SessionClient } from "../auth/client";
 import { createActorResolver, createBidirectionalResolverAtcute } from "./id-resolver";
 import { ids, Book, Buzz } from "./lexicon";
 
@@ -183,7 +185,7 @@ async function backfillUserRepo(
   }
 }
 
-export function createIngester(db: Database, kv: Storage, emitWideEvent: EmitWideEvent): Ingester {
+export function createIngester(db: Database, kv: Storage, serviceAccountAgent: SessionClient | null, emitWideEvent: EmitWideEvent): Ingester {
   const bidirectionalResolver = createBidirectionalResolverAtcute();
   const backfilledDids = new Set<string>();
   let subscription: JetstreamSubscription | null = null;
@@ -274,6 +276,10 @@ export function createIngester(db: Database, kv: Storage, emitWideEvent: EmitWid
               })),
             )
             .execute();
+
+          if (serviceAccountAgent) {
+            void writeCatalogBookIfNeeded({ db, serviceAccountAgent }, hiveId).catch(() => {});
+          }
 
           // Proactively backfill full repo for newly-discovered DIDs
           if (isNewDid) {
