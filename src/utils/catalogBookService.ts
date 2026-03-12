@@ -173,38 +173,41 @@ export async function writeCatalogBooksBatch(
     books.map((book, i) => [book.id, blobResults[i]!]),
   );
 
-  // Use putRecord (idempotent) for each book in parallel
-  await Promise.all(
-    books.map(async (book) => {
-      const response = await agent.post("com.atproto.repo.putRecord", {
-        input: {
-          repo: agent.did,
-          collection: ids.BuzzBookhiveCatalogBook,
-          rkey: book.id,
-          record: buildCatalogBookValue(book, blobMap.get(book.id)),
-        },
-      });
-
-      if (!response.ok) {
-        ctx.logger?.error({
-          job: "catalog_book_put_record",
-          outcome: "error",
-          bookId: book.id,
-          error: response.data,
+  // Use putRecord (idempotent) for each book, limited to 5 concurrent to avoid rate limits
+  const CONCURRENCY = 5;
+  for (let i = 0; i < books.length; i += CONCURRENCY) {
+    await Promise.all(
+      books.slice(i, i + CONCURRENCY).map(async (book) => {
+        const response = await agent.post("com.atproto.repo.putRecord", {
+          input: {
+            repo: agent.did,
+            collection: ids.BuzzBookhiveCatalogBook,
+            rkey: book.id,
+            record: buildCatalogBookValue(book, blobMap.get(book.id)),
+          },
         });
-        return;
-      }
 
-      const uri = (response.data as { uri: string }).uri;
-      if (!uri || uri === book.hiveBookAtUri) return;
+        if (!response.ok) {
+          ctx.logger?.error({
+            job: "catalog_book_put_record",
+            outcome: "error",
+            bookId: book.id,
+            error: response.data,
+          });
+          return;
+        }
 
-      await ctx.db
-        .updateTable("hive_book")
-        .set({ hiveBookAtUri: uri, hiveBookCatalogUpdatedAt: book.updatedAt })
-        .where("id", "=", book.id)
-        .execute();
-    }),
-  );
+        const uri = (response.data as { uri: string }).uri;
+        if (!uri || uri === book.hiveBookAtUri) return;
+
+        await ctx.db
+          .updateTable("hive_book")
+          .set({ hiveBookAtUri: uri, hiveBookCatalogUpdatedAt: book.updatedAt })
+          .where("id", "=", book.id)
+          .execute();
+      }),
+    );
+  }
 }
 
 /**

@@ -11,7 +11,11 @@ export async function uploadImageBlob(
 ): Promise<BlobRef | undefined> {
   try {
     if (image) {
-      const data = await fetch(image, { signal: AbortSignal.timeout(10_000) }).then((res) => res.arrayBuffer());
+      const fetchResponse = await fetch(image, { signal: AbortSignal.timeout(10_000) });
+      if (!fetchResponse.ok) return undefined;
+      const contentType = fetchResponse.headers.get("content-type") ?? "";
+      if (!contentType.startsWith("image/")) return undefined;
+      const data = await fetchResponse.arrayBuffer();
 
       const encoded = await sharp(Buffer.from(data))
         .resize(maxWidth ? { width: maxWidth, withoutEnlargement: true } : undefined)

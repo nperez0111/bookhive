@@ -64,10 +64,11 @@ export async function ensureBookCataloged(
       `catalog book ${hiveId}`,
     );
   } catch (err) {
-    console.warn(
-      `[ensureBookCataloged] fallback sync failed for ${hiveId}:`,
-      err instanceof Error ? err.message : err,
-    );
+    ctx.addWideEventContext({
+      ensure_book_cataloged_fallback: "failed",
+      hiveId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const updated = await ctx.db
