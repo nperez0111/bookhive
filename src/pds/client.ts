@@ -4,6 +4,8 @@ export function isPdsEnabled(): boolean {
   return env.PDS_URL !== "" && env.PDS_ADMIN_PASSWORD !== "";
 }
 
+// Idea from https://self.surf/how-it-works
+
 export async function mintInviteCode(): Promise<string> {
   const res = await fetch(`${env.PDS_URL}/xrpc/com.atproto.server.createInviteCode`, {
     method: "POST",
