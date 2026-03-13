@@ -4,6 +4,8 @@ import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
 import { sql } from "kysely";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
+import { buildCrossPostText } from "../bsky/crossPost";
+import { env } from "../env";
 import type { HiveBook, UserBook } from "../types";
 import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { hydrateUserBook } from "../utils/bookProgress";
@@ -116,6 +118,21 @@ const BookStatusButton: FC<{
   book: HiveBook;
   usersBook: UserBook | undefined;
 }> = async ({ usersBook, book }) => {
+  const bookUrl = `${env.PUBLIC_URL}/books/${book.id}`;
+  const genres: string[] = book.genres ? JSON.parse(book.genres) : [];
+  const shareHref = usersBook
+    ? `https://bsky.app/intent/compose?text=${encodeURIComponent(
+        buildCrossPostText({
+          title: usersBook.title,
+          authors: usersBook.authors,
+          status: usersBook.status ?? undefined,
+          stars: usersBook.stars ?? undefined,
+          review: usersBook.review ?? undefined,
+          bookUrl,
+          genres,
+        }).text,
+      )}`
+    : null;
   return (
     <div class="mt-4">
       <UpdateBookForm book={book} userBook={usersBook} editing="status">
@@ -240,6 +257,19 @@ const BookStatusButton: FC<{
           }}
         />
       </UpdateBookForm>
+      {shareHref && (
+        <a
+          href={shareHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+        >
+          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 fill-current" aria-hidden="true">
+            <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
+          </svg>
+          Share on Bluesky
+        </a>
+      )}
       {usersBook && (
         <form action={`/books/${book.id}`} method="post">
           <button
