@@ -57,6 +57,7 @@ export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOp
 
   app.route("/admin", adminRoutes);
   app.route("/import", importRoutes);
+
   // Static assets before main router so /assets and /public are served first
   const publicRoot = env.isProduction
     ? join(process.cwd(), assetRoot)
