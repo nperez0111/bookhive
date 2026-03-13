@@ -5,7 +5,7 @@ export const Login: FC<{
   error?: string;
   handle?: string;
   signupUrl?: string;
-}> = ({ error, handle, signupUrl = "/signup" }) => (
+}> = ({ error, handle, signupUrl = "/pds/signup" }) => (
   <div class="animate-fade relative flex min-h-full flex-col items-center justify-center px-6 py-12 duration-300 lg:px-8">
     <a
       href="/"
@@ -127,9 +127,11 @@ export const Login: FC<{
           <p class="text-muted-foreground text-center text-sm">
             Don't have an account?{" "}
             <a href={signupUrl} class="text-primary font-semibold hover:underline">
-              {signupUrl === "/signup" ? "Create a BookHive account" : "Create a Bluesky account"}
+              {signupUrl === "/pds/signup"
+                ? "Create a BookHive account"
+                : "Create a Bluesky account"}
             </a>
-            {signupUrl === "/signup" && (
+            {signupUrl === "/pds/signup" && (
               <>
                 <br />
                 <span class="text-xs">

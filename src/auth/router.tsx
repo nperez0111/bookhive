@@ -18,6 +18,7 @@ import {
   mintInviteCode,
   createAccount,
   createEmptyProfile,
+  uploadBlob,
 } from "../pds/client";
 
 // Helper function to get consistent session configuration
@@ -116,7 +117,10 @@ export function loginRouter(
       });
       return c.html(
         <Layout>
-          <Login error={`Login failed: ${errMsg}`} signupUrl={isPdsEnabled() ? "/signup" : "https://bsky.app"} />
+          <Login
+            error={`Login failed: ${errMsg}`}
+            signupUrl={isPdsEnabled() ? "/pds/signup" : "https://bsky.app"}
+          />
         </Layout>,
       );
     }
@@ -124,7 +128,7 @@ export function loginRouter(
 
   // Login page
   app.get("/login", async (c) => {
-    const signupUrl = isPdsEnabled() ? "/signup" : "https://bsky.app";
+    const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";
     const agent = await c.get("ctx").getSessionAgent();
     if (agent) {
       try {
@@ -208,7 +212,7 @@ export function loginRouter(
   });
 
   // Signup page
-  app.get("/signup", async (c) => {
+  app.get("/pds/signup", async (c) => {
     if (!isPdsEnabled()) {
       return c.redirect("https://bsky.app");
     }
@@ -235,6 +239,15 @@ export function loginRouter(
         .transform((h) => h.toLowerCase()),
       password: z.string().min(8, "Password must be at least 8 characters."),
       confirmPassword: z.string(),
+      avatar: z.preprocess(
+        (v) => (v instanceof File && v.size > 0 ? v : undefined),
+        z
+          .instanceof(File)
+          .refine((f) => ["image/png", "image/jpeg"].includes(f.type), {
+            message: "Profile photo must be a PNG or JPEG image.",
+          })
+          .optional(),
+      ),
     })
     .refine((d) => d.password === d.confirmPassword, {
       message: "Passwords do not match.",
@@ -243,7 +256,7 @@ export function loginRouter(
 
   // Signup handler
   app.post(
-    "/signup",
+    "/pds/signup",
     zValidator("form", signupSchema, (result, c) => {
       if (!result.success) {
         const error = result.error.errors[0]?.message ?? "Invalid input.";
@@ -257,51 +270,54 @@ export function loginRouter(
       return undefined;
     }),
     async (c) => {
-    if (!isPdsEnabled()) {
-      return c.redirect("/login");
-    }
+      if (!isPdsEnabled()) {
+        return c.redirect("/login");
+      }
 
-    const { email, handle, password } = c.req.valid("form");
-    const fullHandle = `${handle}.bookhive.social`;
+      const { email, handle, password, avatar } = c.req.valid("form");
+      const fullHandle = `${handle}.bookhive.social`;
 
-    try {
-      // 1. Mint an invite code
-      const inviteCode = await mintInviteCode();
+      try {
+        // 1. Mint an invite code
+        const inviteCode = await mintInviteCode();
 
-      // 2. Create the account on the PDS
-      const account = await createAccount({
-        email,
-        handle: fullHandle,
-        password,
-        inviteCode,
-      });
+        // 2. Create the account on the PDS
+        const account = await createAccount({
+          email,
+          handle: fullHandle,
+          password,
+          inviteCode,
+        });
 
-      // 3. Create an empty profile
-      await createEmptyProfile(account.accessJwt, account.did);
+        // 3. Upload avatar blob if provided
+        const avatarBlob = avatar
+          ? await uploadBlob(account.accessJwt, avatar, avatar.type || "image/jpeg")
+          : undefined;
 
-      // 4. Kick off OAuth flow — user signs in with their new handle/password
-      const { url } = await c.get("ctx").oauthClient.authorize({
-        target: { type: "account", identifier: fullHandle as ActorIdentifier },
-        scope: OAUTH_SCOPES,
-      });
-      return c.redirect(url.toString());
-    } catch (err: unknown) {
-      const errMsg =
-        typeof err === "object" && err !== null && "message" in err
-          ? String((err as { message: unknown }).message)
-          : String(err);
-      c.get("ctx").addWideEventContext({
-        signup: "failed",
-        error: errMsg,
-      });
-      return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
-          <Signup error={errMsg} email={email} handle={handle} />
-        </Layout>,
-        400,
-      );
-    }
-  });
+        // 4. Create profile (with optional avatar)
+        await createEmptyProfile(account.accessJwt, account.did, avatarBlob);
+
+        // 5. Kick off OAuth flow — user signs in with their new handle/password
+        const { url } = await c.get("ctx").oauthClient.authorize({
+          target: { type: "account", identifier: fullHandle as ActorIdentifier },
+          scope: OAUTH_SCOPES,
+        });
+        return c.redirect(url.toString());
+      } catch (err: unknown) {
+        c.get("ctx").addWideEventContext({ signup: "failed", error: err });
+        const errMsg =
+          typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : String(err);
+        return c.html(
+          <Layout assetUrls={c.get("assetUrls")}>
+            <Signup error={errMsg} email={email} handle={handle} />
+          </Layout>,
+          400,
+        );
+      }
+    },
+  );
 
   // Login handler
   app.post("/login", async (c) => {
