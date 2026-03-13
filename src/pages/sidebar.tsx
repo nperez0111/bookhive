@@ -2,6 +2,7 @@ import type { FC } from "hono/jsx";
 
 interface SidebarProps {
   currentPath: string;
+  pdsEnabled?: boolean;
   user?: {
     did: string;
     handle: string;
@@ -10,7 +11,7 @@ interface SidebarProps {
   };
 }
 
-export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
+export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user }) => {
   const navItems = [
     { href: "/", label: "Home", icon: "home", authRequired: false },
     { href: "/feed", label: "Activity Feed", icon: "activity", authRequired: true },
@@ -28,6 +29,9 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
     },
     { href: "/explore", label: "Explore", icon: "compass", authRequired: false },
     { href: "/import", label: "Import", icon: "upload", authRequired: true },
+    ...(pdsEnabled
+      ? [{ href: "/pds", label: "Community", icon: "users", authRequired: false }]
+      : []),
   ].filter((item) => !item.authRequired || user);
 
   return (
@@ -89,6 +93,27 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, user }) => {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
           </svg>
           Privacy
+        </a>
+        <a
+          href="/legal"
+          aria-current={currentPath === "/legal" ? "page" : undefined}
+          class="flex items-center gap-2"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="size-4 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M7 8h10M7 12h10M7 16h6" />
+          </svg>
+          Terms
         </a>
         <a
           href="https://github.com/nperez0111/bookhive"

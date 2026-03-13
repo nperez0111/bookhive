@@ -16,7 +16,6 @@ import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
 import { getProfiles } from "../utils/getProfile";
 import { LibraryImport } from "../pages/import";
-import { PrivacyPolicy } from "../pages/privacy-policy";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
 import { GenreBooks, getBooksByGenre } from "../pages/genreBooks";
@@ -103,13 +102,6 @@ const app = new Hono<AppEnv>()
       description:
         "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
       image: "/hive.jpg",
-    }),
-  )
-  .get("/privacy-policy", (c) =>
-    c.render(<PrivacyPolicy />, {
-      title: "BookHive | Privacy Policy",
-      description:
-        "Learn how BookHive uses cookies for login and only processes public ATProto data.",
     }),
   )
   .get("/import", async (c) => {

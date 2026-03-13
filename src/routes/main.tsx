@@ -14,7 +14,13 @@ import { loginRouter } from "../auth/router";
 import { Layout } from "../pages/layout";
 import { Navbar } from "../pages/navbar";
 import { Sidebar } from "../pages/sidebar";
-import { getProfile } from "../utils/getProfile";
+import { getProfile, getProfiles } from "../utils/getProfile";
+import { isPdsEnabled, listRepos } from "../pds/client";
+import { PdsLanding } from "../pages/pds";
+import { PrivacyPolicy } from "../pages/privacy-policy";
+import { Terms } from "../pages/terms";
+import { SimpleNavbar } from "../pages/simple-navbar";
+import { env } from "../env";
 import { createXrpcRouter } from "../xrpc/router";
 import {
   searchBooks,
@@ -79,6 +85,52 @@ export function mainRouter(deps: AppDeps): HonoServer {
     },
   });
 
+  // Standalone pages (no sidebar/navbar) — must be registered before jsxRenderer
+  app.get("/privacy-policy", (c) => {
+    const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    return c.html(
+      <Layout assetUrls={c.get("assetUrls")}>
+        <SimpleNavbar isPds={isPds} />
+        <PrivacyPolicy />
+      </Layout>,
+    );
+  });
+
+  app.get("/legal", (c) => {
+    const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    return c.html(
+      <Layout assetUrls={c.get("assetUrls")}>
+        <SimpleNavbar isPds={isPds} />
+        <Terms />
+      </Layout>,
+    );
+  });
+
+  app.get("/pds", async (c) => {
+    if (!isPdsEnabled()) {
+      return c.redirect("/");
+    }
+    const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    const dids = await listRepos();
+    const profiles = dids.length > 0 ? await getProfiles({ ctx: c.get("ctx"), dids }) : [];
+    const db = c.get("ctx").db;
+    const bookCountRows = await db
+      .selectFrom("user_book")
+      .select((eb) => ["userDid", eb.fn.countAll<number>().as("count")])
+      .where("userDid", "in", dids.length > 0 ? dids : [""])
+      .groupBy("userDid")
+      .execute();
+    const bookCounts = Object.fromEntries(bookCountRows.map((r) => [r.userDid, r.count]));
+    return c.html(
+      <Layout assetUrls={c.get("assetUrls")}>
+        <SimpleNavbar isPds={isPds} />
+        <div class="mx-auto max-w-3xl px-4 py-12">
+          <PdsLanding profiles={profiles} bookCounts={bookCounts} />
+        </div>
+      </Layout>,
+    );
+  });
+
   app.use(
     jsxRenderer(async ({ children, Layout: _Layout, ...props }) => {
       const c = useRequestContext();
@@ -91,6 +143,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
           <div class="flex min-h-screen">
             <Sidebar
               currentPath={c.req.path}
+              pdsEnabled={isPdsEnabled()}
               user={
                 profileData
                   ? {
