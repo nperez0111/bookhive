@@ -27,7 +27,6 @@
     "ios:submit": "bun run --cwd app ios:submit"
   },
   "dependencies": {
-    "@atcute/bluesky-richtext-builder": "2.0.5",
     "@atcute/xrpc-server": "0.1.9",
     "@tanstack/hotkeys": "0.4.1",
     "basecoat-css": "0.3.11",

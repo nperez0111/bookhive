@@ -5,7 +5,6 @@
     "": {
       "name": "bookhive",
       "dependencies": {
-        "@atcute/bluesky-richtext-builder": "2.0.5",
         "@atcute/xrpc-server": "0.1.9",
         "@tanstack/hotkeys": "0.4.1",
         "basecoat-css": "0.3.11",
@@ -127,8 +126,6 @@
     "@atcute/atproto": ["@atcute/atproto@3.1.10", "", { "dependencies": { "@atcute/lexicons": "1.2.9" } }, "sha512-+GKZpOc0PJcdWMQEkTfg/rSNDAAHxmAUGBl60g2az15etqJn5WaUPNGFE2sB7hKpwi5Ue2h/L0OacINcE/JDDQ=="],
 
     "@atcute/bluesky": ["@atcute/bluesky@3.2.17", "", { "dependencies": { "@atcute/atproto": "3.1.10", "@atcute/lexicons": "1.2.9" } }, "sha512-Li+RsPkcRNC6AnNlqOGnlmAcjSwBdXIKFubJL1nwACDngKNXG4ooGL5cvzeekdDEfHmtFhS/tyZNaUx9QXYEUw=="],
-
-    "@atcute/bluesky-richtext-builder": ["@atcute/bluesky-richtext-builder@2.0.5", "", { "dependencies": { "@atcute/bluesky": "^3.2.17", "@atcute/lexicons": "^1.2.9", "@atcute/uint8array": "^1.1.1" } }, "sha512-74VcYnq0MIWb9GegSYmxfFMYWSDn4fqh0R3d9ofzgav0gVFGPmXDm4Hf4cuOYGv9pz0/4sdJDqb0gamzxvOXGQ=="],
 
     "@atcute/car": ["@atcute/car@3.0.5", "", { "dependencies": { "@atcute/cbor": "2.2.4", "@atcute/cid": "2.2.3", "@atcute/varint": "1.0.2" } }, "sha512-dEoUPRZezQKo+Q3DbNq8QDEojqzC2M05+elzgHBN0Z2BLrnKa2W6q5ETFnArESPn5kvQ2TUDOUslWo3Xr4JcWg=="],
 

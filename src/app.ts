@@ -17,7 +17,6 @@ import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
 import adminRoutes from "./routes/admin";
 import importRoutes from "./routes/import";
-import { feedGeneratorRouter } from "./routes/feedGenerator";
 import { mainRouter } from "./routes";
 
 export type CreateAppOptions = {
@@ -58,8 +57,6 @@ export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOp
 
   app.route("/admin", adminRoutes);
   app.route("/import", importRoutes);
-  app.route("/", feedGeneratorRouter());
-
   // Static assets before main router so /assets and /public are served first
   const publicRoot = env.isProduction
     ? join(process.cwd(), assetRoot)

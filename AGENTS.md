@@ -6,6 +6,13 @@ Goodreads alternative built on Bluesky's AT Protocol. Server-rendered Hono JSX w
 
 - Do not commit any changes to git
 
+## Input Validation
+
+Routes must always validate inputs using either:
+
+- **zValidator** (with Zod) for standard Hono routes — use `zValidator("query", schema)`, `zValidator("json", schema)`, or `zValidator("form", schema)` as appropriate.
+- **XRPC router validators** for AT Protocol XRPC endpoints in `src/xrpc/`. Add lexicons & regenerate the generated types with `bun run lexgen`
+
 ## Architecture at a Glance
 
 ```

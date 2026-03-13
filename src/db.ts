@@ -11,7 +11,6 @@ import { Database as DatabaseSync } from "bun:sqlite";
 import type {
   BookIdentifiersRow,
   Buzz,
-  FeedPost,
   HiveBook,
   HiveBookGenre,
   HiveId,
@@ -28,7 +27,6 @@ export type DatabaseSchema = {
   user_book: UserBookRow;
   buzz: Buzz;
   user_follows: UserFollow;
-  feed_post: FeedPost;
 };
 
 export const BookFields = [
@@ -387,26 +385,6 @@ migrations["010"] = {
   },
   async down(_db: Kysely<unknown>) {
     // No reversible fix; goodreadsId was wrong before.
-  },
-};
-
-migrations["012"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema
-      .createTable("feed_post")
-      .addColumn("uri", "text", (col) => col.primaryKey())
-      .addColumn("userDid", "text", (col) => col.notNull())
-      .addColumn("indexedAt", "text", (col) => col.notNull())
-      .addColumn("createdAt", "text", (col) => col.notNull())
-      .execute();
-    await db.schema
-      .createIndex("idx_feed_post_created_at")
-      .on("feed_post")
-      .column("createdAt")
-      .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("feed_post").execute();
   },
 };
 

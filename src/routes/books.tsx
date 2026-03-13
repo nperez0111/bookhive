@@ -9,12 +9,10 @@ import { z } from "zod";
 
 import type { AppEnv } from "../context";
 import { ids, Book as BookRecord } from "../bsky/lexicon";
-import { createBlueskyPost } from "../bsky/crossPost";
 import { BookInfo } from "../pages/bookInfo";
 import { CommentsSection } from "../pages/comments";
 import { Error as ErrorPage } from "../pages/error";
 import { Layout } from "../pages/layout";
-import { env } from "../env";
 import type { HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
@@ -297,64 +295,6 @@ const app = new Hono<AppEnv>()
       }
     },
   )
-  .post("/:hiveId/share", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to share a book"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
-      );
-    }
-
-    const hiveId = c.req.param("hiveId") as HiveId;
-    const userBook = await c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .selectAll()
-      .where("userDid", "=", agent.did)
-      .where("hiveId", "=", hiveId)
-      .executeTakeFirst();
-
-    if (!userBook) {
-      return c.redirect(`/books/${hiveId}`);
-    }
-
-    const formData = await c.req.formData().catch(() => null);
-    const customText = formData?.get("text")?.toString().trim() || undefined;
-
-    const bookUrl = `${env.PUBLIC_URL}/books/${hiveId}`;
-    const postUri = await createBlueskyPost(agent, {
-      title: userBook.title,
-      authors: userBook.authors,
-      status: userBook.status ?? undefined,
-      stars: userBook.stars ?? undefined,
-      review: userBook.review ?? undefined,
-      bookUrl,
-      customText,
-    }).catch(() => null);
-
-    if (postUri) {
-      await c
-        .get("ctx")
-        .db.insertInto("feed_post")
-        .values({
-          uri: postUri,
-          userDid: agent.did,
-          indexedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        })
-        .onConflict((oc) => oc.column("uri").doNothing())
-        .execute();
-    }
-
-    return c.redirect(`/books/${hiveId}`);
-  })
   .get("/:hiveId/comments", async (c) => {
     const book = await c
       .get("ctx")
