@@ -35,6 +35,7 @@ import books from "./books";
 import comments from "./comments";
 import api from "./api";
 import rss from "./rss";
+import og from "./og";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -200,8 +201,29 @@ export function mainRouter(deps: AppDeps): HonoServer {
         },
       });
     } catch (err) {
-      console.error("[IPX] Image processing error:", err);
-      return new Response("Image processing error", { status: 500 });
+      const message = err instanceof Error ? err.message : String(err);
+      c.get("appLogger").warn({ msg: "image_proxy_error", image_id: id, error: message });
+      // Return an SVG fallback — user silhouette for avatars, book placeholder otherwise
+      const isAvatar = id.includes("/img/avatar/") || id.includes("avatar");
+      const fallbackSvg = isAvatar
+        ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+            <rect width="100" height="100" fill="#fef3c7"/>
+            <circle cx="50" cy="38" r="18" fill="#d97706"/>
+            <path d="M14 85c0-19.9 16.1-36 36-36s36 16.1 36 36" fill="#d97706"/>
+          </svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140" fill="none">
+            <rect width="100" height="140" rx="4" fill="#fef3c7"/>
+            <rect x="20" y="30" width="60" height="6" rx="3" fill="#d97706" opacity=".5"/>
+            <rect x="20" y="46" width="45" height="6" rx="3" fill="#d97706" opacity=".35"/>
+            <rect x="20" y="62" width="52" height="6" rx="3" fill="#d97706" opacity=".35"/>
+          </svg>`;
+      return new Response(fallbackSvg, {
+        headers: {
+          "Content-Type": "image/svg+xml",
+          "Cache-Control": "public, max-age=60",
+          "X-Request-Id": c.get("requestId"),
+        },
+      });
     }
   });
 
@@ -214,6 +236,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.route("/comments", comments);
   app.route("/api", api);
   app.route("/rss", rss);
+  app.route("/og", og);
 
   createXrpcRouter(app, {
     searchBooks,
