@@ -8,11 +8,16 @@ import { serializeUserBook } from "../utils/bookProgress";
 import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 import type { SessionClient } from "../auth/client";
 import { createActorResolver, createBidirectionalResolverAtcute } from "./id-resolver";
-import { ids, Book, Buzz } from "./lexicon";
+import { ids, Book, Buzz, List, ListItem } from "./lexicon";
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
 
-const WANTED_COLLECTIONS = [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz];
+const WANTED_COLLECTIONS = [
+  ids.BuzzBookhiveBook,
+  ids.BuzzBookhiveBuzz,
+  ids.SocialPopfeedFeedList,
+  ids.SocialPopfeedFeedListItem,
+];
 const JETSTREAM_URL = [
   "wss://jetstream1.us-east.bsky.network",
   "wss://jetstream2.us-east.bsky.network",
@@ -75,7 +80,12 @@ async function backfillUserRepo(
     );
     const pds = actor.pds;
 
-    for (const collection of [ids.BuzzBookhiveBook, ids.BuzzBookhiveBuzz]) {
+    for (const collection of [
+      ids.BuzzBookhiveBook,
+      ids.BuzzBookhiveBuzz,
+      ids.SocialPopfeedFeedList,
+      ids.SocialPopfeedFeedListItem,
+    ]) {
       let cursor: string | undefined;
       do {
         const url = new URL(`${pds}/xrpc/com.atproto.repo.listRecords`);
@@ -155,6 +165,66 @@ async function backfillUserRepo(
                 parentCid: buzz.parent.cid,
                 parentUri: buzz.parent.uri,
               } satisfies BuzzRecord)
+              .onConflict((oc) => oc.column("uri").doNothing())
+              .execute();
+          } else if (collection === ids.SocialPopfeedFeedList) {
+            const asList = List.validateRecord(record.value);
+            if (!asList.success) continue;
+            const list = asList.value;
+            await db
+              .insertInto("book_list")
+              .values({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                name: list.name,
+                description: list.description ?? null,
+                ordered: list.ordered ? 1 : 0,
+                tags: list.tags ? JSON.stringify(list.tags) : null,
+                createdAt: list.createdAt,
+                indexedAt: now.toISOString(),
+              })
+              .onConflict((oc) => oc.column("uri").doNothing())
+              .execute();
+          } else if (collection === ids.SocialPopfeedFeedListItem) {
+            const asItem = ListItem.validateRecord(record.value);
+            if (!asItem.success) continue;
+            const item = asItem.value;
+            if (item.creativeWorkType !== "book") continue;
+
+            let hiveId: HiveId | null = (item.identifiers?.hiveId as HiveId) ?? null;
+            if (!hiveId && (item.identifiers?.isbn13 || item.identifiers?.isbn10)) {
+              const idRow = await db
+                .selectFrom("book_id_map")
+                .select("hiveId")
+                .where((eb) =>
+                  eb.or([
+                    ...(item.identifiers?.isbn13
+                      ? [eb("isbn13", "=", item.identifiers.isbn13)]
+                      : []),
+                    ...(item.identifiers?.isbn10 ? [eb("isbn", "=", item.identifiers.isbn10)] : []),
+                  ]),
+                )
+                .executeTakeFirst();
+              if (idRow) hiveId = idRow.hiveId;
+            }
+            await db
+              .insertInto("book_list_item")
+              .values({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                listUri: item.listUri,
+                hiveId,
+                description: item.description ?? null,
+                position: item.position ?? null,
+                addedAt: item.addedAt,
+                indexedAt: now.toISOString(),
+                embeddedTitle: item.title ?? null,
+                embeddedAuthor: item.mainCredit ?? null,
+                embeddedCoverUrl: item.posterUrl ?? null,
+                identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
+              })
               .onConflict((oc) => oc.column("uri").doNothing())
               .execute();
           }
@@ -359,6 +429,113 @@ export function createIngester(
           wideEvent["outcome"] = "success";
           return;
         }
+        if (evt.collection === ids.SocialPopfeedFeedList) {
+          const asList = List.validateRecord(record);
+          if (!asList.success) {
+            wideEvent["outcome"] = "skipped";
+            wideEvent["reason"] = "invalid_record";
+            return;
+          }
+          const list = asList.value;
+          void bidirectionalResolver.resolveDidToHandle(evt.did);
+
+          await db
+            .insertInto("book_list")
+            .values({
+              uri: evt.uri.toString(),
+              cid: evt.cid.toString(),
+              userDid: evt.did,
+              name: list.name,
+              description: list.description ?? null,
+              ordered: list.ordered ? 1 : 0,
+              tags: list.tags ? JSON.stringify(list.tags) : null,
+              createdAt: list.createdAt,
+              indexedAt: now.toISOString(),
+            })
+            .onConflict((oc) =>
+              oc.column("uri").doUpdateSet((c) => ({
+                cid: c.ref("excluded.cid"),
+                name: c.ref("excluded.name"),
+                description: c.ref("excluded.description"),
+                ordered: c.ref("excluded.ordered"),
+                tags: c.ref("excluded.tags"),
+                indexedAt: c.ref("excluded.indexedAt"),
+              })),
+            )
+            .execute();
+          wideEvent["outcome"] = "success";
+          return;
+        }
+        if (evt.collection === ids.SocialPopfeedFeedListItem) {
+          const asItem = ListItem.validateRecord(record);
+          if (!asItem.success) {
+            wideEvent["outcome"] = "skipped";
+            wideEvent["reason"] = "invalid_record";
+            return;
+          }
+          const item = asItem.value;
+
+          // Only process book items
+          if (item.creativeWorkType !== "book") {
+            wideEvent["outcome"] = "skipped";
+            wideEvent["reason"] = "non_book_item";
+            return;
+          }
+
+          void bidirectionalResolver.resolveDidToHandle(evt.did);
+
+          // Resolve hiveId: check identifiers.hiveId first, then fall back to ISBN
+          let hiveId: HiveId | null = (item.identifiers?.hiveId as HiveId) ?? null;
+
+          if (!hiveId && (item.identifiers?.isbn13 || item.identifiers?.isbn10)) {
+            const idRow = await db
+              .selectFrom("book_id_map")
+              .select("hiveId")
+              .where((eb) =>
+                eb.or([
+                  ...(item.identifiers?.isbn13 ? [eb("isbn13", "=", item.identifiers.isbn13)] : []),
+                  ...(item.identifiers?.isbn10 ? [eb("isbn", "=", item.identifiers.isbn10)] : []),
+                ]),
+              )
+              .executeTakeFirst();
+            if (idRow) hiveId = idRow.hiveId;
+          }
+
+          await db
+            .insertInto("book_list_item")
+            .values({
+              uri: evt.uri.toString(),
+              cid: evt.cid.toString(),
+              userDid: evt.did,
+              listUri: item.listUri,
+              hiveId,
+              description: item.description ?? null,
+              position: item.position ?? null,
+              addedAt: item.addedAt,
+              indexedAt: now.toISOString(),
+              embeddedTitle: item.title ?? null,
+              embeddedAuthor: item.mainCredit ?? null,
+              embeddedCoverUrl: item.posterUrl ?? null,
+              identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
+            })
+            .onConflict((oc) =>
+              oc.column("uri").doUpdateSet((c) => ({
+                cid: c.ref("excluded.cid"),
+                listUri: c.ref("excluded.listUri"),
+                hiveId: c.ref("excluded.hiveId"),
+                description: c.ref("excluded.description"),
+                position: c.ref("excluded.position"),
+                indexedAt: c.ref("excluded.indexedAt"),
+                embeddedTitle: c.ref("excluded.embeddedTitle"),
+                embeddedAuthor: c.ref("excluded.embeddedAuthor"),
+                embeddedCoverUrl: c.ref("excluded.embeddedCoverUrl"),
+                identifiers: c.ref("excluded.identifiers"),
+              })),
+            )
+            .execute();
+          wideEvent["outcome"] = hiveId ? "success" : "success_unresolved";
+          return;
+        }
       }
       if (evt.event === "delete") {
         if (evt.collection === ids.BuzzBookhiveBook) {
@@ -368,6 +545,18 @@ export function createIngester(
         }
         if (evt.collection === ids.BuzzBookhiveBuzz) {
           await db.deleteFrom("buzz").where("uri", "=", evt.uri.toString()).execute();
+          wideEvent["outcome"] = "success";
+          return;
+        }
+        if (evt.collection === ids.SocialPopfeedFeedList) {
+          // Delete list and all its items
+          await db.deleteFrom("book_list_item").where("listUri", "=", evt.uri.toString()).execute();
+          await db.deleteFrom("book_list").where("uri", "=", evt.uri.toString()).execute();
+          wideEvent["outcome"] = "success";
+          return;
+        }
+        if (evt.collection === ids.SocialPopfeedFeedListItem) {
+          await db.deleteFrom("book_list_item").where("uri", "=", evt.uri.toString()).execute();
           wideEvent["outcome"] = "success";
           return;
         }

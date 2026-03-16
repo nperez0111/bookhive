@@ -4,7 +4,13 @@
  */
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
-import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
+import {
+  ids,
+  Book as BookRecord,
+  Buzz as BuzzRecord,
+  List as ListRecord,
+  ListItem as ListItemRecord,
+} from "../bsky/lexicon";
 import type { HiveBook, HiveId } from "../types";
 import { syncUserFollows, shouldSyncFollows } from "../utils/getFollows";
 import { readThroughCache } from "../utils/readThroughCache";
@@ -456,5 +462,157 @@ export async function refetchBooks({
         }
       }
     }
+  }
+}
+
+export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: AppContext }) {
+  if (!agent) return;
+
+  // 1. Sync lists
+  const listUris: string[] = [];
+  let listCursor: string | undefined;
+  do {
+    const res = await agent.get("com.atproto.repo.listRecords", {
+      params: {
+        repo: agent.did,
+        collection: ids.SocialPopfeedFeedList,
+        limit: 100,
+        cursor: listCursor,
+      },
+    });
+    if (!res.ok) return;
+    const data = res.data as ListRecordsOut;
+
+    for (const record of data.records) {
+      if (!ListRecord.validateRecord(record.value).success) continue;
+      const list = record.value as ListRecord.Record;
+
+      listUris.push(record.uri);
+      await ctx.db
+        .insertInto("book_list")
+        .values({
+          uri: record.uri,
+          cid: record.cid,
+          userDid: agent.did,
+          name: list.name,
+          description: list.description ?? null,
+          ordered: list.ordered ? 1 : 0,
+          tags: list.tags ? JSON.stringify(list.tags) : null,
+          createdAt: list.createdAt,
+          indexedAt: new Date().toISOString(),
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet((c) => ({
+            cid: c.ref("excluded.cid"),
+            name: c.ref("excluded.name"),
+            description: c.ref("excluded.description"),
+            ordered: c.ref("excluded.ordered"),
+            tags: c.ref("excluded.tags"),
+            indexedAt: c.ref("excluded.indexedAt"),
+          })),
+        )
+        .execute();
+    }
+
+    listCursor = data.records.length === 100 ? data.cursor : undefined;
+  } while (listCursor);
+
+  // Clean up deleted lists
+  if (listUris.length === 0) {
+    await ctx.db.deleteFrom("book_list").where("userDid", "=", agent.did).execute();
+  } else {
+    await ctx.db
+      .deleteFrom("book_list")
+      .where("userDid", "=", agent.did)
+      .where("uri", "not in", listUris)
+      .execute();
+  }
+
+  // 2. Sync list items
+  const itemUris: string[] = [];
+  let itemCursor: string | undefined;
+  do {
+    const res = await agent.get("com.atproto.repo.listRecords", {
+      params: {
+        repo: agent.did,
+        collection: ids.SocialPopfeedFeedListItem,
+        limit: 100,
+        cursor: itemCursor,
+      },
+    });
+    if (!res.ok) return;
+    const data = res.data as ListRecordsOut;
+
+    for (const record of data.records) {
+      if (!ListItemRecord.validateRecord(record.value).success) continue;
+      const item = record.value as ListItemRecord.Record;
+
+      // Only process book items
+      if (item.creativeWorkType !== "book") continue;
+
+      // Resolve hiveId: check identifiers.hiveId first, then fall back to ISBN
+      let hiveId: HiveId | null = (item.identifiers?.hiveId as HiveId) ?? null;
+
+      if (!hiveId && (item.identifiers?.isbn13 || item.identifiers?.isbn10)) {
+        const idRow = await ctx.db
+          .selectFrom("book_id_map")
+          .select("hiveId")
+          .where((eb) =>
+            eb.or([
+              ...(item.identifiers?.isbn13 ? [eb("isbn13", "=", item.identifiers.isbn13)] : []),
+              ...(item.identifiers?.isbn10 ? [eb("isbn", "=", item.identifiers.isbn10)] : []),
+            ]),
+          )
+          .executeTakeFirst();
+        if (idRow) hiveId = idRow.hiveId;
+      }
+
+      itemUris.push(record.uri);
+      await ctx.db
+        .insertInto("book_list_item")
+        .values({
+          uri: record.uri,
+          cid: record.cid,
+          userDid: agent.did,
+          listUri: item.listUri,
+          hiveId,
+          description: item.description ?? null,
+          position: item.position ?? null,
+          addedAt: item.addedAt,
+          indexedAt: new Date().toISOString(),
+          embeddedTitle: item.title ?? null,
+          embeddedAuthor: item.mainCredit ?? null,
+          embeddedCoverUrl: item.posterUrl ?? null,
+          identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
+        })
+        .onConflict((oc) =>
+          oc.column("uri").doUpdateSet((c) => ({
+            cid: c.ref("excluded.cid"),
+            listUri: c.ref("excluded.listUri"),
+            hiveId: c.ref("excluded.hiveId"),
+            description: c.ref("excluded.description"),
+            position: c.ref("excluded.position"),
+            indexedAt: c.ref("excluded.indexedAt"),
+            embeddedTitle: c.ref("excluded.embeddedTitle"),
+            embeddedAuthor: c.ref("excluded.embeddedAuthor"),
+            embeddedCoverUrl: c.ref("excluded.embeddedCoverUrl"),
+            identifiers: c.ref("excluded.identifiers"),
+          })),
+        )
+        .execute();
+    }
+
+    itemCursor = data.records.length === 100 ? data.cursor : undefined;
+  } while (itemCursor);
+
+  // Clean up deleted items
+  if (itemUris.length === 0) {
+    await ctx.db.deleteFrom("book_list_item").where("userDid", "=", agent.did).execute();
+  } else {
+    await ctx.db
+      .deleteFrom("book_list_item")
+      .where("userDid", "=", agent.did)
+      .where("uri", "not in", itemUris)
+      .execute();
   }
 }

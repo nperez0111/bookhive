@@ -27,6 +27,7 @@ import {
   ensureBookIdentifiersCurrent,
   refetchBooks,
   refetchBuzzes,
+  refetchLists,
   syncFollowsIfNeeded,
 } from "./lib";
 import pages from "./pages";
@@ -82,6 +83,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
       void Promise.all([
         refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
         syncFollowsIfNeeded({ agent, ctx }),
+        refetchLists({ agent, ctx }),
       ]);
     },
   });

@@ -6,6 +6,8 @@ import { safeParse } from "@atcute/lexicons";
 import * as BookSchema from "./generated/types/buzz/bookhive/book.js";
 import * as BuzzSchema from "./generated/types/buzz/bookhive/buzz.js";
 import * as StrongRefSchema from "./generated/types/com/atproto/repo/strongRef.js";
+import * as ListSchema from "./generated/types/social/popfeed/feed/list.js";
+import * as ListItemSchema from "./generated/types/social/popfeed/feed/listItem.js";
 
 export type ValidationResult<T> = { success: true; value: T } | { success: false; error: Error };
 
@@ -36,4 +38,12 @@ export function validateBuzzRecord(v: unknown): ValidationResult<BuzzSchema.Main
 
 export function validateMain(v: unknown): ValidationResult<StrongRefSchema.Main> {
   return fromAtcuteResult(safeParse(StrongRefSchema.mainSchema, v));
+}
+
+export function validateListRecord(v: unknown): ValidationResult<ListSchema.Main> {
+  return fromAtcuteResult(safeParse(ListSchema.mainSchema, v));
+}
+
+export function validateListItemRecord(v: unknown): ValidationResult<ListItemSchema.Main> {
+  return fromAtcuteResult(safeParse(ListItemSchema.mainSchema, v));
 }
