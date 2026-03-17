@@ -23,6 +23,7 @@ import {
   MIN_BOOKS_FOR_YEAR_STATS,
 } from "../utils/readingStats";
 import { refetchBooks } from "./lib";
+import { getUserLists } from "../utils/lists";
 
 const app = new Hono<AppEnv>()
   .get("/refresh-books", async (c) => {
@@ -383,6 +384,10 @@ const app = new Hono<AppEnv>()
     ]);
     endTime(c, "followingFollowers");
 
+    startTime(c, "userLists");
+    const userLists = await getUserLists({ db: c.get("ctx").db, userDid: did });
+    endTime(c, "userLists");
+
     startTime(c, "genreStats");
     let genreStats: { genre: string; count: number }[] = [];
     if (isBuzzer && parsedBooks.length > 0) {
@@ -418,6 +423,7 @@ const app = new Hono<AppEnv>()
         followingProfiles={followingProfiles}
         followersProfiles={followersProfiles}
         genreStats={genreStats}
+        userLists={userLists}
       />,
       {
         title: "BookHive | @" + handle,

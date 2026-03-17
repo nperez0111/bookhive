@@ -50,7 +50,7 @@ const StatusDropdown: FC<{
                 (book.status in BOOK_STATUS_MAP
                   ? BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
                   : book.status)) ||
-                "Add to shelf"}
+                "Reading status"}
             </span>
             <svg
               class="h-5 w-5 text-gray-400"

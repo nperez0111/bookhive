@@ -55,7 +55,7 @@ export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext
       sourceUrl: book.sourceUrl,
     });
 
-    const detailedData = await getBookDetailedInfo(book.sourceUrl);
+    const detailedData = await getBookDetailedInfo(book.sourceUrl, ctx.addWideEventContext);
 
     if (!detailedData) {
       ctx.addWideEventContext({

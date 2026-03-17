@@ -37,6 +37,7 @@ import comments from "./comments";
 import api from "./api";
 import rss from "./rss";
 import og from "./og";
+import shelves from "./shelves";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -235,6 +236,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.route("/", pages);
   app.route("/", profile);
   app.route("/books", books);
+  app.route("/shelves", shelves);
   app.route("/comments", comments);
   app.route("/api", api);
   app.route("/rss", rss);

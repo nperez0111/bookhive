@@ -27,6 +27,12 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
       icon: "chart",
       authRequired: true,
     },
+    {
+      href: user ? `/shelves/${user.handle}` : "/shelves",
+      label: "Shelves",
+      icon: "shelf",
+      authRequired: true,
+    },
     { href: "/explore", label: "Explore", icon: "compass", authRequired: false },
     { href: "/import", label: "Import", icon: "upload", authRequired: true },
     ...(pdsEnabled
@@ -46,7 +52,8 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
           const isActive =
             currentPath === item.href ||
             (item.href.includes("/stats") && currentPath.includes("/stats")) ||
-            (item.href === "/explore" && currentPath.startsWith("/explore"));
+            (item.href === "/explore" && currentPath.startsWith("/explore")) ||
+            (item.icon === "shelf" && currentPath.startsWith("/shelves"));
           return (
             <li>
               <a href={item.href} aria-current={isActive ? "page" : undefined}>
