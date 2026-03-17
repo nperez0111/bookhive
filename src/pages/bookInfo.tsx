@@ -9,6 +9,7 @@ import { env } from "../env";
 import type { HiveBook, UserBook } from "../types";
 import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { hydrateUserBook } from "../utils/bookProgress";
+import { getUserLists } from "../utils/lists";
 import { CommentsSection } from "./comments";
 import { Script } from "./utils/script";
 
@@ -159,7 +160,7 @@ const BookStatusButton: FC<{
                   (usersBook.status in BOOK_STATUS_MAP
                     ? BOOK_STATUS_MAP[usersBook.status as keyof typeof BOOK_STATUS_MAP]
                     : usersBook.status)) ||
-                  "Add to shelf"}
+                  "Reading status"}
               </span>
               <svg
                 className="h-5 w-5 text-gray-400"
@@ -333,6 +334,31 @@ export const BookInfo: FC<{
     .limit(10_000)
     .execute();
   endTime(c, "db_reviews_of_this_book");
+
+  // Fetch user's shelves for "Add to Shelf" feature
+  startTime(c, "db_user_lists");
+  const userLists = did ? await getUserLists({ db: c.get("ctx").db, userDid: did }) : [];
+  endTime(c, "db_user_lists");
+
+  // Check which shelves already contain this book
+  startTime(c, "db_book_on_shelves");
+  const bookOnShelves = did
+    ? await c
+        .get("ctx")
+        .db.selectFrom("book_list_item")
+        .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
+        .select(["book_list.uri", "book_list.name", "book_list.userDid"])
+        .where("book_list_item.hiveId", "==", book.id)
+        .execute()
+    : [];
+  endTime(c, "db_book_on_shelves");
+
+  const userHandle = did
+    ? await c
+        .get("ctx")
+        .resolver.resolveDidToHandle(did)
+        .catch(() => did)
+    : null;
 
   const firstAuthor = book.authors.split("\t")[0] ?? "";
   const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
@@ -913,6 +939,153 @@ export const BookInfo: FC<{
                     </a>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {did && userLists.length > 0 && (
+            <div class="card">
+              <div class="card-header">
+                <h3 class="text-lg font-semibold text-foreground">Add to Shelf</h3>
+              </div>
+              <div class="card-body">
+                {(() => {
+                  const shelvesWithBook = new Set(
+                    bookOnShelves.filter((s) => s.userDid === did).map((s) => s.uri),
+                  );
+                  const availableShelves = userLists.filter((l) => !shelvesWithBook.has(l.uri));
+                  return (
+                    <>
+                      {bookOnShelves.filter((s) => s.userDid === did).length > 0 && (
+                        <div class="mb-3">
+                          <p class="mb-1 text-xs font-medium text-muted-foreground">
+                            On your shelves
+                          </p>
+                          <div class="flex flex-wrap gap-1.5">
+                            {bookOnShelves
+                              .filter((s) => s.userDid === did)
+                              .map((shelf) => {
+                                const rkey = shelf.uri.split("/").at(-1)!;
+                                return (
+                                  <a
+                                    key={shelf.uri}
+                                    href={`/shelves/${userHandle}/${rkey}`}
+                                    class="badge text-xs hover:bg-primary hover:text-primary-foreground"
+                                  >
+                                    {shelf.name}
+                                  </a>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                      {availableShelves.length > 0 && (
+                        <div class="relative">
+                          <form method="post" action="/shelves/add">
+                            <input type="hidden" name="hiveId" value={book.id} />
+                            <button
+                              type="button"
+                              aria-haspopup="listbox"
+                              aria-expanded="false"
+                              id="add-to-shelf-btn"
+                              class="peer w-full cursor-pointer rounded-md bg-card px-3 py-2 text-left text-sm font-medium text-foreground shadow-sm ring-1 ring-border ring-inset hover:bg-muted focus:ring-2 focus:ring-primary focus:outline-none"
+                            >
+                              <span class="flex items-center justify-between">
+                                <span>Choose a shelf...</span>
+                                <svg
+                                  class="h-5 w-5 text-gray-400"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </span>
+                            </button>
+                            <div
+                              role="listbox"
+                              class="ring-opacity-5 invisible absolute z-10 mt-1 w-full rounded-md bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                              id="add-to-shelf-menu"
+                            >
+                              <div class="p-1">
+                                {availableShelves.map((list) => {
+                                  const rkey = list.uri.split("/").at(-1)!;
+                                  return (
+                                    <button
+                                      key={list.uri}
+                                      type="submit"
+                                      role="option"
+                                      name="shelfPath"
+                                      value={`${userHandle}/${rkey}`}
+                                      class="relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                                    >
+                                      {list.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </form>
+                          <script
+                            dangerouslySetInnerHTML={{
+                              __html: `
+                                (function() {
+                                  const btn = document.getElementById("add-to-shelf-btn");
+                                  const menu = document.getElementById("add-to-shelf-menu");
+                                  if (!btn || !menu) return;
+                                  btn.addEventListener("click", () => {
+                                    btn.setAttribute("aria-expanded", btn.getAttribute("aria-expanded") === "true" ? "false" : "true");
+                                  });
+                                  document.addEventListener("click", (e) => {
+                                    if (btn.getAttribute("aria-expanded") === "true" && !btn.contains(e.target) && !menu.contains(e.target)) {
+                                      btn.setAttribute("aria-expanded", "false");
+                                    }
+                                  });
+                                })();
+                              `,
+                            }}
+                          />
+                        </div>
+                      )}
+                      {availableShelves.length === 0 &&
+                        bookOnShelves.filter((s) => s.userDid === did).length > 0 && (
+                          <p class="text-xs text-muted-foreground">
+                            This book is on all your shelves.
+                          </p>
+                        )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Shelves from other users */}
+          {bookOnShelves.filter((s) => s.userDid !== did).length > 0 && (
+            <div class="card">
+              <div class="card-header">
+                <h3 class="text-lg font-semibold text-foreground">On Shelves</h3>
+              </div>
+              <div class="card-body flex flex-col gap-1">
+                {bookOnShelves
+                  .filter((s) => s.userDid !== did)
+                  .map((shelf) => {
+                    const rkey = shelf.uri.split("/").at(-1)!;
+                    const shelfDid = shelf.userDid;
+                    return (
+                      <a
+                        key={shelf.uri}
+                        href={`/shelves/${shelfDid}/${rkey}`}
+                        class="text-sm text-primary hover:underline"
+                      >
+                        {shelf.name}
+                      </a>
+                    );
+                  })}
               </div>
             </div>
           )}

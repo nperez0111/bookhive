@@ -10,6 +10,8 @@ import {
 import { Database as DatabaseSync } from "bun:sqlite";
 import type {
   BookIdentifiersRow,
+  BookListRow,
+  BookListItemRow,
   Buzz,
   HiveBook,
   HiveBookGenre,
@@ -27,6 +29,8 @@ export type DatabaseSchema = {
   user_book: UserBookRow;
   buzz: Buzz;
   user_follows: UserFollow;
+  book_list: BookListRow;
+  book_list_item: BookListItemRow;
 };
 
 export const BookFields = [
@@ -385,6 +389,58 @@ migrations["010"] = {
   },
   async down(_db: Kysely<unknown>) {
     // No reversible fix; goodreadsId was wrong before.
+  },
+};
+
+migrations["014"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("book_list")
+      .addColumn("uri", "text", (col) => col.primaryKey())
+      .addColumn("cid", "text", (col) => col.notNull())
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("name", "text", (col) => col.notNull())
+      .addColumn("description", "text")
+      .addColumn("ordered", "integer", (col) => col.notNull().defaultTo(0))
+      .addColumn("tags", "text")
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("indexedAt", "text", (col) => col.notNull())
+      .execute();
+
+    await db.schema.createIndex("idx_book_list_user").on("book_list").column("userDid").execute();
+
+    await db.schema
+      .createTable("book_list_item")
+      .addColumn("uri", "text", (col) => col.primaryKey())
+      .addColumn("cid", "text", (col) => col.notNull())
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("listUri", "text", (col) => col.notNull())
+      .addColumn("hiveId", "text")
+      .addColumn("description", "text")
+      .addColumn("position", "integer")
+      .addColumn("addedAt", "text", (col) => col.notNull())
+      .addColumn("indexedAt", "text", (col) => col.notNull())
+      .addColumn("embeddedTitle", "text")
+      .addColumn("embeddedAuthor", "text")
+      .addColumn("embeddedCoverUrl", "text")
+      .addColumn("identifiers", "text")
+      .execute();
+
+    await db.schema
+      .createIndex("idx_book_list_item_list")
+      .on("book_list_item")
+      .column("listUri")
+      .execute();
+
+    await db.schema
+      .createIndex("idx_book_list_item_hive")
+      .on("book_list_item")
+      .column("hiveId")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("book_list_item").execute();
+    await db.schema.dropTable("book_list").execute();
   },
 };
 

@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.createList",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Create a new book list.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the list",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": {
+              "type": "string",
+              "description": "Optional description of the list",
+              "maxLength": 500
+            },
+            "ordered": {
+              "type": "boolean",
+              "description": "Whether the list is ordered"
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 50 },
+              "description": "Optional tags"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "cid"],
+          "properties": {
+            "uri": { "type": "string" },
+            "cid": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

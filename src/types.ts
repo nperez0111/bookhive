@@ -195,6 +195,39 @@ export type BookIdentifiersRow = {
   updatedAt: string;
 };
 
+export type BookListRow = {
+  uri: string;
+  cid: string;
+  userDid: string;
+  name: string;
+  description: string | null;
+  ordered: number;
+  tags: string | null;
+  createdAt: string;
+  indexedAt: string;
+};
+
+export type BookListItemRow = {
+  uri: string;
+  cid: string;
+  userDid: string;
+  listUri: string;
+  /** Null when the item came from another app and we couldn't resolve to a local book. */
+  hiveId: HiveId | null;
+  description: string | null;
+  position: number | null;
+  addedAt: string;
+  indexedAt: string;
+  /** Embedded title from the record (fallback when hiveId is null). */
+  embeddedTitle: string | null;
+  /** Embedded author/mainCredit from the record (fallback when hiveId is null). */
+  embeddedAuthor: string | null;
+  /** Embedded cover/posterUrl from the record (fallback when hiveId is null). */
+  embeddedCoverUrl: string | null;
+  /** JSON-serialized identifiers from the record, for later book matching. */
+  identifiers: string | null;
+};
+
 export type UserFollow = {
   /**
    * DID of the user who is following

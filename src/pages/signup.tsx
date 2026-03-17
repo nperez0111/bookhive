@@ -188,7 +188,13 @@ export const Signup: FC<{
                 </span>
               </button>
               <span class="text-muted-foreground text-xs">Profile photo (optional)</span>
-              <input id="avatar-input" type="file" name="avatar" accept="image/png,image/jpeg" class="hidden" />
+              <input
+                id="avatar-input"
+                type="file"
+                name="avatar"
+                accept="image/png,image/jpeg"
+                class="hidden"
+              />
             </div>
 
             <div class="field">

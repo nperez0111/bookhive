@@ -131,15 +131,34 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
   }
 }
 
-async function getBookDetailedInfo(sourceUrl: string): Promise<ParsedGoodreadsData | null> {
+async function getBookDetailedInfo(
+  sourceUrl: string,
+  addWideEventContext?: (context: Record<string, unknown>) => void,
+): Promise<ParsedGoodreadsData | null> {
+  const addCtx = addWideEventContext ?? (() => {});
   try {
     const response = await fetch(sourceUrl);
+    addCtx({ scrape_status: response.status, scrape_url: sourceUrl });
     const data = await response.text();
-    const nextData = data.slice(data.indexOf(startString) + startString.length);
-    const json = JSON.parse(nextData.slice(0, nextData.indexOf("</script>")));
+    const startIdx = data.indexOf(startString);
+    if (startIdx === -1) {
+      addCtx({ scrape_failure: "next_data_not_found" });
+      return null;
+    }
+    const nextData = data.slice(startIdx + startString.length);
+    const endIdx = nextData.indexOf("</script>");
+    if (endIdx === -1) {
+      addCtx({ scrape_failure: "next_data_end_not_found" });
+      return null;
+    }
+    const json = JSON.parse(nextData.slice(0, endIdx));
     return parseGoodreadsData(json);
   } catch (error) {
-    console.error("Error fetching or parsing Goodreads data:", error);
+    addCtx({
+      scrape_failure: "exception",
+      scrape_error: error instanceof Error ? error.message : String(error),
+      scrape_url: sourceUrl,
+    });
     return null;
   }
 }

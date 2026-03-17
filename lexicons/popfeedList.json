@@ -1,0 +1,56 @@
+{
+  "lexicon": 1,
+  "id": "social.popfeed.feed.list",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["name", "createdAt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the list.",
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description of the list.",
+            "maxLength": 500
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "description": "Optional array of tags for categorizing or describing the list."
+          },
+          "listType": {
+            "type": "string",
+            "description": "The type of list, e.g., 'watchlist', 'favorites', 'to-read', etc.",
+            "maxLength": 50
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "The timestamp when the list was created."
+          },
+          "ordered": {
+            "type": "boolean",
+            "description": "Indicates whether the list is ordered or unordered."
+          },
+          "itemOrder": {
+            "type": "array",
+            "description": "An array of item uris in the order they appear in the list. Stored separately from the items themselves to allow for efficient reordering without needing to update each item record.",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    }
+  }
+}

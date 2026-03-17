@@ -211,7 +211,7 @@ const StatusDropdown: FC<{
   );
   const selectedLabel = status
     ? BOOK_STATUS_MAP[status as keyof typeof BOOK_STATUS_MAP] || status
-    : "Add to shelf";
+    : "Reading status";
   return (
     <div className="relative w-full min-w-0">
       <button

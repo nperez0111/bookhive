@@ -14,6 +14,13 @@ import {
   BuzzBookhiveGetFeed,
   BuzzBookhiveGetAuthorBooks,
   BuzzBookhiveGetReadingStats,
+  BuzzBookhiveGetList,
+  BuzzBookhiveCreateList,
+  BuzzBookhiveUpdateList,
+  BuzzBookhiveDeleteList,
+  BuzzBookhiveAddToList,
+  BuzzBookhiveRemoveFromList,
+  BuzzBookhiveReorderList,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -46,6 +53,15 @@ import {
   toBookIdentifiersOutput,
 } from "../utils/bookIdentifiers";
 import { sql, type NotNull, type SqlBool } from "kysely";
+import {
+  createList,
+  updateList,
+  deleteList,
+  addBookToList,
+  removeBookFromList,
+  reorderListItems,
+  getListWithItems,
+} from "../utils/lists";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
@@ -939,6 +955,157 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         availableYears,
         year,
         readingChallengeGoal,
+      });
+    },
+  });
+
+  // ── List CRUD ──
+
+  router.addProcedure(BuzzBookhiveCreateList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await createList({
+        agent,
+        db: ctx.db,
+        name: input.name,
+        description: input.description,
+        ordered: input.ordered,
+        tags: input.tags,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveUpdateList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await updateList({
+        agent,
+        db: ctx.db,
+        uri: input.uri,
+        name: input.name,
+        description: input.description,
+        ordered: input.ordered,
+        tags: input.tags,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveDeleteList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await deleteList({ agent, db: ctx.db, uri: input.uri });
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveAddToList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await addBookToList({
+        agent,
+        db: ctx.db,
+        listUri: input.listUri,
+        hiveId: input.hiveId as HiveId,
+        description: input.description,
+        position: input.position,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveRemoveFromList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveReorderList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await reorderListItems({
+        agent,
+        db: ctx.db,
+        listUri: input.listUri,
+        itemUris: input.itemUris,
+      });
+
+      return json({});
+    },
+  });
+
+  // ── GetList query ──
+
+  router.addQuery(BuzzBookhiveGetList, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { uri } = params;
+
+      const data = await getListWithItems({ db: ctx.db, listUri: uri });
+      if (!data) {
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "List not found",
+        });
+      }
+
+      const { list, items } = data;
+
+      const didToHandle = await ctx.resolver.resolveDidsToHandles([list.userDid]);
+
+      return json({
+        list: {
+          uri: list.uri,
+          cid: list.cid,
+          userDid: list.userDid,
+          userHandle: didToHandle[list.userDid] ?? list.userDid,
+          name: list.name,
+          description: list.description ?? undefined,
+          ordered: Boolean(list.ordered),
+          tags: list.tags ? JSON.parse(list.tags) : undefined,
+          createdAt: list.createdAt,
+          itemCount: items.length,
+        },
+        items: items.map((item) => ({
+          uri: item.uri,
+          hiveId: item.hiveId ?? undefined,
+          description: item.description ?? undefined,
+          position: item.position ?? undefined,
+          addedAt: item.addedAt,
+          // Use hive_book data when resolved, fall back to embedded metadata
+          title: item.title ?? item.embeddedTitle ?? undefined,
+          authors: item.authors ?? item.embeddedAuthor ?? undefined,
+          thumbnail: item.thumbnail || item.embeddedCoverUrl || undefined,
+          cover: item.cover ?? item.thumbnail ?? item.embeddedCoverUrl ?? undefined,
+          rating: item.rating != null ? Math.round(item.rating * 10) : undefined,
+        })),
       });
     },
   });

@@ -48,12 +48,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
       return /*#__PURE__*/ v.optional(BuzzBookhiveDefs.bookIdentifiersSchema);
     },
     /**
-     * Average rating (0-1000)
+     * Average rating (0-5000, where 1000 == 1.0)
      * @minimum 0
-     * @maximum 1000
+     * @maximum 5000
      */
     rating: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 1000)]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(0, 5000)]),
     ),
     /**
      * Number of ratings

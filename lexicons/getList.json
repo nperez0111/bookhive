@@ -1,0 +1,75 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getList",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get a book list with its items and hydrated book metadata.",
+      "parameters": {
+        "type": "params",
+        "required": ["uri"],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "AT-URI of the list"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["list", "items"],
+          "properties": {
+            "list": {
+              "type": "ref",
+              "ref": "#listView"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#listItemView"
+              }
+            }
+          }
+        }
+      }
+    },
+    "listView": {
+      "type": "object",
+      "required": ["uri", "cid", "userDid", "name", "createdAt"],
+      "properties": {
+        "uri": { "type": "string" },
+        "cid": { "type": "string" },
+        "userDid": { "type": "string" },
+        "userHandle": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ordered": { "type": "boolean" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "datetime" },
+        "itemCount": { "type": "integer" }
+      }
+    },
+    "listItemView": {
+      "type": "object",
+      "required": ["uri", "addedAt"],
+      "properties": {
+        "uri": { "type": "string" },
+        "hiveId": { "type": "string" },
+        "description": { "type": "string" },
+        "position": { "type": "integer" },
+        "addedAt": { "type": "string", "format": "datetime" },
+        "title": { "type": "string" },
+        "authors": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "cover": { "type": "string" },
+        "rating": { "type": "integer" }
+      }
+    }
+  }
+}

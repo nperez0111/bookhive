@@ -1,6 +1,6 @@
 import { type FC } from "hono/jsx";
 import { type Book } from "../types";
-import type { ProfileViewDetailed } from "../types";
+import type { BookListRow, ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
@@ -22,6 +22,7 @@ export const ProfilePage: FC<{
   followingProfiles?: ProfileViewDetailed[];
   followersProfiles?: ProfileViewDetailed[];
   genreStats?: { genre: string; count: number }[];
+  userLists?: Array<BookListRow & { itemCount: number | null }>;
 }> = ({
   handle,
   did,
@@ -36,6 +37,7 @@ export const ProfilePage: FC<{
   followingProfiles = [],
   followersProfiles = [],
   genreStats = [],
+  userLists = [],
 }) => {
   const year = new Date().getFullYear();
   const booksThisYear = books.filter(
@@ -147,6 +149,43 @@ export const ProfilePage: FC<{
               <BookList books={books} />
             )}
           </section>
+
+          {/* Shelves */}
+          {userLists.length > 0 && (
+            <section>
+              <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-2xl font-bold tracking-tight text-foreground">Shelves</h2>
+                <a
+                  href={`/shelves/${handle}`}
+                  class="text-sm font-medium text-primary hover:underline"
+                >
+                  View all →
+                </a>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {userLists.slice(0, 6).map((list) => {
+                  const rkey = list.uri.split("/").at(-1)!;
+                  return (
+                    <a
+                      key={list.uri}
+                      href={`/shelves/${handle}/${rkey}`}
+                      class="card group flex flex-col gap-1 p-4 transition-colors hover:border-primary/50"
+                    >
+                      <h3 class="font-semibold text-foreground group-hover:text-primary line-clamp-1">
+                        {list.name}
+                      </h3>
+                      {list.description && (
+                        <p class="text-sm text-muted-foreground line-clamp-1">{list.description}</p>
+                      )}
+                      <p class="mt-auto text-xs text-muted-foreground">
+                        {list.itemCount ?? 0} {(list.itemCount ?? 0) === 1 ? "book" : "books"}
+                      </p>
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Reviews */}
           {books.some((book) => book.review) && (
