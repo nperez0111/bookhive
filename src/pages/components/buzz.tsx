@@ -1,9 +1,9 @@
 import { type FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import { BOOK_STATUS, BOOK_STATUS_PAST_TENSE_MAP } from "../../constants";
-import { FallbackCover } from "./fallbackCover";
 import type { Book } from "../../types";
-import { Card, CardBody, UserBlock, StarDisplay } from "./cards";
+import { UserBlock } from "./cards";
+import { BookCard, normalizeBookData } from "./BookCard";
 
 export const BuzzSection: FC<{
   title: string;
@@ -47,74 +47,32 @@ export const BuzzSection: FC<{
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {books.map((book) => (
-          <BuzzBook
-            key={`${book.userDid}-${book.hiveId}`}
-            book={book}
-            userHandle={didHandleMap[book.userDid] || book.userDid}
-          />
-        ))}
+        {books.map((book) => {
+          const userHandle = didHandleMap[book.userDid] || book.userDid;
+          const statusText =
+            book.status && book.status in BOOK_STATUS_PAST_TENSE_MAP
+              ? BOOK_STATUS_PAST_TENSE_MAP[book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP]
+              : book.status || BOOK_STATUS_PAST_TENSE_MAP[BOOK_STATUS.READING];
+          const timeAgo = formatDistanceToNow(book.indexedAt, { addSuffix: true });
+
+          return (
+            <BookCard
+              key={`${book.userDid}-${book.hiveId}`}
+              variant="list"
+              book={normalizeBookData(book)}
+            >
+              <UserBlock handle={userHandle} size="sm" />
+              <a href={`/books/${book.hiveId}`} class="mt-1 block text-sm">
+                <span class="text-muted-foreground">{statusText} </span>
+                <span class="text-foreground">{timeAgo}</span>
+                {book.review && book.review.length > 0 && (
+                  <span class="text-muted-foreground"> and reviewed it</span>
+                )}
+              </a>
+            </BookCard>
+          );
+        })}
       </div>
     </div>
-  );
-};
-
-export const BuzzBook: FC<{
-  book: Book;
-  userHandle: string;
-}> = ({ book, userHandle }) => {
-  const statusText =
-    book.status && book.status in BOOK_STATUS_PAST_TENSE_MAP
-      ? BOOK_STATUS_PAST_TENSE_MAP[book.status as keyof typeof BOOK_STATUS_PAST_TENSE_MAP]
-      : book.status || BOOK_STATUS_PAST_TENSE_MAP[BOOK_STATUS.READING];
-  const timeAgo = formatDistanceToNow(book.indexedAt, { addSuffix: true });
-
-  return (
-    <Card class="group overflow-hidden p-0">
-      <a
-        href={`/books/${book.hiveId}`}
-        class="block h-72 w-full transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
-      >
-        {book.cover || book.thumbnail ? (
-          <img
-            src={`${book.cover || book.thumbnail || ""}`}
-            alt={book.title}
-            class="book-cover h-full w-full object-cover"
-            style={`--book-cover-name: book-cover-${book.hiveId}`}
-          />
-        ) : (
-          <FallbackCover
-            className="book-cover h-full w-full rounded-none"
-            style={`--book-cover-name: book-cover-${book.hiveId}`}
-          />
-        )}
-      </a>
-      <CardBody class="mt-0 pt-4">
-        <a href={`/books/${book.hiveId}`} class="block cursor-pointer">
-          <h5
-            class="book-title line-clamp-2 text-xl font-semibold tracking-tight text-foreground"
-            style={`--book-title-name: book-title-${book.hiveId}`}
-          >
-            {book.title}
-          </h5>
-          {book.stars != null && book.stars > 0 && (
-            <div class="mt-1 flex items-center gap-2">
-              <StarDisplay rating={book.stars / 2} size="sm" />
-              <span class="text-muted-foreground text-sm">{book.stars / 2}/5</span>
-            </div>
-          )}
-        </a>
-        <div class="mt-2">
-          <UserBlock handle={userHandle} size="sm" />
-        </div>
-        <a href={`/books/${book.hiveId}`} class="mt-1 block text-sm">
-          <span class="text-muted-foreground">{statusText} </span>
-          <span class="text-foreground">{timeAgo}</span>
-          {book.review && book.review.length > 0 && (
-            <span class="text-muted-foreground"> and reviewed it</span>
-          )}
-        </a>
-      </CardBody>
-    </Card>
   );
 };

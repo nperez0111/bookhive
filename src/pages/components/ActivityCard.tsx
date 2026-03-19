@@ -1,5 +1,6 @@
 import type { FC } from "hono/jsx";
-import { Card, CardBody, UserBlock, BookBlock, CardActions, StarCount } from "./cards";
+import { Card, CardBody, UserBlock, CardActions, StarCount } from "./cards";
+import { BookCard } from "./BookCard";
 
 export type FeedActivity = {
   uri: string;
@@ -79,14 +80,18 @@ export const ActivityCard: FC<ActivityCardProps> = ({ activity, user, timeAgo })
         )}
 
         <div class="bg-muted rounded p-3">
-          <BookBlock
-            hiveId={activity.hiveId}
-            title={activity.title}
-            authors={activity.authors}
-            cover={activity.cover}
-            thumbnail={activity.thumbnail}
+          <BookCard
+            variant="row"
             size="compact"
-            stars={activity.stars}
+            book={{
+              hiveId: activity.hiveId,
+              title: activity.title,
+              authors: activity.authors,
+              cover: activity.cover,
+              thumbnail: activity.thumbnail,
+              rating: activity.stars != null ? activity.stars / 2 : 0,
+              stars: activity.stars,
+            }}
           />
         </div>
 

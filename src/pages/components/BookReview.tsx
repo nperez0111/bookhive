@@ -1,6 +1,7 @@
 import { type FC } from "hono/jsx";
 import type { Book } from "../../types";
-import { Card, CardBody, BookBlock } from "./cards";
+import { Card, CardBody } from "./cards";
+import { BookCard, normalizeBookData } from "./BookCard";
 
 export const BookReview: FC<{
   book: Book;
@@ -8,15 +9,7 @@ export const BookReview: FC<{
   return (
     <Card class="group">
       <CardBody class="flex gap-4">
-        <BookBlock
-          hiveId={book.hiveId}
-          title={book.title}
-          authors={book.authors}
-          cover={book.cover}
-          thumbnail={book.thumbnail}
-          size="medium"
-          stars={book.stars}
-        />
+        <BookCard variant="row" size="medium" book={normalizeBookData(book)} />
         <div class="min-w-0 flex-1">
           <p class="text-foreground py-2">{book.review}</p>
         </div>

@@ -4,6 +4,7 @@ import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
 import { getEmoji } from "./genreEmoji";
 import { getTopAuthors } from "./authorDirectory";
+import { StarDisplay } from "./components/cards/StarDisplay";
 
 function formatCount(count: number): string {
   if (count < 10) return `${count}`;
@@ -135,7 +136,12 @@ export const Explore: FC = async () => {
                     {formatCount(author.bookCount)} books
                   </p>
                   {author.avgRating && (
-                    <p class="text-muted-foreground text-xs">★ {author.avgRating.toFixed(1)}</p>
+                    <div class="mt-0.5 flex items-center gap-1">
+                      <StarDisplay rating={author.avgRating} size="sm" class="flex" />
+                      <span class="text-muted-foreground text-xs">
+                        {author.avgRating.toFixed(1)}
+                      </span>
+                    </div>
                   )}
                 </div>
               </a>
