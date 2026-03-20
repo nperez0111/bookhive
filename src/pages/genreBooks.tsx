@@ -1,7 +1,7 @@
 import { type FC } from "hono/jsx";
 import { sql } from "kysely";
 import type { HiveBook } from "../types";
-import { BookListItem } from "./components/book";
+import { BookCard, normalizeBookData } from "./components/BookCard";
 import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
@@ -116,7 +116,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
               <section>
                 <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {books.map((book) => (
-                    <BookListItem book={book} />
+                    <BookCard variant="dense" book={normalizeBookData(book)} />
                   ))}
                 </ul>
               </section>

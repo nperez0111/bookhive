@@ -520,8 +520,7 @@ const app = new Hono<AppEnv>()
 // Inline shelves list page component
 import type { FC } from "hono/jsx";
 import type { BookListRow, ProfileViewDetailed } from "../types";
-import { FallbackCover } from "../pages/components/fallbackCover";
-import { StarDisplay } from "../pages/components/cards/StarDisplay";
+import { BookCard, type BookCardData } from "../pages/components/BookCard";
 
 type ShelfPreviewItem = {
   cover: string | null;
@@ -602,7 +601,7 @@ export const ShelfCard: FC<{
   previewCovers?: ShelfPreviewItem[];
 }> = ({ name, description, itemCount, href, ordered, previewCovers }) => {
   return (
-    <div class="card flex flex-col gap-3 p-5">
+    <div class="card flex flex-col gap-3 overflow-visible p-5">
       {/* Shelf header — links to the shelf */}
       <a href={href} class="group flex items-start justify-between gap-2">
         <h3 class="text-lg font-semibold text-foreground group-hover:text-primary line-clamp-1">
@@ -614,59 +613,20 @@ export const ShelfCard: FC<{
 
       {/* Horizontal book strip */}
       {previewCovers && previewCovers.length > 0 && (
-        <div class="flex gap-3 overflow-x-auto pb-1" style="scrollbar-width:none">
+        <div class="flex gap-3 overflow-visible">
           {previewCovers.map((item, i) => {
-            const src = item.cover || item.thumbnail || item.embeddedCoverUrl;
-            const bookTitle = item.title || item.embeddedTitle || "Unknown Book";
-            const bookAuthor = item.authors?.split("\t")[0] || item.embeddedAuthor || null;
-            const bookRating = item.rating ? item.rating / 2000 : null;
-            const bookHref = item.hiveId ? `/books/${item.hiveId}` : null;
+            const bookData: BookCardData = {
+              hiveId: item.hiveId,
+              title: item.title || item.embeddedTitle || "Unknown Book",
+              authors: item.authors || item.embeddedAuthor || "Unknown Author",
+              cover: item.cover || item.embeddedCoverUrl,
+              thumbnail: item.thumbnail,
+              rating: item.rating ? item.rating / 1000 : 0,
+            };
 
             return (
-              <div key={i} class="flex w-20 shrink-0 flex-col gap-1">
-                {bookHref ? (
-                  <a href={bookHref} class="shrink-0">
-                    {src ? (
-                      <img
-                        src={src}
-                        alt={bookTitle}
-                        class="h-28 w-20 rounded object-cover shadow-sm"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <FallbackCover className="h-28 w-20 rounded" />
-                    )}
-                  </a>
-                ) : src ? (
-                  <img
-                    src={src}
-                    alt={bookTitle}
-                    class="h-28 w-20 rounded object-cover shadow-sm"
-                    loading="lazy"
-                  />
-                ) : (
-                  <FallbackCover className="h-28 w-20 rounded" />
-                )}
-                {bookHref ? (
-                  <a
-                    href={bookHref}
-                    class="text-xs font-medium text-foreground hover:text-primary line-clamp-2 leading-tight"
-                  >
-                    {bookTitle}
-                  </a>
-                ) : (
-                  <span class="text-xs font-medium text-foreground line-clamp-2 leading-tight">
-                    {bookTitle}
-                  </span>
-                )}
-                {bookAuthor && (
-                  <p class="text-xs text-muted-foreground line-clamp-1 leading-tight">
-                    {bookAuthor}
-                  </p>
-                )}
-                {bookRating && bookRating > 0 && (
-                  <StarDisplay rating={bookRating} size="sm" class="flex" />
-                )}
+              <div key={i} class="w-20 shrink-0">
+                <BookCard variant="dense" book={bookData} />
               </div>
             );
           })}

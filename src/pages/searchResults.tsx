@@ -1,6 +1,6 @@
 import { type FC } from "hono/jsx";
 import type { HiveBook } from "../types";
-import { BookListItem } from "./components/book";
+import { BookCard, normalizeBookData } from "./components/BookCard";
 
 interface SearchResultsProps {
   query: string;
@@ -103,7 +103,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
             <section>
               <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {books.map((book) => (
-                  <BookListItem book={book} />
+                  <BookCard variant="dense" book={normalizeBookData(book)} />
                 ))}
               </ul>
             </section>

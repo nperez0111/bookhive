@@ -2,7 +2,8 @@ import { type FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { Book } from "../../types";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../../constants";
-import { Card, CardBody, BookBlock, CardActions } from "./cards";
+import { Card, CardBody, CardActions } from "./cards";
+import { BookCard, normalizeBookData } from "./BookCard";
 
 const UpdateBookForm: FC<{
   book: Book;
@@ -356,17 +357,12 @@ export const EditableLibraryTable: FC<{
         {sortedBooks.map((book, index) => (
           <Card key={book.hiveId}>
             <CardBody class="flex gap-3">
-              <BookBlock
-                hiveId={book.hiveId}
-                title={book.title}
-                authors={book.authors}
-                cover={book.cover}
-                thumbnail={book.thumbnail}
+              <BookCard
+                variant="row"
                 size="compact"
-                stars={book.stars}
-                status={book.status}
-                showStatus={true}
                 class="flex-1 min-w-0"
+                showStatus={true}
+                book={normalizeBookData(book)}
               />
               <CardActions
                 class="shrink-0 flex-col items-stretch"

@@ -1,6 +1,6 @@
 import type { FC } from "hono/jsx";
 import type { BookListRow, HiveBook, HiveId, ProfileViewDetailed } from "../types";
-import { FallbackCover } from "./components/fallbackCover";
+import { BookCard, type BookCardData } from "./components/BookCard";
 
 type ShelfItem = {
   uri: string;
@@ -121,39 +121,19 @@ export const ShelfViewPage: FC<{
                     key={book.id}
                     class="flex items-center gap-3 rounded-lg border border-border bg-background p-2"
                   >
-                    <a href={`/books/${book.id}`} class="shrink-0">
-                      {book.cover || book.thumbnail ? (
-                        <img
-                          src={book.cover || book.thumbnail}
-                          alt={book.title}
-                          class="h-16 w-11 rounded object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <FallbackCover className="h-16 w-11" />
-                      )}
-                    </a>
-                    <div class="min-w-0 flex-1">
-                      <a
-                        href={`/books/${book.id}`}
-                        class="text-sm font-medium text-foreground hover:text-primary line-clamp-1"
-                      >
-                        {book.title}
-                      </a>
-                      <p class="text-xs text-muted-foreground line-clamp-1">
-                        {book.authors.split("\t").join(", ")}
-                      </p>
-                      {book.rating && (
-                        <div class="mt-0.5 flex items-center gap-1">
-                          <svg class="h-3 w-3 fill-current text-accent" viewBox="0 0 24 24">
-                            <path d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z" />
-                          </svg>
-                          <span class="text-xs text-muted-foreground">
-                            {(book.rating / 1000).toFixed(1)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                    <BookCard
+                      variant="row"
+                      size="compact"
+                      class="flex-1"
+                      book={{
+                        hiveId: book.id,
+                        title: book.title,
+                        authors: book.authors,
+                        cover: book.cover,
+                        thumbnail: book.thumbnail,
+                        rating: book.rating ? book.rating / 1000 : 0,
+                      }}
+                    />
                     <form action={`/shelves/${handle}/${rkey}/add`} method="post" class="shrink-0">
                       <input type="hidden" name="hiveId" value={book.id} />
                       <button type="submit" class="btn btn-primary btn-sm">
@@ -181,69 +161,34 @@ export const ShelfViewPage: FC<{
       ) : items.length === 0 ? null : (
         <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
           {items.map((item, index) => {
-            const bookTitle = item.title || item.embeddedTitle || "Unknown Book";
-            const bookAuthor =
-              item.authors?.split("\t")[0] || item.embeddedAuthor || "Unknown Author";
-            const bookCover = item.cover || item.embeddedCoverUrl || item.thumbnail;
-            const bookRating = item.rating ? (item.rating / 1000).toFixed(1) : null;
-
-            const coverImg = bookCover ? (
-              <img
-                src={bookCover}
-                alt={bookTitle}
-                class="h-full w-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <FallbackCover className="h-full w-full" />
-            );
+            const bookData: BookCardData = {
+              hiveId: item.hiveId,
+              title: item.title || item.embeddedTitle || "Unknown Book",
+              authors: item.authors || item.embeddedAuthor || "Unknown Author",
+              cover: item.cover || item.embeddedCoverUrl,
+              thumbnail: item.thumbnail,
+              rating: item.rating ? item.rating / 1000 : 0,
+            };
 
             return (
-              <div key={item.uri} class="group relative">
-                {/* Cover */}
-                <div class="relative aspect-[2/3] w-full overflow-hidden rounded shadow-sm">
-                  {item.hiveId ? (
-                    <a href={`/books/${item.hiveId}`} class="block h-full w-full">
-                      {coverImg}
-                    </a>
-                  ) : (
-                    <div class="h-full w-full">{coverImg}</div>
-                  )}
-
-                  {/* Rank badge */}
-                  {Boolean(list.ordered) && (
-                    <div class="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold text-white">
+              <BookCard
+                key={item.uri}
+                variant="dense"
+                book={bookData}
+                badge={
+                  list.ordered ? (
+                    <div class="absolute top-1 left-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold text-white">
                       {index + 1}
                     </div>
-                  )}
-
-                  {/* Hover overlay */}
-                  <div class="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    {item.hiveId ? (
-                      <a
-                        href={`/books/${item.hiveId}`}
-                        class="text-xs font-semibold text-white line-clamp-2 hover:underline"
-                      >
-                        {bookTitle}
-                      </a>
-                    ) : (
-                      <span class="text-xs font-semibold text-white line-clamp-2">{bookTitle}</span>
-                    )}
-                    <p class="mt-0.5 text-xs text-white/70 line-clamp-1">{bookAuthor}</p>
-                    {bookRating && (
-                      <div class="mt-1 flex items-center gap-0.5">
-                        <svg class="h-3 w-3 fill-current text-yellow-400" viewBox="0 0 24 24">
-                          <path d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z" />
-                        </svg>
-                        <span class="text-xs text-white/70">{bookRating}</span>
-                      </div>
-                    )}
+                  ) : undefined
+                }
+                overlay={
+                  <>
                     {item.description && (
                       <p class="mt-1 text-xs text-white/60 italic line-clamp-2">
                         {item.description}
                       </p>
                     )}
-                    {/* Remove button (owner only) */}
                     {isOwner && (
                       <form
                         action={`/shelves/${handle}/${rkey}/remove`}
@@ -260,9 +205,9 @@ export const ShelfViewPage: FC<{
                         </button>
                       </form>
                     )}
-                  </div>
-                </div>
-              </div>
+                  </>
+                }
+              />
             );
           })}
         </div>
