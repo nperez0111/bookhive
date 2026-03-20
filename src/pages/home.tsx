@@ -147,10 +147,12 @@ function Features() {
 function LatestActivitySection({
   books,
   didHandleMap,
+  profileMap,
   user,
 }: {
   books: Book[];
   didHandleMap: Record<string, string>;
+  profileMap: Record<string, { avatar?: string | null }>;
   user?: ProfileViewDetailed | null;
 }) {
   return (
@@ -159,6 +161,7 @@ function LatestActivitySection({
       subtitle="See what others are reading and what they think about it."
       books={books}
       didHandleMap={didHandleMap}
+      profileMap={profileMap}
       viewAllHref="/feed"
       viewAllLabel="View all"
       viewAllAuthRequired
@@ -170,10 +173,12 @@ function LatestActivitySection({
 function FriendsBuzzesSection({
   books,
   didHandleMap,
+  profileMap,
   user,
 }: {
   books: Book[];
   didHandleMap: Record<string, string>;
+  profileMap: Record<string, { avatar?: string | null }>;
   user?: ProfileViewDetailed | null;
 }) {
   return (
@@ -182,6 +187,7 @@ function FriendsBuzzesSection({
       subtitle="See what your followers are reading and what they think about it."
       books={books}
       didHandleMap={didHandleMap}
+      profileMap={profileMap}
       viewAllHref="/feed"
       viewAllLabel="View all"
       viewAllAuthRequired
@@ -459,8 +465,12 @@ export const Home: FC = async () => {
     ...new Set([...latestBuzzes.map((b) => b.userDid), ...friendsBuzzes.map((b) => b.userDid)]),
   ];
   startTime(c, "didHandleMap");
-  const didHandleMap = await c.get("ctx").resolver.resolveDidsToHandles(allDids);
+  const [didHandleMap, allProfiles] = await Promise.all([
+    c.get("ctx").resolver.resolveDidsToHandles(allDids),
+    getProfiles({ ctx: c.get("ctx"), dids: allDids }),
+  ]);
   endTime(c, "didHandleMap");
+  const profileMap = Object.fromEntries(allProfiles.map((p) => [p.did, { avatar: p.avatar }]));
 
   return (
     <div class="space-y-8 sm:space-y-10">
@@ -482,12 +492,14 @@ export const Home: FC = async () => {
         <FriendsBuzzesSection
           books={friendsBuzzes as Book[]}
           didHandleMap={didHandleMap}
+          profileMap={profileMap}
           user={profile}
         />
       ) : null}
       <LatestActivitySection
         books={latestBuzzes as Book[]}
         didHandleMap={didHandleMap}
+        profileMap={profileMap}
         user={profile}
       />
     </div>

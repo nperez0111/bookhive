@@ -10,6 +10,7 @@ export const BuzzSection: FC<{
   subtitle: string;
   books: Book[];
   didHandleMap: Record<string, string>;
+  profileMap?: Record<string, { avatar?: string | null }>;
   /** Optional "View all" link; when authRequired, only shown when user is logged in */
   viewAllHref?: string;
   viewAllLabel?: string;
@@ -20,6 +21,7 @@ export const BuzzSection: FC<{
   subtitle,
   books,
   didHandleMap,
+  profileMap,
   viewAllHref,
   viewAllLabel = "View all",
   viewAllAuthRequired,
@@ -61,7 +63,11 @@ export const BuzzSection: FC<{
               variant="list"
               book={normalizeBookData(book)}
             >
-              <UserBlock handle={userHandle} size="sm" />
+              <UserBlock
+                handle={userHandle}
+                avatar={profileMap?.[book.userDid]?.avatar}
+                size="sm"
+              />
               <a href={`/books/${book.hiveId}`} class="mt-1 block text-sm">
                 <span class="text-muted-foreground">{statusText} </span>
                 <span class="text-foreground">{timeAgo}</span>
