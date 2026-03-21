@@ -9,6 +9,7 @@ import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
+import { BookFields } from "../db";
 import { createContextMiddleware } from "../context";
 import { loginRouter } from "../auth/router";
 import { Layout } from "../pages/layout";
@@ -20,6 +21,7 @@ import { PdsLanding } from "../pages/pds";
 import { PrivacyPolicy } from "../pages/privacy-policy";
 import { Terms } from "../pages/terms";
 import { SimpleNavbar } from "../pages/simple-navbar";
+import { MarketingPage } from "../pages/marketing";
 import { env } from "../env";
 import { createXrpcRouter } from "../xrpc/router";
 import {
@@ -131,6 +133,91 @@ export function mainRouter(deps: AppDeps): HonoServer {
         <div class="mx-auto max-w-3xl px-4 py-12">
           <PdsLanding profiles={profiles} bookCounts={bookCounts} />
         </div>
+      </Layout>,
+    );
+  });
+
+  // Marketing landing page — standalone, no Navbar/Sidebar
+  app.get("/", async (c) => {
+    const url = new URL(c.req.raw.url);
+    if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
+      return c.redirect("/app");
+    }
+    const profile = await c.get("ctx").getProfile();
+    if (profile) {
+      return c.redirect("/home");
+    }
+    const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";
+
+    const ctx = c.get("ctx");
+
+    // Trending: books with the most distinct readers in the last 7 days
+    let trendingBooks = await ctx.db
+      .selectFrom("hive_book as hb")
+      .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+      .select([
+        "hb.id",
+        "hb.title",
+        "hb.authors",
+        "hb.thumbnail",
+        (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+      ])
+      .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .groupBy("hb.id")
+      .orderBy("readerCount", "desc")
+      .orderBy("hb.ratingsCount", "desc")
+      .limit(10)
+      .execute();
+
+    // Fallback to all-time most-read if not enough recent activity
+    if (trendingBooks.length < 10) {
+      trendingBooks = await ctx.db
+        .selectFrom("hive_book as hb")
+        .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+        .select([
+          "hb.id",
+          "hb.title",
+          "hb.authors",
+          "hb.thumbnail",
+          (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+        ])
+        .groupBy("hb.id")
+        .orderBy("readerCount", "desc")
+        .limit(10)
+        .execute();
+    }
+
+    const recentRows = await ctx.db
+      .selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .orderBy("user_book.createdAt", "desc")
+      .limit(10)
+      .execute();
+
+    const allDids = [...new Set(recentRows.map((r) => r.userDid))];
+    const [didHandleMap, profiles] = await Promise.all([
+      allDids.length > 0
+        ? ctx.resolver.resolveDidsToHandles(allDids)
+        : ({} as Record<string, string>),
+      allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
+    ]);
+    const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
+
+    return c.html(
+      <Layout
+        assetUrls={c.get("assetUrls")}
+        url={c.req.url}
+        title="BookHive — Reading is better together"
+        description="Track your books, connect with friends, and discover your next favourite read on an open, social platform."
+      >
+        <MarketingPage
+          signupUrl={signupUrl}
+          recentActivity={recentRows}
+          didHandleMap={didHandleMap}
+          profileByDid={profileByDid}
+          trendingBooks={trendingBooks}
+        />
       </Layout>,
     );
   });

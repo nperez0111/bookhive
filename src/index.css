@@ -36,17 +36,17 @@
   --secondary-foreground: rgb(253 230 138); /* amber-200 */
   --accent: rgb(245 158 11); /* amber-500 */
   --accent-foreground: rgb(255 251 235); /* amber-50 */
-  --background: rgb(66 32 6); /* yellow-950 - homepage brown */
+  --background: rgb(66 38 0);
   --foreground: rgb(250 250 249); /* stone-50 */
-  --card: rgb(69 26 3); /* amber-950 */
+  --card: rgb(70 40 0);
   --card-foreground: rgb(250 250 249);
-  --muted: rgb(120 53 15); /* amber-900 */
+  --muted: rgb(120 68 5);
   --muted-foreground: rgb(253 230 138); /* amber-200 */
-  --border: rgb(146 64 14); /* amber-800 */
-  --input: rgb(146 64 14);
+  --border: rgb(146 83 8);
+  --input: rgb(146 83 8);
   --ring: rgb(245 158 11); /* amber-500 */
   --destructive: rgb(239 68 68); /* red-500 */
-  --popover: rgb(69 26 3);
+  --popover: rgb(70 40 0);
   --popover-foreground: rgb(250 250 249);
 }
 

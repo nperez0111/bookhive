@@ -25,10 +25,10 @@ import { SearchResults } from "../pages/searchResults";
 import { searchBooks } from "./lib";
 
 const app = new Hono<AppEnv>()
-  .get("/", async (c) => {
-    const url = new URL(c.req.raw.url);
-    if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
-      return c.redirect("/app");
+  .get("/home", async (c) => {
+    const profile = await c.get("ctx").getProfile();
+    if (!profile) {
+      return c.redirect("/", 302);
     }
     return c.render(<Home />, { title: "BookHive | Home" });
   })
