@@ -5,6 +5,7 @@
 import * as TID from "@atcute/tid";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { startTime, endTime } from "hono/timing";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
@@ -114,12 +115,14 @@ const app = new Hono<AppEnv>()
     const bookLockKey = "book_lock:" + agent.did;
     try {
       await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+      startTime(c, "pds_update_book");
       await updateBookRecord({
         ctx: c.get("ctx"),
         agent,
         hiveId: hiveId as HiveId,
         updates,
       });
+      endTime(c, "pds_update_book");
       c.get("ctx").addWideEventContext({
         api: "update_book",
         hiveId,
@@ -157,6 +160,7 @@ const app = new Hono<AppEnv>()
       }
       const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("json");
 
+      startTime(c, "db_fetch_comment_refs");
       const originalBuzz = uri
         ? await c
             .get("ctx")
@@ -172,6 +176,7 @@ const app = new Hono<AppEnv>()
         .select(["cid", "uri"])
         .where("hiveId", "=", hiveId as HiveId)
         .executeTakeFirst();
+      endTime(c, "db_fetch_comment_refs");
       const createdAt = originalBuzz?.createdAt || new Date().toISOString();
 
       const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
@@ -187,6 +192,7 @@ const app = new Hono<AppEnv>()
         );
       }
 
+      startTime(c, "pds_write_comment");
       const response = await agent.post("com.atproto.repo.applyWrites", {
         input: {
           repo: agent.did,
@@ -207,6 +213,7 @@ const app = new Hono<AppEnv>()
           ],
         },
       });
+      endTime(c, "pds_write_comment");
 
       const applyOut = response.data as {
         results?: Array<{ $type: string; uri?: string; cid?: string }>;
@@ -295,6 +302,7 @@ const app = new Hono<AppEnv>()
     }
     try {
       const createdAt = new Date().toISOString();
+      startTime(c, "pds_follow");
       const response = await agent.post("com.atproto.repo.applyWrites", {
         input: {
           repo: agent.did,
@@ -308,6 +316,7 @@ const app = new Hono<AppEnv>()
           ],
         },
       });
+      endTime(c, "pds_follow");
       const applyOut = response.data as {
         results?: Array<{ $type: string }>;
       } | null;
@@ -321,6 +330,7 @@ const app = new Hono<AppEnv>()
       ) {
         throw new Error("Failed to follow user");
       }
+      startTime(c, "db_follow");
       await c
         .get("ctx")
         .db.insertInto("user_follows")
@@ -339,6 +349,7 @@ const app = new Hono<AppEnv>()
           }),
         )
         .execute();
+      endTime(c, "db_follow");
       c.get("ctx").addWideEventContext({
         api: "follow",
         userDid: agent.did,
@@ -433,6 +444,7 @@ const app = new Hono<AppEnv>()
       return c.json({ success: false, message: "Invalid DID" }, 400);
     }
     try {
+      startTime(c, "pds_list_follows");
       const listRes = await agent.get("com.atproto.repo.listRecords", {
         params: {
           repo: agent.did,
@@ -440,6 +452,7 @@ const app = new Hono<AppEnv>()
           limit: 300,
         },
       });
+      endTime(c, "pds_list_follows");
       if (!listRes.ok) throw new Error("Failed to list follows");
       const data = listRes.data as {
         records: Array<{ uri: string; value: { subject: string } }>;
@@ -460,6 +473,7 @@ const app = new Hono<AppEnv>()
         });
         return c.json({ success: true });
       }
+      startTime(c, "pds_unfollow");
       const applyResult = await agent.post("com.atproto.repo.applyWrites", {
         input: {
           repo: agent.did,
@@ -472,6 +486,7 @@ const app = new Hono<AppEnv>()
           ],
         },
       });
+      endTime(c, "pds_unfollow");
       if (!applyResult.ok) {
         c.get("ctx").addWideEventContext({
           applyWrites_unfollow_error: "remote delete failed",

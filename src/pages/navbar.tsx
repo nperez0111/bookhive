@@ -64,8 +64,8 @@ export const Navbar: FC<{
           </form>
         </div>
 
-        {/* Right group: theme toggle + user */}
-        <div class="ml-auto flex shrink-0 items-center gap-2">
+        {/* Right group: theme toggle + user — hidden on mobile (moved to sidebar) */}
+        <div class="ml-auto hidden shrink-0 items-center gap-2 md:flex">
           {/* Dark mode toggle */}
           <button
             type="button"
@@ -222,7 +222,7 @@ export const Navbar: FC<{
           backdrop?.addEventListener("click", closeSidebar);
         }}
       />
-      {/* Theme toggle */}
+      {/* Theme toggle — handles all .theme-toggle buttons (navbar + sidebar) */}
       <Script
         script={(document) => {
           const updateThemeColor = () => {
@@ -235,12 +235,13 @@ export const Navbar: FC<{
             }
           };
           updateThemeColor();
-          const btn = document.getElementById("theme-toggle");
-          btn?.addEventListener("click", () => {
-            const html = document.documentElement;
-            const isDark = html.classList.toggle("dark");
-            localStorage.setItem("theme", isDark ? "dark" : "light");
-            updateThemeColor();
+          document.querySelectorAll(".theme-toggle").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const html = document.documentElement;
+              const isDark = html.classList.toggle("dark");
+              localStorage.setItem("theme", isDark ? "dark" : "light");
+              updateThemeColor();
+            });
           });
         }}
       />

@@ -229,7 +229,7 @@ export const SearchPalette: FC<{
               aria-controls="palette-results"
             />
             <kbd
-              class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground cursor-pointer"
+              class="hidden rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground cursor-pointer sm:inline"
               onClick={close}
             >
               ESC

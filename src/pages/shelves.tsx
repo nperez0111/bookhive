@@ -250,7 +250,7 @@ export const ShelfCreatePage: FC = () => {
             maxLength={500}
             rows={3}
             placeholder="What's this shelf about?"
-            class="input w-full"
+            class="textarea w-full"
             style={{ resize: "vertical" }}
           />
         </div>
@@ -290,7 +290,7 @@ export const ShelfEditPage: FC<{
     <div class="mx-auto max-w-lg space-y-6 px-4 lg:px-8">
       <h1 class="text-2xl font-bold text-foreground">Edit Shelf</h1>
 
-      <form action={`/shelves/${handle}/${rkey}/edit`} method="post" class="space-y-4">
+      <form action={`/shelves/${handle}/${rkey}/edit`} method="post" class="card space-y-4 p-6">
         <div>
           <label for="shelf-name" class="mb-1 block text-sm font-medium text-foreground">
             Name
@@ -315,7 +315,7 @@ export const ShelfEditPage: FC<{
             name="description"
             maxLength={500}
             rows={3}
-            class="input w-full"
+            class="textarea w-full"
             style={{ resize: "vertical" }}
           >
             {list.description || ""}

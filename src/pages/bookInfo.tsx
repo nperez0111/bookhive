@@ -21,20 +21,32 @@ import { Script } from "./utils/script";
 async function Recommendations({ book, did }: { book: HiveBook; did: string | null }) {
   const c = useRequestContext();
   startTime(c, "db_peer_books");
-  const peerBooks = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .selectAll()
-    .where("hiveId", "==", book.id)
-    .orderBy("indexedAt", "desc")
-    .limit(100)
-    .execute();
+  const db = c.get("ctx").db;
+  const [peerBooks, totalOthersCountResult] = await Promise.all([
+    db
+      .selectFrom("user_book")
+      .selectAll()
+      .where("hiveId", "==", book.id)
+      .orderBy("indexedAt", "desc")
+      .limit(101)
+      .execute(),
+    db
+      .selectFrom("user_book")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("hiveId", "==", book.id)
+      .$if(did !== null, (qb) => qb.where("userDid", "!=", did!))
+      .executeTakeFirstOrThrow(),
+  ]);
   endTime(c, "db_peer_books");
 
+  const totalOthersCount = Number(totalOthersCountResult.count);
+
   startTime(c, "resolver_peer_profiles");
+  const others = peerBooks.filter((r) => r.userDid !== did);
+  const visible = others.slice(0, 100);
   const profiles = await getProfiles({
     ctx: c.get("ctx"),
-    dids: peerBooks.map((s) => s.userDid),
+    dids: visible.map((s) => s.userDid),
   });
   endTime(c, "resolver_peer_profiles");
 
@@ -56,48 +68,49 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
     );
   }
 
-  const visible = peerBooks.filter((r) => r.userDid !== did).slice(0, 5);
-  const remaining = peerBooks.filter((r) => r.userDid !== did).length - visible.length;
+  const remaining = Math.max(0, totalOthersCount - 100);
 
   return (
     <div class="flex flex-col gap-2">
-      {visible.map((related) => {
-        const profile = profileMap.get(related.userDid);
-        const handle = profile?.handle || related.userDid;
-        const avatar = profile?.avatar;
-        return (
-          <a
-            key={related.userDid}
-            href={`/profile/${handle}`}
-            class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
-          >
-            {avatar ? (
-              <img
-                src={`/images/w_100/${avatar}`}
-                alt=""
-                class="h-8 w-8 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
-            )}
-            <div class="min-w-0">
-              <span class="text-primary font-medium">@{handle}</span>
-              <span class="text-muted-foreground">
-                {" "}
-                -{" "}
-                {related.status && related.status in BOOK_STATUS_MAP
-                  ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
-                  : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
-                {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
-              </span>
-              {related.stars && (
-                <span class="text-muted-foreground"> - rated {related.stars / 2}</span>
+      <div class="flex max-h-[500px] flex-col gap-2 overflow-y-auto">
+        {visible.map((related) => {
+          const profile = profileMap.get(related.userDid);
+          const handle = profile?.handle || related.userDid;
+          const avatar = profile?.avatar;
+          return (
+            <a
+              key={related.userDid}
+              href={`/profile/${handle}`}
+              class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
+            >
+              {avatar ? (
+                <img
+                  src={`/images/w_100/${avatar}`}
+                  alt=""
+                  class="h-8 w-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
               )}
-              {related.review && <span class="text-muted-foreground"> - reviewed</span>}
-            </div>
-          </a>
-        );
-      })}
+              <div class="min-w-0">
+                <span class="text-primary font-medium">@{handle}</span>
+                <span class="text-muted-foreground">
+                  {" "}
+                  -{" "}
+                  {related.status && related.status in BOOK_STATUS_MAP
+                    ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
+                    : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
+                  {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
+                </span>
+                {related.stars && (
+                  <span class="text-muted-foreground"> - rated {related.stars / 2}</span>
+                )}
+                {related.review && <span class="text-muted-foreground"> - reviewed</span>}
+              </div>
+            </a>
+          );
+        })}
+      </div>
       {remaining > 0 && (
         <p class="px-1 text-xs text-muted-foreground">
           + {remaining} more {remaining === 1 ? "person" : "people"}
@@ -119,87 +132,92 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  startTime(c, "db_user_book");
-  const rawUserBook = did
-    ? await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("userDid", "==", did)
-        .where("hiveId", "==", book.id)
-        .executeTakeFirst()
-    : undefined;
-  endTime(c, "db_user_book");
-  const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
-
-  startTime(c, "db_reviews_of_this_book");
-  const reviewsOfThisBook = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .select([
-      "user_book.hiveId",
-      "user_book.createdAt",
-      "user_book.uri",
-      "user_book.cid",
-      "user_book.userDid",
-      "user_book.review",
-      "user_book.stars",
-      (eb) =>
-        eb
-          .selectFrom("buzz")
-          .select(sql<number>`count(*)`.as("commentCount"))
-          .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
-          .as("commentCount"),
-    ])
-    .where("user_book.hiveId", "=", book.id)
-    .where("user_book.review", "!=", "")
-    .orderBy("user_book.createdAt", "desc")
-    .limit(10_000)
-    .execute();
-  endTime(c, "db_reviews_of_this_book");
-
-  startTime(c, "db_user_lists");
-  const userLists = did ? await getUserLists({ db: c.get("ctx").db, userDid: did }) : [];
-  endTime(c, "db_user_lists");
-
-  startTime(c, "db_book_on_shelves");
-  const bookOnShelves = did
-    ? await c
-        .get("ctx")
-        .db.selectFrom("book_list_item")
-        .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
-        .select(["book_list.uri", "book_list.name", "book_list.userDid"])
-        .where("book_list_item.hiveId", "==", book.id)
-        .execute()
-    : [];
-  endTime(c, "db_book_on_shelves");
-
-  const userHandle = did
-    ? await c
-        .get("ctx")
-        .resolver.resolveDidToHandle(did)
-        .catch(() => did)
-    : null;
-
   const firstAuthor = book.authors.split("\t")[0] ?? "";
   const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
   const authorCondition = patterns
     ? sql`(authors = ${patterns.exact} OR authors LIKE ${patterns.first} OR authors LIKE ${patterns.middle} OR authors LIKE ${patterns.last})`
     : sql`0`;
-  startTime(c, "db_other_books_by_author");
-  const otherBooksByAuthor = firstAuthor
-    ? await c
+
+  // Run all independent queries in parallel
+  startTime(c, "db_parallel_queries");
+  const [rawUserBook, reviewsOfThisBook, userLists, bookOnShelves, userHandle, otherBooksByAuthor] =
+    await Promise.all([
+      // db_user_book
+      did
+        ? c
+            .get("ctx")
+            .db.selectFrom("user_book")
+            .selectAll()
+            .where("userDid", "==", did)
+            .where("hiveId", "==", book.id)
+            .executeTakeFirst()
+        : Promise.resolve(undefined),
+      // db_reviews_of_this_book
+      c
         .get("ctx")
-        .db.selectFrom("hive_book")
-        .selectAll()
-        .where("id", "!=", book.id)
-        .where(authorCondition as any)
-        .orderBy("ratingsCount", "desc")
-        .orderBy("rating", "desc")
-        .limit(6)
-        .execute()
-    : [];
-  endTime(c, "db_other_books_by_author");
+        .db.selectFrom("user_book")
+        .select([
+          "user_book.hiveId",
+          "user_book.createdAt",
+          "user_book.uri",
+          "user_book.cid",
+          "user_book.userDid",
+          "user_book.review",
+          "user_book.stars",
+          (eb) =>
+            eb
+              .selectFrom("buzz")
+              .select(sql<number>`count(*)`.as("commentCount"))
+              .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
+              .as("commentCount"),
+        ])
+        .where("user_book.hiveId", "=", book.id)
+        .where("user_book.review", "!=", "")
+        .orderBy("user_book.createdAt", "desc")
+        .limit(10_000)
+        .execute(),
+      // db_user_lists
+      did
+        ? getUserLists({ db: c.get("ctx").db, userDid: did })
+        : Promise.resolve([] as Awaited<ReturnType<typeof getUserLists>>),
+      // db_book_on_shelves
+      did
+        ? c
+            .get("ctx")
+            .db.selectFrom("book_list_item")
+            .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
+            .select([
+              "book_list.uri",
+              "book_list.name",
+              "book_list.userDid",
+              "book_list_item.uri as itemUri",
+            ])
+            .where("book_list_item.hiveId", "==", book.id)
+            .execute()
+        : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
+      // userHandle
+      did
+        ? c
+            .get("ctx")
+            .resolver.resolveDidToHandle(did)
+            .catch(() => did)
+        : Promise.resolve(null),
+      // db_other_books_by_author
+      firstAuthor
+        ? c
+            .get("ctx")
+            .db.selectFrom("hive_book")
+            .selectAll()
+            .where("id", "!=", book.id)
+            .where(authorCondition as any)
+            .orderBy("ratingsCount", "desc")
+            .orderBy("rating", "desc")
+            .limit(6)
+            .execute()
+        : Promise.resolve([] as HiveBook[]),
+    ]);
+  endTime(c, "db_parallel_queries");
+  const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
 
   const genres: string[] = book.genres ? JSON.parse(book.genres) : [];
   const meta = book.meta ? JSON.parse(book.meta) : null;
@@ -288,265 +306,236 @@ export const BookInfo: FC<{
               </div>
 
               {/* === Action Row === */}
-              <div class="mb-5 flex flex-wrap items-center gap-2">
-                {/* Status dropdown */}
-                {did && (
-                  <div class="relative">
-                    <form action="/books" method="post" id="status-form">
-                      <input type="hidden" name="authors" value={book.authors} />
-                      <input type="hidden" name="title" value={book.title} />
-                      <input type="hidden" name="hiveId" value={book.id} />
-                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
-                      {usersBook?.stars && (
-                        <input type="hidden" name="stars" value={String(usersBook.stars)} />
-                      )}
-                      {usersBook?.review && (
-                        <input type="hidden" name="review" value={usersBook.review} />
-                      )}
-                      {usersBook?.startedAt && (
-                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                      )}
-                      {usersBook?.finishedAt && (
-                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                      )}
-                      <input type="hidden" name="startedAt" id="auto-started-at" value="" />
-                      <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
+              <div class="mb-5 space-y-3">
+                <div class="flex items-center gap-2">
+                  {/* Status dropdown */}
+                  {did && (
+                    <div class="relative">
+                      <form action="/books" method="post" id="status-form">
+                        <input type="hidden" name="authors" value={book.authors} />
+                        <input type="hidden" name="title" value={book.title} />
+                        <input type="hidden" name="hiveId" value={book.id} />
+                        {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
+                        {usersBook?.stars && (
+                          <input type="hidden" name="stars" value={String(usersBook.stars)} />
+                        )}
+                        {usersBook?.review && (
+                          <input type="hidden" name="review" value={usersBook.review} />
+                        )}
+                        {usersBook?.startedAt ? (
+                          <input type="hidden" name="startedAt" value={usersBook.startedAt} />
+                        ) : (
+                          <input type="hidden" name="startedAt" id="auto-started-at" value="" />
+                        )}
+                        {usersBook?.finishedAt ? (
+                          <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
+                        ) : (
+                          <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
+                        )}
 
-                      <button
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded="false"
-                        id="status-dropdown"
-                        class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
-                          usersBook?.status
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "bg-accent text-accent-foreground hover:bg-accent/80"
-                        }`}
-                      >
-                        <span class="flex items-center gap-1.5 capitalize">
-                          <span>
-                            {(usersBook?.status &&
-                              (usersBook.status in BOOK_STATUS_MAP
-                                ? BOOK_STATUS_MAP[usersBook.status as keyof typeof BOOK_STATUS_MAP]
-                                : usersBook.status)) ||
-                              "Want to Read"}
-                          </span>
-                          <svg
-                            class="h-4 w-4 opacity-70"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </span>
-                      </button>
-
-                      <div
-                        role="listbox"
-                        id="status-dropdown-menu"
-                        class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                      >
-                        <div class="p-1">
-                          {[
-                            { value: BOOK_STATUS.FINISHED, label: "Read" },
-                            { value: BOOK_STATUS.READING, label: "Reading" },
-                            { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
-                            { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
-                          ].map((status) => (
-                            <button
-                              key={status.value}
-                              type="submit"
-                              role="option"
-                              aria-selected={usersBook?.status === status.value}
-                              name="status"
-                              value={status.value}
-                              class={`relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
-                                usersBook?.status === status.value
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-foreground hover:bg-muted"
-                              }`}
+                        <button
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded="false"
+                          id="status-dropdown"
+                          class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
+                            usersBook?.status
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "bg-accent text-accent-foreground hover:bg-accent/80"
+                          }`}
+                        >
+                          <span class="flex items-center gap-1.5 capitalize">
+                            <span>
+                              {(usersBook?.status &&
+                                (usersBook.status in BOOK_STATUS_MAP
+                                  ? BOOK_STATUS_MAP[
+                                      usersBook.status as keyof typeof BOOK_STATUS_MAP
+                                    ]
+                                  : usersBook.status)) ||
+                                "Want to Read"}
+                            </span>
+                            <svg
+                              class="h-4 w-4 opacity-70"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
                             >
-                              <span class="block truncate">{status.label}</span>
-                              {usersBook?.status === status.value && (
-                                <span
-                                  class="absolute inset-y-0 right-2 flex items-center"
-                                  aria-hidden="true"
-                                >
-                                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </form>
+                              <path
+                                fillRule="evenodd"
+                                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </span>
+                        </button>
 
+                        <div
+                          role="listbox"
+                          id="status-dropdown-menu"
+                          class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                        >
+                          <div class="p-1">
+                            {[
+                              { value: BOOK_STATUS.FINISHED, label: "Read" },
+                              { value: BOOK_STATUS.READING, label: "Reading" },
+                              { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
+                              { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
+                            ].map((status) => (
+                              <button
+                                key={status.value}
+                                type="submit"
+                                role="option"
+                                aria-selected={usersBook?.status === status.value}
+                                name="status"
+                                value={status.value}
+                                class={`relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
+                                  usersBook?.status === status.value
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span class="block truncate">{status.label}</span>
+                                {usersBook?.status === status.value && (
+                                  <span
+                                    class="absolute inset-y-0 right-2 flex items-center"
+                                    aria-hidden="true"
+                                  >
+                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </form>
+
+                      <Script
+                        script={(document) => {
+                          const dropdown = document.getElementById("status-dropdown")!;
+                          const dropdownMenu = document.getElementById("status-dropdown-menu")!;
+                          dropdown.addEventListener("click", () => {
+                            dropdown.setAttribute(
+                              "aria-expanded",
+                              dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
+                            );
+                          });
+                          document.addEventListener("click", (e) => {
+                            if (
+                              dropdown.getAttribute("aria-expanded") === "true" &&
+                              !dropdown.contains(e.target as any) &&
+                              !dropdownMenu.contains(e.target as any)
+                            ) {
+                              dropdown.setAttribute("aria-expanded", "false");
+                            }
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Share dropdown */}
+                  <div class="relative ml-auto">
+                    <button
+                      type="button"
+                      id="share-btn"
+                      class="btn btn-ghost btn-sm"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                        <polyline points="16 6 12 2 8 6" />
+                        <line x1="12" y1="2" x2="12" y2="15" />
+                      </svg>
+                      Share
+                    </button>
+                    <div
+                      id="share-menu"
+                      class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                    >
+                      <div class="p-1">
+                        <a
+                          href={shareHref || genericShareHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                        >
+                          <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true">
+                            <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
+                          </svg>
+                          Share on Bluesky
+                        </a>
+                        <button
+                          type="button"
+                          id="copy-link-btn"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                          data-book-url={`/books/${book.id}`}
+                        >
+                          <svg
+                            class="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                          </svg>
+                          <span id="copy-link-text">Copy link</span>
+                        </button>
+                      </div>
+                    </div>
                     <Script
                       script={(document) => {
-                        const dropdown = document.getElementById("status-dropdown")!;
-                        const dropdownMenu = document.getElementById("status-dropdown-menu")!;
-                        dropdown.addEventListener("click", () => {
-                          dropdown.setAttribute(
-                            "aria-expanded",
-                            dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
-                          );
+                        const btn = document.getElementById("share-btn")!;
+                        const menu = document.getElementById("share-menu")!;
+                        btn.addEventListener("click", () => {
+                          const open = menu.classList.contains("invisible");
+                          menu.classList.toggle("invisible", !open);
+                          menu.classList.toggle("opacity-0", !open);
+                          btn.setAttribute("aria-expanded", open ? "true" : "false");
                         });
                         document.addEventListener("click", (e) => {
-                          if (
-                            dropdown.getAttribute("aria-expanded") === "true" &&
-                            !dropdown.contains(e.target as any) &&
-                            !dropdownMenu.contains(e.target as any)
-                          ) {
-                            dropdown.setAttribute("aria-expanded", "false");
+                          if (!btn.contains(e.target as any) && !menu.contains(e.target as any)) {
+                            menu.classList.add("invisible", "opacity-0");
+                            btn.setAttribute("aria-expanded", "false");
                           }
                         });
+                        const copyBtn = document.getElementById("copy-link-btn");
+                        const copyText = document.getElementById("copy-link-text");
+                        if (copyBtn && copyText) {
+                          copyBtn.addEventListener("click", () => {
+                            const url = copyBtn.getAttribute("data-book-url");
+                            if (url) {
+                              void navigator.clipboard.writeText(
+                                (window.location.origin || "") + url,
+                              );
+                              copyText.textContent = "Copied!";
+                              setTimeout(() => {
+                                copyText.textContent = "Copy link";
+                              }, 1500);
+                            }
+                          });
+                        }
                       }}
                     />
                   </div>
-                )}
-
-                {/* Inline star rating (auth'd) */}
-                {did && (
-                  <div class="flex items-center gap-1">
-                    <div
-                      id="hero-star-rating"
-                      data-rating={usersBook?.stars}
-                      class="flex cursor-pointer"
-                    ></div>
-                    <form action="/books" method="post" id="hero-rating-form" class="hidden">
-                      <input type="hidden" name="authors" value={book.authors} />
-                      <input type="hidden" name="title" value={book.title} />
-                      <input type="hidden" name="hiveId" value={book.id} />
-                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
-                      {usersBook?.status && (
-                        <input type="hidden" name="status" value={usersBook.status} />
-                      )}
-                      {usersBook?.review && (
-                        <input type="hidden" name="review" value={usersBook.review} />
-                      )}
-                      {usersBook?.startedAt && (
-                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                      )}
-                      {usersBook?.finishedAt && (
-                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                      )}
-                      <input
-                        type="hidden"
-                        name="stars"
-                        value={usersBook?.stars || 0}
-                        id="hero-rating-value"
-                      />
-                    </form>
-                  </div>
-                )}
-
-                {/* Share dropdown */}
-                <div class="relative ml-auto md:ml-0">
-                  <button
-                    type="button"
-                    id="share-btn"
-                    class="btn btn-ghost btn-sm"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                  >
-                    <svg
-                      class="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                      <polyline points="16 6 12 2 8 6" />
-                      <line x1="12" y1="2" x2="12" y2="15" />
-                    </svg>
-                    Share
-                  </button>
-                  <div
-                    id="share-menu"
-                    class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                  >
-                    <div class="p-1">
-                      <a
-                        href={shareHref || genericShareHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                      >
-                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true">
-                          <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
-                        </svg>
-                        Share on Bluesky
-                      </a>
-                      <button
-                        type="button"
-                        id="copy-link-btn"
-                        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                        data-book-url={`/books/${book.id}`}
-                      >
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <rect x="9" y="9" width="13" height="13" rx="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
-                        <span id="copy-link-text">Copy link</span>
-                      </button>
-                    </div>
-                  </div>
-                  <Script
-                    script={(document) => {
-                      const btn = document.getElementById("share-btn")!;
-                      const menu = document.getElementById("share-menu")!;
-                      btn.addEventListener("click", () => {
-                        const open = menu.classList.contains("invisible");
-                        menu.classList.toggle("invisible", !open);
-                        menu.classList.toggle("opacity-0", !open);
-                        btn.setAttribute("aria-expanded", open ? "true" : "false");
-                      });
-                      document.addEventListener("click", (e) => {
-                        if (!btn.contains(e.target as any) && !menu.contains(e.target as any)) {
-                          menu.classList.add("invisible", "opacity-0");
-                          btn.setAttribute("aria-expanded", "false");
-                        }
-                      });
-                      const copyBtn = document.getElementById("copy-link-btn");
-                      const copyText = document.getElementById("copy-link-text");
-                      if (copyBtn && copyText) {
-                        copyBtn.addEventListener("click", () => {
-                          const url = copyBtn.getAttribute("data-book-url");
-                          if (url) {
-                            void navigator.clipboard.writeText(
-                              (window.location.origin || "") + url,
-                            );
-                            copyText.textContent = "Copied!";
-                            setTimeout(() => {
-                              copyText.textContent = "Copy link";
-                            }, 1500);
-                          }
-                        });
-                      }
-                    }}
-                  />
                 </div>
               </div>
 
@@ -615,55 +604,6 @@ export const BookInfo: FC<{
         </div>
       </div>
 
-      {/* Inline star rating script */}
-      {did && (
-        <Script
-          script={(document) => {
-            const container = document.getElementById("hero-star-rating");
-            const form = document.getElementById("hero-rating-form") as HTMLFormElement | null;
-            const ratingInput = document.getElementById(
-              "hero-rating-value",
-            ) as HTMLInputElement | null;
-            if (!container || !form || !ratingInput) return;
-
-            const currentRating = Number(container.getAttribute("data-rating")) || 0;
-
-            function renderStars(rating: number, hoverRating?: number) {
-              if (!container) return;
-              container.innerHTML = "";
-              for (let i = 1; i <= 10; i++) {
-                const starValue = i;
-                const displayRating = hoverRating ?? rating;
-                const filled = starValue <= displayRating;
-                const isLeft = i % 2 === 1;
-                const star = document.createElement("div");
-                star.style.width = "14px";
-                star.style.height = "28px";
-                star.style.overflow = "hidden";
-                star.style.cursor = "pointer";
-                if (isLeft) {
-                  star.style.marginRight = "-14px";
-                  star.style.position = "relative";
-                  star.style.zIndex = "1";
-                }
-                star.innerHTML = `<svg viewBox="${isLeft ? "0 0 12 24" : "12 0 12 24"}" width="14" height="28" style="display:block"><path d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z" fill="${filled ? "#f59e0b" : "#d1d5db"}" /></svg>`;
-                star.addEventListener("mouseenter", () => renderStars(rating, starValue));
-                star.addEventListener("click", () => {
-                  if (ratingInput) {
-                    ratingInput.value = String(starValue);
-                    form?.submit();
-                  }
-                });
-                container.appendChild(star);
-              }
-              container.addEventListener("mouseleave", () => renderStars(rating), { once: true });
-            }
-
-            renderStars(currentRating);
-          }}
-        />
-      )}
-
       {/* ===== SECTION 2: Description (clamped to 10 lines) ===== */}
       {book.description && (
         <div class="card">
@@ -725,11 +665,26 @@ export const BookInfo: FC<{
               <input type="hidden" name="hiveId" value={book.id} />
               {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
               {usersBook?.status && <input type="hidden" name="status" value={usersBook.status} />}
-              {usersBook?.stars && (
-                <input type="hidden" name="stars" value={String(usersBook.stars)} />
-              )}
+              <input
+                type="hidden"
+                name="stars"
+                value={String(usersBook?.stars || 0)}
+                id="rating-value"
+              />
 
               <div class="space-y-6">
+                {/* Star Rating */}
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-foreground">
+                    Your Rating
+                  </label>
+                  <div
+                    id="star-rating"
+                    data-rating={usersBook?.stars}
+                    class="flex cursor-pointer"
+                  ></div>
+                </div>
+
                 {/* Review */}
                 <div>
                   <label class="mb-2 block text-sm font-semibold text-foreground">
@@ -759,7 +714,7 @@ export const BookInfo: FC<{
                     <label class="mb-2 block text-sm font-semibold text-foreground">
                       Reading Progress
                     </label>
-                    {usersBook?.bookProgress?.percent !== undefined && (
+                    {!!usersBook?.bookProgress?.percent && (
                       <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           class="h-full rounded-full bg-primary transition-all"
@@ -775,7 +730,7 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="0"
                       />
                       <span class="text-muted-foreground">/</span>
@@ -788,7 +743,7 @@ export const BookInfo: FC<{
                           (meta?.numPages ? meta.numPages : "")
                         }
                         min={1}
-                        class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="Total"
                       />
                     </div>
@@ -807,7 +762,7 @@ export const BookInfo: FC<{
                             name="currentChapter"
                             value={usersBook?.bookProgress?.currentChapter ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="0"
                           />
                           <span class="text-muted-foreground">/</span>
@@ -817,7 +772,7 @@ export const BookInfo: FC<{
                             name="totalChapters"
                             value={usersBook?.bookProgress?.totalChapters ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Total"
                           />
                         </div>
@@ -830,7 +785,7 @@ export const BookInfo: FC<{
                             value={usersBook?.bookProgress?.percent ?? ""}
                             min={0}
                             max={100}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Auto"
                           />
                           <span class="text-xs text-muted-foreground">
@@ -1057,10 +1012,8 @@ export const BookInfo: FC<{
                 </div>
               )}
               {otherBooksByAuthor.length > 0 && (
-                <div>
-                  <h4 class="mb-2 text-sm font-semibold text-muted-foreground">
-                    Also by this author
-                  </h4>
+                <div class="mt-6">
+                  <h4 class="mb-2 text-sm font-semibold text-foreground">Also by this author</h4>
                   <div class="flex flex-wrap gap-3 pb-2">
                     {otherBooksByAuthor.slice(0, 5).map((other) => {
                       const bookData = normalizeBookData(other);
@@ -1124,21 +1077,47 @@ export const BookInfo: FC<{
 
             {/* Your shelves */}
             {did && bookOnShelves.filter((s) => s.userDid === did).length > 0 && (
-              <div>
-                <p class="mb-1 text-xs font-medium text-muted-foreground">On your shelves</p>
+              <div class="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                  On your shelves
+                </p>
                 <div class="flex flex-wrap gap-1.5">
                   {bookOnShelves
                     .filter((s) => s.userDid === did)
                     .map((shelf) => {
                       const rkey = shelf.uri.split("/").at(-1)!;
                       return (
-                        <a
-                          key={shelf.uri}
-                          href={`/shelves/${userHandle}/${rkey}`}
-                          class="badge text-xs hover:bg-primary hover:text-primary-foreground"
-                        >
-                          {shelf.name}
-                        </a>
+                        <div key={shelf.uri} class="flex items-center gap-0.5">
+                          <a
+                            href={`/shelves/${userHandle}/${rkey}`}
+                            class="badge text-xs hover:bg-primary hover:text-primary-foreground"
+                          >
+                            {shelf.name}
+                          </a>
+                          <form
+                            method="post"
+                            action={`/shelves/${userHandle}/${rkey}/remove`}
+                            class="inline"
+                          >
+                            <input type="hidden" name="itemUri" value={shelf.itemUri} />
+                            <input type="hidden" name="returnTo" value={`/books/${book.id}`} />
+                            <button
+                              type="submit"
+                              title={`Remove from ${shelf.name}`}
+                              class="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                class="h-3 w-3"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                              >
+                                <path d="M18 6L6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </form>
+                        </div>
                       );
                     })}
                 </div>

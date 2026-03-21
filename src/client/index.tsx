@@ -39,7 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const ratingInput = document.getElementById("rating-value") as HTMLInputElement;
           ratingInput.value = rating.toString();
 
-          const ratingForm = document.getElementById("rating-form") as HTMLFormElement;
+          const ratingForm = document.getElementById("activity-form") as HTMLFormElement;
 
           ratingForm.submit();
         }}

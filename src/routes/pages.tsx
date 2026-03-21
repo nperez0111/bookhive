@@ -4,6 +4,7 @@
  * /explore/authors, /authors/:author.
  */
 import { Hono } from "hono";
+import { startTime, endTime } from "hono/timing";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
@@ -15,6 +16,7 @@ import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
 import { getProfiles } from "../utils/getProfile";
+import { hydrateUserBook } from "../utils/bookProgress";
 import { LibraryImport } from "../pages/import";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
@@ -72,15 +74,19 @@ const app = new Hono<AppEnv>()
       ) as typeof query;
     }
 
+    startTime(c, "db_feed");
     const rows = await query.execute();
+    endTime(c, "db_feed");
     const hasMore = rows.length > limit;
-    const activities = rows.slice(0, limit);
+    const activities = rows.slice(0, limit).map((row) => hydrateUserBook(row));
 
     const allDids = [...new Set(activities.map((a) => a.userDid))];
+    startTime(c, "feed_profiles");
     const [didHandleMap, profiles] = await Promise.all([
       ctx.resolver.resolveDidsToHandles(allDids),
       allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
     ]);
+    endTime(c, "feed_profiles");
     const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
 
     return c.render(
@@ -158,6 +164,7 @@ const app = new Hono<AppEnv>()
 
       // Run external search (cached) and local DB text search in parallel
       const pattern = `%${query}%`;
+      startTime(c, "search_parallel");
       const [externalIds, localBooks] = await Promise.all([
         searchBooks({ query, ctx }),
         ctx.db
@@ -174,11 +181,13 @@ const app = new Hono<AppEnv>()
           .limit(500)
           .execute(),
       ]);
+      endTime(c, "search_parallel");
 
       // Merge: external results first (relevance-ranked), then local DB hits not already included
       const externalIdSet = new Set(externalIds);
       const localOnly = localBooks.filter((b) => !externalIdSet.has(b.id));
 
+      startTime(c, "search_db_external");
       const externalBooks = externalIds.length
         ? await ctx.db
             .selectFrom("hive_book")
@@ -190,6 +199,7 @@ const app = new Hono<AppEnv>()
               return rows;
             })
         : [];
+      endTime(c, "search_db_external");
 
       const allBooks = [...externalBooks, ...localOnly];
       const totalBooks = allBooks.length;

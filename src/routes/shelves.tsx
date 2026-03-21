@@ -484,6 +484,7 @@ const app = new Hono<AppEnv>()
       "form",
       z.object({
         itemUri: z.string(),
+        returnTo: z.string().optional(),
       }),
     ),
     async (c) => {
@@ -494,14 +495,15 @@ const app = new Hono<AppEnv>()
         return c.json({ success: false, message: "Not authenticated" }, 401);
       }
 
-      const { itemUri } = c.req.valid("form");
+      const { itemUri, returnTo } = c.req.valid("form");
       try {
         await removeBookFromList({
           agent,
           db: c.get("ctx").db,
           itemUri,
         });
-        return c.redirect(`/shelves/${handle}/${rkey}`);
+        const safeReturn = returnTo && returnTo.startsWith("/") ? returnTo : null;
+        return c.redirect(safeReturn ?? `/shelves/${handle}/${rkey}`);
       } catch (e) {
         return c.html(
           <Layout>

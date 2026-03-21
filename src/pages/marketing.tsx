@@ -74,8 +74,10 @@ function Hero({ signupUrl }: { signupUrl: string }) {
               Reading is <span class="text-primary">better together</span>
             </h1>
             <p class="text-muted-foreground mt-6 max-w-xl text-xl">
-              Track your books, see what your friends are reading, and discover your next favorite. <br />
-              BookHive, an <span class="font-bold">open</span> platform where your data belongs to you.
+              Track your books, see what your friends are reading, and discover your next favorite.{" "}
+              <br />
+              BookHive, an <span class="font-bold">open</span> platform where your data belongs to
+              you.
             </p>
             <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center md:justify-start">
               <a href="/login" class="btn btn-primary">
@@ -377,8 +379,8 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
               The best recommendations come from <span class="text-primary">people you trust</span>
             </h2>
             <p class="text-muted-foreground mt-5 max-w-lg text-lg">
-              Bumble onto books you'll love. No algorithms, just real people sharing what's on
-              their shelves.
+              Bumble onto books you'll love. No algorithms, just real people sharing what's on their
+              shelves.
             </p>
             <ul class="mt-8 space-y-4">
               {[

@@ -24,6 +24,7 @@ import {
 } from "../utils/readingStats";
 import { refetchBooks } from "./lib";
 import { getUserLists } from "../utils/lists";
+import { readThroughCache } from "../utils/readThroughCache";
 
 const app = new Hono<AppEnv>()
   .get("/refresh-books", async (c) => {
@@ -40,7 +41,9 @@ const app = new Hono<AppEnv>()
         401,
       );
     }
+    startTime(c, "refetch_books");
     await refetchBooks({ agent, ctx: c.get("ctx") });
+    endTime(c, "refetch_books");
     if (c.req.header()["accept"] === "application/json") {
       const books = await c
         .get("ctx")
@@ -130,6 +133,7 @@ const app = new Hono<AppEnv>()
       );
     }
 
+    startTime(c, "isBuzzer");
     const isBuzzer = Boolean(
       await c
         .get("ctx")
@@ -139,6 +143,7 @@ const app = new Hono<AppEnv>()
         .limit(1)
         .executeTakeFirst(),
     );
+    endTime(c, "isBuzzer");
 
     if (!isBuzzer) {
       c.status(404);
@@ -177,6 +182,7 @@ const app = new Hono<AppEnv>()
     const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
     const showYearInBooks = finishedInYear.length >= MIN_BOOKS_FOR_YEAR_STATS;
 
+    startTime(c, "db_genre_stats_year");
     let genreStatsForYear: { genre: string; count: number }[] = [];
     if (finishedInYear.length > 0) {
       const hiveIds = finishedInYear.map((b) => b.hiveId);
@@ -194,11 +200,13 @@ const app = new Hono<AppEnv>()
         count: Number(r.count),
       }));
     }
+    endTime(c, "db_genre_stats_year");
 
     const stats = computeReadingStats(finishedInYear, genreStatsForYear);
 
     let allTimeStats: ReturnType<typeof computeReadingStats> | undefined;
     let availableYears: number[] = [];
+    startTime(c, "db_genre_stats_alltime");
     if (!showYearInBooks && year != null) {
       const allFinished = filterFinishedBooksAllTime(parsedBooks);
       const allHiveIds = allFinished.map((b) => b.hiveId);
@@ -220,6 +228,7 @@ const app = new Hono<AppEnv>()
       }
       allTimeStats = computeReadingStats(allFinished, allTimeGenreStats);
     }
+    endTime(c, "db_genre_stats_alltime");
 
     const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
     const yearSet = new Set(
@@ -232,6 +241,7 @@ const app = new Hono<AppEnv>()
     availableYears = [...yearSet].sort((a, b) => b - a);
 
     let readingChallengeGoal: number | null = null;
+    startTime(c, "kv_challenge_goal");
     if (isOwnProfile) {
       const goalStr = await c.get("ctx").kv.getItem(`reading-challenge:${did}:${year}`);
       if (goalStr != null && typeof goalStr === "string") {
@@ -239,6 +249,7 @@ const app = new Hono<AppEnv>()
         if (!Number.isNaN(parsed) && parsed > 0) readingChallengeGoal = parsed;
       }
     }
+    endTime(c, "kv_challenge_goal");
 
     return c.render(
       <Layout>
@@ -331,26 +342,42 @@ const app = new Hono<AppEnv>()
     const buzzersSubquery = c.get("ctx").db.selectFrom("user_book").select("userDid").distinct();
 
     startTime(c, "followCounts");
-    const [followingCountRes, followersCountRes] = await Promise.all([
-      c
-        .get("ctx")
-        .db.selectFrom("user_follows")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("userDid", "=", did)
-        .where("isActive", "=", 1)
-        .where("followsDid", "in", buzzersSubquery)
-        .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("user_follows")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("followsDid", "=", did)
-        .where("isActive", "=", 1)
-        .where("userDid", "in", buzzersSubquery)
-        .executeTakeFirst(),
-    ]);
-    const followingCount = Number(followingCountRes?.count ?? 0);
-    const followersCount = Number(followersCountRes?.count ?? 0);
+    const { followingCount, followersCount } = await readThroughCache<{
+      followingCount: number;
+      followersCount: number;
+    }>(
+      c.get("ctx").kv as import("unstorage").Storage<{
+        followingCount: number;
+        followersCount: number;
+      }>,
+      `followCounts:${did}`,
+      async () => {
+        const [followingCountRes, followersCountRes] = await Promise.all([
+          c
+            .get("ctx")
+            .db.selectFrom("user_follows")
+            .select((eb) => eb.fn.countAll().as("count"))
+            .where("userDid", "=", did)
+            .where("isActive", "=", 1)
+            .where("followsDid", "in", buzzersSubquery)
+            .executeTakeFirst(),
+          c
+            .get("ctx")
+            .db.selectFrom("user_follows")
+            .select((eb) => eb.fn.countAll().as("count"))
+            .where("followsDid", "=", did)
+            .where("isActive", "=", 1)
+            .where("userDid", "in", buzzersSubquery)
+            .executeTakeFirst(),
+        ]);
+        return {
+          followingCount: Number(followingCountRes?.count ?? 0),
+          followersCount: Number(followersCountRes?.count ?? 0),
+        };
+      },
+      { followingCount: 0, followersCount: 0 },
+      { ttl: 300_000 },
+    );
     endTime(c, "followCounts");
 
     startTime(c, "followingFollowers");
