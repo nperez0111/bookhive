@@ -103,6 +103,7 @@ const app = new Hono<AppEnv>()
       );
     }
     const hiveId = c.req.param("hiveId") as HiveId;
+    startTime(c, "db_fetch_user_book");
     const book = await c
       .get("ctx")
       .db.selectFrom("user_book")
@@ -110,11 +111,13 @@ const app = new Hono<AppEnv>()
       .where("userDid", "=", agent.did)
       .where("hiveId", "=", hiveId)
       .execute();
+    endTime(c, "db_fetch_user_book");
 
     if (book.length === 0) {
       return c.json({ success: false, hiveId, book: null });
     }
     try {
+      startTime(c, "pds_delete_book");
       await agent.post("com.atproto.repo.deleteRecord", {
         input: {
           repo: agent.did,
@@ -122,12 +125,15 @@ const app = new Hono<AppEnv>()
           rkey: book[0]!.uri.split("/").at(-1)!,
         },
       });
+      endTime(c, "pds_delete_book");
+      startTime(c, "db_delete_user_book");
       await c
         .get("ctx")
         .db.deleteFrom("user_book")
         .where("userDid", "=", agent.did)
         .where("uri", "=", book[0]!.uri)
         .execute();
+      endTime(c, "db_delete_user_book");
 
       if (c.req.header()["accept"] === "application/json") {
         return c.json({ success: true, hiveId, book: book[0] });
@@ -244,6 +250,7 @@ const app = new Hono<AppEnv>()
 
         try {
           await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+          startTime(c, "pds_update_book");
           await updateBookRecord({
             ctx: c.get("ctx"),
             agent,
@@ -261,6 +268,7 @@ const app = new Hono<AppEnv>()
               ...(bookProgress ? { bookProgress } : {}),
             } as Partial<BookRecord.Record> & { coverImage?: string },
           });
+          endTime(c, "pds_update_book");
         } catch (e) {
           c.set("requestError", e);
           c.get("ctx").addWideEventContext({ write_book: "failed" });
@@ -277,7 +285,8 @@ const app = new Hono<AppEnv>()
         } finally {
           await c.get("ctx").kv.del(bookLockKey);
         }
-        return c.redirect("/books/" + hiveId);
+        const redirectTo = c.req.query("redirect") || `/books/${hiveId}`;
+        return c.redirect(redirectTo);
       } catch (err) {
         c.set("requestError", err);
         c.get("ctx").addWideEventContext({ write_book: "failed" });
@@ -296,6 +305,7 @@ const app = new Hono<AppEnv>()
     },
   )
   .get("/:hiveId/comments", async (c) => {
+    startTime(c, "db_fetch_book");
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")
@@ -303,6 +313,7 @@ const app = new Hono<AppEnv>()
       .where("id", "=", c.req.param("hiveId") as HiveId)
       .limit(1)
       .executeTakeFirst();
+    endTime(c, "db_fetch_book");
 
     if (!book) {
       return c.html(

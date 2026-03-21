@@ -21,20 +21,32 @@ import { Script } from "./utils/script";
 async function Recommendations({ book, did }: { book: HiveBook; did: string | null }) {
   const c = useRequestContext();
   startTime(c, "db_peer_books");
-  const peerBooks = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .selectAll()
-    .where("hiveId", "==", book.id)
-    .orderBy("indexedAt", "desc")
-    .limit(100)
-    .execute();
+  const db = c.get("ctx").db;
+  const [peerBooks, totalOthersCountResult] = await Promise.all([
+    db
+      .selectFrom("user_book")
+      .selectAll()
+      .where("hiveId", "==", book.id)
+      .orderBy("indexedAt", "desc")
+      .limit(101)
+      .execute(),
+    db
+      .selectFrom("user_book")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("hiveId", "==", book.id)
+      .$if(did !== null, (qb) => qb.where("userDid", "!=", did!))
+      .executeTakeFirstOrThrow(),
+  ]);
   endTime(c, "db_peer_books");
 
+  const totalOthersCount = Number(totalOthersCountResult.count);
+
   startTime(c, "resolver_peer_profiles");
+  const others = peerBooks.filter((r) => r.userDid !== did);
+  const visible = others.slice(0, 100);
   const profiles = await getProfiles({
     ctx: c.get("ctx"),
-    dids: peerBooks.map((s) => s.userDid),
+    dids: visible.map((s) => s.userDid),
   });
   endTime(c, "resolver_peer_profiles");
 
@@ -56,11 +68,11 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
     );
   }
 
-  const visible = peerBooks.filter((r) => r.userDid !== did).slice(0, 5);
-  const remaining = peerBooks.filter((r) => r.userDid !== did).length - visible.length;
+  const remaining = Math.max(0, totalOthersCount - 100);
 
   return (
     <div class="flex flex-col gap-2">
+      <div class="flex max-h-[500px] flex-col gap-2 overflow-y-auto">
       {visible.map((related) => {
         const profile = profileMap.get(related.userDid);
         const handle = profile?.handle || related.userDid;
@@ -98,6 +110,7 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
           </a>
         );
       })}
+      </div>
       {remaining > 0 && (
         <p class="px-1 text-xs text-muted-foreground">
           + {remaining} more {remaining === 1 ? "person" : "people"}
@@ -119,87 +132,92 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  startTime(c, "db_user_book");
-  const rawUserBook = did
-    ? await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("userDid", "==", did)
-        .where("hiveId", "==", book.id)
-        .executeTakeFirst()
-    : undefined;
-  endTime(c, "db_user_book");
-  const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
-
-  startTime(c, "db_reviews_of_this_book");
-  const reviewsOfThisBook = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .select([
-      "user_book.hiveId",
-      "user_book.createdAt",
-      "user_book.uri",
-      "user_book.cid",
-      "user_book.userDid",
-      "user_book.review",
-      "user_book.stars",
-      (eb) =>
-        eb
-          .selectFrom("buzz")
-          .select(sql<number>`count(*)`.as("commentCount"))
-          .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
-          .as("commentCount"),
-    ])
-    .where("user_book.hiveId", "=", book.id)
-    .where("user_book.review", "!=", "")
-    .orderBy("user_book.createdAt", "desc")
-    .limit(10_000)
-    .execute();
-  endTime(c, "db_reviews_of_this_book");
-
-  startTime(c, "db_user_lists");
-  const userLists = did ? await getUserLists({ db: c.get("ctx").db, userDid: did }) : [];
-  endTime(c, "db_user_lists");
-
-  startTime(c, "db_book_on_shelves");
-  const bookOnShelves = did
-    ? await c
-        .get("ctx")
-        .db.selectFrom("book_list_item")
-        .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
-        .select(["book_list.uri", "book_list.name", "book_list.userDid"])
-        .where("book_list_item.hiveId", "==", book.id)
-        .execute()
-    : [];
-  endTime(c, "db_book_on_shelves");
-
-  const userHandle = did
-    ? await c
-        .get("ctx")
-        .resolver.resolveDidToHandle(did)
-        .catch(() => did)
-    : null;
-
   const firstAuthor = book.authors.split("\t")[0] ?? "";
   const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
   const authorCondition = patterns
     ? sql`(authors = ${patterns.exact} OR authors LIKE ${patterns.first} OR authors LIKE ${patterns.middle} OR authors LIKE ${patterns.last})`
     : sql`0`;
-  startTime(c, "db_other_books_by_author");
-  const otherBooksByAuthor = firstAuthor
-    ? await c
+
+  // Run all independent queries in parallel
+  startTime(c, "db_parallel_queries");
+  const [rawUserBook, reviewsOfThisBook, userLists, bookOnShelves, userHandle, otherBooksByAuthor] =
+    await Promise.all([
+      // db_user_book
+      did
+        ? c
+            .get("ctx")
+            .db.selectFrom("user_book")
+            .selectAll()
+            .where("userDid", "==", did)
+            .where("hiveId", "==", book.id)
+            .executeTakeFirst()
+        : Promise.resolve(undefined),
+      // db_reviews_of_this_book
+      c
         .get("ctx")
-        .db.selectFrom("hive_book")
-        .selectAll()
-        .where("id", "!=", book.id)
-        .where(authorCondition as any)
-        .orderBy("ratingsCount", "desc")
-        .orderBy("rating", "desc")
-        .limit(6)
-        .execute()
-    : [];
-  endTime(c, "db_other_books_by_author");
+        .db.selectFrom("user_book")
+        .select([
+          "user_book.hiveId",
+          "user_book.createdAt",
+          "user_book.uri",
+          "user_book.cid",
+          "user_book.userDid",
+          "user_book.review",
+          "user_book.stars",
+          (eb) =>
+            eb
+              .selectFrom("buzz")
+              .select(sql<number>`count(*)`.as("commentCount"))
+              .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
+              .as("commentCount"),
+        ])
+        .where("user_book.hiveId", "=", book.id)
+        .where("user_book.review", "!=", "")
+        .orderBy("user_book.createdAt", "desc")
+        .limit(10_000)
+        .execute(),
+      // db_user_lists
+      did
+        ? getUserLists({ db: c.get("ctx").db, userDid: did })
+        : Promise.resolve([] as Awaited<ReturnType<typeof getUserLists>>),
+      // db_book_on_shelves
+      did
+        ? c
+            .get("ctx")
+            .db.selectFrom("book_list_item")
+            .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
+            .select([
+              "book_list.uri",
+              "book_list.name",
+              "book_list.userDid",
+              "book_list_item.uri as itemUri",
+            ])
+            .where("book_list_item.hiveId", "==", book.id)
+            .execute()
+        : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
+      // userHandle
+      did
+        ? c
+            .get("ctx")
+            .resolver.resolveDidToHandle(did)
+            .catch(() => did)
+        : Promise.resolve(null),
+      // db_other_books_by_author
+      firstAuthor
+        ? c
+            .get("ctx")
+            .db.selectFrom("hive_book")
+            .selectAll()
+            .where("id", "!=", book.id)
+            .where(authorCondition as any)
+            .orderBy("ratingsCount", "desc")
+            .orderBy("rating", "desc")
+            .limit(6)
+            .execute()
+        : Promise.resolve([] as HiveBook[]),
+    ]);
+  endTime(c, "db_parallel_queries");
+  const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
 
   const genres: string[] = book.genres ? JSON.parse(book.genres) : [];
   const meta = book.meta ? JSON.parse(book.meta) : null;
@@ -288,7 +306,8 @@ export const BookInfo: FC<{
               </div>
 
               {/* === Action Row === */}
-              <div class="mb-5 flex flex-wrap items-center gap-2">
+              <div class="mb-5 space-y-3">
+              <div class="flex items-center gap-2">
                 {/* Status dropdown */}
                 {did && (
                   <div class="relative">
@@ -416,43 +435,8 @@ export const BookInfo: FC<{
                   </div>
                 )}
 
-                {/* Inline star rating (auth'd) */}
-                {did && (
-                  <div class="flex items-center gap-1">
-                    <div
-                      id="hero-star-rating"
-                      data-rating={usersBook?.stars}
-                      class="flex cursor-pointer"
-                    ></div>
-                    <form action="/books" method="post" id="hero-rating-form" class="hidden">
-                      <input type="hidden" name="authors" value={book.authors} />
-                      <input type="hidden" name="title" value={book.title} />
-                      <input type="hidden" name="hiveId" value={book.id} />
-                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
-                      {usersBook?.status && (
-                        <input type="hidden" name="status" value={usersBook.status} />
-                      )}
-                      {usersBook?.review && (
-                        <input type="hidden" name="review" value={usersBook.review} />
-                      )}
-                      {usersBook?.startedAt && (
-                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                      )}
-                      {usersBook?.finishedAt && (
-                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                      )}
-                      <input
-                        type="hidden"
-                        name="stars"
-                        value={usersBook?.stars || 0}
-                        id="hero-rating-value"
-                      />
-                    </form>
-                  </div>
-                )}
-
                 {/* Share dropdown */}
-                <div class="relative ml-auto md:ml-0">
+                <div class="relative ml-auto">
                   <button
                     type="button"
                     id="share-btn"
@@ -550,6 +534,8 @@ export const BookInfo: FC<{
                 </div>
               </div>
 
+              </div>
+
               {/* Timestamp for logged-in users */}
               {usersBook && (
                 <p class="mb-4 text-sm text-muted-foreground">
@@ -615,54 +601,6 @@ export const BookInfo: FC<{
         </div>
       </div>
 
-      {/* Inline star rating script */}
-      {did && (
-        <Script
-          script={(document) => {
-            const container = document.getElementById("hero-star-rating");
-            const form = document.getElementById("hero-rating-form") as HTMLFormElement | null;
-            const ratingInput = document.getElementById(
-              "hero-rating-value",
-            ) as HTMLInputElement | null;
-            if (!container || !form || !ratingInput) return;
-
-            const currentRating = Number(container.getAttribute("data-rating")) || 0;
-
-            function renderStars(rating: number, hoverRating?: number) {
-              if (!container) return;
-              container.innerHTML = "";
-              for (let i = 1; i <= 10; i++) {
-                const starValue = i;
-                const displayRating = hoverRating ?? rating;
-                const filled = starValue <= displayRating;
-                const isLeft = i % 2 === 1;
-                const star = document.createElement("div");
-                star.style.width = "14px";
-                star.style.height = "28px";
-                star.style.overflow = "hidden";
-                star.style.cursor = "pointer";
-                if (isLeft) {
-                  star.style.marginRight = "-14px";
-                  star.style.position = "relative";
-                  star.style.zIndex = "1";
-                }
-                star.innerHTML = `<svg viewBox="${isLeft ? "0 0 12 24" : "12 0 12 24"}" width="14" height="28" style="display:block"><path d="M9.53 16.93a1 1 0 0 1-1.45-1.05l.47-2.76-2-1.95a1 1 0 0 1 .55-1.7l2.77-.4 1.23-2.51a1 1 0 0 1 1.8 0l1.23 2.5 2.77.4a1 1 0 0 1 .55 1.71l-2 1.95.47 2.76a1 1 0 0 1-1.45 1.05L12 15.63l-2.47 1.3z" fill="${filled ? "#f59e0b" : "#d1d5db"}" /></svg>`;
-                star.addEventListener("mouseenter", () => renderStars(rating, starValue));
-                star.addEventListener("click", () => {
-                  if (ratingInput) {
-                    ratingInput.value = String(starValue);
-                    form?.submit();
-                  }
-                });
-                container.appendChild(star);
-              }
-              container.addEventListener("mouseleave", () => renderStars(rating), { once: true });
-            }
-
-            renderStars(currentRating);
-          }}
-        />
-      )}
 
       {/* ===== SECTION 2: Description (clamped to 10 lines) ===== */}
       {book.description && (
@@ -725,11 +663,24 @@ export const BookInfo: FC<{
               <input type="hidden" name="hiveId" value={book.id} />
               {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
               {usersBook?.status && <input type="hidden" name="status" value={usersBook.status} />}
-              {usersBook?.stars && (
-                <input type="hidden" name="stars" value={String(usersBook.stars)} />
-              )}
+              <input
+                type="hidden"
+                name="stars"
+                value={String(usersBook?.stars || 0)}
+                id="rating-value"
+              />
 
               <div class="space-y-6">
+                {/* Star Rating */}
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-foreground">Your Rating</label>
+                  <div
+                    id="star-rating"
+                    data-rating={usersBook?.stars}
+                    class="flex cursor-pointer"
+                  ></div>
+                </div>
+
                 {/* Review */}
                 <div>
                   <label class="mb-2 block text-sm font-semibold text-foreground">
@@ -759,7 +710,7 @@ export const BookInfo: FC<{
                     <label class="mb-2 block text-sm font-semibold text-foreground">
                       Reading Progress
                     </label>
-                    {usersBook?.bookProgress?.percent !== undefined && (
+                    {!!usersBook?.bookProgress?.percent && (
                       <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           class="h-full rounded-full bg-primary transition-all"
@@ -775,7 +726,7 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="0"
                       />
                       <span class="text-muted-foreground">/</span>
@@ -788,7 +739,7 @@ export const BookInfo: FC<{
                           (meta?.numPages ? meta.numPages : "")
                         }
                         min={1}
-                        class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="Total"
                       />
                     </div>
@@ -807,7 +758,7 @@ export const BookInfo: FC<{
                             name="currentChapter"
                             value={usersBook?.bookProgress?.currentChapter ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="0"
                           />
                           <span class="text-muted-foreground">/</span>
@@ -817,7 +768,7 @@ export const BookInfo: FC<{
                             name="totalChapters"
                             value={usersBook?.bookProgress?.totalChapters ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Total"
                           />
                         </div>
@@ -830,7 +781,7 @@ export const BookInfo: FC<{
                             value={usersBook?.bookProgress?.percent ?? ""}
                             min={0}
                             max={100}
-                            class="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Auto"
                           />
                           <span class="text-xs text-muted-foreground">
@@ -1057,8 +1008,8 @@ export const BookInfo: FC<{
                 </div>
               )}
               {otherBooksByAuthor.length > 0 && (
-                <div>
-                  <h4 class="mb-2 text-sm font-semibold text-muted-foreground">
+                <div class="mt-6">
+                  <h4 class="mb-2 text-sm font-semibold text-foreground">
                     Also by this author
                   </h4>
                   <div class="flex flex-wrap gap-3 pb-2">
@@ -1124,21 +1075,41 @@ export const BookInfo: FC<{
 
             {/* Your shelves */}
             {did && bookOnShelves.filter((s) => s.userDid === did).length > 0 && (
-              <div>
-                <p class="mb-1 text-xs font-medium text-muted-foreground">On your shelves</p>
+              <div class="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                  On your shelves
+                </p>
                 <div class="flex flex-wrap gap-1.5">
                   {bookOnShelves
                     .filter((s) => s.userDid === did)
                     .map((shelf) => {
                       const rkey = shelf.uri.split("/").at(-1)!;
                       return (
-                        <a
-                          key={shelf.uri}
-                          href={`/shelves/${userHandle}/${rkey}`}
-                          class="badge text-xs hover:bg-primary hover:text-primary-foreground"
-                        >
-                          {shelf.name}
-                        </a>
+                        <div key={shelf.uri} class="flex items-center gap-0.5">
+                          <a
+                            href={`/shelves/${userHandle}/${rkey}`}
+                            class="badge text-xs hover:bg-primary hover:text-primary-foreground"
+                          >
+                            {shelf.name}
+                          </a>
+                          <form
+                            method="post"
+                            action={`/shelves/${userHandle}/${rkey}/remove`}
+                            class="inline"
+                          >
+                            <input type="hidden" name="itemUri" value={shelf.itemUri} />
+                            <input type="hidden" name="returnTo" value={`/books/${book.id}`} />
+                            <button
+                              type="submit"
+                              title={`Remove from ${shelf.name}`}
+                              class="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                            >
+                              <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </form>
+                        </div>
                       );
                     })}
                 </div>

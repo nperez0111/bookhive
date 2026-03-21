@@ -16,6 +16,7 @@ import { Layout } from "../pages/layout";
 import { Navbar } from "../pages/navbar";
 import { Sidebar } from "../pages/sidebar";
 import { getProfile, getProfiles } from "../utils/getProfile";
+import { readThroughCache } from "../utils/readThroughCache";
 import { isPdsEnabled, listRepos } from "../pds/client";
 import { PdsLanding } from "../pages/pds";
 import { PrivacyPolicy } from "../pages/privacy-policy";
@@ -151,58 +152,75 @@ export function mainRouter(deps: AppDeps): HonoServer {
 
     const ctx = c.get("ctx");
 
-    // Trending: books with the most distinct readers in the last 7 days
-    let trendingBooks = await ctx.db
-      .selectFrom("hive_book as hb")
-      .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-      .select([
-        "hb.id",
-        "hb.title",
-        "hb.authors",
-        "hb.thumbnail",
-        (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-      ])
-      .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .groupBy("hb.id")
-      .orderBy("readerCount", "desc")
-      .orderBy("hb.ratingsCount", "desc")
-      .limit(10)
-      .execute();
+    startTime(c, "marketing_data");
+    const { trendingBooks, recentRows, didHandleMap, profileByDid } =
+      await readThroughCache(
+        ctx.kv as import("unstorage").Storage<any>,
+        "marketing:landing",
+        async () => {
+          // Trending: books with most distinct readers in last 7 days
+          let trending = await ctx.db
+            .selectFrom("hive_book as hb")
+            .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+            .select([
+              "hb.id",
+              "hb.title",
+              "hb.authors",
+              "hb.thumbnail",
+              (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+            ])
+            .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+            .groupBy("hb.id")
+            .orderBy("readerCount", "desc")
+            .orderBy("hb.ratingsCount", "desc")
+            .limit(10)
+            .execute();
 
-    // Fallback to all-time most-read if not enough recent activity
-    if (trendingBooks.length < 10) {
-      trendingBooks = await ctx.db
-        .selectFrom("hive_book as hb")
-        .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-        .select([
-          "hb.id",
-          "hb.title",
-          "hb.authors",
-          "hb.thumbnail",
-          (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-        ])
-        .groupBy("hb.id")
-        .orderBy("readerCount", "desc")
-        .limit(10)
-        .execute();
-    }
+          // Fallback to all-time most-read if not enough recent activity
+          if (trending.length < 10) {
+            trending = await ctx.db
+              .selectFrom("hive_book as hb")
+              .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+              .select([
+                "hb.id",
+                "hb.title",
+                "hb.authors",
+                "hb.thumbnail",
+                (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+              ])
+              .groupBy("hb.id")
+              .orderBy("readerCount", "desc")
+              .limit(10)
+              .execute();
+          }
 
-    const recentRows = await ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .orderBy("user_book.createdAt", "desc")
-      .limit(10)
-      .execute();
+          const recent = await ctx.db
+            .selectFrom("user_book")
+            .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+            .select(BookFields)
+            .orderBy("user_book.createdAt", "desc")
+            .limit(10)
+            .execute();
 
-    const allDids = [...new Set(recentRows.map((r) => r.userDid))];
-    const [didHandleMap, profiles] = await Promise.all([
-      allDids.length > 0
-        ? ctx.resolver.resolveDidsToHandles(allDids)
-        : ({} as Record<string, string>),
-      allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
-    ]);
-    const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
+          const allDids = [...new Set(recent.map((r) => r.userDid))];
+          const [handleMap, profiles] = await Promise.all([
+            allDids.length > 0
+              ? ctx.resolver.resolveDidsToHandles(allDids)
+              : ({} as Record<string, string>),
+            allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
+          ]);
+
+          return {
+            trendingBooks: trending,
+            recentRows: recent,
+            didHandleMap: handleMap,
+            profileByDid: Object.fromEntries(profiles.map((p) => [p.did, p])),
+          };
+        },
+        { trendingBooks: [], recentRows: [], didHandleMap: {}, profileByDid: {} },
+        { ttl: 3_600_000 }, // 1 hour
+      );
+    endTime(c, "marketing_data");
 
     return c.html(
       <Layout

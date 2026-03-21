@@ -321,8 +321,10 @@ export const Home: FC = async () => {
   endTime(c, "latestBuzzes");
 
   const friendDids = [...new Set(friendsBuzzes.map((b) => b.userDid))];
+  startTime(c, "friendProfiles");
   const friendProfiles =
     friendDids.length > 0 ? await getProfiles({ ctx: c.get("ctx"), dids: friendDids }) : [];
+  endTime(c, "friendProfiles");
 
   const allDids = [
     ...new Set([...latestBuzzes.map((b) => b.userDid), ...friendsBuzzes.map((b) => b.userDid)]),

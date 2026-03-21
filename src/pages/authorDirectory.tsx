@@ -3,7 +3,9 @@ import { useRequestContext } from "hono/jsx-renderer";
 import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
 import type { Kysely } from "kysely";
+import type { Storage } from "unstorage";
 import type { DatabaseSchema } from "../db";
+import { readThroughCache } from "../utils/readThroughCache";
 
 interface AuthorWithStats {
   author: string;
@@ -115,17 +117,30 @@ const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({ thumbna
 export const AuthorDirectory: FC = async () => {
   const c = useRequestContext();
 
-  const db = c.get("ctx").db;
+  const { db, kv } = c.get("ctx");
+  const cacheOpts = { ttl: 300_000 }; // 5 minutes
 
   startTime(c, "authors-featured");
   startTime(c, "authors-list");
 
   const [featured, all] = await Promise.all([
-    getTopAuthors(db, FEATURED_COUNT).then((r) => {
+    readThroughCache<AuthorWithStats[]>(
+      kv as Storage<AuthorWithStats[]>,
+      "authors:featured",
+      () => getTopAuthors(db, FEATURED_COUNT),
+      [],
+      cacheOpts,
+    ).then((r) => {
       endTime(c, "authors-featured");
       return r;
     }),
-    getAllAuthors(db).then((r) => {
+    readThroughCache<AuthorStats[]>(
+      kv as Storage<AuthorStats[]>,
+      "authors:all",
+      () => getAllAuthors(db),
+      [],
+      cacheOpts,
+    ).then((r) => {
       endTime(c, "authors-list");
       return r;
     }),

@@ -313,6 +313,22 @@ body {
   @apply block;
 }
 
+/* Remove transparency from form controls — use solid backgrounds */
+.textarea,
+.input,
+select.select,
+:is(.form, .field) select,
+:is(.form, .field) textarea {
+  background-color: var(--card);
+}
+.dark .textarea,
+.dark .input,
+.dark select.select,
+.dark :is(.form, .field) select,
+.dark :is(.form, .field) textarea {
+  background-color: var(--input);
+}
+
 /* Card parts (used with .card from basecoat) */
 .card .card-header {
   @apply px-6;
