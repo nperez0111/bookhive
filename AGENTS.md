@@ -4,7 +4,7 @@ Goodreads alternative built on Bluesky's AT Protocol. Server-rendered Hono JSX w
 
 ## User preferences (do not remove this)
 
-- Do not commit any changes to git
+- Do not commit any changes to git unless otherwise instructed
 
 ## Input Validation
 

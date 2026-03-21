@@ -34,7 +34,9 @@ export const BuzzSection: FC<{
   const showViewAll = viewAllHref && (!viewAllAuthRequired || (viewAllAuthRequired && user));
 
   return (
-    <div class={`flex flex-col gap-2 ${title ? "mt-10 px-4 sm:mt-12 sm:px-6 lg:mt-16 lg:px-8" : ""}`}>
+    <div
+      class={`flex flex-col gap-2 ${title ? "mt-10 px-4 sm:mt-12 sm:px-6 lg:mt-16 lg:px-8" : ""}`}
+    >
       {title && (
         <div class="mb-4 sm:mb-6">
           <div class="flex items-start justify-between gap-4">

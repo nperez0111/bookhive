@@ -20,10 +20,14 @@ interface BookMeta {
   ratingsDistribution: number[];
 }
 
-export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext): Promise<void> {
+export async function enrichBookWithDetailedData(
+  book: HiveBook,
+  ctx: AppContext,
+  options?: { force?: boolean },
+): Promise<void> {
   try {
     // Skip if already enriched recently (within 30 days)
-    if (book.enrichedAt) {
+    if (!options?.force && book.enrichedAt) {
       const enrichedDate = new Date(book.enrichedAt);
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

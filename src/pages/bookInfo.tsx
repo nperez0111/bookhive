@@ -73,43 +73,43 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
   return (
     <div class="flex flex-col gap-2">
       <div class="flex max-h-[500px] flex-col gap-2 overflow-y-auto">
-      {visible.map((related) => {
-        const profile = profileMap.get(related.userDid);
-        const handle = profile?.handle || related.userDid;
-        const avatar = profile?.avatar;
-        return (
-          <a
-            key={related.userDid}
-            href={`/profile/${handle}`}
-            class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
-          >
-            {avatar ? (
-              <img
-                src={`/images/w_100/${avatar}`}
-                alt=""
-                class="h-8 w-8 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
-            )}
-            <div class="min-w-0">
-              <span class="text-primary font-medium">@{handle}</span>
-              <span class="text-muted-foreground">
-                {" "}
-                -{" "}
-                {related.status && related.status in BOOK_STATUS_MAP
-                  ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
-                  : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
-                {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
-              </span>
-              {related.stars && (
-                <span class="text-muted-foreground"> - rated {related.stars / 2}</span>
+        {visible.map((related) => {
+          const profile = profileMap.get(related.userDid);
+          const handle = profile?.handle || related.userDid;
+          const avatar = profile?.avatar;
+          return (
+            <a
+              key={related.userDid}
+              href={`/profile/${handle}`}
+              class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
+            >
+              {avatar ? (
+                <img
+                  src={`/images/w_100/${avatar}`}
+                  alt=""
+                  class="h-8 w-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
               )}
-              {related.review && <span class="text-muted-foreground"> - reviewed</span>}
-            </div>
-          </a>
-        );
-      })}
+              <div class="min-w-0">
+                <span class="text-primary font-medium">@{handle}</span>
+                <span class="text-muted-foreground">
+                  {" "}
+                  -{" "}
+                  {related.status && related.status in BOOK_STATUS_MAP
+                    ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
+                    : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
+                  {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
+                </span>
+                {related.stars && (
+                  <span class="text-muted-foreground"> - rated {related.stars / 2}</span>
+                )}
+                {related.review && <span class="text-muted-foreground"> - reviewed</span>}
+              </div>
+            </a>
+          );
+        })}
       </div>
       {remaining > 0 && (
         <p class="px-1 text-xs text-muted-foreground">
@@ -307,233 +307,236 @@ export const BookInfo: FC<{
 
               {/* === Action Row === */}
               <div class="mb-5 space-y-3">
-              <div class="flex items-center gap-2">
-                {/* Status dropdown */}
-                {did && (
-                  <div class="relative">
-                    <form action="/books" method="post" id="status-form">
-                      <input type="hidden" name="authors" value={book.authors} />
-                      <input type="hidden" name="title" value={book.title} />
-                      <input type="hidden" name="hiveId" value={book.id} />
-                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
-                      {usersBook?.stars && (
-                        <input type="hidden" name="stars" value={String(usersBook.stars)} />
-                      )}
-                      {usersBook?.review && (
-                        <input type="hidden" name="review" value={usersBook.review} />
-                      )}
-                      {usersBook?.startedAt && (
-                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                      )}
-                      {usersBook?.finishedAt && (
-                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                      )}
-                      <input type="hidden" name="startedAt" id="auto-started-at" value="" />
-                      <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
+                <div class="flex items-center gap-2">
+                  {/* Status dropdown */}
+                  {did && (
+                    <div class="relative">
+                      <form action="/books" method="post" id="status-form">
+                        <input type="hidden" name="authors" value={book.authors} />
+                        <input type="hidden" name="title" value={book.title} />
+                        <input type="hidden" name="hiveId" value={book.id} />
+                        {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
+                        {usersBook?.stars && (
+                          <input type="hidden" name="stars" value={String(usersBook.stars)} />
+                        )}
+                        {usersBook?.review && (
+                          <input type="hidden" name="review" value={usersBook.review} />
+                        )}
+                        {usersBook?.startedAt ? (
+                          <input type="hidden" name="startedAt" value={usersBook.startedAt} />
+                        ) : (
+                          <input type="hidden" name="startedAt" id="auto-started-at" value="" />
+                        )}
+                        {usersBook?.finishedAt ? (
+                          <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
+                        ) : (
+                          <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
+                        )}
 
-                      <button
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded="false"
-                        id="status-dropdown"
-                        class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
-                          usersBook?.status
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "bg-accent text-accent-foreground hover:bg-accent/80"
-                        }`}
-                      >
-                        <span class="flex items-center gap-1.5 capitalize">
-                          <span>
-                            {(usersBook?.status &&
-                              (usersBook.status in BOOK_STATUS_MAP
-                                ? BOOK_STATUS_MAP[usersBook.status as keyof typeof BOOK_STATUS_MAP]
-                                : usersBook.status)) ||
-                              "Want to Read"}
-                          </span>
-                          <svg
-                            class="h-4 w-4 opacity-70"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </span>
-                      </button>
-
-                      <div
-                        role="listbox"
-                        id="status-dropdown-menu"
-                        class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                      >
-                        <div class="p-1">
-                          {[
-                            { value: BOOK_STATUS.FINISHED, label: "Read" },
-                            { value: BOOK_STATUS.READING, label: "Reading" },
-                            { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
-                            { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
-                          ].map((status) => (
-                            <button
-                              key={status.value}
-                              type="submit"
-                              role="option"
-                              aria-selected={usersBook?.status === status.value}
-                              name="status"
-                              value={status.value}
-                              class={`relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
-                                usersBook?.status === status.value
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-foreground hover:bg-muted"
-                              }`}
+                        <button
+                          type="button"
+                          aria-haspopup="listbox"
+                          aria-expanded="false"
+                          id="status-dropdown"
+                          class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
+                            usersBook?.status
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "bg-accent text-accent-foreground hover:bg-accent/80"
+                          }`}
+                        >
+                          <span class="flex items-center gap-1.5 capitalize">
+                            <span>
+                              {(usersBook?.status &&
+                                (usersBook.status in BOOK_STATUS_MAP
+                                  ? BOOK_STATUS_MAP[
+                                      usersBook.status as keyof typeof BOOK_STATUS_MAP
+                                    ]
+                                  : usersBook.status)) ||
+                                "Want to Read"}
+                            </span>
+                            <svg
+                              class="h-4 w-4 opacity-70"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
                             >
-                              <span class="block truncate">{status.label}</span>
-                              {usersBook?.status === status.value && (
-                                <span
-                                  class="absolute inset-y-0 right-2 flex items-center"
-                                  aria-hidden="true"
-                                >
-                                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path
-                                      fillRule="evenodd"
-                                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                      clipRule="evenodd"
-                                    />
-                                  </svg>
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </form>
+                              <path
+                                fillRule="evenodd"
+                                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </span>
+                        </button>
 
+                        <div
+                          role="listbox"
+                          id="status-dropdown-menu"
+                          class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                        >
+                          <div class="p-1">
+                            {[
+                              { value: BOOK_STATUS.FINISHED, label: "Read" },
+                              { value: BOOK_STATUS.READING, label: "Reading" },
+                              { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
+                              { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
+                            ].map((status) => (
+                              <button
+                                key={status.value}
+                                type="submit"
+                                role="option"
+                                aria-selected={usersBook?.status === status.value}
+                                name="status"
+                                value={status.value}
+                                class={`relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
+                                  usersBook?.status === status.value
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span class="block truncate">{status.label}</span>
+                                {usersBook?.status === status.value && (
+                                  <span
+                                    class="absolute inset-y-0 right-2 flex items-center"
+                                    aria-hidden="true"
+                                  >
+                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </form>
+
+                      <Script
+                        script={(document) => {
+                          const dropdown = document.getElementById("status-dropdown")!;
+                          const dropdownMenu = document.getElementById("status-dropdown-menu")!;
+                          dropdown.addEventListener("click", () => {
+                            dropdown.setAttribute(
+                              "aria-expanded",
+                              dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
+                            );
+                          });
+                          document.addEventListener("click", (e) => {
+                            if (
+                              dropdown.getAttribute("aria-expanded") === "true" &&
+                              !dropdown.contains(e.target as any) &&
+                              !dropdownMenu.contains(e.target as any)
+                            ) {
+                              dropdown.setAttribute("aria-expanded", "false");
+                            }
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Share dropdown */}
+                  <div class="relative ml-auto">
+                    <button
+                      type="button"
+                      id="share-btn"
+                      class="btn btn-ghost btn-sm"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                        <polyline points="16 6 12 2 8 6" />
+                        <line x1="12" y1="2" x2="12" y2="15" />
+                      </svg>
+                      Share
+                    </button>
+                    <div
+                      id="share-menu"
+                      class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                    >
+                      <div class="p-1">
+                        <a
+                          href={shareHref || genericShareHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                        >
+                          <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true">
+                            <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
+                          </svg>
+                          Share on Bluesky
+                        </a>
+                        <button
+                          type="button"
+                          id="copy-link-btn"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                          data-book-url={`/books/${book.id}`}
+                        >
+                          <svg
+                            class="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                          </svg>
+                          <span id="copy-link-text">Copy link</span>
+                        </button>
+                      </div>
+                    </div>
                     <Script
                       script={(document) => {
-                        const dropdown = document.getElementById("status-dropdown")!;
-                        const dropdownMenu = document.getElementById("status-dropdown-menu")!;
-                        dropdown.addEventListener("click", () => {
-                          dropdown.setAttribute(
-                            "aria-expanded",
-                            dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
-                          );
+                        const btn = document.getElementById("share-btn")!;
+                        const menu = document.getElementById("share-menu")!;
+                        btn.addEventListener("click", () => {
+                          const open = menu.classList.contains("invisible");
+                          menu.classList.toggle("invisible", !open);
+                          menu.classList.toggle("opacity-0", !open);
+                          btn.setAttribute("aria-expanded", open ? "true" : "false");
                         });
                         document.addEventListener("click", (e) => {
-                          if (
-                            dropdown.getAttribute("aria-expanded") === "true" &&
-                            !dropdown.contains(e.target as any) &&
-                            !dropdownMenu.contains(e.target as any)
-                          ) {
-                            dropdown.setAttribute("aria-expanded", "false");
+                          if (!btn.contains(e.target as any) && !menu.contains(e.target as any)) {
+                            menu.classList.add("invisible", "opacity-0");
+                            btn.setAttribute("aria-expanded", "false");
                           }
                         });
+                        const copyBtn = document.getElementById("copy-link-btn");
+                        const copyText = document.getElementById("copy-link-text");
+                        if (copyBtn && copyText) {
+                          copyBtn.addEventListener("click", () => {
+                            const url = copyBtn.getAttribute("data-book-url");
+                            if (url) {
+                              void navigator.clipboard.writeText(
+                                (window.location.origin || "") + url,
+                              );
+                              copyText.textContent = "Copied!";
+                              setTimeout(() => {
+                                copyText.textContent = "Copy link";
+                              }, 1500);
+                            }
+                          });
+                        }
                       }}
                     />
                   </div>
-                )}
-
-                {/* Share dropdown */}
-                <div class="relative ml-auto">
-                  <button
-                    type="button"
-                    id="share-btn"
-                    class="btn btn-ghost btn-sm"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                  >
-                    <svg
-                      class="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                      <polyline points="16 6 12 2 8 6" />
-                      <line x1="12" y1="2" x2="12" y2="15" />
-                    </svg>
-                    Share
-                  </button>
-                  <div
-                    id="share-menu"
-                    class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                  >
-                    <div class="p-1">
-                      <a
-                        href={shareHref || genericShareHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                      >
-                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true">
-                          <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
-                        </svg>
-                        Share on Bluesky
-                      </a>
-                      <button
-                        type="button"
-                        id="copy-link-btn"
-                        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                        data-book-url={`/books/${book.id}`}
-                      >
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <rect x="9" y="9" width="13" height="13" rx="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
-                        <span id="copy-link-text">Copy link</span>
-                      </button>
-                    </div>
-                  </div>
-                  <Script
-                    script={(document) => {
-                      const btn = document.getElementById("share-btn")!;
-                      const menu = document.getElementById("share-menu")!;
-                      btn.addEventListener("click", () => {
-                        const open = menu.classList.contains("invisible");
-                        menu.classList.toggle("invisible", !open);
-                        menu.classList.toggle("opacity-0", !open);
-                        btn.setAttribute("aria-expanded", open ? "true" : "false");
-                      });
-                      document.addEventListener("click", (e) => {
-                        if (!btn.contains(e.target as any) && !menu.contains(e.target as any)) {
-                          menu.classList.add("invisible", "opacity-0");
-                          btn.setAttribute("aria-expanded", "false");
-                        }
-                      });
-                      const copyBtn = document.getElementById("copy-link-btn");
-                      const copyText = document.getElementById("copy-link-text");
-                      if (copyBtn && copyText) {
-                        copyBtn.addEventListener("click", () => {
-                          const url = copyBtn.getAttribute("data-book-url");
-                          if (url) {
-                            void navigator.clipboard.writeText(
-                              (window.location.origin || "") + url,
-                            );
-                            copyText.textContent = "Copied!";
-                            setTimeout(() => {
-                              copyText.textContent = "Copy link";
-                            }, 1500);
-                          }
-                        });
-                      }
-                    }}
-                  />
                 </div>
-              </div>
-
               </div>
 
               {/* Timestamp for logged-in users */}
@@ -600,7 +603,6 @@ export const BookInfo: FC<{
           </div>
         </div>
       </div>
-
 
       {/* ===== SECTION 2: Description (clamped to 10 lines) ===== */}
       {book.description && (
@@ -673,7 +675,9 @@ export const BookInfo: FC<{
               <div class="space-y-6">
                 {/* Star Rating */}
                 <div>
-                  <label class="mb-2 block text-sm font-semibold text-foreground">Your Rating</label>
+                  <label class="mb-2 block text-sm font-semibold text-foreground">
+                    Your Rating
+                  </label>
                   <div
                     id="star-rating"
                     data-rating={usersBook?.stars}
@@ -1009,9 +1013,7 @@ export const BookInfo: FC<{
               )}
               {otherBooksByAuthor.length > 0 && (
                 <div class="mt-6">
-                  <h4 class="mb-2 text-sm font-semibold text-foreground">
-                    Also by this author
-                  </h4>
+                  <h4 class="mb-2 text-sm font-semibold text-foreground">Also by this author</h4>
                   <div class="flex flex-wrap gap-3 pb-2">
                     {otherBooksByAuthor.slice(0, 5).map((other) => {
                       const bookData = normalizeBookData(other);
@@ -1104,7 +1106,13 @@ export const BookInfo: FC<{
                               title={`Remove from ${shelf.name}`}
                               class="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
                             >
-                              <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5">
+                              <svg
+                                viewBox="0 0 24 24"
+                                class="h-3 w-3"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                              >
                                 <path d="M18 6L6 18M6 6l12 12" />
                               </svg>
                             </button>

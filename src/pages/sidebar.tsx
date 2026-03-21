@@ -1,5 +1,4 @@
 import type { FC } from "hono/jsx";
-import { Script } from "./utils/script";
 
 interface SidebarProps {
   currentPath: string;
@@ -14,7 +13,7 @@ interface SidebarProps {
 
 export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user }) => {
   const navItems = [
-    { href: "/", label: "Home", icon: "home", authRequired: false },
+    { href: user ? "/home" : "/", label: "Home", icon: "home", authRequired: false },
     { href: "/feed", label: "Activity Feed", icon: "activity", authRequired: true },
     {
       href: user ? `/profile/${user.handle}` : "/profile",
@@ -52,6 +51,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
         {navItems.map((item) => {
           const isActive =
             currentPath === item.href ||
+            (item.icon === "home" && (currentPath === "/" || currentPath === "/home")) ||
             (item.href.includes("/stats") && currentPath.includes("/stats")) ||
             (item.href === "/explore" && currentPath.startsWith("/explore")) ||
             (item.icon === "shelf" && currentPath.startsWith("/shelves"));

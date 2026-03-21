@@ -96,10 +96,7 @@ export const Home: FC = async () => {
       <div class="card">
         <div class="card-header flex items-center justify-between">
           <h2 class="card-title">Quick Stats</h2>
-          <a
-            href={`/profile/${profile.handle}/stats`}
-            class="text-primary text-sm hover:underline"
-          >
+          <a href={`/profile/${profile.handle}/stats`} class="text-primary text-sm hover:underline">
             See full stats →
           </a>
         </div>

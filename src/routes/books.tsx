@@ -56,17 +56,36 @@ const app = new Hono<AppEnv>()
       );
     }
 
+    const forceRefresh = c.req.query("force-refresh") === "true";
     const needsEnrichment =
+      forceRefresh ||
       !book.enrichedAt ||
       new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (needsEnrichment) {
-      enrichBookWithDetailedData(book, c.get("ctx")).catch((error) => {
+      const enrichPromise = enrichBookWithDetailedData(book, c.get("ctx"), {
+        force: forceRefresh,
+      }).catch((error) => {
         c.get("ctx").addWideEventContext({
           enrichment_failed_book_view: true,
           bookId: book.id,
           error: error instanceof Error ? error.message : (String(error) as string),
         });
       });
+
+      if (forceRefresh) {
+        await enrichPromise;
+        // Re-fetch the book after enrichment so the page reflects updated data
+        const refreshedBook = await c
+          .get("ctx")
+          .db.selectFrom("hive_book")
+          .selectAll()
+          .where("id", "=", hiveId)
+          .limit(1)
+          .executeTakeFirst();
+        if (refreshedBook) {
+          Object.assign(book, refreshedBook);
+        }
+      }
     }
 
     startTime(c, "render_book_page");

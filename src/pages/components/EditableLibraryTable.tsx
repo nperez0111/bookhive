@@ -13,7 +13,10 @@ const DateInputForm: FC<{
   redirectUrl?: string;
 }> = ({ book, field, redirectUrl }) => {
   return (
-    <form action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`} method="post">
+    <form
+      action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
+      method="post"
+    >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
       <input type="hidden" name="hiveId" value={book.hiveId} />
@@ -43,7 +46,10 @@ const RatingSelect: FC<{
   redirectUrl?: string;
 }> = ({ book, redirectUrl }) => {
   return (
-    <form action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`} method="post">
+    <form
+      action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
+      method="post"
+    >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
       <input type="hidden" name="hiveId" value={book.hiveId} />
@@ -57,13 +63,13 @@ const RatingSelect: FC<{
         onchange="this.form.submit()"
         class="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
       >
-        <option value="" selected={!book.stars}>-</option>
+        <option value="" selected={!book.stars}>
+          -
+        </option>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
           <option key={val} value={val} selected={book.stars === val}>
             {"★".repeat(Math.floor(val / 2))}
-            {val % 2 === 1 ? "½" : ""}
-            {" "}
-            {(val / 2).toFixed(1)}
+            {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
           </option>
         ))}
       </select>
@@ -83,7 +89,10 @@ const StatusSelect: FC<{
   ];
 
   return (
-    <form action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`} method="post">
+    <form
+      action={`/books${redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
+      method="post"
+    >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
       <input type="hidden" name="hiveId" value={book.hiveId} />
@@ -97,7 +106,9 @@ const StatusSelect: FC<{
         onchange="this.form.submit()"
         class="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
       >
-        <option value="" selected={!book.status}>Status</option>
+        <option value="" selected={!book.status}>
+          Status
+        </option>
         {statuses.map((s) => (
           <option key={s.value} value={s.value} selected={book.status === s.value}>
             {s.label}
@@ -213,7 +224,9 @@ export const EditableLibraryTable: FC<{
                       >
                         {book.title}
                       </h3>
-                      <p class="line-clamp-1 text-xs text-muted-foreground">{book.authors.split("\t").join(", ")}</p>
+                      <p class="line-clamp-1 text-xs text-muted-foreground">
+                        {book.authors.split("\t").join(", ")}
+                      </p>
                     </div>
                   </div>
                 </td>
@@ -226,14 +239,36 @@ export const EditableLibraryTable: FC<{
                 <td class="px-4 py-2" onclick="event.stopPropagation()">
                   <div class="space-y-1">
                     <div class="flex items-center gap-1">
-                      <svg class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Started">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      <svg
+                        class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        title="Started"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
                       </svg>
                       <DateInputForm book={book} field="startedAt" redirectUrl={redirectUrl} />
                     </div>
                     <div class="flex items-center gap-1">
-                      <svg class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Finished">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z" />
+                      <svg
+                        class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        title="Finished"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z"
+                        />
                       </svg>
                       <DateInputForm book={book} field="finishedAt" redirectUrl={redirectUrl} />
                     </div>
@@ -292,15 +327,42 @@ export const EditableLibraryTable: FC<{
                 <StatusSelect book={book} redirectUrl={redirectUrl} />
                 <div class="mt-2 grid grid-cols-2 gap-2">
                   <div class="flex items-center gap-1">
-                    <svg class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Started">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      title="Started"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                      />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     <DateInputForm book={book} field="startedAt" redirectUrl={redirectUrl} />
                   </div>
                   <div class="flex items-center gap-1">
-                    <svg class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Finished">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      title="Finished"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     <DateInputForm book={book} field="finishedAt" redirectUrl={redirectUrl} />
                   </div>
