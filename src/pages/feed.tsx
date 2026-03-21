@@ -1,25 +1,9 @@
 import type { FC } from "hono/jsx";
-import { formatDistanceToNow } from "date-fns";
-import { ActivityCard } from "./components/ActivityCard";
-import type { FeedActivity } from "./components/ActivityCard";
-import type { ProfileViewDetailed } from "../types";
-
-type FeedRow = {
-  uri: string;
-  userDid: string;
-  hiveId: string;
-  title: string;
-  authors: string;
-  status: string | null;
-  stars: number | null;
-  review: string | null;
-  createdAt: string;
-  cover: string | null;
-  thumbnail: string | null;
-};
+import type { Book, ProfileViewDetailed } from "../types";
+import { BuzzSection } from "./components/buzz";
 
 export interface FeedPageProps {
-  activities: FeedRow[];
+  activities: Book[];
   currentTab: "friends" | "all" | "tracking";
   currentPage: number;
   hasMore: boolean;
@@ -33,6 +17,12 @@ const TAB_LABELS: Record<"friends" | "all" | "tracking", string> = {
   tracking: "Books I Track",
 };
 
+const TAB_EMPTY: Record<"friends" | "all" | "tracking", string> = {
+  friends: "Follow users to see their activity",
+  all: "Check back later",
+  tracking: "Add books to your library to see activity on books you track",
+};
+
 export const FeedPage: FC<FeedPageProps> = ({
   activities,
   currentTab,
@@ -41,6 +31,10 @@ export const FeedPage: FC<FeedPageProps> = ({
   profileByDid,
   didHandleMap,
 }) => {
+  const profileMap = Object.fromEntries(
+    Object.entries(profileByDid).map(([did, p]) => [did, { avatar: p.avatar }]),
+  );
+
   return (
     <div class="space-y-6 px-4 py-8 lg:px-8">
       <div>
@@ -66,50 +60,17 @@ export const FeedPage: FC<FeedPageProps> = ({
       {activities.length === 0 ? (
         <div class="empty">
           <div class="empty-title">No activity yet</div>
-          <div class="empty-description">
-            {currentTab === "friends"
-              ? "Follow users to see their activity"
-              : currentTab === "tracking"
-                ? "Add books to your library to see activity on books you track"
-                : "Check back later"}
-          </div>
+          <div class="empty-description">{TAB_EMPTY[currentTab]}</div>
         </div>
       ) : (
-        <div class="space-y-4">
-          {activities.map((activity) => {
-            const handle = didHandleMap[activity.userDid] ?? activity.userDid;
-            const prof = profileByDid[activity.userDid];
-            const user = {
-              handle,
-              displayName: prof?.displayName ?? null,
-              avatar: prof?.avatar ?? null,
-            };
-            const feedActivity: FeedActivity = {
-              uri: activity.uri,
-              userDid: activity.userDid,
-              hiveId: activity.hiveId,
-              title: activity.title,
-              authors: activity.authors,
-              status: activity.status,
-              stars: activity.stars,
-              review: activity.review,
-              createdAt: activity.createdAt,
-              cover: activity.cover,
-              thumbnail: activity.thumbnail,
-            };
-            const timeAgo = formatDistanceToNow(new Date(activity.createdAt), {
-              addSuffix: true,
-            });
-            return (
-              <ActivityCard
-                key={`${activity.userDid}-${activity.hiveId}-${activity.createdAt}`}
-                activity={feedActivity}
-                user={user}
-                timeAgo={timeAgo}
-              />
-            );
-          })}
-        </div>
+        <BuzzSection
+          title=""
+          subtitle=""
+          books={activities}
+          didHandleMap={didHandleMap}
+          profileMap={profileMap}
+          showDetails
+        />
       )}
 
       {hasMore && (

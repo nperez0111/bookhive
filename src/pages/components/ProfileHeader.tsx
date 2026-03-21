@@ -32,16 +32,20 @@ export const ProfileHeader: FC<{
         )}
         <div class="min-w-0 flex-1">
           <h1 class="text-2xl font-bold text-foreground">{profile?.displayName || handle}</h1>
-          <a
-            href={`https://bsky.app/profile/${handle}`}
-            class="text-muted-foreground hover:text-foreground mt-0.5 block text-sm"
-          >
-            @{handle}
-          </a>
-          {profile?.description && (
+          {!isOwnProfile && (
+            <a
+              href={`https://bsky.app/profile/${handle}`}
+              class="text-muted-foreground hover:text-foreground mt-0.5 block text-sm"
+            >
+              @{handle}
+            </a>
+          )}
+          {!isOwnProfile && profile?.description && (
             <p class="text-muted-foreground mt-2 leading-relaxed">{profile.description}</p>
           )}
-          {joinDate && <p class="text-muted-foreground mt-1 text-sm">Joined {joinDate}</p>}
+          {!isOwnProfile && joinDate && (
+            <p class="text-muted-foreground mt-1 text-sm">Joined {joinDate}</p>
+          )}
           <div class="mt-3 flex flex-wrap gap-2">
             <span class="badge">{booksRead} books read</span>
             <span class="badge">{reviewCount} reviews</span>

@@ -16,6 +16,7 @@ import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
 import { getProfiles } from "../utils/getProfile";
+import { hydrateUserBook } from "../utils/bookProgress";
 import { LibraryImport } from "../pages/import";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
@@ -77,7 +78,7 @@ const app = new Hono<AppEnv>()
     const rows = await query.execute();
     endTime(c, "db_feed");
     const hasMore = rows.length > limit;
-    const activities = rows.slice(0, limit);
+    const activities = rows.slice(0, limit).map((row) => hydrateUserBook(row));
 
     const allDids = [...new Set(activities.map((a) => a.userDid))];
     startTime(c, "feed_profiles");
