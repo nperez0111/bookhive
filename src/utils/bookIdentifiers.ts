@@ -48,7 +48,18 @@ export function normalizeGoodreadsId(value: string | null | undefined): string |
 
   // Goodreads ids can appear as "12345.title-slug"
   const [id] = normalized.split(".", 1);
-  return id || null;
+  if (!id) {
+    return null;
+  }
+
+  // Real Goodreads IDs are always numeric. Reject non-numeric values like
+  // "kca://book/amzn1" (Kindle Content Address) that the Goodreads API
+  // sometimes returns as bookId.
+  if (!/^\d+$/.test(id)) {
+    return null;
+  }
+
+  return id;
 }
 
 function parseMeta(meta: string | null): ParsedMeta {

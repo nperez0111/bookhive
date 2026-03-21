@@ -2,7 +2,7 @@ import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "../context";
-import { upsertBookIdentifiers } from "./bookIdentifiers";
+import { normalizeGoodreadsId, upsertBookIdentifiers } from "./bookIdentifiers";
 import { writeCatalogBookIfNeeded } from "./catalogBookService";
 
 interface BookMeta {
@@ -98,7 +98,10 @@ export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext
     const updatedIdentifiers: BookIdentifiers = {
       ...existingIdentifiers,
       hiveId: book.id,
-      goodreadsId: book.sourceId || existingIdentifiers.goodreadsId,
+      goodreadsId:
+        normalizeGoodreadsId(book.sourceId) ||
+        normalizeGoodreadsId(existingIdentifiers.goodreadsId) ||
+        undefined,
       isbn10: detailedData.book.details.isbn || existingIdentifiers.isbn10,
       isbn13: detailedData.book.details.isbn13 || existingIdentifiers.isbn13,
     };
@@ -123,9 +126,15 @@ export async function enrichBookWithDetailedData(book: HiveBook, ctx: AppContext
 
     await syncHiveBookGenres(ctx.db, book.id, genres);
 
+    // Prefer the numeric sourceId from the search API over the kca:// ID
+    // that the Goodreads page scrape returns in its Apollo state.
+    const enrichedSourceId = normalizeGoodreadsId(detailedData.book.id)
+      ? detailedData.book.id
+      : book.sourceId;
+
     await upsertBookIdentifiers(ctx.db, {
       ...book,
-      sourceId: detailedData.book.id || book.sourceId,
+      sourceId: enrichedSourceId,
       meta: serializedMeta,
     });
 
