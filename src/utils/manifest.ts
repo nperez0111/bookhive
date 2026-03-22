@@ -25,7 +25,7 @@ let cachedProductionPublicRoot: string | null = null;
 export async function resolveProductionPublicRoot(): Promise<string> {
   if (cachedProductionPublicRoot) return cachedProductionPublicRoot;
   const cwd = process.cwd();
-  for (const dir of ["public", "dist/public"]) {
+  for (const dir of ["public", ".output/public", "dist/public"]) {
     const absPath = join(cwd, dir, ".vite", "manifest.json");
     const file = Bun.file(absPath);
     if (await file.exists()) {
@@ -33,7 +33,7 @@ export async function resolveProductionPublicRoot(): Promise<string> {
       return dir;
     }
   }
-  return "dist/public";
+  return ".output/public";
 }
 
 /**
@@ -48,6 +48,7 @@ export async function loadViteManifest(): Promise<ViteManifest | null> {
     const cwd = process.cwd();
     const possiblePaths = [
       join(cwd, "public", ".vite", "manifest.json"),
+      join(cwd, ".output", "public", ".vite", "manifest.json"),
       join(cwd, "dist", "public", ".vite", "manifest.json"),
     ];
 
@@ -57,7 +58,11 @@ export async function loadViteManifest(): Promise<ViteManifest | null> {
         const file = Bun.file(absPath);
         if (await file.exists()) {
           manifestFile = await file.text();
-          cachedProductionPublicRoot = absPath.includes("/dist/public/") ? "dist/public" : "public";
+          cachedProductionPublicRoot = absPath.includes("/.output/public/")
+            ? ".output/public"
+            : absPath.includes("/dist/public/")
+              ? "dist/public"
+              : "public";
           break;
         }
       } catch {

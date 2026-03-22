@@ -23,6 +23,7 @@ index.html
 
 # Vite dev server
 .vite/
+.output/
 
 # Editor directories and files
 .vscode/*
