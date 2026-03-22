@@ -105,8 +105,18 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
-  const db = createDb(env.DB_PATH);
-  await migrateToLatest(db);
+  const { db, sqlite } = createDb(env.DB_PATH);
+  logger.info("starting DB migrations");
+  const migrationResults = await migrateToLatest(db);
+  if (migrationResults.length > 0) {
+    logger.info(
+      { migrations: migrationResults.map((r) => r.migrationName) },
+      "db migrations applied, running VACUUM to reclaim space",
+    );
+    sqlite.exec("VACUUM");
+    logger.info("db VACUUM complete");
+  }
+  logger.info('db migrations applied');
 
   const kv = createStorage({
     driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv" }),
