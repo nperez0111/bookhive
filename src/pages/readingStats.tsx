@@ -17,7 +17,6 @@ export const ReadingStatsPage: FC<{
   books: Book[];
   allTimeStats?: ReadingStats;
   showYearInBooks: boolean;
-  readingChallengeGoal?: number | null;
 }> = ({
   handle,
   did,
@@ -29,7 +28,6 @@ export const ReadingStatsPage: FC<{
   books,
   allTimeStats,
   showYearInBooks,
-  readingChallengeGoal = null,
 }) => {
   const title = year != null ? `Your ${year} in Books` : "Your reading stats";
   const totalBooksForGenre = stats.topGenres.reduce((s, g) => s + g.count, 0);
@@ -139,84 +137,6 @@ export const ReadingStatsPage: FC<{
               </div>
             </div>
           </div>
-
-          {/* Reading challenge */}
-          {(readingChallengeGoal != null || isOwnProfile) && year != null && (
-            <div class="card">
-              <div class="card-header">
-                <h2 class="card-title">Reading Challenge</h2>
-              </div>
-              <div class="card-body space-y-4">
-                {readingChallengeGoal != null ? (
-                  <>
-                    <div class="flex items-baseline justify-between gap-2">
-                      <span class="text-2xl font-bold text-foreground">
-                        {stats.booksCount} / {readingChallengeGoal} books
-                      </span>
-                      <span class="text-muted-foreground text-sm">
-                        {Math.min(100, Math.round((stats.booksCount / readingChallengeGoal) * 100))}
-                        % complete
-                      </span>
-                    </div>
-                    <div class="bg-muted h-4 overflow-hidden rounded-full">
-                      <div
-                        class="bg-primary h-full rounded-full transition-all"
-                        style={`width: ${Math.min(100, (stats.booksCount / readingChallengeGoal) * 100)}%`}
-                      />
-                    </div>
-                    {stats.booksCount >= readingChallengeGoal && (
-                      <p class="text-primary font-medium">🎉 Challenge complete!</p>
-                    )}
-                    {isOwnProfile && (
-                      <form
-                        action="/api/reading-challenge"
-                        method="post"
-                        class="flex flex-wrap items-center gap-2"
-                      >
-                        <input type="hidden" name="year" value={year} />
-                        <label class="text-muted-foreground text-sm">Update goal:</label>
-                        <input
-                          type="number"
-                          name="goal"
-                          min="1"
-                          max="1000"
-                          value={readingChallengeGoal}
-                          class="input w-20"
-                        />
-                        <button type="submit" class="btn btn-sm btn-primary">
-                          Save
-                        </button>
-                      </form>
-                    )}
-                  </>
-                ) : (
-                  isOwnProfile && (
-                    <form
-                      action="/api/reading-challenge"
-                      method="post"
-                      class="flex flex-wrap items-center gap-2"
-                    >
-                      <input type="hidden" name="year" value={year} />
-                      <label class="text-muted-foreground text-sm">
-                        Set your {year} reading goal:
-                      </label>
-                      <input
-                        type="number"
-                        name="goal"
-                        min="1"
-                        max="1000"
-                        placeholder="e.g. 52"
-                        class="input w-24"
-                      />
-                      <button type="submit" class="btn btn-sm btn-primary">
-                        Set goal
-                      </button>
-                    </form>
-                  )
-                )}
-              </div>
-            </div>
-          )}
 
           {/* First & Last book of year */}
           {(stats.firstBookOfYear || stats.lastBookOfYear) && (

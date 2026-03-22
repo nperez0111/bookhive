@@ -137,8 +137,18 @@ async function getBookDetailedInfo(
 ): Promise<ParsedGoodreadsData | null> {
   const addCtx = addWideEventContext ?? (() => {});
   try {
-    const response = await fetch(sourceUrl);
+    const response = await fetch(sourceUrl, {
+      headers: {
+        "User-Agent": "BookHive/1.0 (+https://bookhive.buzz)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
     addCtx({ scrape_status: response.status, scrape_url: sourceUrl });
+    if (!response.ok) {
+      addCtx({ scrape_failure: "non_ok_status" });
+      return null;
+    }
     const data = await response.text();
     const startIdx = data.indexOf(startString);
     if (startIdx === -1) {

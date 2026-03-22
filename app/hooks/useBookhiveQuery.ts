@@ -568,7 +568,6 @@ export const useReadingStats = (handle: string, year: number) => {
         };
         availableYears: number[];
         year: number;
-        readingChallengeGoal?: number;
       }>(`/xrpc/buzz.bookhive.getReadingStats?handle=${encodeURIComponent(String(h))}&year=${y}`);
     },
     enabled: Boolean(handle),

@@ -240,17 +240,6 @@ const app = new Hono<AppEnv>()
     if (!yearSet.has(currentYear)) yearSet.add(currentYear);
     availableYears = [...yearSet].sort((a, b) => b - a);
 
-    let readingChallengeGoal: number | null = null;
-    startTime(c, "kv_challenge_goal");
-    if (isOwnProfile) {
-      const goalStr = await c.get("ctx").kv.getItem(`reading-challenge:${did}:${year}`);
-      if (goalStr != null && typeof goalStr === "string") {
-        const parsed = parseInt(goalStr, 10);
-        if (!Number.isNaN(parsed) && parsed > 0) readingChallengeGoal = parsed;
-      }
-    }
-    endTime(c, "kv_challenge_goal");
-
     return c.render(
       <Layout>
         <ReadingStatsPage
@@ -264,7 +253,6 @@ const app = new Hono<AppEnv>()
           books={parsedBooks}
           allTimeStats={allTimeStats}
           showYearInBooks={showYearInBooks}
-          readingChallengeGoal={readingChallengeGoal}
         />
       </Layout>,
       {

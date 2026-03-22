@@ -1,0 +1,30 @@
+--- a/dist/_build/common.mjs
++++ b/dist/_build/common.mjs
+@@ -29222,10 +29222,14 @@
+ 				if (opts.trace) {
+ 					let importId = toImport(id) || toImport(resolvedPath);
+ 					if (!importId) return resolved;
+-					if (!tryResolve(importId, importer)) {
+-						const guessed = await guessSubpath(resolvedPath, opts.conditions);
+-						if (!guessed) return resolved;
+-						importId = guessed;
++					// If importId is a bare package specifier, trust it directly — tryResolve may fail
++					// with bun's .bun/ symlink layout (exsolve can't traverse nested .bun/ paths).
++					if (importId.startsWith(".") || isAbsolute$2(importId)) {
++						if (!tryResolve(importId, importer)) {
++							const guessed = await guessSubpath(resolvedPath, opts.conditions);
++							if (!guessed) return resolved;
++							importId = guessed;
++						}
+ 					}
+ 					tracedPaths.add(resolvedPath);
+ 					return {
+@@ -29287,7 +29291,7 @@
+ 	if (!exports || typeof exports !== "object") return;
+ 	for (const e of flattenExports(exports)) {
+ 		if (!conditions.includes(e.condition || "default")) continue;
+-		if (e.fsPath === subpath) return join$2(name, e.subpath);
++		if (e.fsPath === subpath || e.fsPath === `./${subpath}`) return join$2(name, e.subpath);
+ 		if (e.fsPath.includes("*")) {
+ 			const fsPathRe = new RegExp("^" + escapeRegExp$1(e.fsPath).replace(String.raw`\*`, "(.+?)") + "$");
+ 			if (fsPathRe.test(subpath)) {
