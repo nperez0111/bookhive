@@ -37,7 +37,6 @@ const STATUS_PHRASES: Record<string, string> = {
   [BOOK_STATUS.READING]: "Currently reading",
   [BOOK_STATUS.WANTTOREAD]: "Want to read",
   [BOOK_STATUS.ABANDONED]: "Abandoned",
-  [BOOK_STATUS.OWNED]: "Added to my collection",
 };
 
 export function buildCrossPostText(params: CrossPostParams): { text: string } {

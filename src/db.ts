@@ -44,6 +44,7 @@ export const BookFields = [
   "user_book.stars",
   "user_book.startedAt",
   "user_book.status",
+  "user_book.owned",
   "user_book.title",
   "user_book.uri",
   "user_book.userDid",
@@ -402,11 +403,7 @@ migrations["015"] = {
       .execute();
 
     // Book detail + rating stats: WHERE hiveId = ? — was full scan
-    await db.schema
-      .createIndex("idx_user_book_hive_id")
-      .on("user_book")
-      .column("hiveId")
-      .execute();
+    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
 
     // Feed page: WHERE userDid IN (follows) ORDER BY createdAt DESC — covers filter + sort
     await db.schema
@@ -431,6 +428,21 @@ migrations["016"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
+  },
+};
+
+migrations["017"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("user_book")
+      .addColumn("owned", "integer", (col) => col.notNull().defaultTo(0))
+      .execute();
+    await sql`UPDATE user_book SET owned = 1, status = NULL WHERE status = 'buzz.bookhive.defs#owned'`.execute(
+      db,
+    );
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("user_book").dropColumn("owned").execute();
   },
 };
 

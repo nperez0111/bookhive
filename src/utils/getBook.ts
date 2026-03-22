@@ -149,6 +149,7 @@ export async function updateUserBook({
         title: c.ref("excluded.title"),
         hiveId: c.ref("excluded.hiveId"),
         status: c.ref("excluded.status"),
+        owned: c.ref("excluded.owned"),
         startedAt: c.ref("excluded.startedAt"),
         finishedAt: c.ref("excluded.finishedAt"),
         review: c.ref("excluded.review"),
@@ -291,6 +292,8 @@ export async function updateBookRecord({
         : updates.bookProgress !== undefined
           ? updates.bookProgress
           : originalBook?.bookProgress,
+    // Default to owned when first adding a book to library
+    owned: updates.owned ?? originalBook?.owned ?? true,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
     hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
   };
@@ -346,6 +349,7 @@ export async function updateBookRecord({
     indexedAt: new Date().toISOString(),
     hiveId: record.hiveId as HiveId,
     status: record.status || null,
+    owned: record.owned ? 1 : 0,
     startedAt: record.startedAt || null,
     finishedAt: record.finishedAt || null,
     review: record.review || null,
@@ -472,6 +476,8 @@ export async function updateBookRecords({
           : update.bookProgress !== undefined
             ? update.bookProgress
             : originalBook?.bookProgress,
+      // Default to owned when first adding a book to library
+      owned: update.owned ?? originalBook?.owned ?? true,
       identifiers,
       hiveBookUri: hiveBookUriMap.get(hiveId) ?? originalBook?.hiveBookUri,
     });
@@ -494,6 +500,7 @@ export async function updateBookRecords({
         indexedAt: new Date().toISOString(),
         hiveId: record.hiveId as HiveId,
         status: record.status || null,
+        owned: record.owned ? 1 : 0,
         startedAt: record.startedAt || null,
         finishedAt: record.finishedAt || null,
         review: record.review || null,

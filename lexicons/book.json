@@ -52,8 +52,7 @@
               "buzz.bookhive.defs#finished",
               "buzz.bookhive.defs#reading",
               "buzz.bookhive.defs#wantToRead",
-              "buzz.bookhive.defs#abandoned",
-              "buzz.bookhive.defs#owned"
+              "buzz.bookhive.defs#abandoned"
             ]
           },
           "stars": {
@@ -76,6 +75,10 @@
             "description": "External identifiers for the book",
             "type": "ref",
             "ref": "buzz.bookhive.defs#bookIdentifiers"
+          },
+          "owned": {
+            "type": "boolean",
+            "description": "Whether the user owns this book"
           },
           "hiveBookUri": {
             "type": "string",

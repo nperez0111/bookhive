@@ -47,6 +47,10 @@ const _mainSchema = /*#__PURE__*/ v.record(
       return /*#__PURE__*/ v.optional(BuzzBookhiveDefs.bookIdentifiersSchema);
     },
     /**
+     * Whether the user owns this book
+     */
+    owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
+    /**
      * The book's review
      * @maxGraphemes 15000
      */
@@ -71,7 +75,6 @@ const _mainSchema = /*#__PURE__*/ v.record(
       /*#__PURE__*/ v.string<
         | "buzz.bookhive.defs#abandoned"
         | "buzz.bookhive.defs#finished"
-        | "buzz.bookhive.defs#owned"
         | "buzz.bookhive.defs#reading"
         | "buzz.bookhive.defs#wantToRead"
         | (string & {})

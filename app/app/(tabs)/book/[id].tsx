@@ -144,6 +144,18 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const updateBook = useUpdateBook();
   const deleteBook = useDeleteBook();
 
+  const handleOwnedToggle = async () => {
+    const currentOwned = bookData?.owned ?? 0;
+    try {
+      await updateBook.mutateAsync({
+        hiveId: hiveId,
+        owned: currentOwned ? 0 : 1,
+      });
+    } catch {
+      // silently fail
+    }
+  };
+
   const handleStatusUpdate = async (status: BookStatus) => {
     let currentStatus = selectedStatus;
     setSelectedStatus(status);
@@ -658,9 +670,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                       key={`reader-${userDid ?? idx}`}
                       handle={userHandle ?? userDid ?? "user"}
                       avatar={
-                        userHandle
-                          ? `${getBaseUrl()}/profile/${userHandle}/image`
-                          : undefined
+                        userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
                       }
                       size="sm"
                       onPress={userDid ? () => handleUserPress(userDid) : undefined}
@@ -701,6 +711,39 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                 ) : null
               }
             />
+
+            {/* Owned toggle */}
+            <Pressable
+              onPress={handleOwnedToggle}
+              disabled={updateBook.isPending}
+              style={[
+                styles.ownedToggle,
+                {
+                  backgroundColor: userBook.owned
+                    ? colors.primary
+                    : colorScheme === "dark"
+                      ? "#1f2937"
+                      : "#f3f4f6",
+                  opacity: updateBook.isPending ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={userBook.owned ? "book" : "book-outline"}
+                size={18}
+                color={userBook.owned ? "#fff" : colors.text}
+              />
+              <ThemedText
+                style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: userBook.owned ? "#fff" : colors.text,
+                  marginLeft: 6,
+                }}
+              >
+                {userBook.owned ? "Owned" : "Own"}
+              </ThemedText>
+            </Pressable>
 
             {/* Only show dates card if user has this book in their library */}
             {(userBook.status || userBook.stars || userBook.review) && (
@@ -1127,6 +1170,14 @@ const styles = StyleSheet.create({
   actionsContainer: {
     marginBottom: 24,
     gap: 16,
+  },
+  ownedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
 
   sectionTitle: {

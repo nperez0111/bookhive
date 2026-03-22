@@ -17,6 +17,7 @@ import { updateBookRecord } from "../utils/getBook";
 const updateBookSchema = z.object({
   hiveId: z.string(),
   status: z.optional(z.string()),
+  owned: z.optional(z.boolean()),
   review: z.optional(z.string()),
   stars: z.optional(z.number()),
   startedAt: z.optional(
