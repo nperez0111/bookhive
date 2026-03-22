@@ -231,6 +231,8 @@ export async function prepareSanitizedExportFiles(opts: {
 }): Promise<PrepareResult> {
   const { dbPath, kvPath, exportDir, includeKv } = opts;
 
+  await cleanupStaleExports(exportDir);
+
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const runId = crypto.randomUUID();
@@ -326,6 +328,8 @@ export async function createSanitizedExportArchive(opts: {
   includeKv: boolean;
 }): Promise<ExportResult> {
   const { dbPath, kvPath, exportDir, includeKv } = opts;
+
+  await cleanupStaleExports(exportDir);
 
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, "-");
@@ -448,6 +452,19 @@ export async function createSanitizedExportArchive(opts: {
     await cleanupExportPaths({ archivePath, tmpDir });
     throw err;
   }
+}
+
+async function cleanupStaleExports(exportDir: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(exportDir);
+  } catch {
+    return; // exportDir doesn't exist yet — nothing to clean
+  }
+  const stale = entries.filter((e) => e.startsWith("bookhive-export-"));
+  await Promise.allSettled(
+    stale.map((e) => fsp.rm(path.join(exportDir, e), { recursive: true, force: true })),
+  );
 }
 
 export async function cleanupExportPaths(paths: {
