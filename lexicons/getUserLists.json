@@ -1,0 +1,36 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getUserLists",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get all book lists for a user.",
+      "parameters": {
+        "type": "params",
+        "required": ["did"],
+        "properties": {
+          "did": {
+            "type": "string",
+            "description": "DID of the user whose lists to fetch"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["lists"],
+          "properties": {
+            "lists": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "buzz.bookhive.getList#listView"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

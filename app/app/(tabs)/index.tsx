@@ -10,8 +10,7 @@ import {
 
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BookCard } from "@/components/BookCard";
-import { GradientView } from "@/components/GradientView";
-import { HelloWave } from "@/components/HelloWave";
+import { CreateListModal } from "@/components/CreateListModal";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { QuickAction } from "@/components/QuickAction";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -22,13 +21,36 @@ import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
-import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
+import { isThisMonth, isThisYear } from "date-fns";
 import { router } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { UserBook } from "../../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
+
+const MAX_BOOKS_PER_SECTION = 20;
+
+function BookGrid({ books, colors }: { books: UserBook[]; colors: any }) {
+  return (
+    <View style={styles.gridContainer}>
+      {books.map((book, index) => (
+        <View key={book.hiveId} style={styles.gridItem}>
+          <AnimatedListItem index={index}>
+            <BookCard
+              title={book.title}
+              authors={book.authors}
+              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+              onPress={() => router.push(`/book/${book.hiveId}`)}
+              variant="dense"
+            />
+          </AnimatedListItem>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 interface BookSectionProps {
   books: UserBook[];
@@ -36,7 +58,6 @@ interface BookSectionProps {
   icon: string;
   emptyMessage: string;
   emptySubtitle: string;
-  colorScheme: string;
   colors: any;
   status: string;
 }
@@ -50,6 +71,8 @@ function BookSection({
   colors,
   status,
 }: BookSectionProps) {
+  const displayBooks = books.slice(0, MAX_BOOKS_PER_SECTION);
+
   if (books.length === 0) {
     return (
       <View style={styles.section}>
@@ -64,15 +87,7 @@ function BookSection({
           </View>
         </View>
 
-        <ThemedView
-          variant="card"
-          style={[
-            styles.emptyState,
-            {
-              borderColor: colors.cardBorder,
-            },
-          ]}
-        >
+        <ThemedView variant="card" style={[styles.emptyState, { borderColor: colors.cardBorder }]}>
           <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
             <Ionicons name="book-outline" size={32} color={colors.tertiaryText} />
           </View>
@@ -125,30 +140,126 @@ function BookSection({
         />
       </Pressable>
 
-      <FlatList
-        data={books}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalListContent}
-        keyExtractor={(item) => item.hiveId}
-        renderItem={({ item: book, index }) => (
-          <AnimatedListItem index={index}>
-            <BookCard
-              title={book.title}
-              authors={book.authors}
-              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
-              onPress={() => router.push(`/book/${book.hiveId}`)}
-              orientation="horizontal"
-              style={{
-                width: 180,
-                marginRight: 16,
-                paddingBottom: 8,
-                alignItems: "center",
-              }}
-            />
-          </AnimatedListItem>
-        )}
+      <View style={styles.gridPadding}>
+        <BookGrid books={displayBooks} colors={colors} />
+      </View>
+    </View>
+  );
+}
+
+interface ShelfItem {
+  uri: string;
+  name: string;
+  description?: string;
+  itemCount?: number;
+}
+
+function ShelvesSection({
+  shelves,
+  colors,
+  onCreatePress,
+}: {
+  shelves: ShelfItem[];
+  colors: any;
+  onCreatePress: () => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <SectionHeader
+        icon="albums"
+        title="Your Shelves"
+        right={
+          <View style={styles.headerRight}>
+            <Pressable onPress={onCreatePress} hitSlop={8} style={styles.shelfHeaderAction}>
+              <Ionicons name="add" size={18} color={colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/lists" as any)}
+              hitSlop={8}
+              style={styles.shelfHeaderAction}
+            >
+              <ThemedText style={[styles.seeAll, { color: colors.primary }]} type="caption">
+                See all
+              </ThemedText>
+              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            </Pressable>
+          </View>
+        }
+        style={{ marginBottom: 16 }}
       />
+
+      {shelves.length === 0 ? (
+        <Pressable
+          onPress={onCreatePress}
+          style={[
+            styles.emptyState,
+            {
+              borderColor: colors.cardBorder,
+              marginHorizontal: 20,
+              borderRadius: 20,
+              padding: 32,
+              alignItems: "center",
+              borderWidth: 1,
+              borderStyle: "dashed",
+            },
+          ]}
+        >
+          <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
+            <Ionicons name="albums-outline" size={32} color={colors.tertiaryText} />
+          </View>
+          <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
+            No shelves yet
+          </ThemedText>
+          <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
+            Create a shelf to curate your books
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shelvesScroll}
+        >
+          {shelves.map((shelf) => (
+            <Pressable
+              key={shelf.uri}
+              style={[
+                styles.shelfCard,
+                { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
+              ]}
+              onPress={() => router.push(`/lists/${encodeURIComponent(shelf.uri)}` as any)}
+            >
+              <View style={[styles.shelfIconBadge, { backgroundColor: colors.activeBackground }]}>
+                <Ionicons name="albums" size={18} color={colors.primary} />
+              </View>
+              <ThemedText
+                style={[styles.shelfCardName, { color: colors.primaryText }]}
+                type="label"
+                numberOfLines={2}
+              >
+                {shelf.name}
+              </ThemedText>
+              <ThemedText style={{ color: colors.tertiaryText }} type="caption">
+                {shelf.itemCount ?? 0} {(shelf.itemCount ?? 0) === 1 ? "book" : "books"}
+              </ThemedText>
+            </Pressable>
+          ))}
+
+          <Pressable
+            style={[
+              styles.shelfCard,
+              styles.shelfCardNew,
+              { borderColor: colors.cardBorder },
+            ]}
+            onPress={onCreatePress}
+          >
+            <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
+            <ThemedText style={[styles.shelfCardName, { color: colors.primary }]} type="label">
+              New Shelf
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -157,28 +268,41 @@ export default function HomeScreen() {
   const profile = useProfile();
   const { authState } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [createShelfVisible, setCreateShelfVisible] = useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
 
+  const listsQuery = useUserLists(authState?.did);
+
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    profile.refetch().finally(() => setIsRefreshing(false));
-  }, [profile.refetch]);
+    Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() =>
+      setIsRefreshing(false),
+    );
+  }, [profile.refetch, listsQuery.refetch]);
 
-  const handleStatPress = useCallback(
-    (label: string) => {
-      if (label === "Currently Reading") {
-        router.push("/books/reading" as any);
-      } else if (label === "Finished") {
-        router.push("/books/finished" as any);
-      } else if (label === "Total Books" && authState?.did) {
-        router.push(`/profile/${authState.did}` as any);
-      }
-    },
-    [authState?.did],
-  );
+  const stats = useMemo(() => {
+    if (!profile.data) return { totalRead: 0, thisMonth: 0, thisYear: 0 };
+    const finishedBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED);
+    const totalRead = finishedBooks.length;
+    const thisMonth = finishedBooks.filter(
+      (book) => book.finishedAt && isThisMonth(new Date(book.finishedAt)),
+    ).length;
+    const thisYear = finishedBooks.filter(
+      (book) => book.finishedAt && isThisYear(new Date(book.finishedAt)),
+    ).length;
+    return { totalRead, thisMonth, thisYear };
+  }, [profile.data]);
+
+  const handleStatPress = useCallback((label: string) => {
+    if (label === "Total Read") {
+      router.push("/books/finished" as any);
+    } else if (label === "This Month" || label === "This Year") {
+      router.push("/books/finished" as any);
+    }
+  }, []);
 
   if (profile.isLoading && !isRefreshing && !profile.data) {
     return (
@@ -220,10 +344,6 @@ export default function HomeScreen() {
   const wantToReadBooks = profile.data.books.filter(
     (book) => book.status === BOOK_STATUS.WANTTOREAD,
   );
-  const finishedBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED);
-
-  const totalBooks = profile.data.books.length;
-  const friendActivity = profile.data.friendActivity ?? [];
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -239,48 +359,34 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Welcome Header with Gradient */}
-        <GradientView variant="warm" style={styles.welcomeSection}>
-          <View style={styles.welcomeContent}>
-            <View style={styles.welcomeTextContainer}>
-              <ThemedText
-                style={[
-                  styles.welcomeOverline,
-                  { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-                ]}
-                type="overline"
-              >
-                Welcome back
-              </ThemedText>
-              <ThemedText
-                style={[
-                  styles.welcomeName,
-                  { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" },
-                ]}
-                type="title"
-              >
-                {profile.data.profile.displayName || profile.data.profile.handle}
-              </ThemedText>
-              <View style={styles.quickActionsRow}>
-                <QuickAction icon="search" label="Search" onPress={() => router.push("/search")} />
-                <QuickAction
-                  icon="compass"
-                  label="Explore"
-                  onPress={() => router.push("/explore" as any)}
-                />
-              </View>
-            </View>
-            <HelloWave />
+        {/* Welcome Header */}
+        <View style={styles.welcomeSection}>
+          <ThemedText
+            style={[styles.welcomeOverline, { color: colors.secondaryText }]}
+            type="caption"
+          >
+            Welcome back
+          </ThemedText>
+          <ThemedText style={[styles.welcomeName, { color: colors.primaryText }]} type="title">
+            {profile.data.profile.displayName || profile.data.profile.handle}
+          </ThemedText>
+          <View style={styles.quickActionsRow}>
+            <QuickAction icon="search" label="Search" onPress={() => router.push("/search")} />
+            <QuickAction
+              icon="compass"
+              label="Explore"
+              onPress={() => router.push("/explore" as any)}
+            />
           </View>
-        </GradientView>
+        </View>
 
         {/* Stats Section */}
         <StatsCard
           style={styles.statsSection}
           items={[
-            { label: "Total Books", value: totalBooks },
-            { label: "Currently Reading", value: readingBooks.length },
-            { label: "Finished", value: finishedBooks.length },
+            { label: "Total Read", value: stats.totalRead },
+            { label: "This Month", value: stats.thisMonth },
+            { label: "This Year", value: stats.thisYear },
           ]}
           onItemPress={handleStatPress}
         />
@@ -292,7 +398,6 @@ export default function HomeScreen() {
           icon="book"
           emptyMessage="No books in progress"
           emptySubtitle="Start reading a book to see it here"
-          colorScheme={colorScheme ?? "light"}
           colors={colors}
           status={BOOK_STATUS.READING}
         />
@@ -303,24 +408,23 @@ export default function HomeScreen() {
           icon="bookmark"
           emptyMessage="No books in your list"
           emptySubtitle="Add books to your reading list"
-          colorScheme={colorScheme ?? "light"}
           colors={colors}
           status={BOOK_STATUS.WANTTOREAD}
         />
 
-        <BookSection
-          books={finishedBooks}
-          title="Finished"
-          icon="checkmark-circle"
-          emptyMessage="No finished books"
-          emptySubtitle="Complete a book to see it here"
-          colorScheme={colorScheme ?? "light"}
+        <ShelvesSection
+          shelves={listsQuery.data?.lists ?? []}
           colors={colors}
-          status={BOOK_STATUS.FINISHED}
+          onCreatePress={() => setCreateShelfVisible(true)}
         />
 
         <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
+
+      <CreateListModal
+        visible={createShelfVisible}
+        onClose={() => setCreateShelfVisible(false)}
+      />
     </ThemedView>
   );
 }
@@ -357,57 +461,25 @@ const styles = StyleSheet.create({
   },
   welcomeSection: {
     paddingTop: 60,
-    paddingBottom: 32,
+    paddingBottom: 24,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  welcomeContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
   welcomeOverline: {
-    opacity: 0.9,
-  },
-  welcomeTextContainer: {
-    flex: 1,
-  },
-  quickActionsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  welcomeTitle: {
     marginBottom: 4,
   },
   welcomeName: {
     lineHeight: 40,
+    marginBottom: 12,
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    gap: 8,
   },
   statsSection: {
     margin: 20,
+    marginTop: 0,
     padding: 24,
     borderRadius: 20,
-  },
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statNumber: {
-    marginBottom: 4,
-  },
-  statLabel: {
-    textAlign: "center",
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    marginHorizontal: 10,
   },
   section: {
     marginBottom: 32,
@@ -464,47 +536,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  horizontalListContent: {
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  gridItem: {
+    width: "47%",
+  },
+  gridPadding: {
     paddingHorizontal: 20,
-  },
-  bookCard: {
-    borderRadius: 20,
-    padding: 16,
-    marginRight: 16,
-    width: 140,
-    borderWidth: 1,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  coverContainer: {
-    marginBottom: 12,
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  bookCover: {
-    width: 100,
-    height: 150,
-    borderRadius: 12,
-  },
-  bookInfo: {
-    flex: 1,
-  },
-  bookTitle: {
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  bookAuthor: {
-    lineHeight: 16,
   },
   bottomSpacing: {
     height: 20,
@@ -512,8 +553,44 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
   chevron: {
     marginLeft: 4,
+  },
+  shelfHeaderAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAll: {
+    fontWeight: "500",
+  },
+  shelvesScroll: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  shelfCard: {
+    width: 140,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+  },
+  shelfCardNew: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    borderStyle: "dashed",
+  },
+  shelfIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shelfCardName: {
+    fontWeight: "600",
   },
 });

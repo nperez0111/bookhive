@@ -43,7 +43,8 @@ export const useSearchBooks = (query: string) => {
   return useQuery({
     queryKey: ["searchBooks", query] as const,
     queryFn: async ({ queryKey: [, q] }) => {
-      return await enhancedAuthFetch<HiveBook[]>(`/xrpc/buzz.bookhive.searchBooks?q=${q}`);
+      const result = await enhancedAuthFetch<{ books: HiveBook[] }>(`/xrpc/buzz.bookhive.searchBooks?q=${q}`);
+      return result.books;
     },
     enabled: Boolean(debouncedQuery),
     retry: (failureCount, error: any) => {
@@ -326,6 +327,178 @@ export const useAuthorBooks = (author: string, page: number = 1) => {
     enabled: Boolean(author),
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+  });
+};
+
+// ── Book Lists ──
+
+export const useUserLists = (did?: string) => {
+  return useQuery({
+    queryKey: ["userLists", did] as const,
+    queryFn: async ({ queryKey: [, d] }) => {
+      return await enhancedAuthFetch<{
+        lists: {
+          uri: string;
+          cid: string;
+          userDid: string;
+          userHandle?: string;
+          name: string;
+          description?: string;
+          ordered?: boolean;
+          tags?: string[];
+          createdAt: string;
+          itemCount?: number;
+        }[];
+      }>(`/xrpc/buzz.bookhive.getUserLists?did=${d}`);
+    },
+    enabled: Boolean(did),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};
+
+export const useListDetails = (uri?: string) => {
+  return useQuery({
+    queryKey: ["listDetails", uri] as const,
+    queryFn: async ({ queryKey: [, u] }) => {
+      return await enhancedAuthFetch<{
+        list: {
+          uri: string;
+          cid: string;
+          userDid: string;
+          userHandle?: string;
+          name: string;
+          description?: string;
+          ordered?: boolean;
+          tags?: string[];
+          createdAt: string;
+          itemCount?: number;
+        };
+        items: {
+          uri: string;
+          hiveId?: string;
+          description?: string;
+          position?: number;
+          addedAt: string;
+          title?: string;
+          authors?: string;
+          thumbnail?: string;
+          cover?: string;
+          rating?: number;
+        }[];
+      }>(`/xrpc/buzz.bookhive.getList?uri=${encodeURIComponent(String(u))}`);
+    },
+    enabled: Boolean(uri),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};
+
+export const useCreateList = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; description?: string; ordered?: boolean }) => {
+      return await enhancedAuthFetch<{ uri: string; cid: string }>(
+        `/xrpc/buzz.bookhive.createList`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useUpdateList = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      uri: string;
+      name?: string;
+      description?: string;
+      ordered?: boolean;
+    }) => {
+      return await enhancedAuthFetch<{ uri: string; cid: string }>(
+        `/xrpc/buzz.bookhive.updateList`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: (_, { uri }) => {
+      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      queryClient.invalidateQueries({ queryKey: ["listDetails", uri] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useDeleteList = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ uri }: { uri: string }) => {
+      return await enhancedAuthFetch<{ success: boolean }>(`/xrpc/buzz.bookhive.deleteList`, {
+        method: "POST",
+        body: { uri },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useAddToList = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { listUri: string; hiveId: string }) => {
+      return await enhancedAuthFetch<{ uri: string }>(`/xrpc/buzz.bookhive.addToList`, {
+        method: "POST",
+        body: input,
+      });
+    },
+    onSuccess: (_, { listUri }) => {
+      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      queryClient.invalidateQueries({ queryKey: ["listDetails", listUri] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+  });
+};
+
+export const useRemoveFromList = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemUri }: { itemUri: string }) => {
+      return await enhancedAuthFetch<{ success: boolean }>(`/xrpc/buzz.bookhive.removeFromList`, {
+        method: "POST",
+        body: { itemUri },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      queryClient.invalidateQueries({ queryKey: ["listDetails"] });
+    },
+    retry: (failureCount, error: any) => {
+      if (error.networkError && !error.networkError.retryable) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 };
 

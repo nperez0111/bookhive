@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,13 +10,15 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { formatDistanceToNow } from "date-fns";
 
-import { AnimatedListItem } from "@/components/AnimatedListItem";
-import { FadeInImage } from "@/components/FadeInImage";
+import { BookCard } from "@/components/BookCard";
 import { GradientView } from "@/components/GradientView";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { StarDisplay } from "@/components/StarDisplay";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
+import { UserBlock } from "@/components/UserBlock";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
@@ -40,23 +42,112 @@ const BOOK_STATUS_LABELS: Record<string, string> = {
   "buzz.bookhive.defs#owned": "owns",
 };
 
+type FeedActivity = {
+  userDid: string;
+  userHandle?: string;
+  hiveId: string;
+  title: string;
+  authors: string;
+  status?: string;
+  stars?: number;
+  review?: string;
+  createdAt: string;
+  thumbnail: string;
+  cover?: string;
+};
+
 export default function FeedScreen() {
   const [activeTab, setActiveTab] = useState<FeedTab>("friends");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [allActivities, setAllActivities] = useState<FeedActivity[]>([]);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const { top } = useSafeAreaInsets();
 
-  const feed = useFeed(activeTab, 1);
+  const feed = useFeed(activeTab, page);
+
+  // Merge activities from all pages
+  const activities = useMemo(() => {
+    const currentPageActivities = feed.data?.activities ?? [];
+    if (page === 1) return currentPageActivities;
+    // Deduplicate by composite key
+    const seen = new Set(allActivities.map((a) => `${a.hiveId}_${a.userDid}_${a.createdAt}`));
+    const newItems = currentPageActivities.filter(
+      (a) => !seen.has(`${a.hiveId}_${a.userDid}_${a.createdAt}`),
+    );
+    return [...allActivities, ...newItems];
+  }, [feed.data?.activities, page, allActivities]);
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
+    setPage(1);
+    setAllActivities([]);
     feed.refetch().finally(() => setIsRefreshing(false));
   }, [feed.refetch]);
 
-  const activities = feed.data?.activities ?? [];
+  const onTabChange = useCallback((tab: FeedTab) => {
+    setActiveTab(tab);
+    setPage(1);
+    setAllActivities([]);
+  }, []);
+
+  const onEndReached = useCallback(() => {
+    if (feed.data?.hasMore && !feed.isFetching) {
+      setAllActivities(activities);
+      setPage((p) => p + 1);
+    }
+  }, [feed.data?.hasMore, feed.isFetching, activities]);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: FeedActivity; index: number }) => {
+      const timeAgo = (() => {
+        try {
+          return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
+        } catch {
+          return "";
+        }
+      })();
+      const statusLabel = BOOK_STATUS_LABELS[item.status ?? ""] ?? "updated";
+
+      return (
+        <BookCard
+          title={item.title}
+          authors={item.authors}
+          imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`}
+          onPress={() => router.push(`/book/${item.hiveId}` as any)}
+          variant="list"
+        >
+          <UserBlock
+            handle={item.userHandle ?? item.userDid}
+            avatar={
+              item.userHandle
+                ? `${getBaseUrl()}/profile/${item.userHandle}/image`
+                : undefined
+            }
+            size="sm"
+            onPress={() => router.push(`/profile/${item.userDid}` as any)}
+            suffix={`${statusLabel} ${timeAgo}`}
+          />
+          {item.stars != null && item.stars > 0 && (
+            <StarDisplay rating={item.stars} size="sm" style={{ marginTop: 4 }} />
+          )}
+          {item.review ? (
+            <ThemedText
+              type="caption"
+              style={{ color: colors.secondaryText, marginTop: 4, fontStyle: "italic" }}
+              numberOfLines={2}
+            >
+              {item.review}
+            </ThemedText>
+          ) : null}
+        </BookCard>
+      );
+    },
+    [colors],
+  );
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -74,7 +165,7 @@ export default function FeedScreen() {
         {TABS.map((tab) => (
           <Pressable
             key={tab.key}
-            onPress={() => setActiveTab(tab.key)}
+            onPress={() => onTabChange(tab.key)}
             style={[
               styles.tab,
               activeTab === tab.key && {
@@ -95,11 +186,11 @@ export default function FeedScreen() {
         ))}
       </View>
 
-      {feed.isLoading && !isRefreshing ? (
+      {feed.isLoading && !isRefreshing && page === 1 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : feed.error ? (
+      ) : feed.error && page === 1 ? (
         <QueryErrorHandler
           error={feed.error}
           onRetry={() => feed.refetch()}
@@ -130,9 +221,13 @@ export default function FeedScreen() {
         <FlatList
           data={activities}
           keyExtractor={(item) => `${item.hiveId}_${item.userDid}_${item.createdAt}`}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
           style={styles.feedList}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -141,62 +236,14 @@ export default function FeedScreen() {
               colors={[colors.primary]}
             />
           }
-          renderItem={({ item, index }) => (
-            <AnimatedListItem index={index}>
-              <Pressable
-                onPress={() => router.push(`/book/${item.hiveId}` as any)}
-                style={[
-                  styles.activityCard,
-                  {
-                    backgroundColor: colors.cardBackground,
-                    borderColor: colors.cardBorder,
-                  },
-                ]}
-              >
-                <FadeInImage
-                  source={{
-                    uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`,
-                  }}
-                  style={styles.bookCover}
-                />
-                <View style={styles.activityInfo}>
-                  <ThemedText
-                    type="overline"
-                    style={{ color: colors.secondaryText }}
-                    numberOfLines={1}
-                  >
-                    @{item.userHandle ?? item.userDid}
-                  </ThemedText>
-                  <ThemedText
-                    type="label"
-                    style={{ color: colors.primaryText, marginTop: 2 }}
-                    numberOfLines={2}
-                  >
-                    {item.title}
-                  </ThemedText>
-                  <ThemedText
-                    type="caption"
-                    style={{ color: colors.secondaryText }}
-                    numberOfLines={1}
-                  >
-                    {item.authors}
-                  </ThemedText>
-                  {item.stars != null && (
-                    <ThemedText type="caption" style={{ color: colors.primary, marginTop: 4 }}>
-                      {"★".repeat(Math.round(item.stars / 2))}
-                    </ThemedText>
-                  )}
-                  <ThemedText
-                    type="caption"
-                    style={{ color: colors.tertiaryText, marginTop: 4 }}
-                    numberOfLines={1}
-                  >
-                    {BOOK_STATUS_LABELS[item.status ?? ""] ?? "updated"}
-                  </ThemedText>
-                </View>
-              </Pressable>
-            </AnimatedListItem>
-          )}
+          renderItem={renderItem}
+          ListFooterComponent={
+            feed.isFetching && page > 1 ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
         />
       )}
     </ThemedView>
@@ -261,23 +308,13 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+    gap: 16,
+  },
+  gridRow: {
     gap: 12,
   },
-  activityCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 12,
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 120,
-  },
-  bookCover: {
-    width: 72,
-    height: 108,
-    borderRadius: 8,
-  },
-  activityInfo: {
-    flex: 1,
-    gap: 2,
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: "center",
   },
 });

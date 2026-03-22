@@ -15,6 +15,7 @@ import {
   BuzzBookhiveGetAuthorBooks,
   BuzzBookhiveGetReadingStats,
   BuzzBookhiveGetList,
+  BuzzBookhiveGetUserLists,
   BuzzBookhiveCreateList,
   BuzzBookhiveUpdateList,
   BuzzBookhiveDeleteList,
@@ -61,6 +62,7 @@ import {
   removeBookFromList,
   reorderListItems,
   getListWithItems,
+  getUserLists,
 } from "../utils/lists";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
@@ -1045,6 +1047,34 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       });
 
       return json({});
+    },
+  });
+
+  // ── GetUserLists query ──
+
+  router.addQuery(BuzzBookhiveGetUserLists, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { did } = params;
+
+      const lists = await getUserLists({ db: ctx.db, userDid: did });
+      const dids = [...new Set(lists.map((l) => l.userDid))];
+      const didToHandle = dids.length > 0 ? await ctx.resolver.resolveDidsToHandles(dids) : {};
+
+      return json({
+        lists: lists.map((list) => ({
+          uri: list.uri,
+          cid: list.cid,
+          userDid: list.userDid,
+          userHandle: didToHandle[list.userDid] ?? list.userDid,
+          name: list.name,
+          description: list.description ?? undefined,
+          ordered: Boolean(list.ordered),
+          tags: list.tags ? JSON.parse(list.tags) : undefined,
+          createdAt: list.createdAt,
+          itemCount: list.itemCount ?? 0,
+        })),
+      });
     },
   });
 

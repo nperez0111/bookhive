@@ -136,6 +136,18 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="lists/index"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="lists/[uri]"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
