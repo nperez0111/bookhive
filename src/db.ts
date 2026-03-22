@@ -392,6 +392,48 @@ migrations["010"] = {
   },
 };
 
+migrations["015"] = {
+  async up(db: Kysely<unknown>) {
+    // Profile page: WHERE userDid = ? ORDER BY createdAt DESC — was full scan
+    await db.schema
+      .createIndex("idx_user_book_user_did")
+      .on("user_book")
+      .column("userDid")
+      .execute();
+
+    // Book detail + rating stats: WHERE hiveId = ? — was full scan
+    await db.schema
+      .createIndex("idx_user_book_hive_id")
+      .on("user_book")
+      .column("hiveId")
+      .execute();
+
+    // Feed page: WHERE userDid IN (follows) ORDER BY createdAt DESC — covers filter + sort
+    await db.schema
+      .createIndex("idx_user_book_user_created")
+      .on("user_book")
+      .columns(["userDid", "createdAt"])
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropIndex("idx_user_book_user_did").on("user_book").execute();
+    await db.schema.dropIndex("idx_user_book_hive_id").on("user_book").execute();
+    await db.schema.dropIndex("idx_user_book_user_created").on("user_book").execute();
+  },
+};
+
+migrations["016"] = {
+  async up(db: Kysely<unknown>) {
+    // genres JSON column is fully redundant with hive_book_genre table and is never
+    // queried directly — dropping it shrinks hive_book by ~50-100 MB.
+    // VACUUM must be run outside this transaction (see migrateToLatest).
+    await db.schema.alterTable("hive_book").dropColumn("genres").execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
+  },
+};
+
 migrations["014"] = {
   async up(db: Kysely<unknown>) {
     await db.schema
@@ -446,7 +488,7 @@ migrations["014"] = {
 
 // APIs
 
-export const createDb = (location: string): Database => {
+export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
   const sqlite = new DatabaseSync(location);
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
@@ -456,17 +498,20 @@ export const createDb = (location: string): Database => {
   // keeps memory usage bounded and predictable. The 64 MB page cache covers the full
   // hot index working set (~56 MB: genre + thumbnail + author-ratings indexes).
 
-  return new Kysely<DatabaseSchema>({
+  const db = new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
       database: wrapBunSqliteForKysely(sqlite),
     }),
   });
+
+  return { db, sqlite };
 };
 
 export const migrateToLatest = async (db: Database) => {
   const migrator = new Migrator({ db, provider: migrationProvider });
-  const { error } = await migrator.migrateToLatest();
+  const { error, results } = await migrator.migrateToLatest();
   if (error) throw error;
+  return results ?? [];
 };
 
 export type Database = Kysely<DatabaseSchema>;
