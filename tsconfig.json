@@ -16,7 +16,8 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "exactOptionalPropertyTypes": false
+    "exactOptionalPropertyTypes": false,
+    "types": ["nitro/types"]
   },
-  "include": ["src"]
+  "include": ["src", "server"]
 }

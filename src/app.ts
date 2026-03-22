@@ -1,5 +1,3 @@
-import { join } from "path";
-import { serveStatic } from "hono/bun";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -22,13 +20,10 @@ import { mainRouter } from "./routes";
 export type CreateAppOptions = {
   startTime: string;
   deps: AppDeps;
-  /** In production, root dir for built assets (public or dist/public). Resolved when running from dist/ (Docker) vs repo root. */
-  productionPublicRoot?: string;
 };
 
-export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOptions): HonoServer {
+export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
-  const assetRoot = productionPublicRoot ?? (env.isProduction ? "dist/public" : "public");
 
   app.use(timing());
   if (env.isDevelopment) {
@@ -57,31 +52,6 @@ export function createApp({ startTime, deps, productionPublicRoot }: CreateAppOp
 
   app.route("/admin", adminRoutes);
   app.route("/import", importRoutes);
-
-  // Static assets before main router so /assets and /public are served first
-  const publicRoot = env.isProduction
-    ? join(process.cwd(), assetRoot)
-    : join(process.cwd(), "public");
-  app.use("/robots.txt", serveStatic({ root: publicRoot }));
-  app.get("/favicon.ico", serveStatic({ root: publicRoot }));
-  if (env.isProduction) {
-    app.use(
-      "/assets/*",
-      serveStatic({
-        root: publicRoot,
-        rewriteRequestPath: (path) => (path.startsWith("/assets") ? path.slice(1) : path),
-      }),
-    );
-  }
-  // Serve static files at root (e.g. /hive.jpg, /book.svg) — Vite serves public at / in dev
-  const staticExt = /\.(jpg|jpeg|png|gif|svg|ico|webmanifest|js|css|woff2?|webp)$/i;
-  app.use("*", async (c, next) => {
-    const path = c.req.path;
-    if (staticExt.test(path)) {
-      return serveStatic({ root: publicRoot })(c, next);
-    }
-    return next();
-  });
 
   // TODO enable etag for everything but import route
   app.use(etag());

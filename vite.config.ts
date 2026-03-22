@@ -1,41 +1,30 @@
 import tailwindcss from "@tailwindcss/vite";
+import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import path from "path";
-import { ssrHtmlTransform } from "./src/vite/ssr-transform";
 
 export default defineConfig({
-  plugins: [tailwindcss(), ssrHtmlTransform()],
+  plugins: [
+    tailwindcss(),
+    nitro({
+      preset: "bun",
+      serverEntry: "./server/server.ts",
+      // @takumi-rs/core is a NAPI-RS native module not in nf3's NodeNativePackages list;
+      // adding it here ensures Nitro traces and copies the platform-specific binary.
+      // See: https://github.com/unjs/nf3 — can be removed once nf3 auto-detects NAPI-RS packages.
+      traceDeps: ["@takumi-rs/core"],
+    }),
+  ],
+  server: {
+  	host: '127.0.0.1'
+  },
   root: ".",
   publicDir: "public",
-  server: {
-    host: "127.0.0.1",
-    middlewareMode: false,
-    port: 5173,
-    strictPort: false,
-    hmr: {
-      // Explicit host so WebSocket connects correctly when proxying to Bun
-      host: "127.0.0.1",
-      port: 5173,
-      overlay: false,
-    },
-    watch: {
-      // Ignore paths that can trigger spurious HMR (cache, logs, build output)
-      ignored: [
-        "**/node_modules/**",
-        "**/.git/**",
-        "**/dist/**",
-        "**/.mcp_data/**",
-        "**/*.log",
-        "**/.vite/**",
-      ],
-    },
-  },
   build: {
-    outDir: "dist/public",
     target: "esnext",
-    minify: "esbuild",
+    minify: "oxc",
     manifest: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         client: "src/client/index.tsx",
       },
