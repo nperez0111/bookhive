@@ -49,7 +49,11 @@ export default function AuthorBooksScreen() {
       <GradientView variant="warm" style={[styles.header, { paddingTop: top + 16 }]}>
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={12}>
-            <Ionicons name="chevron-back" size={22} color={colorScheme === "dark" ? "#fff" : "#1a1a1a"} />
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color={colorScheme === "dark" ? "#fff" : "#1a1a1a"}
+            />
           </Pressable>
           <View style={styles.headerTextContainer}>
             <ThemedText

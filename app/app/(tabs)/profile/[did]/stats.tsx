@@ -183,7 +183,6 @@ export default function ReadingStatsScreen() {
                 </ThemedText>
               </View>
             </View>
-
           </View>
 
           {/* Rating Distribution */}

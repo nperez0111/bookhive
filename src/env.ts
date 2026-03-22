@@ -8,10 +8,10 @@ export const env = cleanEnv(process.env, {
     devDefault: testOnly("test"),
     choices: ["development", "production", "test"],
   }),
-  PORT: port({ devDefault: 8080 }),
+  PORT: port({ default: 8080 }),
   PUBLIC_URL: str({
     default: "http://127.0.0.1:8080",
-    devDefault: `http://127.0.0.1:${process.env.PORT ?? 3000}`,
+    devDefault: `http://127.0.0.1:${process.env["PORT"] ?? 3000}`,
     desc: "Public origin for OAuth callbacks (RFC 8252 requires loopback IP not localhost). In dev, auto-derives from PORT when not explicitly set.",
   }),
   DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
