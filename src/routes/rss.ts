@@ -8,13 +8,13 @@ import { isDid } from "@atcute/lexicons/syntax";
 import type { AppEnv } from "../context";
 import { BookFields } from "../db";
 import { BOOK_STATUS } from "../constants";
+import type { HiveId } from "../types";
 
 const STATUS_SHORTHAND: Record<string, string> = {
   finished: BOOK_STATUS.FINISHED,
   reading: BOOK_STATUS.READING,
   wantToRead: BOOK_STATUS.WANTTOREAD,
   abandoned: BOOK_STATUS.ABANDONED,
-  owned: BOOK_STATUS.OWNED,
 };
 
 function getActionText(status: string | null): string {
@@ -146,6 +146,84 @@ const app = new Hono<AppEnv>()
       link: `https://bookhive.buzz/profile/${handle}`,
       description: `Book activity for @${handle} on BookHive`,
     });
+
+    return c.text(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
+  })
+  .get("/book/:hiveId", async (c) => {
+    const ctx = c.get("ctx");
+    const hiveId = c.req.param("hiveId") as HiveId;
+    const statusFilter = parseStatusFilter(c.req.query("status"));
+    const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
+
+    const bookRow = await ctx.db
+      .selectFrom("hive_book")
+      .select(["title", "authors"])
+      .where("id", "=", hiveId)
+      .executeTakeFirst();
+
+    if (!bookRow) {
+      return c.text("Book not found", 404);
+    }
+
+    let query = ctx.db
+      .selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .where("user_book.hiveId", "=", hiveId)
+      .orderBy("user_book.createdAt", "desc")
+      .limit(limit);
+
+    if (statusFilter) {
+      query = query.where("user_book.status", "in", statusFilter) as typeof query;
+    }
+
+    const rows = await query.execute();
+
+    const allDids = [...new Set(rows.map((r) => r.userDid))];
+    const didHandleMap = await ctx.resolver.resolveDidsToHandles(allDids);
+
+    const firstAuthor = bookRow.authors?.split("\t")[0] ?? "";
+    const bookTitle = bookRow.title ?? hiveId;
+
+    const itemsXml = rows
+      .map((item) => {
+        const actionText = getActionText(item.status);
+        const handle = didHandleMap[item.userDid] ?? item.userDid;
+        const starDisplay = item.stars != null ? item.stars / 2 : null;
+
+        let descHtml = `<p><strong>@${escapeXml(handle)}</strong> ${escapeXml(actionText)}</p>`;
+        if (starDisplay != null) {
+          descHtml += `<p>Rating: ${starDisplay} / 5</p>`;
+        }
+        if (item.review) {
+          descHtml += `<p><em>${escapeXml(item.review)}</em></p>`;
+        }
+
+        return `    <item>
+      <title>${escapeXml(`@${handle} ${actionText}`)}</title>
+      <link>https://bookhive.buzz/profile/${escapeXml(handle)}</link>
+      <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
+      <pubDate>${toRfc2822(item.createdAt)}</pubDate>
+      <description><![CDATA[${descHtml}]]></description>
+    </item>`;
+      })
+      .join("\n");
+
+    const lastBuildDate =
+      rows.length > 0 && rows[0]
+        ? toRfc2822(rows[0].createdAt)
+        : toRfc2822(new Date().toISOString());
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>${escapeXml(`BookHive | "${bookTitle}" activity`)}</title>
+    <link>${escapeXml(`https://bookhive.buzz/books/${hiveId}`)}</link>
+    <description>${escapeXml(`Reader activity for "${bookTitle}" by ${firstAuthor} on BookHive`)}</description>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
+${itemsXml}
+  </channel>
+</rss>`;
 
     return c.text(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
   })
