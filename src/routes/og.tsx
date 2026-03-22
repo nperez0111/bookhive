@@ -638,10 +638,7 @@ const app = new Hono<AppEnv>()
             borderRight: `2px solid ${COLORS.border}`,
           }}
         >
-          <img
-            src={`${origin}/barry_alone_no_bg.svg`}
-            style={{ width: 320, height: 320 }}
-          />
+          <img src={`${origin}/barry_alone_no_bg.svg`} style={{ width: 320, height: 320 }} />
         </div>
         {/* Right: text panel */}
         <div

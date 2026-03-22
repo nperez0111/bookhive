@@ -150,6 +150,8 @@ export async function writeCatalogBookIfNeeded(ctx: CatalogCtx, bookId: HiveId):
  * Writes a batch of books to @bookhive.buzz using individual putRecord calls.
  * putRecord is idempotent (create-or-update), so this is safe to retry if the
  * process crashes between the ATProto write and the local DB update.
+ *
+ * Throws RateLimitError if the PDS rate limit is hit, so callers can back off.
  */
 export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[]): Promise<void> {
   if (!ctx.serviceAccountAgent || books.length === 0) return;
@@ -183,6 +185,10 @@ export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[])
         });
 
         if (!response.ok) {
+          const errData = response.data as { error?: string; message?: string } | undefined;
+          if (errData?.error === "RateLimitExceeded") {
+            throw new RateLimitError();
+          }
           ctx.logger?.error({
             job: "catalog_book_put_record",
             outcome: "error",
@@ -205,9 +211,22 @@ export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[])
   }
 }
 
+class RateLimitError extends Error {
+  constructor() {
+    super("RateLimitExceeded");
+    this.name = "RateLimitError";
+  }
+}
+
 /**
  * Iterates all enriched hive_book rows without hiveBookAtUri, writing them to @bookhive.buzz
- * in batches of 25 with a 500ms pause between batches.
+ * in batches of 25.
+ *
+ * Rate limit target: 60% of the Bluesky relay limit (1,500 events/hr) to leave headroom
+ * for real user activity → 900 events/hr → 36 batches/hr of 25 → 100s between batches.
+ *
+ * If a RateLimitExceeded error is returned mid-backfill (e.g. due to other activity on the
+ * account), we pause for RATE_LIMIT_BACKOFF_MS before resuming.
  */
 export async function backfillCatalogBooks(
   ctx: CatalogCtx,
@@ -215,6 +234,11 @@ export async function backfillCatalogBooks(
   if (!ctx.serviceAccountAgent) return { written: 0, batches: 0 };
 
   const BATCH_SIZE = 25;
+  // 100s between batches → 36 batches/hr → 900 relay events/hr (60% of relay 1,500/hr limit)
+  const BATCH_DELAY_MS = 100_000;
+  // If we unexpectedly hit a rate limit, wait 65 minutes before resuming
+  const RATE_LIMIT_BACKOFF_MS = 65 * 60 * 1000;
+
   let lastId = "";
   let written = 0;
   let batches = 0;
@@ -238,8 +262,25 @@ export async function backfillCatalogBooks(
 
       if (batch.length === 0) break;
 
-      await writeCatalogBooksBatch(ctx, batch);
-      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await writeCatalogBooksBatch(ctx, batch);
+      } catch (err) {
+        if (err instanceof RateLimitError) {
+          ctx.logger?.warn({
+            job: "backfill_catalog_books",
+            outcome: "rate_limited",
+            written,
+            batches,
+            backoff_ms: RATE_LIMIT_BACKOFF_MS,
+          });
+          await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF_MS));
+          // Retry the same batch (lastId not advanced)
+          continue;
+        }
+        throw err;
+      }
+
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       lastId = batch[batch.length - 1]!.id;
       written += batch.length;
       batches++;
