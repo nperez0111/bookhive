@@ -322,6 +322,7 @@ export const BookInfo: FC<{
                         {usersBook?.review && (
                           <input type="hidden" name="review" value={usersBook.review} />
                         )}
+                        {usersBook?.owned ? <input type="hidden" name="owned" value="1" /> : null}
                         {usersBook?.startedAt ? (
                           <input type="hidden" name="startedAt" value={usersBook.startedAt} />
                         ) : (
@@ -439,6 +440,57 @@ export const BookInfo: FC<{
                     </div>
                   )}
 
+                  {/* Owned toggle */}
+                  {did && (
+                    <form action="/books" method="post">
+                      <input type="hidden" name="authors" value={book.authors} />
+                      <input type="hidden" name="title" value={book.title} />
+                      <input type="hidden" name="hiveId" value={book.id} />
+                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
+                      {usersBook?.status && (
+                        <input type="hidden" name="status" value={usersBook.status} />
+                      )}
+                      {usersBook?.stars && (
+                        <input type="hidden" name="stars" value={String(usersBook.stars)} />
+                      )}
+                      {usersBook?.review && (
+                        <input type="hidden" name="review" value={usersBook.review} />
+                      )}
+                      {usersBook?.startedAt && (
+                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
+                      )}
+                      {usersBook?.finishedAt && (
+                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
+                      )}
+                      <button
+                        type="submit"
+                        name="owned"
+                        value={usersBook?.owned ? "false" : "true"}
+                        class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
+                          usersBook?.owned
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "bg-accent text-accent-foreground hover:bg-accent/80"
+                        }`}
+                      >
+                        <span class="flex items-center gap-1.5">
+                          <svg
+                            class="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                          </svg>
+                          {usersBook?.owned ? "Owned" : "Own"}
+                        </span>
+                      </button>
+                    </form>
+                  )}
+
                   {/* Share dropdown */}
                   <div class="relative ml-auto">
                     <button
@@ -499,6 +551,22 @@ export const BookInfo: FC<{
                           </svg>
                           <span id="copy-link-text">Copy link</span>
                         </button>
+                        <button
+                          type="button"
+                          id="copy-rss-btn"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                          data-rss-url={`/rss/book/${book.id}`}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            class="h-4 w-4 text-orange-500"
+                          >
+                            <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20C4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z" />
+                          </svg>
+                          <span id="copy-rss-text">Copy RSS feed</span>
+                        </button>
                       </div>
                     </div>
                     <Script
@@ -529,6 +597,22 @@ export const BookInfo: FC<{
                               copyText.textContent = "Copied!";
                               setTimeout(() => {
                                 copyText.textContent = "Copy link";
+                              }, 1500);
+                            }
+                          });
+                        }
+                        const rssBtn = document.getElementById("copy-rss-btn");
+                        const rssText = document.getElementById("copy-rss-text");
+                        if (rssBtn && rssText) {
+                          rssBtn.addEventListener("click", () => {
+                            const url = rssBtn.getAttribute("data-rss-url");
+                            if (url) {
+                              void navigator.clipboard.writeText(
+                                (window.location.origin || "") + url,
+                              );
+                              rssText.textContent = "Copied!";
+                              setTimeout(() => {
+                                rssText.textContent = "Copy RSS feed";
                               }, 1500);
                             }
                           });

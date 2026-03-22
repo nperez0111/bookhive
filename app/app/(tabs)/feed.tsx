@@ -39,7 +39,6 @@ const BOOK_STATUS_LABELS: Record<string, string> = {
   "buzz.bookhive.defs#reading": "is reading",
   "buzz.bookhive.defs#wantToRead": "wants to read",
   "buzz.bookhive.defs#abandoned": "abandoned",
-  "buzz.bookhive.defs#owned": "owns",
 };
 
 type FeedActivity = {
@@ -123,9 +122,7 @@ export default function FeedScreen() {
           <UserBlock
             handle={item.userHandle ?? item.userDid}
             avatar={
-              item.userHandle
-                ? `${getBaseUrl()}/profile/${item.userHandle}/image`
-                : undefined
+              item.userHandle ? `${getBaseUrl()}/profile/${item.userHandle}/image` : undefined
             }
             size="sm"
             onPress={() => router.push(`/profile/${item.userDid}` as any)}

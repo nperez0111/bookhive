@@ -43,7 +43,9 @@ export const useSearchBooks = (query: string) => {
   return useQuery({
     queryKey: ["searchBooks", query] as const,
     queryFn: async ({ queryKey: [, q] }) => {
-      const result = await enhancedAuthFetch<{ books: HiveBook[] }>(`/xrpc/buzz.bookhive.searchBooks?q=${q}`);
+      const result = await enhancedAuthFetch<{ books: HiveBook[] }>(
+        `/xrpc/buzz.bookhive.searchBooks?q=${q}`,
+      );
       return result.books;
     },
     enabled: Boolean(debouncedQuery),

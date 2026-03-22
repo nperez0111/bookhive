@@ -111,9 +111,9 @@ function BookSection({
             [BOOK_STATUS.WANTTOREAD]: "wantToRead",
             [BOOK_STATUS.FINISHED]: "finished",
             [BOOK_STATUS.ABANDONED]: "abandoned",
-            [BOOK_STATUS.OWNED]: "owned",
+            owned: "owned",
           };
-          router.push(`/books/${statusMap[status]}` as any);
+          router.push(`/books/${statusMap[status] ?? status}` as any);
         }}
       >
         <SectionHeader
@@ -246,11 +246,7 @@ function ShelvesSection({
           ))}
 
           <Pressable
-            style={[
-              styles.shelfCard,
-              styles.shelfCardNew,
-              { borderColor: colors.cardBorder },
-            ]}
+            style={[styles.shelfCard, styles.shelfCardNew, { borderColor: colors.cardBorder }]}
             onPress={onCreatePress}
           >
             <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
@@ -278,9 +274,7 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() =>
-      setIsRefreshing(false),
-    );
+    Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() => setIsRefreshing(false));
   }, [profile.refetch, listsQuery.refetch]);
 
   const stats = useMemo(() => {
@@ -344,6 +338,7 @@ export default function HomeScreen() {
   const wantToReadBooks = profile.data.books.filter(
     (book) => book.status === BOOK_STATUS.WANTTOREAD,
   );
+  const ownedBooks = profile.data.books.filter((book: any) => book.owned);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -412,6 +407,18 @@ export default function HomeScreen() {
           status={BOOK_STATUS.WANTTOREAD}
         />
 
+        {ownedBooks.length > 0 && (
+          <BookSection
+            books={ownedBooks}
+            title="Owned"
+            icon="library"
+            emptyMessage="No owned books"
+            emptySubtitle="Books you own will appear here"
+            colors={colors}
+            status="owned"
+          />
+        )}
+
         <ShelvesSection
           shelves={listsQuery.data?.lists ?? []}
           colors={colors}
@@ -421,10 +428,7 @@ export default function HomeScreen() {
         <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
 
-      <CreateListModal
-        visible={createShelfVisible}
-        onClose={() => setCreateShelfVisible(false)}
-      />
+      <CreateListModal visible={createShelfVisible} onClose={() => setCreateShelfVisible(false)} />
     </ThemedView>
   );
 }

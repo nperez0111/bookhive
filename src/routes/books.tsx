@@ -183,6 +183,12 @@ const app = new Hono<AppEnv>()
         startedAt: z.string().optional(),
         finishedAt: z.string().optional(),
         stars: z.coerce.number().optional(),
+        owned: z
+          .preprocess(
+            (val) => val === "on" || val === "true" || val === true || val === "1",
+            z.boolean(),
+          )
+          .optional(),
         review: z.string().optional(),
         percent: z.coerce.number().int().min(0).max(100).optional(),
         totalPages: z.preprocess(
@@ -223,6 +229,7 @@ const app = new Hono<AppEnv>()
           authors,
           title,
           status,
+          owned,
           hiveId,
           coverImage,
           startedAt,
@@ -278,6 +285,7 @@ const app = new Hono<AppEnv>()
               authors,
               title,
               status,
+              owned,
               hiveId,
               coverImage,
               startedAt,

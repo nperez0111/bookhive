@@ -192,6 +192,7 @@ importApp.post(
                             finishedAt: book.dateRead?.toISOString() ?? undefined,
                             stars: book.myRating ? book.myRating * 2 : undefined,
                             review: book.myReview ?? undefined,
+                            owned: book.ownedCopies > 0 ? true : undefined,
                             alreadyExists: existingHiveIds.has(hiveBook.id),
                           },
                         ] as const;
@@ -569,6 +570,7 @@ importApp.post(
                               ? parseInt(String(book.starRating * 2))
                               : undefined,
                             review: book.review || undefined,
+                            owned: book.owned ? true : undefined,
                             alreadyExists: existingHiveIds.has(hiveBook.id),
                           },
                         ] as const;

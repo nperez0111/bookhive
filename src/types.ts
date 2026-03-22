@@ -63,6 +63,10 @@ export type UserBook = {
    */
   status: string | null;
   /**
+   * Whether the user owns the book (0 or 1)
+   */
+  owned: number;
+  /**
    * Started reading at
    */
   startedAt: string | null;

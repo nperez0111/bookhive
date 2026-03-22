@@ -116,7 +116,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     sqlite.exec("VACUUM");
     logger.info("db VACUUM complete");
   }
-  logger.info('db migrations applied');
+  logger.info("db migrations applied");
 
   const kv = createStorage({
     driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv" }),

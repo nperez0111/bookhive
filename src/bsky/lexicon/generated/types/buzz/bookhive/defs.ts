@@ -117,7 +117,6 @@ const _commentSchema = /*#__PURE__*/ v.object({
   },
 });
 const _finishedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#finished");
-const _ownedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#owned");
 const _profileSchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#profile")),
   avatar: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
@@ -204,6 +203,10 @@ const _userBookSchema = /*#__PURE__*/ v.object({
     return /*#__PURE__*/ v.optional(bookIdentifiersSchema);
   },
   /**
+   * Whether the user owns this book
+   */
+  owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
+  /**
    * Average rating (0-1000)
    * @minimum 0
    * @maximum 1000
@@ -236,7 +239,6 @@ const _userBookSchema = /*#__PURE__*/ v.object({
     /*#__PURE__*/ v.string<
       | "buzz.bookhive.defs#abandoned"
       | "buzz.bookhive.defs#finished"
-      | "buzz.bookhive.defs#owned"
       | "buzz.bookhive.defs#reading"
       | "buzz.bookhive.defs#wantToRead"
       | (string & {})
@@ -271,7 +273,6 @@ type bookIdentifiers$schematype = typeof _bookIdentifiersSchema;
 type bookProgress$schematype = typeof _bookProgressSchema;
 type comment$schematype = typeof _commentSchema;
 type finished$schematype = typeof _finishedSchema;
-type owned$schematype = typeof _ownedSchema;
 type profile$schematype = typeof _profileSchema;
 type reading$schematype = typeof _readingSchema;
 type review$schematype = typeof _reviewSchema;
@@ -284,7 +285,6 @@ export interface bookIdentifiersSchema extends bookIdentifiers$schematype {}
 export interface bookProgressSchema extends bookProgress$schematype {}
 export interface commentSchema extends comment$schematype {}
 export interface finishedSchema extends finished$schematype {}
-export interface ownedSchema extends owned$schematype {}
 export interface profileSchema extends profile$schematype {}
 export interface readingSchema extends reading$schematype {}
 export interface reviewSchema extends review$schematype {}
@@ -297,7 +297,6 @@ export const bookIdentifiersSchema = _bookIdentifiersSchema as bookIdentifiersSc
 export const bookProgressSchema = _bookProgressSchema as bookProgressSchema;
 export const commentSchema = _commentSchema as commentSchema;
 export const finishedSchema = _finishedSchema as finishedSchema;
-export const ownedSchema = _ownedSchema as ownedSchema;
 export const profileSchema = _profileSchema as profileSchema;
 export const readingSchema = _readingSchema as readingSchema;
 export const reviewSchema = _reviewSchema as reviewSchema;
@@ -310,7 +309,6 @@ export interface BookIdentifiers extends v.InferInput<typeof bookIdentifiersSche
 export interface BookProgress extends v.InferInput<typeof bookProgressSchema> {}
 export interface Comment extends v.InferInput<typeof commentSchema> {}
 export type Finished = v.InferInput<typeof finishedSchema>;
-export type Owned = v.InferInput<typeof ownedSchema>;
 export interface Profile extends v.InferInput<typeof profileSchema> {}
 export type Reading = v.InferInput<typeof readingSchema>;
 export interface Review extends v.InferInput<typeof reviewSchema> {}

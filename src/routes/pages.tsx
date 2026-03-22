@@ -97,6 +97,7 @@ const app = new Hono<AppEnv>()
         hasMore={hasMore}
         profileByDid={profileByDid}
         didHandleMap={didHandleMap}
+        currentUserHandle={profile.handle}
       />,
       { title: "BookHive | Activity Feed" },
     );

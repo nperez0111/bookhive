@@ -57,7 +57,7 @@ const STATUS_CONFIG = {
     icon: "library-outline",
     emptyMessage: "No owned books",
     emptySubtitle: "Books you own will appear here",
-    status: BOOK_STATUS.OWNED,
+    status: "owned",
   },
 };
 
@@ -130,7 +130,10 @@ function FilteredBooksContent({ status }: { status: string }) {
 
   const filteredBooks = useMemo(() => {
     if (!profile.data) return [];
-    const filtered = profile.data.books.filter((book) => book.status === config.status);
+    const filtered =
+      config.status === "owned"
+        ? profile.data.books.filter((book: any) => book.owned)
+        : profile.data.books.filter((book) => book.status === config.status);
     return sortBooks(filtered, sortBy, sortOrder, config.status);
   }, [profile.data, config.status, sortBy, sortOrder]);
 
