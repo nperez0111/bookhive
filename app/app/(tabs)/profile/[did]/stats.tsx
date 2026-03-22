@@ -184,30 +184,6 @@ export default function ReadingStatsScreen() {
               </View>
             </View>
 
-            {/* Reading Challenge */}
-            {data?.readingChallengeGoal && (
-              <View style={styles.challengeRow}>
-                <ThemedText type="label" style={{ color: colors.secondaryText }}>
-                  Reading challenge:{" "}
-                  <ThemedText type="label" style={{ color: colors.primary }}>
-                    {stats.booksCount}/{data.readingChallengeGoal}
-                  </ThemedText>
-                </ThemedText>
-                <View
-                  style={[styles.challengeTrack, { backgroundColor: colors.inactiveBackground }]}
-                >
-                  <View
-                    style={[
-                      styles.challengeFill,
-                      {
-                        backgroundColor: colors.primary,
-                        width: `${Math.min(100, (stats.booksCount / data.readingChallengeGoal) * 100)}%`,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            )}
           </View>
 
           {/* Rating Distribution */}
@@ -417,13 +393,6 @@ const styles = StyleSheet.create({
   },
   heroStat: { alignItems: "center", flex: 1 },
   heroDivider: { width: 1, height: 40 },
-  challengeRow: { marginTop: 16, gap: 8 },
-  challengeTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  challengeFill: { height: "100%", borderRadius: 3 },
   card: {
     borderRadius: 16,
     borderWidth: 1,
