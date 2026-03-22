@@ -5,8 +5,10 @@ import { DeleteConfirmationModal } from "@/components/DeleteConfirmationModal";
 import { FadeInImage } from "@/components/FadeInImage";
 import { ListItem } from "@/components/ListItem";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { StarDisplay } from "@/components/StarDisplay";
 import { StatusSelectionModal } from "@/components/StatusSelectionModal";
 import { ThemedText } from "@/components/ThemedText";
+import { UserBlock } from "@/components/UserBlock";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
@@ -15,11 +17,13 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   ImageBackground,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -31,6 +35,7 @@ import Animated, { FadeInDown, FadeInUp, LinearTransition } from "react-native-r
 import type { HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 
+import { AddToListSheet } from "@/components/AddToListSheet";
 import { HtmlToText } from "@/utils/htmlToText";
 import { formatDistanceToNow } from "date-fns";
 import type { BookProgress } from "../../../../src/types";
@@ -43,6 +48,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const backgroundColor = useThemeColor({}, "background");
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [addToListVisible, setAddToListVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
   const [userReviewText, setUserReviewText] = useState("");
   const scrollViewRef = useRef<ScrollView>(null);
@@ -280,11 +286,51 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
 
   const handleShare = () => {
     const shareUrl = `${getBaseUrl()}/books/${hiveId}`;
-    Share.share({
-      url: shareUrl,
-      title: book.title,
-    });
+    const blueskyText = `Check out "${book.title}" by ${book.authors.split("\t").join(", ")} on BookHive!\n\n${shareUrl}`;
+    const blueskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(blueskyText)}`;
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", "Share via...", "Post to Bluesky"],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            Share.share({ url: shareUrl, title: book.title });
+          } else if (buttonIndex === 2) {
+            Linking.openURL(blueskyUrl);
+          }
+        },
+      );
+    } else {
+      // On Android, show native share directly (no ActionSheetIOS)
+      Share.share({ message: `${book.title}\n${shareUrl}`, title: book.title });
+    }
   };
+
+  const genres = useMemo(() => {
+    const bookGenres = bookQuery.data?.book.genres;
+    if (!bookGenres) return [];
+    try {
+      return JSON.parse(bookGenres as any) as string[];
+    } catch {
+      return [];
+    }
+  }, [bookQuery.data?.book.genres]);
+
+  const seriesInfo = useMemo(() => {
+    const bookSeries = bookQuery.data?.book.series;
+    if (!bookSeries) return null;
+    try {
+      const parsed = JSON.parse(bookSeries as any);
+      if (typeof parsed === "string") return parsed;
+      if (parsed?.name) return `${parsed.name}${parsed.position ? ` #${parsed.position}` : ""}`;
+      return null;
+    } catch {
+      return typeof bookSeries === "string" ? bookSeries : null;
+    }
+  }, [bookQuery.data?.book.series]);
 
   if (bookQuery.isLoading) {
     return (
@@ -394,6 +440,11 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             </View>
 
             <View style={styles.bookInfo}>
+              {seriesInfo && (
+                <ThemedText style={[styles.seriesLabel, { color: colors.primary }]}>
+                  {seriesInfo}
+                </ThemedText>
+              )}
               <ThemedText
                 style={[styles.title, { color: colorScheme === "dark" ? "white" : colors.text }]}
               >
@@ -408,18 +459,17 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               {/* Rating Display */}
               {book.rating && book.ratingsCount && (
                 <View style={styles.ratingDisplay}>
-                  <ThemedText style={[styles.ratingText, { color: colors.primary }]}>
-                    {rating.toFixed(1)} ★
-                  </ThemedText>
+                  <StarDisplay rating={Math.round(rating * 2)} size="md" />
                   <ThemedText
                     style={[
                       styles.ratingsCount,
                       {
                         color: colorScheme === "dark" ? "#9CA3AF" : colors.icon,
+                        marginLeft: 6,
                       },
                     ]}
                   >
-                    {book.ratingsCount.toLocaleString()} ratings
+                    {rating.toFixed(1)} ({book.ratingsCount.toLocaleString()})
                   </ThemedText>
                 </View>
               )}
@@ -484,6 +534,33 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                 Goodreads
               </ThemedText>
             </Pressable>
+
+            <Pressable
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor:
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+                  borderColor:
+                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+                },
+              ]}
+              onPress={() => setAddToListVisible(true)}
+            >
+              <Ionicons
+                name="list-outline"
+                size={20}
+                color={colorScheme === "dark" ? "white" : colors.text}
+              />
+              <ThemedText
+                style={[
+                  styles.actionButtonText,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Add to List
+              </ThemedText>
+            </Pressable>
           </Animated.View>
 
           {/* Description */}
@@ -508,6 +585,92 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               ]}
             />
           </Animated.View>
+
+          {/* Genre Chips */}
+          {genres.length > 0 && (
+            <Animated.View
+              style={styles.genreSection}
+              entering={FadeInDown.delay(115).duration(220)}
+              layout={LinearTransition.springify().damping(18).stiffness(180)}
+            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.genreScroll}
+              >
+                {genres.map((genre) => (
+                  <Pressable
+                    key={genre}
+                    style={[
+                      styles.genreChip,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark"
+                            ? "rgba(251, 191, 36, 0.15)"
+                            : "rgba(217, 119, 6, 0.1)",
+                        borderColor:
+                          colorScheme === "dark"
+                            ? "rgba(251, 191, 36, 0.3)"
+                            : "rgba(217, 119, 6, 0.2)",
+                      },
+                    ]}
+                    onPress={() =>
+                      router.push(`/explore/genres/${encodeURIComponent(genre)}` as any)
+                    }
+                  >
+                    <ThemedText
+                      style={[styles.genreChipText, { color: colors.primary }]}
+                      type="caption"
+                    >
+                      {genre}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
+
+          {/* Who's Reading */}
+          {activity.length > 0 && (
+            <Animated.View
+              style={styles.whoIsReadingSection}
+              entering={FadeInDown.delay(120).duration(220)}
+              layout={LinearTransition.springify().damping(18).stiffness(180)}
+            >
+              <ThemedText
+                style={[
+                  styles.sectionTitle,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Who's Reading This ({activity.length})
+              </ThemedText>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.whoIsReadingScroll}
+              >
+                {activity.map((item, idx) => {
+                  const userDid = (item as any).userDid as string | undefined;
+                  const userHandle = (item as any).userHandle as string | undefined;
+                  return (
+                    <UserBlock
+                      key={`reader-${userDid ?? idx}`}
+                      handle={userHandle ?? userDid ?? "user"}
+                      avatar={
+                        userHandle
+                          ? `${getBaseUrl()}/images/w_100/${getBaseUrl()}/profile/${userHandle}/image`
+                          : undefined
+                      }
+                      size="sm"
+                      onPress={userDid ? () => handleUserPress(userDid) : undefined}
+                      style={styles.whoIsReadingItem}
+                    />
+                  );
+                })}
+              </ScrollView>
+            </Animated.View>
+          )}
 
           {/* Interactive Book Actions */}
           <Animated.View
@@ -771,6 +934,12 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               onReplyClick={handleReplyClick}
             />
           </Animated.View>
+
+          <AddToListSheet
+            visible={addToListVisible}
+            onClose={() => setAddToListVisible(false)}
+            hiveId={hiveId}
+          />
         </View>
       </ScrollView>
     </View>
@@ -929,6 +1098,31 @@ const styles = StyleSheet.create({
   },
   descriptionSection: {
     marginBottom: 24,
+  },
+  genreSection: {
+    marginBottom: 20,
+  },
+  genreScroll: {
+    gap: 8,
+  },
+  genreChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  genreChipText: {
+    fontWeight: "500",
+  },
+  whoIsReadingSection: {
+    marginBottom: 24,
+  },
+  whoIsReadingScroll: {
+    gap: 16,
+    paddingVertical: 4,
+  },
+  whoIsReadingItem: {
+    minWidth: 120,
   },
   actionsContainer: {
     marginBottom: 24,

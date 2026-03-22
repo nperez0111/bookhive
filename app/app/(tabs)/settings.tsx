@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 import { StyleSheet, Image, TouchableOpacity, ScrollView, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -20,6 +20,8 @@ import { ListItem } from "@/components/ListItem";
 export default function ProfileScreen() {
   const { signOut, authState } = useAuth();
   const { data: profile } = useProfile();
+  const listsQuery = useUserLists(authState?.did);
+  const userLists = listsQuery.data?.lists ?? [];
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
@@ -105,6 +107,33 @@ export default function ProfileScreen() {
                   Reviews
                 </ThemedText>
               </View>
+            </View>
+          </ThemedCard>
+        </View>
+
+        {/* Your Lists */}
+        <View style={styles.settingsSection}>
+          <ThemedCard variant="outlined" style={styles.settingsCard}>
+            <SectionHeader
+              icon="list"
+              title="Your Lists"
+              style={{ marginHorizontal: -4, marginBottom: 12 }}
+            />
+            <View style={styles.settingsList}>
+              {userLists.slice(0, 6).map((list) => (
+                <ListItem
+                  key={list.uri}
+                  icon="list"
+                  title={list.name}
+                  subtitle={`${list.itemCount ?? 0} books`}
+                  onPress={() => router.push(`/lists/${encodeURIComponent(list.uri)}` as any)}
+                />
+              ))}
+              <ListItem
+                icon="add-circle"
+                title={userLists.length > 0 ? "See All Lists" : "Create Your First List"}
+                onPress={() => router.push("/lists" as any)}
+              />
             </View>
           </ThemedCard>
         </View>

@@ -19,12 +19,13 @@ import { ThemedView } from "@/components/ThemedView";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
-import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { useFollow } from "@/hooks/useBookhiveQuery";
+import { ListItem } from "@/components/ListItem";
 
 function FollowButton({ targetDid }: { targetDid: string }) {
   const follow = useFollow();
@@ -62,6 +63,8 @@ export default function ProfileScreen() {
   const backgroundColor = useThemeColor({}, "background");
 
   const profile = useProfile(did);
+  const listsQuery = useUserLists(did);
+  const userLists = listsQuery.data?.lists ?? [];
   const [userReviewText, setUserReviewText] = useState("");
 
   const onRefresh = useCallback(() => {
@@ -282,6 +285,36 @@ export default function ProfileScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        {/* User Lists */}
+        {userLists.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderContent}>
+                <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
+                  <Ionicons name="list" size={20} color={colors.primary} />
+                </View>
+                <ThemedText
+                  style={[styles.sectionTitle, { color: colors.primaryText }]}
+                  type="heading"
+                >
+                  Lists
+                </ThemedText>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 20, gap: 4 }}>
+              {userLists.slice(0, 6).map((list) => (
+                <ListItem
+                  key={list.uri}
+                  icon="list"
+                  title={list.name}
+                  subtitle={`${list.itemCount ?? 0} books`}
+                  onPress={() => router.push(`/lists/${encodeURIComponent(list.uri)}` as any)}
+                />
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Currently Reading Section */}
         {readingBooks.length > 0 && (

@@ -13,6 +13,7 @@ export * as BuzzBookhiveGetFeed from "./types/buzz/bookhive/getFeed.js";
 export * as BuzzBookhiveGetList from "./types/buzz/bookhive/getList.js";
 export * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
 export * as BuzzBookhiveGetReadingStats from "./types/buzz/bookhive/getReadingStats.js";
+export * as BuzzBookhiveGetUserLists from "./types/buzz/bookhive/getUserLists.js";
 export * as BuzzBookhiveHiveBook from "./types/buzz/bookhive/hiveBook.js";
 export * as BuzzBookhiveListGenres from "./types/buzz/bookhive/listGenres.js";
 export * as BuzzBookhiveRemoveFromList from "./types/buzz/bookhive/removeFromList.js";
