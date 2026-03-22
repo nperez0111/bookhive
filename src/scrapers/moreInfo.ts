@@ -137,7 +137,16 @@ async function getBookDetailedInfo(
   sourceUrl: string,
 ): Promise<ParsedGoodreadsData | null> {
   try {
-    const response = await fetch(sourceUrl);
+    const response = await fetch(sourceUrl, {
+      headers: {
+        "User-Agent": "BookHive/1.0 (+https://bookhive.buzz)",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (!response.ok) {
+      return null;
+    }
     const data = await response.text();
     const nextData = data.slice(data.indexOf(startString) + startString.length);
     const json = JSON.parse(nextData.slice(0, nextData.indexOf("</script>")));
