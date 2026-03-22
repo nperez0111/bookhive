@@ -227,6 +227,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
         url={c.req.url}
         title="BookHive — Reading is better together"
         description="Track your books, connect with friends, and discover your next favourite read on an open, social platform."
+        image="/og/marketing"
       >
         <MarketingPage
           signupUrl={signupUrl}

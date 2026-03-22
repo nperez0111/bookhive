@@ -611,6 +611,62 @@ function LabeledCoverCard({
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 const app = new Hono<AppEnv>()
+  .get("/marketing", (c) => {
+    const origin = getOrigin(c);
+    return makeOgResponse(
+      <div
+        style={{
+          display: "flex",
+          width: OG_WIDTH,
+          height: OG_HEIGHT,
+          backgroundColor: COLORS.bg,
+          fontFamily: "Geist",
+          padding: 0,
+          alignItems: "stretch",
+        }}
+      >
+        {/* Left: logo panel */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 400,
+            flexShrink: 0,
+            backgroundColor: COLORS.card,
+            borderRight: `2px solid ${COLORS.border}`,
+          }}
+        >
+          <img
+            src={`${origin}/barry_alone_no_bg.svg`}
+            style={{ width: 320, height: 320 }}
+          />
+        </div>
+        {/* Right: text panel */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            justifyContent: "space-between",
+            padding: "50px 56px",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ color: COLORS.text, fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>
+              Reading is better together
+            </div>
+            <div style={{ color: COLORS.textMuted, fontSize: 30, lineHeight: 1.45 }}>
+              Track your books, connect with friends, and discover your next favourite read on an
+              open, social platform.
+            </div>
+          </div>
+          <BrandMark size={30} />
+        </div>
+      </div>,
+    );
+  })
   .get("/book/:hiveId", async (c) => {
     const hiveId = c.req.param("hiveId") as HiveId;
     const [book, readerRow] = await Promise.all([
