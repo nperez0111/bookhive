@@ -51,4 +51,3 @@ export const env = cleanEnv(process.env, {
     desc: "App password for @bookhive.buzz service account",
   }),
 });
-

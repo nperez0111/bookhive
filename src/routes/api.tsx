@@ -597,6 +597,6 @@ const app = new Hono<AppEnv>()
       });
     }
     return c.redirect(`/profile/${targetHandle}`, 302);
-  })
+  });
 
 export default app;
