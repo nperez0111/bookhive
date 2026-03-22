@@ -94,8 +94,7 @@
               "type": "array",
               "items": { "type": "integer" }
             },
-            "year": { "type": "integer" },
-            "readingChallengeGoal": { "type": "integer" }
+            "year": { "type": "integer" }
           }
         }
       }

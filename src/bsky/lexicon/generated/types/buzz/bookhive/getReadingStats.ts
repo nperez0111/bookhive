@@ -45,7 +45,6 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getReadingStats", {
     type: "lex",
     schema: /*#__PURE__*/ v.object({
       availableYears: /*#__PURE__*/ v.array(/*#__PURE__*/ v.integer()),
-      readingChallengeGoal: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
       get stats() {
         return readingStatsSchema;
       },

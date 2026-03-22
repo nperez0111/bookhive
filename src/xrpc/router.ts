@@ -896,17 +896,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       if (!yearSet.has(currentYear)) yearSet.add(currentYear);
       const availableYears = [...yearSet].sort((a, b) => b - a);
 
-      // Fetch reading challenge goal if authenticated
-      const agent = await ctx.getSessionAgent();
-      let readingChallengeGoal: number | undefined;
-      if (agent?.did === did) {
-        const goalStr = await ctx.kv.getItem(`reading-challenge:${did}:${year}`);
-        if (goalStr != null && typeof goalStr === "string") {
-          const parsed = parseInt(goalStr, 10);
-          if (!Number.isNaN(parsed) && parsed > 0) readingChallengeGoal = parsed;
-        }
-      }
-
       const toBookSummary = (
         b: {
           hiveId: string;
@@ -954,7 +943,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         },
         availableYears,
         year,
-        readingChallengeGoal,
       });
     },
   });
