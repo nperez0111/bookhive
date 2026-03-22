@@ -8,7 +8,7 @@ export const env = cleanEnv(process.env, {
     devDefault: testOnly("test"),
     choices: ["development", "production", "test"],
   }),
-  PORT: port({ devDefault: testOnly(3000) }),
+  PORT: port({ devDefault: 8080 }),
   PUBLIC_URL: str({
     default: "http://127.0.0.1:8080",
     devDefault: "http://127.0.0.1:3000",
