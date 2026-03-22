@@ -659,7 +659,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                       handle={userHandle ?? userDid ?? "user"}
                       avatar={
                         userHandle
-                          ? `${getBaseUrl()}/images/w_100/${getBaseUrl()}/profile/${userHandle}/image`
+                          ? `${getBaseUrl()}/profile/${userHandle}/image`
                           : undefined
                       }
                       size="sm"

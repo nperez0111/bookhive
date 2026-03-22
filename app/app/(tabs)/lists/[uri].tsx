@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -20,7 +22,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
-import { useListDetails, useRemoveFromList } from "@/hooks/useBookhiveQuery";
+import { useDeleteList, useListDetails, useRemoveFromList } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
@@ -37,6 +39,7 @@ export default function ListDetailScreen() {
   const decodedUri = decodeURIComponent(uri as string);
   const listQuery = useListDetails(decodedUri);
   const removeFromList = useRemoveFromList();
+  const deleteList = useDeleteList();
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -94,8 +97,48 @@ export default function ListDetailScreen() {
         title={list?.name ?? "List"}
         rightElement={
           isOwner ? (
-            <Pressable onPress={() => setEditModalVisible(true)} hitSlop={8}>
-              <Ionicons name="pencil" size={22} color={colors.primary} />
+            <Pressable
+              onPress={() => {
+                const options = ["Edit", "Delete Shelf", "Cancel"];
+                const handleAction = (index: number) => {
+                  if (index === 0) {
+                    setEditModalVisible(true);
+                  } else if (index === 1) {
+                    Alert.alert(
+                      "Delete Shelf",
+                      `Delete "${list?.name ?? "this shelf"}" and all its books?`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: () => {
+                            deleteList.mutate(
+                              { uri: decodedUri },
+                              { onSuccess: () => router.back() },
+                            );
+                          },
+                        },
+                      ],
+                    );
+                  }
+                };
+                if (Platform.OS === "ios") {
+                  ActionSheetIOS.showActionSheetWithOptions(
+                    { options, cancelButtonIndex: 2, destructiveButtonIndex: 1 },
+                    handleAction,
+                  );
+                } else {
+                  Alert.alert("Manage Shelf", undefined, [
+                    { text: "Edit", onPress: () => handleAction(0) },
+                    { text: "Delete", style: "destructive", onPress: () => handleAction(1) },
+                    { text: "Cancel", style: "cancel" },
+                  ]);
+                }
+              }}
+              hitSlop={8}
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
             </Pressable>
           ) : undefined
         }
@@ -152,7 +195,7 @@ export default function ListDetailScreen() {
                   hitSlop={8}
                   style={styles.removeButton}
                 >
-                  <Ionicons name="close-circle" size={18} color={colors.error} />
+                  <Ionicons name="trash-outline" size={18} color={colors.error} />
                 </Pressable>
               ) : null}
             </BookCard>

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
-import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { BookCard } from "@/components/BookCard";
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { GradientView } from "@/components/GradientView";
@@ -47,6 +48,7 @@ export default function GenreBooksScreen() {
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
 
+  const { top } = useSafeAreaInsets();
   const decodedGenre = decodeURIComponent(genre ?? "");
   const { data, isLoading, error, refetch } = useGenreBooks(decodedGenre, offset);
 
@@ -69,14 +71,27 @@ export default function GenreBooksScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
-      <GradientView variant="warm" style={styles.header}>
-        <BackNavigationHeader title={decodedGenre} />
-        <ThemedText
-          style={[styles.bookCount, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
-          type="caption"
-        >
-          {books.length}+ books
-        </ThemedText>
+      <GradientView variant="warm" style={[styles.header, { paddingTop: top + 16 }]}>
+        <View style={styles.headerRow}>
+          <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={12}>
+            <Ionicons name="chevron-back" size={22} color={colorScheme === "dark" ? "#fff" : "#1a1a1a"} />
+          </Pressable>
+          <View style={styles.headerTextContainer}>
+            <ThemedText
+              style={[styles.headerTitle, { color: colorScheme === "dark" ? "#fff" : "#1a1a1a" }]}
+              type="title"
+              numberOfLines={1}
+            >
+              {decodedGenre}
+            </ThemedText>
+            <ThemedText
+              style={[styles.bookCount, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
+              type="caption"
+            >
+              {books.length}+ books
+            </ThemedText>
+          </View>
+        </View>
       </GradientView>
 
       <FlatList
@@ -94,8 +109,7 @@ export default function GenreBooksScreen() {
                 authors={item.authors}
                 imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`}
                 onPress={() => router.push(`/book/${item.id}` as any)}
-                orientation="horizontal"
-                style={styles.bookCard}
+                variant="dense"
               />
             </AnimatedListItem>
           </View>
@@ -127,16 +141,33 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   header: {
-    paddingTop: 16,
-    paddingBottom: 16,
-    paddingHorizontal: 0,
+    flex: 0,
+    paddingBottom: 20,
+    borderRadius: 0,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
-  bookCount: {
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 8,
+    gap: 12,
   },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    marginBottom: 2,
+  },
+  bookCount: {},
   listContent: {
     padding: 16,
   },
@@ -146,10 +177,6 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     flex: 1,
-  },
-  bookCard: {
-    alignItems: "center",
-    paddingBottom: 8,
   },
   loadMoreButton: {
     margin: 16,

@@ -10,6 +10,7 @@ import {
 
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BookCard } from "@/components/BookCard";
+import { CreateListModal } from "@/components/CreateListModal";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { QuickAction } from "@/components/QuickAction";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -20,7 +21,7 @@ import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
-import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
@@ -146,19 +147,141 @@ function BookSection({
   );
 }
 
+interface ShelfItem {
+  uri: string;
+  name: string;
+  description?: string;
+  itemCount?: number;
+}
+
+function ShelvesSection({
+  shelves,
+  colors,
+  onCreatePress,
+}: {
+  shelves: ShelfItem[];
+  colors: any;
+  onCreatePress: () => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <SectionHeader
+        icon="albums"
+        title="Your Shelves"
+        right={
+          <View style={styles.headerRight}>
+            <Pressable onPress={onCreatePress} hitSlop={8} style={styles.shelfHeaderAction}>
+              <Ionicons name="add" size={18} color={colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/lists" as any)}
+              hitSlop={8}
+              style={styles.shelfHeaderAction}
+            >
+              <ThemedText style={[styles.seeAll, { color: colors.primary }]} type="caption">
+                See all
+              </ThemedText>
+              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            </Pressable>
+          </View>
+        }
+        style={{ marginBottom: 16 }}
+      />
+
+      {shelves.length === 0 ? (
+        <Pressable
+          onPress={onCreatePress}
+          style={[
+            styles.emptyState,
+            {
+              borderColor: colors.cardBorder,
+              marginHorizontal: 20,
+              borderRadius: 20,
+              padding: 32,
+              alignItems: "center",
+              borderWidth: 1,
+              borderStyle: "dashed",
+            },
+          ]}
+        >
+          <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
+            <Ionicons name="albums-outline" size={32} color={colors.tertiaryText} />
+          </View>
+          <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
+            No shelves yet
+          </ThemedText>
+          <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
+            Create a shelf to curate your books
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shelvesScroll}
+        >
+          {shelves.map((shelf) => (
+            <Pressable
+              key={shelf.uri}
+              style={[
+                styles.shelfCard,
+                { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
+              ]}
+              onPress={() => router.push(`/lists/${encodeURIComponent(shelf.uri)}` as any)}
+            >
+              <View style={[styles.shelfIconBadge, { backgroundColor: colors.activeBackground }]}>
+                <Ionicons name="albums" size={18} color={colors.primary} />
+              </View>
+              <ThemedText
+                style={[styles.shelfCardName, { color: colors.primaryText }]}
+                type="label"
+                numberOfLines={2}
+              >
+                {shelf.name}
+              </ThemedText>
+              <ThemedText style={{ color: colors.tertiaryText }} type="caption">
+                {shelf.itemCount ?? 0} {(shelf.itemCount ?? 0) === 1 ? "book" : "books"}
+              </ThemedText>
+            </Pressable>
+          ))}
+
+          <Pressable
+            style={[
+              styles.shelfCard,
+              styles.shelfCardNew,
+              { borderColor: colors.cardBorder },
+            ]}
+            onPress={onCreatePress}
+          >
+            <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
+            <ThemedText style={[styles.shelfCardName, { color: colors.primary }]} type="label">
+              New Shelf
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const profile = useProfile();
   const { authState } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [createShelfVisible, setCreateShelfVisible] = useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
 
+  const listsQuery = useUserLists(authState?.did);
+
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    profile.refetch().finally(() => setIsRefreshing(false));
-  }, [profile.refetch]);
+    Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() =>
+      setIsRefreshing(false),
+    );
+  }, [profile.refetch, listsQuery.refetch]);
 
   const stats = useMemo(() => {
     if (!profile.data) return { totalRead: 0, thisMonth: 0, thisYear: 0 };
@@ -289,8 +412,19 @@ export default function HomeScreen() {
           status={BOOK_STATUS.WANTTOREAD}
         />
 
+        <ShelvesSection
+          shelves={listsQuery.data?.lists ?? []}
+          colors={colors}
+          onCreatePress={() => setCreateShelfVisible(true)}
+        />
+
         <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
+
+      <CreateListModal
+        visible={createShelfVisible}
+        onClose={() => setCreateShelfVisible(false)}
+      />
     </ThemedView>
   );
 }
@@ -419,8 +553,44 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
   chevron: {
     marginLeft: 4,
+  },
+  shelfHeaderAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  seeAll: {
+    fontWeight: "500",
+  },
+  shelvesScroll: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  shelfCard: {
+    width: 140,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    gap: 8,
+  },
+  shelfCardNew: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    borderStyle: "dashed",
+  },
+  shelfIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shelfCardName: {
+    fontWeight: "600",
   },
 });

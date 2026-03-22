@@ -122,6 +122,11 @@ export default function FeedScreen() {
         >
           <UserBlock
             handle={item.userHandle ?? item.userDid}
+            avatar={
+              item.userHandle
+                ? `${getBaseUrl()}/profile/${item.userHandle}/image`
+                : undefined
+            }
             size="sm"
             onPress={() => router.push(`/profile/${item.userDid}` as any)}
             suffix={`${statusLabel} ${timeAgo}`}
