@@ -13,13 +13,6 @@ export default defineConfig({
       // adding it here ensures Nitro traces and copies the platform-specific binary.
       // See: https://github.com/unjs/nf3 — can be removed once nf3 auto-detects NAPI-RS packages.
       traceDeps: ["@takumi-rs/core"],
-      // pino and thread-stream spawn worker threads using paths relative to their own files.
-      // Bundling them breaks worker resolution (worker.js ends up at _libs/lib/worker.js).
-      // Externalizing ensures they're copied as full packages to .output/server/node_modules/.
-      externals: {
-        external: ["pino", "thread-stream"],
-        traceInclude: ["pino", "thread-stream"],
-      },
     }),
   ],
   server: {
