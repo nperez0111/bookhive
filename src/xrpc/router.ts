@@ -39,6 +39,7 @@ import { BookFields } from "../db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
+import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
 import { getTopAuthors } from "../pages/authorDirectory";
 import {
   computeReadingStats,
@@ -118,10 +119,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .limit(1)
           .executeTakeFirst();
 
-        const books = [book]
-          .filter((a): a is HiveBook => a !== undefined)
-          .map((b) => transformBookWithIdentifiers(b));
-        return json({ books });
+        const books = [book].filter((a): a is HiveBook => a !== undefined);
+        const genreMap =
+          books.length > 0
+            ? await loadGenresMapForHiveBooks(
+                ctx.db,
+                books.map((b) => b.id),
+              )
+            : new Map();
+        return json({
+          books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
+        });
       }
 
       const off = offset ?? 0;
@@ -150,8 +158,12 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .offset(off)
           .execute();
 
+        const genreMap = await loadGenresMapForHiveBooks(
+          ctx.db,
+          books.map((b) => b.id),
+        );
         return json({
-          books: books.map((b) => transformBookWithIdentifiers(b)),
+          books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
           offset: off + books.length,
         });
       }
@@ -196,6 +208,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
 
       const slice = books.slice(off, off + limit);
+      const genreMap = await loadGenresMapForHiveBooks(
+        ctx.db,
+        slice.map((b) => b.id),
+      );
 
       // Include current user's statuses if logged in
       const agent = await ctx.getSessionAgent();
@@ -217,7 +233,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       }
 
       return json({
-        books: slice.map((b) => transformBookWithIdentifiers(b)),
+        books: slice.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
         offset: off + slice.length,
         userStatuses,
       });
@@ -374,23 +390,26 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         });
       }
 
-      const comments = await ctx.db
-        .selectFrom("buzz")
-        .select([
-          "buzz.bookUri",
-          "buzz.bookCid",
-          "buzz.comment",
-          "buzz.createdAt",
-          "buzz.userDid",
-          "buzz.parentUri",
-          "buzz.parentCid",
-          "buzz.cid",
-          "buzz.uri",
-        ])
-        .where("buzz.hiveId", "=", book.id)
-        .orderBy("buzz.createdAt", "desc")
-        .limit(3000)
-        .execute();
+      const [comments, bookGenres] = await Promise.all([
+        ctx.db
+          .selectFrom("buzz")
+          .select([
+            "buzz.bookUri",
+            "buzz.bookCid",
+            "buzz.comment",
+            "buzz.createdAt",
+            "buzz.userDid",
+            "buzz.parentUri",
+            "buzz.parentCid",
+            "buzz.cid",
+            "buzz.uri",
+          ])
+          .where("buzz.hiveId", "=", book.id)
+          .orderBy("buzz.createdAt", "desc")
+          .limit(3000)
+          .execute(),
+        loadGenresForHiveBook(ctx.db, book.id),
+      ]);
 
       const topLevelReviews = await ctx.db
         .selectFrom("user_book")
@@ -462,7 +481,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         bookProgress: userBook?.bookProgress ?? undefined,
         userBookUri: userBook?.uri ?? undefined,
         userBookCid: userBook?.cid ?? undefined,
-        book: toHiveBookOutput(book, bookIdentifiers),
+        book: toHiveBookOutput(book, bookIdentifiers, bookGenres),
         comments: comments.map((c) => ({
           book: { cid: c.bookCid, uri: c.bookUri },
           comment: c.comment,
@@ -827,10 +846,14 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const totalBooks = Number(totalCountResult?.count ?? 0);
       const totalPages = Math.max(1, Math.ceil(totalBooks / pageSize));
+      const genreMap = await loadGenresMapForHiveBooks(
+        ctx.db,
+        books.map((b) => b.id),
+      );
 
       return json({
         author,
-        books: books.map((b) => transformBookWithIdentifiers(b)),
+        books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
         totalBooks,
         totalPages,
         page: Math.max(1, page),

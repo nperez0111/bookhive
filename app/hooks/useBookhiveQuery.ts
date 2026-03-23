@@ -72,9 +72,7 @@ export const useBookInfo = (id: HiveId | undefined | null) => {
   return useQuery({
     queryKey: ["getBook", id] as const,
     queryFn: async ({ queryKey: [, hiveId] }) => {
-      return await enhancedAuthFetch<GetBook.OutputSchema>(
-        `/xrpc/buzz.bookhive.getBook?id=${hiveId}`,
-      );
+      return await enhancedAuthFetch<GetBook.$output>(`/xrpc/buzz.bookhive.getBook?id=${hiveId}`);
     },
     enabled: Boolean(id),
     retry: (failureCount, error: any) => {
@@ -98,7 +96,7 @@ export const useProfile = (did?: string) => {
   return useQuery({
     queryKey: ["profile", did] as const,
     queryFn: async ({ queryKey: [, id], client }) => {
-      const data = await enhancedAuthFetch<GetProfile.OutputSchema>(
+      const data = await enhancedAuthFetch<GetProfile.$output>(
         `/xrpc/buzz.bookhive.getProfile?did=${id || ""}`,
       );
       // Invalidate all getBook queries when profile is fetched

@@ -8,7 +8,7 @@ export type CrossPostParams = {
   stars?: number;
   review?: string;
   bookUrl: string;
-  /** Book genres (from hive_book_genre or hive_book.genres) for BookSky routing */
+  /** Book genres (from hive_book_genre) for BookSky routing */
   genres?: string[];
 };
 

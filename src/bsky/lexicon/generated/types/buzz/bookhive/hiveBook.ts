@@ -28,6 +28,10 @@ const _mainSchema = /*#__PURE__*/ v.record(
       /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
     ),
     /**
+     * Book genres (order preserved, e.g. from Goodreads enrichment)
+     */
+    genres: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(/*#__PURE__*/ v.string())),
+    /**
      * The book's hive id, used to correlate user's books with the hive
      */
     id: /*#__PURE__*/ v.string(),

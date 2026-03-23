@@ -542,7 +542,7 @@ export const migrateToLatest = async (db: Database, sqlite?: DatabaseSync) => {
 
 export type Database = Kysely<DatabaseSchema>;
 
-/** Keep hive_book_genre in sync when hive_book.genres is updated (used by enrichBookData). */
+/** Replace hive_book_genre rows for a book from a scraped genre list (used by enrichBookData). */
 export async function syncHiveBookGenres(
   db: Database,
   hiveId: HiveId,

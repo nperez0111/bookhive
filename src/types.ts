@@ -165,7 +165,6 @@ export type HiveBook = {
   createdAt: string;
   updatedAt: string;
   rawTitle: string | null;
-  genres: string | null;
   series: string | null;
   meta: string | null;
   enrichedAt: string | null;

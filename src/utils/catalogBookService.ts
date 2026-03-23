@@ -6,6 +6,7 @@ import type { AppContext } from "../context";
 import { createActorResolver } from "../bsky/id-resolver";
 import { ids } from "../bsky/lexicon/ids";
 import type { BlobRef, HiveBook, HiveId } from "../types";
+import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "./hiveBookGenres.js";
 import { uploadImageBlob } from "./uploadImageBlob";
 
 export async function createServiceAccountAgent(
@@ -53,7 +54,7 @@ function safeJsonParse<T>(json: string, fallback: T, context: string): T {
   }
 }
 
-function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
+function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs, catalogGenres?: string[]) {
   return {
     $type: ids.BuzzBookhiveCatalogBook,
     id: book.id,
@@ -75,9 +76,7 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs) {
     ...(book.ratingsCount !== null && book.ratingsCount !== undefined
       ? { ratingsCount: book.ratingsCount }
       : {}),
-    ...(book.genres
-      ? { genres: safeJsonParse<string[]>(book.genres, [], `book ${book.id} genres`) }
-      : {}),
+    ...(catalogGenres && catalogGenres.length > 0 ? { genres: catalogGenres } : {}),
     ...(book.series ? { series: book.series } : {}),
     ...(book.identifiers
       ? {
@@ -120,9 +119,10 @@ export async function writeCatalogBookIfNeeded(ctx: CatalogCtx, bookId: HiveId):
 
   const agent = ctx.serviceAccountAgent;
 
-  const [thumbnailBlob, coverBlob] = await Promise.all([
+  const [thumbnailBlob, coverBlob, catalogGenres] = await Promise.all([
     uploadImageBlob(freshBook.thumbnail, agent),
     uploadImageBlob(freshBook.cover, agent),
+    loadGenresForHiveBook(ctx.db, freshBook.id),
   ]);
 
   const response = await agent.post("com.atproto.repo.putRecord", {
@@ -130,7 +130,7 @@ export async function writeCatalogBookIfNeeded(ctx: CatalogCtx, bookId: HiveId):
       repo: agent.did,
       collection: ids.BuzzBookhiveCatalogBook,
       rkey: freshBook.id,
-      record: buildCatalogBookValue(freshBook, { thumbnailBlob, coverBlob }),
+      record: buildCatalogBookValue(freshBook, { thumbnailBlob, coverBlob }, catalogGenres),
     },
   });
 
@@ -169,6 +169,10 @@ export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[])
     }),
   );
   const blobMap = new Map(books.map((book, i) => [book.id, blobResults[i]!]));
+  const genresMap = await loadGenresMapForHiveBooks(
+    ctx.db,
+    books.map((b) => b.id),
+  );
 
   // Use putRecord (idempotent) for each book, limited to 5 concurrent to avoid rate limits
   const CONCURRENCY = 5;
@@ -180,7 +184,7 @@ export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[])
             repo: agent.did,
             collection: ids.BuzzBookhiveCatalogBook,
             rkey: book.id,
-            record: buildCatalogBookValue(book, blobMap.get(book.id)),
+            record: buildCatalogBookValue(book, blobMap.get(book.id), genresMap.get(book.id)),
           },
         });
 

@@ -6,6 +6,7 @@ import { ids } from "../bsky/lexicon/ids.js";
 import type { SessionClient } from "../auth/client";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
+import { loadGenresForHiveBook } from "./hiveBookGenres.js";
 import { sql } from "kysely";
 
 type ListDeps = {
@@ -246,6 +247,8 @@ export async function addBookToList({
 
   if (!book) throw new Error("Book not found");
 
+  const listItemGenres = await loadGenresForHiveBook(db, hiveId);
+
   // Get book identifiers for cross-app interop
   const idRow = await db
     .selectFrom("book_id_map")
@@ -270,7 +273,7 @@ export async function addBookToList({
     mainCredit: authors[0],
     mainCreditRole: "author",
     posterUrl: book.cover ?? book.thumbnail,
-    genres: book.genres ? JSON.parse(book.genres) : undefined,
+    genres: listItemGenres.length > 0 ? listItemGenres : undefined,
     listUri,
     addedAt: now,
     description,

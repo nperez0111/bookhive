@@ -8,6 +8,7 @@ import { buildCrossPostText } from "../bsky/crossPost";
 import { env } from "../env";
 import type { HiveBook } from "../types";
 import { buildAuthorLikePatterns } from "../utils/authorMatching";
+import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { getUserLists } from "../utils/lists";
 import { getProfiles } from "../utils/getProfile";
@@ -140,86 +141,92 @@ export const BookInfo: FC<{
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
-  const [rawUserBook, reviewsOfThisBook, userLists, bookOnShelves, userHandle, otherBooksByAuthor] =
-    await Promise.all([
-      // db_user_book
-      did
-        ? c
-            .get("ctx")
-            .db.selectFrom("user_book")
-            .selectAll()
-            .where("userDid", "==", did)
-            .where("hiveId", "==", book.id)
-            .executeTakeFirst()
-        : Promise.resolve(undefined),
-      // db_reviews_of_this_book
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select([
-          "user_book.hiveId",
-          "user_book.createdAt",
-          "user_book.uri",
-          "user_book.cid",
-          "user_book.userDid",
-          "user_book.review",
-          "user_book.stars",
-          (eb) =>
-            eb
-              .selectFrom("buzz")
-              .select(sql<number>`count(*)`.as("commentCount"))
-              .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
-              .as("commentCount"),
-        ])
-        .where("user_book.hiveId", "=", book.id)
-        .where("user_book.review", "!=", "")
-        .orderBy("user_book.createdAt", "desc")
-        .limit(10_000)
-        .execute(),
-      // db_user_lists
-      did
-        ? getUserLists({ db: c.get("ctx").db, userDid: did })
-        : Promise.resolve([] as Awaited<ReturnType<typeof getUserLists>>),
-      // db_book_on_shelves
-      did
-        ? c
-            .get("ctx")
-            .db.selectFrom("book_list_item")
-            .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
-            .select([
-              "book_list.uri",
-              "book_list.name",
-              "book_list.userDid",
-              "book_list_item.uri as itemUri",
-            ])
-            .where("book_list_item.hiveId", "==", book.id)
-            .execute()
-        : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
-      // userHandle
-      did
-        ? c
-            .get("ctx")
-            .resolver.resolveDidToHandle(did)
-            .catch(() => did)
-        : Promise.resolve(null),
-      // db_other_books_by_author
-      firstAuthor
-        ? c
-            .get("ctx")
-            .db.selectFrom("hive_book")
-            .selectAll()
-            .where("id", "!=", book.id)
-            .where(authorCondition as any)
-            .orderBy("ratingsCount", "desc")
-            .orderBy("rating", "desc")
-            .limit(6)
-            .execute()
-        : Promise.resolve([] as HiveBook[]),
-    ]);
+  const [
+    rawUserBook,
+    reviewsOfThisBook,
+    userLists,
+    bookOnShelves,
+    userHandle,
+    otherBooksByAuthor,
+    genres,
+  ] = await Promise.all([
+    // db_user_book
+    did
+      ? c
+          .get("ctx")
+          .db.selectFrom("user_book")
+          .selectAll()
+          .where("userDid", "==", did)
+          .where("hiveId", "==", book.id)
+          .executeTakeFirst()
+      : Promise.resolve(undefined),
+    // db_reviews_of_this_book
+    c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .select([
+        "user_book.hiveId",
+        "user_book.createdAt",
+        "user_book.uri",
+        "user_book.cid",
+        "user_book.userDid",
+        "user_book.review",
+        "user_book.stars",
+        (eb) =>
+          eb
+            .selectFrom("buzz")
+            .select(sql<number>`count(*)`.as("commentCount"))
+            .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
+            .as("commentCount"),
+      ])
+      .where("user_book.hiveId", "=", book.id)
+      .where("user_book.review", "!=", "")
+      .orderBy("user_book.createdAt", "desc")
+      .limit(10_000)
+      .execute(),
+    // db_user_lists
+    did
+      ? getUserLists({ db: c.get("ctx").db, userDid: did })
+      : Promise.resolve([] as Awaited<ReturnType<typeof getUserLists>>),
+    // db_book_on_shelves
+    did
+      ? c
+          .get("ctx")
+          .db.selectFrom("book_list_item")
+          .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
+          .select([
+            "book_list.uri",
+            "book_list.name",
+            "book_list.userDid",
+            "book_list_item.uri as itemUri",
+          ])
+          .where("book_list_item.hiveId", "==", book.id)
+          .execute()
+      : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
+    // userHandle
+    did
+      ? c
+          .get("ctx")
+          .resolver.resolveDidToHandle(did)
+          .catch(() => did)
+      : Promise.resolve(null),
+    // db_other_books_by_author
+    firstAuthor
+      ? c
+          .get("ctx")
+          .db.selectFrom("hive_book")
+          .selectAll()
+          .where("id", "!=", book.id)
+          .where(authorCondition as any)
+          .orderBy("ratingsCount", "desc")
+          .orderBy("rating", "desc")
+          .limit(6)
+          .execute()
+      : Promise.resolve([] as HiveBook[]),
+    loadGenresForHiveBook(c.get("ctx").db, book.id),
+  ]);
   endTime(c, "db_parallel_queries");
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
-
-  const genres: string[] = book.genres ? JSON.parse(book.genres) : [];
   const meta = book.meta ? JSON.parse(book.meta) : null;
   const seriesData = book.series ? JSON.parse(book.series) : null;
   const bookUrl = `${env.PUBLIC_URL}/books/${book.id}`;

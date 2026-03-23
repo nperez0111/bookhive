@@ -224,11 +224,9 @@ export async function getBooksByGenre(
       query = query.orderBy("hive_book.ratingsCount", "desc").orderBy("hive_book.rating", "desc");
       break;
     case "relevance":
+      // Lower rowid ≈ earlier in scraped genre list (syncHiveBookGenres insert order).
       query = query.orderBy(
-        sql`(
-          SELECT CAST(key AS INTEGER) FROM json_each(hive_book.genres)
-          WHERE value = ${genre}
-        )`,
+        sql`(SELECT MIN(rowid) FROM hive_book_genre WHERE hiveId = hive_book.id AND genre = ${genre})`,
         "asc",
       );
       break;

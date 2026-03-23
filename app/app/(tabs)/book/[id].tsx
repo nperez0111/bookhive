@@ -324,8 +324,9 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const genres = useMemo(() => {
     const bookGenres = bookQuery.data?.book.genres;
     if (!bookGenres) return [];
+    if (Array.isArray(bookGenres)) return bookGenres;
     try {
-      return JSON.parse(bookGenres as any) as string[];
+      return JSON.parse(bookGenres as string) as string[];
     } catch {
       return [];
     }

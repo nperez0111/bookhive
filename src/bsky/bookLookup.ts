@@ -21,13 +21,18 @@ export type HiveBookOutput = {
   sourceId?: string;
   sourceUrl?: string;
   identifiers?: BookIdentifiers;
+  genres?: string[];
 };
 
 /**
  * Map a hive book + identifiers to the lexicon hiveBook output shape.
  * Use this when you already have resolved identifiers (e.g. from findBookIdentifiersByLookup).
  */
-export function toHiveBookOutput(book: HiveBook, identifiers: BookIdentifiers): HiveBookOutput {
+export function toHiveBookOutput(
+  book: HiveBook,
+  identifiers: BookIdentifiers,
+  genres?: string[],
+): HiveBookOutput {
   return {
     $type: "buzz.bookhive.hiveBook",
     id: book.id,
@@ -44,6 +49,7 @@ export function toHiveBookOutput(book: HiveBook, identifiers: BookIdentifiers): 
     sourceId: book.sourceId ?? undefined,
     sourceUrl: book.sourceUrl ?? undefined,
     identifiers,
+    ...(genres && genres.length > 0 ? { genres } : {}),
   };
 }
 
@@ -67,12 +73,12 @@ export function transformBookWithIdentifiers<
     | "sourceId"
     | "sourceUrl"
   >,
->(book: T): HiveBookOutput {
+>(book: T, genres?: string[]): HiveBookOutput {
   const identifiers: BookIdentifiers = {
     hiveId: book.id,
     ...(book.identifiers ? (JSON.parse(book.identifiers) as BookIdentifiers) : {}),
   };
-  return toHiveBookOutput(book as unknown as HiveBook, identifiers);
+  return toHiveBookOutput(book as unknown as HiveBook, identifiers, genres);
 }
 
 export async function findBookIdentifiersByLookup({
