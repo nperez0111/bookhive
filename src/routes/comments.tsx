@@ -29,7 +29,7 @@ const app = new Hono<AppEnv>()
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
         c.status(401);
-      return c.render(
+        return c.render(
           <ErrorPage
             message="Invalid Session"
             description="Login to post a comment"

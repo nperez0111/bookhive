@@ -12,7 +12,6 @@ import { ids, Book as BookRecord } from "../bsky/lexicon";
 import { BookInfo } from "../pages/bookInfo";
 import { CommentsSection } from "../pages/comments";
 import { Error as ErrorPage } from "../pages/error";
-import { Layout } from "../pages/layout";
 import type { HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
@@ -211,7 +210,7 @@ const app = new Hono<AppEnv>()
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
         c.status(401);
-      return c.render(
+        return c.render(
           <ErrorPage
             message="Invalid Session"
             description="Login to add a book"
