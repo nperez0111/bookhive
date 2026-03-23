@@ -7,7 +7,7 @@ import type { Storage } from "unstorage";
 import type { DatabaseSchema } from "../db";
 import { readThroughCache } from "../utils/readThroughCache";
 
-interface AuthorWithStats {
+export interface AuthorWithStats {
   author: string;
   totalRatings: number;
   avgRating: number | null;

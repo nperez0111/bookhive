@@ -2,9 +2,11 @@ import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
+import type { Storage } from "unstorage";
 import { getEmoji } from "./genreEmoji";
-import { getTopAuthors } from "./authorDirectory";
+import { getTopAuthors, type AuthorWithStats } from "./authorDirectory";
 import { StarDisplay } from "./components/cards/StarDisplay";
+import { readThroughCache } from "../utils/readThroughCache";
 
 function formatCount(count: number): string {
   if (count < 10) return `${count}`;
@@ -13,26 +15,45 @@ function formatCount(count: number): string {
   return `${Math.floor(count / 100) * 100}+`;
 }
 
+interface GenreCount {
+  genre: string;
+  count: number;
+}
+
+const CACHE_TTL = 3_600_000; // 1 hour
+
 export const Explore: FC = async () => {
   const c = useRequestContext();
-  const db = c.get("ctx").db;
+  const { db, kv } = c.get("ctx");
 
   startTime(c, "explore-genres");
   startTime(c, "explore-authors");
 
   const [genres, topAuthors] = await Promise.all([
-    db
-      .selectFrom("hive_book_genre")
-      .select(["genre", sql<number>`COUNT(*)`.as("count")])
-      .groupBy("genre")
-      .orderBy(sql`COUNT(*)`, "desc")
-      .limit(6)
-      .execute()
-      .then((r) => {
-        endTime(c, "explore-genres");
-        return r;
-      }),
-    getTopAuthors(db, 8).then((r) => {
+    readThroughCache<GenreCount[]>(
+      kv as Storage<GenreCount[]>,
+      "explore:genres",
+      () =>
+        db
+          .selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(6)
+          .execute(),
+      [],
+      { ttl: CACHE_TTL },
+    ).then((r) => {
+      endTime(c, "explore-genres");
+      return r;
+    }),
+    readThroughCache<AuthorWithStats[]>(
+      kv as Storage<AuthorWithStats[]>,
+      "authors:featured",
+      () => getTopAuthors(db, 8),
+      [],
+      { ttl: CACHE_TTL },
+    ).then((r) => {
       endTime(c, "explore-authors");
       return r;
     }),
