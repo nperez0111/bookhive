@@ -1,6 +1,6 @@
 {
   "name": "bookhive-app",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
