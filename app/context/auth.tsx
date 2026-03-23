@@ -24,7 +24,7 @@ export type AuthState = {
 };
 
 export const getBaseUrl = () => {
-  return process.env.NODE_ENV === "development" ? "http://localhost:8080" : "https://bookhive.buzz";
+  return process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://bookhive.buzz";
 };
 
 const AuthContext = createContext<
