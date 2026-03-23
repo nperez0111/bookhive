@@ -144,7 +144,9 @@ export function mainRouter(deps: AppDeps): HonoServer {
     if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
       return c.redirect("/app");
     }
+    startTime(c, "marketing_profile_check");
     const profile = await c.get("ctx").getProfile();
+    endTime(c, "marketing_profile_check");
     if (profile) {
       return c.redirect("/home");
     }
@@ -158,6 +160,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
       "marketing:landing",
       async () => {
         // Trending: books with most distinct readers in last 7 days
+        startTime(c, "marketing_trending");
         let trending = await ctx.db
           .selectFrom("hive_book as hb")
           .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
@@ -174,9 +177,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
           .orderBy("hb.ratingsCount", "desc")
           .limit(10)
           .execute();
+        endTime(c, "marketing_trending");
 
         // Fallback to all-time most-read if not enough recent activity
         if (trending.length < 10) {
+          startTime(c, "marketing_trending_fallback");
           trending = await ctx.db
             .selectFrom("hive_book as hb")
             .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
@@ -191,8 +196,10 @@ export function mainRouter(deps: AppDeps): HonoServer {
             .orderBy("readerCount", "desc")
             .limit(10)
             .execute();
+          endTime(c, "marketing_trending_fallback");
         }
 
+        startTime(c, "marketing_recent");
         const recent = await ctx.db
           .selectFrom("user_book")
           .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
@@ -200,14 +207,19 @@ export function mainRouter(deps: AppDeps): HonoServer {
           .orderBy("user_book.createdAt", "desc")
           .limit(10)
           .execute();
+        endTime(c, "marketing_recent");
 
         const allDids = [...new Set(recent.map((r) => r.userDid))];
+        startTime(c, "marketing_handles");
+        startTime(c, "marketing_profiles");
         const [handleMap, profiles] = await Promise.all([
           allDids.length > 0
             ? ctx.resolver.resolveDidsToHandles(allDids)
             : ({} as Record<string, string>),
           allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
         ]);
+        endTime(c, "marketing_handles");
+        endTime(c, "marketing_profiles");
 
         return {
           trendingBooks: trending,
