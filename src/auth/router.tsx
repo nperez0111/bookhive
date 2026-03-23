@@ -363,6 +363,60 @@ export function loginRouter(
     }
   });
 
+  // Mobile signup handler (JSON API)
+  const mobileSignupSchema = z.object({
+    email: z.string().email("Please enter a valid email address."),
+    handle: z
+      .string()
+      .regex(
+        /^[a-zA-Z0-9-]{3,20}$/,
+        "Handle must be 3-20 characters, letters, numbers, and hyphens only.",
+      )
+      .transform((h) => h.toLowerCase()),
+    password: z.string().min(8, "Password must be at least 8 characters."),
+  });
+
+  app.post(
+    "/mobile/signup",
+    zValidator("json", mobileSignupSchema, (result, c) => {
+      if (!result.success) {
+        const error = result.error.errors[0]?.message ?? "Invalid input.";
+        return c.json({ success: false, error }, 400);
+      }
+      return undefined;
+    }),
+    async (c) => {
+      if (!isPdsEnabled()) {
+        return c.json({ success: false, error: "Signup is not available." }, 503);
+      }
+
+      const { email, handle, password } = c.req.valid("json");
+      const fullHandle = `${handle}.bookhive.social`;
+
+      try {
+        const inviteCode = await mintInviteCode();
+
+        const account = await createAccount({
+          email,
+          handle: fullHandle,
+          password,
+          inviteCode,
+        });
+
+        await createEmptyProfile(account.accessJwt, account.did);
+
+        return c.json({ success: true, handle: fullHandle });
+      } catch (err: unknown) {
+        c.get("ctx").addWideEventContext({ mobile_signup: "failed", error: err });
+        const errMsg =
+          typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : String(err);
+        return c.json({ success: false, error: errMsg }, 400);
+      }
+    },
+  );
+
   // Logout handler
   app.post("/logout", async (c) => {
     const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());

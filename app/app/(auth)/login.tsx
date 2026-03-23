@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -258,22 +257,14 @@ export default function LoginScreen() {
               </ThemedText>
 
               <Pressable
-                onPress={() => {
-                  // Open Bluesky website in browser
-                  if (Platform.OS === "web") {
-                    window.open("https://bsky.app/", "_blank");
-                  } else {
-                    // For mobile, use Linking
-                    Linking.openURL("https://bsky.app/");
-                  }
-                }}
+                onPress={() => router.push("/(auth)/register")}
                 style={({ pressed }) => [
                   styles.createAccountLink,
                   pressed && styles.createAccountLinkPressed,
                 ]}
               >
                 <ThemedText style={[styles.createAccountText, { color: colors.primary }]}>
-                  Don't have an account? Create one on Bluesky
+                  Don't have an account? Create one
                 </ThemedText>
               </Pressable>
             </Animated.View>
