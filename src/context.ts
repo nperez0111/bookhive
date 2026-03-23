@@ -30,7 +30,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
-import sqliteKv from "./sqlite-kv.ts";
+import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
 
@@ -124,35 +124,25 @@ export async function createAppDeps(): Promise<AppDeps> {
   }
 
   const exclusive = env.isProd;
+  // Single shared connection for all KV tables on KV_DB_PATH. This is critical in production
+  // where exclusive locking mode is enabled — multiple connections to the same file with
+  // PRAGMA locking_mode = EXCLUSIVE will fight for the lock and cause SQLITE_BUSY.
+  const kvDb = createSharedKvDb(env.KV_DB_PATH, exclusive);
   const kv = createStorage({
-    driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv", exclusive }),
+    driver: sqliteKv({ table: "kv", db: kvDb }),
   });
 
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount("profile:", sqliteKv({ location: env.KV_DB_PATH, table: "profile", exclusive }));
-  kv.mount("identity:", sqliteKv({ location: env.KV_DB_PATH, table: "identity", exclusive }));
-  kv.mount(
-    "follows_sync:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync", exclusive }),
-  );
-  kv.mount(
-    "auth_session:",
-    sqliteKv({
-      location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
-      table: "auth_sessions",
-      exclusive,
-    }),
-  );
-  kv.mount(
-    "auth_state:",
-    sqliteKv({
-      location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
-      table: "auth_state",
-      exclusive,
-    }),
-  );
+  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
+  kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
+  kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
+
+  // Auth tables: in development use a separate file; in production share the main KV connection.
+  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
+  kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
+  kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
   const oauthClient = await createOAuthClient(kv);
