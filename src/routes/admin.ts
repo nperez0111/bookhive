@@ -10,7 +10,7 @@ import {
   prepareSanitizedExportFiles,
   isAuthorizedExportRequest,
 } from "../utils/dbExport";
-import { backfillCatalogBooks } from "../utils/catalogBookService";
+import { backfillCatalogBooks, getBackfillProgress } from "../utils/catalogBookService";
 
 const admin = new Hono<AppEnv>()
   .post("/backfill-catalog", async (c) => {
@@ -38,6 +38,20 @@ const admin = new Hono<AppEnv>()
 
     ctx.addWideEventContext({ backfill_catalog: "started" });
     return c.json({ message: "Backfill started" }, 202);
+  })
+  .get("/backfill-catalog/progress", (c) => {
+    const authorization = c.req.header("authorization");
+    if (
+      !env.EXPORT_SHARED_SECRET ||
+      !isAuthorizedExportRequest({
+        authorizationHeader: authorization,
+        sharedSecret: env.EXPORT_SHARED_SECRET,
+      })
+    ) {
+      return c.json({ message: "Not Found" }, 404);
+    }
+
+    return c.json(getBackfillProgress());
   })
   .get("/export", async (c) => {
     const ctx = c.get("ctx");
