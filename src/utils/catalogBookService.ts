@@ -218,6 +218,32 @@ class RateLimitError extends Error {
   }
 }
 
+export interface BackfillProgress {
+  status: "idle" | "running" | "completed" | "failed";
+  startedAt: string | null;
+  completedAt: string | null;
+  written: number;
+  batches: number;
+  totalPending: number | null;
+  lastBatchAt: string | null;
+  error: string | null;
+}
+
+let backfillProgress: BackfillProgress = {
+  status: "idle",
+  startedAt: null,
+  completedAt: null,
+  written: 0,
+  batches: 0,
+  totalPending: null,
+  lastBatchAt: null,
+  error: null,
+};
+
+export function getBackfillProgress(): BackfillProgress {
+  return { ...backfillProgress };
+}
+
 /**
  * Iterates all enriched hive_book rows without hiveBookAtUri, writing them to @bookhive.buzz
  * in batches of 25.
@@ -246,6 +272,24 @@ export async function backfillCatalogBooks(
 
   const wideEvent: Record<string, unknown> = {
     job: "backfill_catalog_books",
+  };
+
+  const totalRow = await ctx.db
+    .selectFrom("hive_book")
+    .where("hiveBookAtUri", "is", null)
+    .where("enrichedAt", "is not", null)
+    .select((eb) => eb.fn.countAll<number>().as("count"))
+    .executeTakeFirst();
+
+  backfillProgress = {
+    status: "running",
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    written: 0,
+    batches: 0,
+    totalPending: totalRow ? Number(totalRow.count) : null,
+    lastBatchAt: null,
+    error: null,
   };
 
   try {
@@ -280,15 +324,24 @@ export async function backfillCatalogBooks(
         throw err;
       }
 
-      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       lastId = batch[batch.length - 1]!.id;
       written += batch.length;
       batches++;
+      backfillProgress.written = written;
+      backfillProgress.batches = batches;
+      backfillProgress.lastBatchAt = new Date().toISOString();
+
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
 
+    backfillProgress.status = "completed";
+    backfillProgress.completedAt = new Date().toISOString();
     wideEvent["outcome"] = "success";
     return { written, batches };
   } catch (err) {
+    backfillProgress.status = "failed";
+    backfillProgress.completedAt = new Date().toISOString();
+    backfillProgress.error = err instanceof Error ? err.message : String(err);
     wideEvent["outcome"] = "error";
     wideEvent["error"] =
       err instanceof Error ? { message: err.message, type: err.name } : String(err);
