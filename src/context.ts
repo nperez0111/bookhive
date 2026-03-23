@@ -107,16 +107,21 @@ export async function createAppDeps(): Promise<AppDeps> {
 
   const { db, sqlite } = createDb(env.DB_PATH, { exclusive: env.isProd });
   logger.info("starting DB migrations");
-  const migrationResults = await migrateToLatest(db);
+  const migrationStart = Date.now();
+  const migrationResults = await migrateToLatest(db, sqlite);
+  logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
   if (migrationResults.length > 0) {
     logger.info(
       { migrations: migrationResults.map((r) => r.migrationName) },
-      "db migrations applied, running VACUUM to reclaim space",
+      "migrations applied, deferring VACUUM to background",
     );
-    sqlite.exec("VACUUM");
-    logger.info("db VACUUM complete");
+    // Run VACUUM in the background — it reclaims space but shouldn't block server startup.
+    setTimeout(() => {
+      const vacuumStart = Date.now();
+      sqlite.exec("VACUUM");
+      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
+    }, 5_000);
   }
-  logger.info("db migrations applied");
 
   const exclusive = env.isProd;
   const kv = createStorage({

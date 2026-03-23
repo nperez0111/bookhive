@@ -205,61 +205,67 @@ export async function refetchBuzzes({
   if (!buzzesRes.ok) return;
   const buzzes = { data: buzzesRes.data as ListRecordsOut };
 
-  await buzzes.data.records
-    .filter((record) => BuzzRecord.validateRecord(record.value).success)
-    .reduce(async (acc, record) => {
-      await acc;
-      const book = record.value as BuzzRecord.Record;
+  const validRecords = buzzes.data.records.filter(
+    (record) => BuzzRecord.validateRecord(record.value).success,
+  );
 
-      const hiveId = (
-        await ctx.db
+  // Batch-fetch hiveIds for all referenced book URIs
+  const bookUris = validRecords.map((r) => (r.value as BuzzRecord.Record).book.uri);
+  const bookRows =
+    bookUris.length > 0
+      ? await ctx.db
           .selectFrom("user_book")
-          .select("hiveId")
-          .where("uri", "=", book.book.uri)
-          .executeTakeFirst()
-      )?.hiveId;
+          .select(["uri", "hiveId"])
+          .where("uri", "in", bookUris)
+          .execute()
+      : [];
+  const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
 
-      if (!hiveId) {
-        ctx.addWideEventContext({
-          refetch_buzz_hive_id_missing: true,
-          record_uri: record.uri,
-        });
-        return;
-      }
+  for (const record of validRecords) {
+    const book = record.value as BuzzRecord.Record;
+    const hiveId = uriToHiveId.get(book.book.uri);
 
-      uris.push(record.uri);
+    if (!hiveId) {
+      ctx.addWideEventContext({
+        refetch_buzz_hive_id_missing: true,
+        record_uri: record.uri,
+      });
+      continue;
+    }
 
-      await ctx.db
-        .insertInto("buzz")
-        .values({
-          uri: record.uri,
-          cid: record.cid,
-          userDid: agent.did,
-          createdAt: book.createdAt,
-          indexedAt: new Date().toISOString(),
-          hiveId: hiveId,
-          comment: book.comment,
-          parentUri: book.parent.uri,
-          parentCid: book.parent.cid,
-          bookCid: book.book.cid,
-          bookUri: book.book.uri,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            cid: c.ref("excluded.cid"),
-            userDid: c.ref("excluded.userDid"),
-            createdAt: c.ref("excluded.createdAt"),
-            indexedAt: c.ref("excluded.indexedAt"),
-            hiveId: c.ref("excluded.hiveId"),
-            comment: c.ref("excluded.comment"),
-            parentUri: c.ref("excluded.parentUri"),
-            parentCid: c.ref("excluded.parentCid"),
-            bookCid: c.ref("excluded.bookCid"),
-            bookUri: c.ref("excluded.bookUri"),
-          })),
-        )
-        .execute();
-    }, Promise.resolve());
+    uris.push(record.uri);
+
+    await ctx.db
+      .insertInto("buzz")
+      .values({
+        uri: record.uri,
+        cid: record.cid,
+        userDid: agent.did,
+        createdAt: book.createdAt,
+        indexedAt: new Date().toISOString(),
+        hiveId: hiveId,
+        comment: book.comment,
+        parentUri: book.parent.uri,
+        parentCid: book.parent.cid,
+        bookCid: book.book.cid,
+        bookUri: book.book.uri,
+      })
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet((c) => ({
+          cid: c.ref("excluded.cid"),
+          userDid: c.ref("excluded.userDid"),
+          createdAt: c.ref("excluded.createdAt"),
+          indexedAt: c.ref("excluded.indexedAt"),
+          hiveId: c.ref("excluded.hiveId"),
+          comment: c.ref("excluded.comment"),
+          parentUri: c.ref("excluded.parentUri"),
+          parentCid: c.ref("excluded.parentCid"),
+          bookCid: c.ref("excluded.bookCid"),
+          bookUri: c.ref("excluded.bookUri"),
+        })),
+      )
+      .execute();
+  }
 
   if (buzzes.data.records.length === 100) {
     await new Promise((r) => setTimeout(r, 100));
