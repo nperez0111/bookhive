@@ -220,8 +220,7 @@ export default function RegisterScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor:
-                        colorScheme === "dark" ? colors.cardBackground : "#ffffff",
+                      backgroundColor: colorScheme === "dark" ? colors.cardBackground : "#ffffff",
                       borderColor: colors.cardBorder,
                       color: colors.primaryText,
                     },
@@ -248,8 +247,7 @@ export default function RegisterScreen() {
                       styles.input,
                       styles.handleInput,
                       {
-                        backgroundColor:
-                          colorScheme === "dark" ? colors.cardBackground : "#ffffff",
+                        backgroundColor: colorScheme === "dark" ? colors.cardBackground : "#ffffff",
                         borderColor: colors.cardBorder,
                         color: colors.primaryText,
                       },
@@ -288,8 +286,7 @@ export default function RegisterScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor:
-                        colorScheme === "dark" ? colors.cardBackground : "#ffffff",
+                      backgroundColor: colorScheme === "dark" ? colors.cardBackground : "#ffffff",
                       borderColor: colors.cardBorder,
                       color: colors.primaryText,
                     },
@@ -312,8 +309,7 @@ export default function RegisterScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor:
-                        colorScheme === "dark" ? colors.cardBackground : "#ffffff",
+                      backgroundColor: colorScheme === "dark" ? colors.cardBackground : "#ffffff",
                       borderColor: colors.cardBorder,
                       color: colors.primaryText,
                     },

@@ -20,6 +20,7 @@ export default defineDriver<
   {
     location?: string;
     table: string;
+    exclusive?: boolean;
     getDb?: () => KvDb;
   },
   KvDb
@@ -27,6 +28,7 @@ export default defineDriver<
   ({
     location,
     table = "kv",
+    exclusive,
     getDb = (): KvDb => {
       let _db: KvDb | null = null;
 
@@ -41,6 +43,9 @@ export default defineDriver<
 
         const sqlite = new DatabaseSync(location);
         sqlite.exec("PRAGMA journal_mode = WAL");
+        if (exclusive) {
+          sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
+        }
 
         _db = new Kysely<TableSchema>({
           dialect: new SqliteDialect({

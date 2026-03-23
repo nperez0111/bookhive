@@ -500,9 +500,15 @@ migrations["014"] = {
 
 // APIs
 
-export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
+export const createDb = (
+  location: string,
+  opts?: { exclusive?: boolean },
+): { db: Database; sqlite: DatabaseSync } => {
   const sqlite = new DatabaseSync(location);
   sqlite.exec("PRAGMA journal_mode = WAL");
+  if (opts?.exclusive) {
+    sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
+  }
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
   sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
