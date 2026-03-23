@@ -59,7 +59,11 @@ async function main() {
 
   process.stdout.write("  New version: ");
 
-  const input = (await Bun.stdin.text()).trim().toLowerCase();
+  let input = "";
+  for await (const line of console) {
+    input = line.trim().toLowerCase();
+    break;
+  }
 
   let newVersion: string;
 
