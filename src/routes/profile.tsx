@@ -261,6 +261,8 @@ const app = new Hono<AppEnv>()
   })
   .get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
+    const forceRefresh = c.req.query("force-refresh") === "true";
+
     startTime(c, "resolveDid");
     const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     endTime(c, "resolveDid");
@@ -273,6 +275,16 @@ const app = new Hono<AppEnv>()
         </Fragment>,
         { title: "Profile Not Found" },
       );
+    }
+
+    if (forceRefresh) {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (agent?.did === did) {
+        startTime(c, "force_refetch_books");
+        await refetchBooks({ agent, ctx: c.get("ctx") });
+        endTime(c, "force_refetch_books");
+        return c.redirect(`/profile/${handle}`);
+      }
     }
 
     startTime(c, "isBuzzer");
