@@ -40,7 +40,7 @@ export const BookList: FC<{
   }
 
   return (
-    <div class="relative overflow-hidden rounded-lg bg-card pb-16">
+    <div class="relative overflow-x-clip rounded-lg bg-card pb-16">
       <input type="radio" id="tab-read" name="tabs" class="peer/read hidden" />
       <input type="radio" id="tab-want" name="tabs" class="peer/want hidden" />
       <input type="radio" id="tab-reading" name="tabs" class="peer/reading hidden" checked />

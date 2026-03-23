@@ -115,7 +115,6 @@ export async function enrichBookWithDetailedData(
     await ctx.db
       .updateTable("hive_book")
       .set({
-        genres,
         series,
         meta: serializedMeta,
         identifiers: JSON.stringify(updatedIdentifiers),

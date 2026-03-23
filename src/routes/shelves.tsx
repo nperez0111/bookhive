@@ -10,7 +10,6 @@ import { z } from "zod";
 
 import type { AppEnv } from "../context";
 import { Error as ErrorPage } from "../pages/error";
-import { Layout } from "../pages/layout";
 import { ShelfViewPage, ShelfCreatePage, ShelfEditPage } from "../pages/shelves";
 import {
   createList,
@@ -66,15 +65,14 @@ const app = new Hono<AppEnv>()
         const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to create shelf"
-              description={(e as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to create shelf"
+            description={(e as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },
@@ -336,15 +334,14 @@ const app = new Hono<AppEnv>()
         });
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to update shelf"
-              description={(e as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to update shelf"
+            description={(e as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },
@@ -369,15 +366,14 @@ const app = new Hono<AppEnv>()
       await deleteList({ agent, db: c.get("ctx").db, uri: listUri });
       return c.redirect(`/profile/${handle}`);
     } catch (e) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Failed to delete shelf"
-            description={(e as Error).message}
-            statusCode={500}
-          />
-        </Layout>,
-        500,
+      c.status(500);
+      return c.render(
+        <ErrorPage
+          message="Failed to delete shelf"
+          description={(e as Error).message}
+          statusCode={500}
+        />,
+        { title: "Error" },
       );
     }
   })
@@ -416,15 +412,14 @@ const app = new Hono<AppEnv>()
         });
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to add book"
-              description={(e as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to add book"
+            description={(e as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },
@@ -463,15 +458,14 @@ const app = new Hono<AppEnv>()
         });
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to add book"
-              description={(e as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to add book"
+            description={(e as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },
@@ -505,15 +499,14 @@ const app = new Hono<AppEnv>()
         const safeReturn = returnTo && returnTo.startsWith("/") ? returnTo : null;
         return c.redirect(safeReturn ?? `/shelves/${handle}/${rkey}`);
       } catch (e) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to remove book"
-              description={(e as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to remove book"
+            description={(e as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },

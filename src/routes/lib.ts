@@ -39,7 +39,7 @@ export async function searchBooks({
       if (res.success) {
         goodreadsIds = await ctx.db
           .insertInto("hive_book")
-          .values(res.data)
+          .values(res.data.map(({ genres: _genres, ...book }) => book))
           .onConflict((oc) =>
             oc.column("id").doUpdateSet((c) => {
               return {

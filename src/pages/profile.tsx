@@ -150,16 +150,6 @@ export const ProfilePage: FC<{
             )}
           </section>
 
-          {/* Owned Books */}
-          {books.filter((b) => b.owned).length > 0 && (
-            <section>
-              <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">
-                Owned Books ({books.filter((b) => b.owned).length})
-              </h2>
-              <BookList books={books.filter((b) => b.owned)} />
-            </section>
-          )}
-
           {/* Shelves */}
           {userLists.length > 0 && (
             <section>

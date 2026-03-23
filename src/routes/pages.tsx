@@ -14,7 +14,6 @@ import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
-import { Layout } from "../pages/layout";
 import { getProfiles } from "../utils/getProfile";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { LibraryImport } from "../pages/import";
@@ -114,15 +113,14 @@ const app = new Hono<AppEnv>()
   .get("/import", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to view your profile"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to view your profile"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
       );
     }
     return c.render(<LibraryImport />, {
