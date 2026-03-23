@@ -105,7 +105,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
-  const { db, sqlite } = createDb(env.DB_PATH);
+  const { db, sqlite } = createDb(env.DB_PATH, { exclusive: env.isProd });
   logger.info("starting DB migrations");
   const migrationResults = await migrateToLatest(db);
   if (migrationResults.length > 0) {
@@ -118,21 +118,26 @@ export async function createAppDeps(): Promise<AppDeps> {
   }
   logger.info("db migrations applied");
 
+  const exclusive = env.isProd;
   const kv = createStorage({
-    driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv" }),
+    driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv", exclusive }),
   });
 
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount("profile:", sqliteKv({ location: env.KV_DB_PATH, table: "profile" }));
-  kv.mount("identity:", sqliteKv({ location: env.KV_DB_PATH, table: "identity" }));
-  kv.mount("follows_sync:", sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync" }));
+  kv.mount("profile:", sqliteKv({ location: env.KV_DB_PATH, table: "profile", exclusive }));
+  kv.mount("identity:", sqliteKv({ location: env.KV_DB_PATH, table: "identity", exclusive }));
+  kv.mount(
+    "follows_sync:",
+    sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync", exclusive }),
+  );
   kv.mount(
     "auth_session:",
     sqliteKv({
       location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
       table: "auth_sessions",
+      exclusive,
     }),
   );
   kv.mount(
@@ -140,6 +145,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     sqliteKv({
       location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
       table: "auth_state",
+      exclusive,
     }),
   );
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
