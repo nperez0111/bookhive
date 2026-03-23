@@ -937,7 +937,7 @@ export const BookInfo: FC<{
                 </button>
                 <dialog
                   id="delete-book-dialog"
-                  class="rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
+                  class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
                 >
                   <h3 class="mb-2 text-lg font-semibold">Remove book?</h3>
                   <p class="mb-4 text-sm text-muted-foreground">

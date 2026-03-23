@@ -44,15 +44,14 @@ const app = new Hono<AppEnv>()
     endTime(c, "db_fetch_book");
 
     if (!book) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Book not found"
-            description="The book you are looking for does not exist"
-            statusCode={404}
-          />
-        </Layout>,
-        404,
+      c.status(404);
+      return c.render(
+        <ErrorPage
+          message="Book not found"
+          description="The book you are looking for does not exist"
+          statusCode={404}
+        />,
+        { title: "Book Not Found" },
       );
     }
 
@@ -110,15 +109,14 @@ const app = new Hono<AppEnv>()
   .delete("/:hiveId", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to delete a book"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to delete a book"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
       );
     }
     const hiveId = c.req.param("hiveId") as HiveId;
@@ -212,15 +210,14 @@ const app = new Hono<AppEnv>()
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Invalid Session"
-              description="Login to add a book"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
+        c.status(401);
+      return c.render(
+          <ErrorPage
+            message="Invalid Session"
+            description="Login to add a book"
+            statusCode={401}
+          />,
+          { title: "Unauthorized" },
         );
       }
       const bookLockKey = "book_lock:" + agent.did;
@@ -263,14 +260,13 @@ const app = new Hono<AppEnv>()
 
         const bookLock = await c.get("ctx").kv.get(bookLockKey);
         if (bookLock) {
-          return c.html(
-            <Layout>
-              <ErrorPage
-                message={`Book ${JSON.stringify(bookLock)} already being added`}
-                statusCode={429}
-              />
-            </Layout>,
-            429,
+          c.status(429);
+          return c.render(
+            <ErrorPage
+              message={`Book ${JSON.stringify(bookLock)} already being added`}
+              statusCode={429}
+            />,
+            { title: "Too Many Requests" },
           );
         }
 
@@ -299,15 +295,14 @@ const app = new Hono<AppEnv>()
         } catch (e) {
           c.set("requestError", e);
           c.get("ctx").addWideEventContext({ write_book: "failed" });
-          return c.html(
-            <Layout>
-              <ErrorPage
-                message="Failed to record book"
-                description={"Error: " + (e as Error).message}
-                statusCode={500}
-              />
-            </Layout>,
-            500,
+          c.status(500);
+          return c.render(
+            <ErrorPage
+              message="Failed to record book"
+              description={"Error: " + (e as Error).message}
+              statusCode={500}
+            />,
+            { title: "Error" },
           );
         } finally {
           await c.get("ctx").kv.del(bookLockKey);
@@ -318,15 +313,14 @@ const app = new Hono<AppEnv>()
         c.set("requestError", err);
         c.get("ctx").addWideEventContext({ write_book: "failed" });
         await c.get("ctx").kv.del(bookLockKey);
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to record book"
-              description={"Error: " + (err as Error).message}
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to record book"
+            description={"Error: " + (err as Error).message}
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
     },
@@ -343,15 +337,14 @@ const app = new Hono<AppEnv>()
     endTime(c, "db_fetch_book");
 
     if (!book) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Book not found"
-            description="The book you are looking for does not exist"
-            statusCode={404}
-          />
-        </Layout>,
-        404,
+      c.status(404);
+      return c.render(
+        <ErrorPage
+          message="Book not found"
+          description="The book you are looking for does not exist"
+          statusCode={404}
+        />,
+        { title: "Book Not Found" },
       );
     }
     const reviewId = c.req.query("review-id") ?? undefined;

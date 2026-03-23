@@ -10,7 +10,6 @@ import { z } from "zod";
 import type { AppEnv } from "../context";
 import { ids, validateMain } from "../bsky/lexicon";
 import { Error as ErrorPage } from "../pages/error";
-import { Layout } from "../pages/layout";
 import type { HiveId } from "../types";
 
 const app = new Hono<AppEnv>()
@@ -29,15 +28,14 @@ const app = new Hono<AppEnv>()
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Invalid Session"
-              description="Login to post a comment"
-              statusCode={401}
-            />
-          </Layout>,
-          401,
+        c.status(401);
+      return c.render(
+          <ErrorPage
+            message="Invalid Session"
+            description="Login to post a comment"
+            statusCode={401}
+          />,
+          { title: "Unauthorized" },
         );
       }
       const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("form");
@@ -62,15 +60,14 @@ const app = new Hono<AppEnv>()
       const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
       const parentRef = validateMain({ uri: parentUri, cid: parentCid });
       if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Invalid Hive ID"
-              description="The book you are looking for does not exist"
-              statusCode={404}
-            />
-          </Layout>,
-          404,
+        c.status(404);
+        return c.render(
+          <ErrorPage
+            message="Invalid Hive ID"
+            description="The book you are looking for does not exist"
+            statusCode={404}
+          />,
+          { title: "Book Not Found" },
         );
       }
 
@@ -117,15 +114,14 @@ const app = new Hono<AppEnv>()
           userDid: agent.did,
           error: "applyWrites result invalid",
         });
-        return c.html(
-          <Layout>
-            <ErrorPage
-              message="Failed to post comment"
-              description="Failed to write comment to the database"
-              statusCode={500}
-            />
-          </Layout>,
-          500,
+        c.status(500);
+        return c.render(
+          <ErrorPage
+            message="Failed to post comment"
+            description="Failed to write comment to the database"
+            statusCode={500}
+          />,
+          { title: "Error" },
         );
       }
 
@@ -173,15 +169,14 @@ const app = new Hono<AppEnv>()
   .delete("/:commentId", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to delete a comment"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to delete a comment"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
       );
     }
     const commentId = c.req.param("commentId") as string;

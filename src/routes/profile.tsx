@@ -30,15 +30,14 @@ const app = new Hono<AppEnv>()
   .get("/refresh-books", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to refresh books"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to refresh books"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
       );
     }
     startTime(c, "refetch_books");
@@ -60,15 +59,14 @@ const app = new Hono<AppEnv>()
   .get("/profile", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Invalid Session"
-            description="Login to view your profile"
-            statusCode={401}
-          />
-        </Layout>,
-        401,
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to view your profile"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
       );
     }
     const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
@@ -79,15 +77,14 @@ const app = new Hono<AppEnv>()
     const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     const profile = await getProfile({ ctx: c.get("ctx"), did: did! });
     if (!profile || !profile.avatar) {
-      return c.html(
-        <Layout>
-          <ErrorPage
-            message="Profile not found"
-            description="The profile you are looking for does not exist"
-            statusCode={404}
-          />
-        </Layout>,
-        404,
+      c.status(404);
+      return c.render(
+        <ErrorPage
+          message="Profile not found"
+          description="The profile you are looking for does not exist"
+          statusCode={404}
+        />,
+        { title: "Profile Not Found" },
       );
     }
     return c.redirect(`/images/w_500/${profile.avatar}`);

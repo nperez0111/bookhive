@@ -74,36 +74,38 @@ export const BookTooltip: FC<{
 }> = ({ book, position = "top", showChips = true }) => {
   const positionClasses =
     position === "top"
-      ? "bottom-full left-1/2 mb-2 -translate-x-1/2"
-      : "top-full left-1/2 mt-2 -translate-x-1/2";
+      ? "bottom-full left-1/2 pb-2 -translate-x-1/2"
+      : "top-full left-1/2 pt-2 -translate-x-1/2";
 
   return (
     <div
-      class={`pointer-events-none absolute z-20 w-48 rounded-lg bg-card px-3 py-2 text-left opacity-0 shadow-lg ring-1 ring-border transition-opacity duration-200 group-hover:opacity-100 ${positionClasses}`}
+      class={`pointer-events-none absolute z-20 w-48 text-left opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${positionClasses}`}
     >
-      <h3 class="text-sm font-bold leading-tight text-foreground line-clamp-2">{book.title}</h3>
-      <p class="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-        By {authorsDisplay(book.authors)}
-      </p>
-      {book.rating > 0 && (
-        <div class="mt-1 flex items-center gap-1.5">
-          <StarDisplay rating={book.rating} size="sm" class="flex" />
-          <span class="text-xs text-muted-foreground">{book.rating.toFixed(1)}</span>
-        </div>
-      )}
-      {showChips && <StatusChips book={book} />}
-      {/* Arrow with border */}
-      {position === "top" ? (
-        <div class="absolute top-full left-1/2 -translate-x-1/2">
-          <div class="border-x-[6px] border-t-[6px] border-x-transparent border-t-border" />
-          <div class="-mt-[7px] border-x-[5px] border-t-[5px] border-x-transparent border-t-card" />
-        </div>
-      ) : (
-        <div class="absolute bottom-full left-1/2 -translate-x-1/2">
-          <div class="border-x-[6px] border-b-[6px] border-x-transparent border-b-border" />
-          <div class="-mt-[5px] border-x-[5px] border-b-[5px] border-x-transparent border-b-card" />
-        </div>
-      )}
+      <div class="relative rounded-lg bg-card px-3 py-2 shadow-lg ring-1 ring-border">
+        <h3 class="text-sm font-bold leading-tight text-foreground line-clamp-2">{book.title}</h3>
+        <p class="mt-0.5 text-xs text-muted-foreground line-clamp-1">
+          By {authorsDisplay(book.authors)}
+        </p>
+        {book.rating > 0 && (
+          <div class="mt-1 flex items-center gap-1.5">
+            <StarDisplay rating={book.rating} size="sm" class="flex" />
+            <span class="text-xs text-muted-foreground">{book.rating.toFixed(1)}</span>
+          </div>
+        )}
+        {showChips && <StatusChips book={book} />}
+        {/* Arrow with border */}
+        {position === "top" ? (
+          <div class="absolute top-full left-1/2 -translate-x-1/2">
+            <div class="border-x-[6px] border-t-[6px] border-x-transparent border-t-border" />
+            <div class="-mt-[7px] border-x-[5px] border-t-[5px] border-x-transparent border-t-card" />
+          </div>
+        ) : (
+          <div class="absolute bottom-full left-1/2 -translate-x-1/2">
+            <div class="border-x-[6px] border-b-[6px] border-x-transparent border-b-border" />
+            <div class="-mt-[5px] border-x-[5px] border-b-[5px] border-x-transparent border-b-card" />
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -153,21 +155,23 @@ const DenseCard: FC<DenseProps> = ({
   const Tag = href ? "a" : "div";
 
   return (
-    <div class={`group relative ${className ?? ""}`}>
-      <BookTooltip book={book} position={tooltipPosition} />
+    <div class={`relative ${className ?? ""}`}>
+      <div class="group relative">
+        <BookTooltip book={book} position={tooltipPosition} />
 
-      <Tag
-        {...(href ? { href } : {})}
-        class="relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-md"
-      >
-        <CoverImage book={book} class="h-full w-full object-cover" />
-        {badge}
-        {overlay && (
-          <div class="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-            {overlay}
-          </div>
-        )}
-      </Tag>
+        <Tag
+          {...(href ? { href } : {})}
+          class="relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-md"
+        >
+          <CoverImage book={book} class="h-full w-full object-cover" />
+          {badge}
+          {overlay && (
+            <div class="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              {overlay}
+            </div>
+          )}
+        </Tag>
+      </div>
 
       {href ? (
         <a href={href} class="block">
@@ -199,17 +203,19 @@ type ListProps = {
 
 const ListCard: FC<ListProps> = ({ book, class: className, children }) => {
   return (
-    <div class={`group relative ${className ?? ""}`}>
-      <BookTooltip book={book} position="top" showChips={false} />
+    <div class={`relative ${className ?? ""}`}>
+      <div class="group relative">
+        <BookTooltip book={book} position="top" showChips={false} />
 
-      <a
-        href={book.hiveId ? `/books/${book.hiveId}` : undefined}
-        class="block overflow-hidden rounded-lg transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
-      >
-        <div class="aspect-[2/3] w-full">
-          <CoverImage book={book} class="h-full w-full object-cover" />
-        </div>
-      </a>
+        <a
+          href={book.hiveId ? `/books/${book.hiveId}` : undefined}
+          class="block overflow-hidden rounded-lg transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+        >
+          <div class="aspect-[2/3] w-full">
+            <CoverImage book={book} class="h-full w-full object-cover" />
+          </div>
+        </a>
+      </div>
       {children && <div class="mt-2">{children}</div>}
     </div>
   );
