@@ -202,18 +202,9 @@ export async function getBooksByGenre(
   const offset = (page - 1) * pageSize;
 
   startTime(c, "genre-books-count-query");
-  const totalCountResult = await ctx.db
-    .selectFrom("hive_book_genre")
-    .select(sql<number>`COUNT(DISTINCT hiveId)`.as("count"))
-    .where("genre", "=", genre)
-    .executeTakeFirst();
-  endTime(c, "genre-books-count-query");
-
-  const totalBooks = totalCountResult?.count ?? 0;
-  const totalPages = Math.ceil(totalBooks / pageSize);
-
   startTime(c, "genre-books-data-query");
-  let query = ctx.db
+
+  let dataQuery = ctx.db
     .selectFrom("hive_book")
     .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
     .selectAll("hive_book")
@@ -221,22 +212,46 @@ export async function getBooksByGenre(
 
   switch (sortBy) {
     case "popularity":
-      query = query.orderBy("hive_book.ratingsCount", "desc").orderBy("hive_book.rating", "desc");
+      dataQuery = dataQuery
+        .orderBy("hive_book.ratingsCount", "desc")
+        .orderBy("hive_book.rating", "desc");
       break;
     case "relevance":
       // Lower rowid ≈ earlier in scraped genre list (syncHiveBookGenres insert order).
-      query = query.orderBy(
+      dataQuery = dataQuery.orderBy(
         sql`(SELECT MIN(rowid) FROM hive_book_genre WHERE hiveId = hive_book.id AND genre = ${genre})`,
         "asc",
       );
       break;
     case "reviews":
-      query = query.orderBy("hive_book.rating", "desc").orderBy("hive_book.ratingsCount", "desc");
+      dataQuery = dataQuery
+        .orderBy("hive_book.rating", "desc")
+        .orderBy("hive_book.ratingsCount", "desc");
       break;
   }
 
-  const books = await query.limit(pageSize).offset(offset).execute();
-  endTime(c, "genre-books-data-query");
+  const [totalCountResult, books] = await Promise.all([
+    ctx.db
+      .selectFrom("hive_book_genre")
+      .select(sql<number>`COUNT(DISTINCT hiveId)`.as("count"))
+      .where("genre", "=", genre)
+      .executeTakeFirst()
+      .then((r) => {
+        endTime(c, "genre-books-count-query");
+        return r;
+      }),
+    dataQuery
+      .limit(pageSize)
+      .offset(offset)
+      .execute()
+      .then((r) => {
+        endTime(c, "genre-books-data-query");
+        return r;
+      }),
+  ]);
+
+  const totalBooks = totalCountResult?.count ?? 0;
+  const totalPages = Math.ceil(totalBooks / pageSize);
 
   return {
     books,

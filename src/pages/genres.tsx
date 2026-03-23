@@ -2,7 +2,9 @@ import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
+import type { Storage } from "unstorage";
 import { getEmoji } from "./genreEmoji";
+import { readThroughCache } from "../utils/readThroughCache";
 
 interface GenreWithCount {
   genre: string;
@@ -28,17 +30,23 @@ const FEATURED_COUNT = 8;
 
 export const GenresDirectory: FC = async () => {
   const c = useRequestContext();
+  const { db, kv } = c.get("ctx");
 
   startTime(c, "genres-query");
-  const genres: GenreWithCount[] = (
-    await c
-      .get("ctx")
-      .db.selectFrom("hive_book_genre")
-      .select(["genre", sql<number>`COUNT(*)`.as("count")])
-      .groupBy("genre")
-      .orderBy(sql`COUNT(*)`, "desc")
-      .execute()
-  ).filter((g: GenreWithCount) => g.count > 10);
+  const genres = await readThroughCache<GenreWithCount[]>(
+    kv as Storage<GenreWithCount[]>,
+    "genres:all",
+    () =>
+      db
+        .selectFrom("hive_book_genre")
+        .select(["genre", sql<number>`COUNT(*)`.as("count")])
+        .groupBy("genre")
+        .having(sql`COUNT(*)`, ">", 10)
+        .orderBy(sql`COUNT(*)`, "desc")
+        .execute(),
+    [],
+    { ttl: 3_600_000 },
+  );
   endTime(c, "genres-query");
 
   const featured = genres.slice(0, FEATURED_COUNT);

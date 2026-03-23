@@ -5,7 +5,7 @@ import { BookCard, normalizeBookData } from "./components/BookCard";
 import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
-import { buildAuthorLikePatterns, calculatePagination } from "../utils/authorMatching";
+import { buildAuthorLikePatterns } from "../utils/authorMatching";
 
 type SortOption = "popularity" | "reviews";
 
@@ -194,7 +194,8 @@ export async function getBooksByAuthor(
   totalPages: number;
   currentPage: number;
 }> {
-  const { offset, validPage } = calculatePagination(0, pageSize, page);
+  const validPage = Math.max(1, page);
+  const offset = (validPage - 1) * pageSize;
 
   // Build the author matching condition for tab-separated authors field
   // Authors are stored as "Author1\tAuthor2\tAuthor3"
@@ -207,37 +208,44 @@ export async function getBooksByAuthor(
   )`;
 
   startTime(c, "author-books-count-query");
-  // First, get the total count
-  const totalCountResult = await ctx.db
-    .selectFrom("hive_book")
-    .select(sql<number>`COUNT(*)`.as("count"))
-    .where(authorCondition as any)
-    .executeTakeFirst();
-  endTime(c, "author-books-count-query");
-
-  const totalBooks = totalCountResult?.count || 0;
-  const totalPages = Math.ceil(totalBooks / pageSize);
-
   startTime(c, "author-books-data-query");
-  // Then get the paginated books with appropriate sorting
-  let query = ctx.db
+
+  let dataQuery = ctx.db
     .selectFrom("hive_book")
     .selectAll()
     .where(authorCondition as any);
 
-  // Apply sorting based on sortBy parameter
   switch (sortBy) {
     case "popularity":
-      query = query.orderBy("ratingsCount", "desc").orderBy("rating", "desc");
+      dataQuery = dataQuery.orderBy("ratingsCount", "desc").orderBy("rating", "desc");
       break;
     case "reviews":
-      // Sort by rating (reviews quality) then by ratings count
-      query = query.orderBy("rating", "desc").orderBy("ratingsCount", "desc");
+      dataQuery = dataQuery.orderBy("rating", "desc").orderBy("ratingsCount", "desc");
       break;
   }
 
-  const books = await query.limit(pageSize).offset(offset).execute();
-  endTime(c, "author-books-data-query");
+  const [totalCountResult, books] = await Promise.all([
+    ctx.db
+      .selectFrom("hive_book")
+      .select(sql<number>`COUNT(*)`.as("count"))
+      .where(authorCondition as any)
+      .executeTakeFirst()
+      .then((r) => {
+        endTime(c, "author-books-count-query");
+        return r;
+      }),
+    dataQuery
+      .limit(pageSize)
+      .offset(offset)
+      .execute()
+      .then((r) => {
+        endTime(c, "author-books-data-query");
+        return r;
+      }),
+  ]);
+
+  const totalBooks = totalCountResult?.count || 0;
+  const totalPages = Math.ceil(totalBooks / pageSize);
 
   return {
     books,

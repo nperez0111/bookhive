@@ -54,6 +54,7 @@ const app = new Hono<AppEnv>()
       }
       const { name, description, ordered } = c.req.valid("form");
       try {
+        startTime(c, "createList");
         const { uri } = await createList({
           agent,
           db: c.get("ctx").db,
@@ -61,6 +62,7 @@ const app = new Hono<AppEnv>()
           description: description || undefined,
           ordered: ordered === "on",
         });
+        endTime(c, "createList");
         const rkey = uri.split("/").at(-1)!;
         const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
         return c.redirect(`/shelves/${handle}/${rkey}`);
@@ -96,9 +98,19 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    const lists = await getUserLists({ db: c.get("ctx").db, userDid: did });
-    const profile = await getProfile({ ctx: c.get("ctx"), did });
-    const sessionAgent = await c.get("ctx").getSessionAgent();
+    startTime(c, "getUserLists");
+    startTime(c, "getProfile");
+    const [lists, profile, sessionAgent] = await Promise.all([
+      getUserLists({ db: c.get("ctx").db, userDid: did }).then((r) => {
+        endTime(c, "getUserLists");
+        return r;
+      }),
+      getProfile({ ctx: c.get("ctx"), did }).then((r) => {
+        endTime(c, "getProfile");
+        return r;
+      }),
+      c.get("ctx").getSessionAgent(),
+    ]);
 
     // Fetch preview covers for each shelf
     const previewsByList = new Map<
@@ -117,6 +129,7 @@ const app = new Hono<AppEnv>()
     >();
     if (lists.length > 0) {
       const listUris = lists.map((l) => l.uri);
+      startTime(c, "shelfPreviews");
       const previewItems = await c
         .get("ctx")
         .db.selectFrom("book_list_item")
@@ -136,6 +149,7 @@ const app = new Hono<AppEnv>()
         .where("book_list_item.listUri", "in", listUris)
         .orderBy("book_list_item.addedAt", "desc")
         .execute();
+      endTime(c, "shelfPreviews");
       for (const item of previewItems) {
         const arr = previewsByList.get(item.listUri) ?? [];
         if (arr.length < 10) arr.push(item);
@@ -200,7 +214,9 @@ const app = new Hono<AppEnv>()
 
     const sessionAgent = await c.get("ctx").getSessionAgent();
     const isOwner = sessionAgent?.did === did;
+    startTime(c, "getProfile");
     const profile = await getProfile({ ctx: c.get("ctx"), did });
+    endTime(c, "getProfile");
 
     // If owner and searching, run book search
     const searchQuery = isOwner ? c.req.query("q") || "" : "";
@@ -208,6 +224,7 @@ const app = new Hono<AppEnv>()
     if (searchQuery) {
       const ctx = c.get("ctx");
       const pattern = `%${searchQuery}%`;
+      startTime(c, "shelfSearch");
       const [externalIds, localBooks] = await Promise.all([
         searchBooks({ query: searchQuery, ctx }),
         ctx.db
@@ -224,6 +241,7 @@ const app = new Hono<AppEnv>()
       const externalBooks = externalIds.length
         ? await ctx.db.selectFrom("hive_book").selectAll().where("id", "in", externalIds).execute()
         : [];
+      endTime(c, "shelfSearch");
       // Preserve external result order
       const externalMap = new Map(externalBooks.map((b) => [b.id, b]));
       const orderedExternal = externalIds
@@ -276,10 +294,12 @@ const app = new Hono<AppEnv>()
     }
 
     const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
+    startTime(c, "getList");
     const result = await getListWithItems({
       db: c.get("ctx").db,
       listUri,
     });
+    endTime(c, "getList");
 
     if (!result) {
       return c.render(
@@ -324,6 +344,7 @@ const app = new Hono<AppEnv>()
       const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
       const { name, description, ordered } = c.req.valid("form");
       try {
+        startTime(c, "updateList");
         await updateList({
           agent,
           db: c.get("ctx").db,
@@ -332,6 +353,7 @@ const app = new Hono<AppEnv>()
           description: description ?? undefined,
           ordered: ordered === "on",
         });
+        endTime(c, "updateList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
         c.status(500);
@@ -363,7 +385,9 @@ const app = new Hono<AppEnv>()
 
     const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
     try {
+      startTime(c, "deleteList");
       await deleteList({ agent, db: c.get("ctx").db, uri: listUri });
+      endTime(c, "deleteList");
       return c.redirect(`/profile/${handle}`);
     } catch (e) {
       c.status(500);
@@ -404,12 +428,14 @@ const app = new Hono<AppEnv>()
       }
       const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
       try {
+        startTime(c, "addBookToList");
         await addBookToList({
           agent,
           db: c.get("ctx").db,
           listUri,
           hiveId: hiveId as HiveId,
         });
+        endTime(c, "addBookToList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
         c.status(500);
@@ -450,12 +476,14 @@ const app = new Hono<AppEnv>()
       const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
       const { hiveId } = c.req.valid("form");
       try {
+        startTime(c, "addBookToList");
         await addBookToList({
           agent,
           db: c.get("ctx").db,
           listUri,
           hiveId: hiveId as HiveId,
         });
+        endTime(c, "addBookToList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
         c.status(500);
@@ -491,11 +519,13 @@ const app = new Hono<AppEnv>()
 
       const { itemUri, returnTo } = c.req.valid("form");
       try {
+        startTime(c, "removeBookFromList");
         await removeBookFromList({
           agent,
           db: c.get("ctx").db,
           itemUri,
         });
+        endTime(c, "removeBookFromList");
         const safeReturn = returnTo && returnTo.startsWith("/") ? returnTo : null;
         return c.redirect(safeReturn ?? `/shelves/${handle}/${rkey}`);
       } catch (e) {
