@@ -1,6 +1,6 @@
 {
   "name": "bookhive-app",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -13,8 +13,9 @@
     "update:staging": "pnpx eas-cli update --branch staging",
     "update:production": "pnpx eas-cli update --branch production",
     "update:development": "pnpx eas-cli update --branch development",
-    "ios:build": "pnpx eas-cli build --platform ios",
-    "ios:submit": "pnpx eas-cli submit --platform ios"
+    "ios:build": "bun run bump && pnpx eas-cli build --platform ios",
+    "ios:submit": "pnpx eas-cli submit --platform ios",
+    "bump": "bun run scripts/bump-version.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "~15.0.3",

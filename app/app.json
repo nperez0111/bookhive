@@ -15,14 +15,16 @@
       "bundleIdentifier": "buzz.bookhive.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "10005"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "buzz.bookhive.app"
+      "package": "buzz.bookhive.app",
+      "versionCode": 10005
     },
     "web": {
       "bundler": "metro",
