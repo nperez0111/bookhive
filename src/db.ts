@@ -304,44 +304,6 @@ migrations["009"] = {
   },
 };
 
-migrations["011"] = {
-  async up(db: Kysely<unknown>) {
-    // Thumbnail query: ORDER BY ratingsCount DESC WHERE thumbnail IS NOT NULL
-    // Without this index: SCAN hive_book (123k rows) + USE TEMP B-TREE FOR ORDER BY
-    // With this index: direct index scan, no sort needed
-    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_ratings_thumbnail
-      ON hive_book(ratingsCount DESC, authors, thumbnail)
-      WHERE thumbnail IS NOT NULL AND thumbnail != ''`.execute(db);
-
-    // Stats/author query: GROUP BY computed first-author expression + ORDER BY SUM(ratingsCount)
-    // Covering index lets SQLite avoid reading the full row; reduces I/O from ~10MB to ~2MB
-    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_ratings
-      ON hive_book(authors, ratingsCount, rating)`.execute(db);
-  },
-  async down(db: Kysely<unknown>) {
-    await sql`DROP INDEX IF EXISTS idx_hive_book_ratings_thumbnail`.execute(db);
-    await sql`DROP INDEX IF EXISTS idx_hive_book_author_ratings`.execute(db);
-  },
-};
-
-migrations["012"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("hiveBookAtUri", "text").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").dropColumn("hiveBookAtUri").execute();
-  },
-};
-
-migrations["013"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("hiveBookCatalogUpdatedAt", "text").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").dropColumn("hiveBookCatalogUpdatedAt").execute();
-  },
-};
-
 migrations["010"] = {
   async up(db: Kysely<unknown>) {
     const MIGRATION_010_BATCH_SIZE = 500;
@@ -393,46 +355,12 @@ migrations["010"] = {
   },
 };
 
-migrations["015"] = {
+migrations["011"] = {
   async up(db: Kysely<unknown>) {
-    // Profile page: WHERE userDid = ? ORDER BY createdAt DESC — was full scan
-    await db.schema
-      .createIndex("idx_user_book_user_did")
-      .on("user_book")
-      .column("userDid")
-      .execute();
-
-    // Book detail + rating stats: WHERE hiveId = ? — was full scan
-    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
-
-    // Feed page: WHERE userDid IN (follows) ORDER BY createdAt DESC — covers filter + sort
-    await db.schema
-      .createIndex("idx_user_book_user_created")
-      .on("user_book")
-      .columns(["userDid", "createdAt"])
-      .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropIndex("idx_user_book_user_did").on("user_book").execute();
-    await db.schema.dropIndex("idx_user_book_hive_id").on("user_book").execute();
-    await db.schema.dropIndex("idx_user_book_user_created").on("user_book").execute();
-  },
-};
-
-migrations["016"] = {
-  async up(db: Kysely<unknown>) {
-    // genres JSON column is fully redundant with hive_book_genre table and is never
-    // queried directly — dropping it shrinks hive_book by ~50-100 MB.
-    // VACUUM must be run outside this transaction (see migrateToLatest).
+    await db.schema.alterTable("hive_book").addColumn("hiveBookAtUri", "text").execute();
+    await db.schema.alterTable("hive_book").addColumn("hiveBookCatalogUpdatedAt", "text").execute();
     await db.schema.alterTable("hive_book").dropColumn("genres").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
-  },
-};
 
-migrations["017"] = {
-  async up(db: Kysely<unknown>) {
     await db.schema
       .alterTable("user_book")
       .addColumn("owned", "integer", (col) => col.notNull().defaultTo(0))
@@ -440,14 +368,7 @@ migrations["017"] = {
     await sql`UPDATE user_book SET owned = 1, status = NULL WHERE status = 'buzz.bookhive.defs#owned'`.execute(
       db,
     );
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("user_book").dropColumn("owned").execute();
-  },
-};
 
-migrations["014"] = {
-  async up(db: Kysely<unknown>) {
     await db.schema
       .createTable("book_list")
       .addColumn("uri", "text", (col) => col.primaryKey())
@@ -460,8 +381,6 @@ migrations["014"] = {
       .addColumn("createdAt", "text", (col) => col.notNull())
       .addColumn("indexedAt", "text", (col) => col.notNull())
       .execute();
-
-    await db.schema.createIndex("idx_book_list_user").on("book_list").column("userDid").execute();
 
     await db.schema
       .createTable("book_list_item")
@@ -479,22 +398,107 @@ migrations["014"] = {
       .addColumn("embeddedCoverUrl", "text")
       .addColumn("identifiers", "text")
       .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("book_list_item").execute();
+    await db.schema.dropTable("book_list").execute();
+    await db.schema.alterTable("user_book").dropColumn("owned").execute();
+    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
+    await db.schema.alterTable("hive_book").dropColumn("hiveBookCatalogUpdatedAt").execute();
+    await db.schema.alterTable("hive_book").dropColumn("hiveBookAtUri").execute();
+  },
+};
 
+migrations["012"] = {
+  async up(db: Kysely<unknown>) {
+    // hive_book covering indexes
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_ratings_thumbnail
+      ON hive_book(ratingsCount DESC, authors, thumbnail)
+      WHERE thumbnail IS NOT NULL AND thumbnail != ''`.execute(db);
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_ratings
+      ON hive_book(authors, ratingsCount, rating)`.execute(db);
+
+    // user_book query indexes
+    await db.schema
+      .createIndex("idx_user_book_user_did")
+      .on("user_book")
+      .column("userDid")
+      .execute();
+    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
+    await db.schema
+      .createIndex("idx_user_book_user_created")
+      .on("user_book")
+      .columns(["userDid", "createdAt"])
+      .execute();
+
+    // book_list indexes
+    await db.schema.createIndex("idx_book_list_user").on("book_list").column("userDid").execute();
     await db.schema
       .createIndex("idx_book_list_item_list")
       .on("book_list_item")
       .column("listUri")
       .execute();
-
     await db.schema
       .createIndex("idx_book_list_item_hive")
       .on("book_list_item")
       .column("hiveId")
       .execute();
+
+    // hive_book_genre: replace two single-column indexes with composite unique
+    await sql`
+      DELETE FROM hive_book_genre
+      WHERE rowid NOT IN (
+        SELECT MIN(rowid) FROM hive_book_genre GROUP BY hiveId, genre
+      )
+    `.execute(db);
+    await db.schema.dropIndex("idx_hive_book_genre_genre").ifExists().execute();
+    await db.schema.dropIndex("idx_hive_book_genre_hive_id").ifExists().execute();
+    await sql`CREATE UNIQUE INDEX idx_hive_book_genre_pk ON hive_book_genre(hiveId, genre)`.execute(
+      db,
+    );
+
+    // buzz indexes
+    await sql`CREATE INDEX IF NOT EXISTS idx_buzz_hive_id ON buzz(hiveId, createdAt)`.execute(db);
+    await sql`CREATE INDEX IF NOT EXISTS idx_buzz_parent_uri ON buzz(parentUri)`.execute(db);
+
+    // Drop redundant single-column index: covered by idx_user_follows_primary (userDid, followsDid)
+    await db.schema.dropIndex("idx_user_follows_user").ifExists().execute();
+
+    // Covering index for friends feed subquery: WHERE userDid = ? AND isActive = 1 SELECT followsDid
+    await db.schema
+      .createIndex("idx_user_follows_active")
+      .on("user_follows")
+      .columns(["userDid", "isActive", "followsDid"])
+      .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("book_list_item").execute();
-    await db.schema.dropTable("book_list").execute();
+    await db.schema.dropIndex("idx_user_follows_active").ifExists().execute();
+    await db.schema
+      .createIndex("idx_user_follows_user")
+      .on("user_follows")
+      .column("userDid")
+      .execute();
+    await sql`DROP INDEX IF EXISTS idx_buzz_parent_uri`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_buzz_hive_id`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_hive_book_genre_pk`.execute(db);
+    await db.schema
+      .createIndex("idx_hive_book_genre_genre")
+      .on("hive_book_genre")
+      .column("genre")
+      .execute();
+    await db.schema
+      .createIndex("idx_hive_book_genre_hive_id")
+      .on("hive_book_genre")
+      .column("hiveId")
+      .execute();
+    await db.schema.dropIndex("idx_book_list_item_hive").ifExists().execute();
+    await db.schema.dropIndex("idx_book_list_item_list").ifExists().execute();
+    await db.schema.dropIndex("idx_book_list_user").ifExists().execute();
+    await db.schema.dropIndex("idx_user_book_user_created").ifExists().execute();
+    await db.schema.dropIndex("idx_user_book_hive_id").ifExists().execute();
+    await db.schema.dropIndex("idx_user_book_user_did").ifExists().execute();
+    await sql`DROP INDEX IF EXISTS idx_hive_book_author_ratings`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_hive_book_ratings_thumbnail`.execute(db);
   },
 };
 
@@ -505,10 +509,10 @@ export const createDb = (
   opts?: { exclusive?: boolean },
 ): { db: Database; sqlite: DatabaseSync } => {
   const sqlite = new DatabaseSync(location);
-  sqlite.exec("PRAGMA journal_mode = WAL");
   if (opts?.exclusive) {
     sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
   }
+  sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
   sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
@@ -525,9 +529,13 @@ export const createDb = (
   return { db, sqlite };
 };
 
-export const migrateToLatest = async (db: Database) => {
+export const migrateToLatest = async (db: Database, sqlite?: DatabaseSync) => {
+  // Temporarily disable fsyncs during migrations for speed. Safe because if we crash
+  // mid-migration, Kysely won't record it as complete and it re-runs on next startup.
+  if (sqlite) sqlite.exec("PRAGMA synchronous = OFF");
   const migrator = new Migrator({ db, provider: migrationProvider });
   const { error, results } = await migrator.migrateToLatest();
+  if (sqlite) sqlite.exec("PRAGMA synchronous = NORMAL");
   if (error) throw error;
   return results ?? [];
 };

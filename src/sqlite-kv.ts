@@ -42,10 +42,10 @@ export default defineDriver<
         }
 
         const sqlite = new DatabaseSync(location);
-        sqlite.exec("PRAGMA journal_mode = WAL");
         if (exclusive) {
           sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
         }
+        sqlite.exec("PRAGMA journal_mode = WAL");
 
         _db = new Kysely<TableSchema>({
           dialect: new SqliteDialect({

@@ -201,16 +201,18 @@ async function incrementalFollowsSync(
 
     if (follows.length === 0) break;
 
-    // Check if we've seen any of these follows before
-    for (const follow of follows) {
-      const exists = await ctx.db
-        .selectFrom("user_follows")
-        .select("userDid")
-        .where("userDid", "=", userDid)
-        .where("followsDid", "=", follow.did)
-        .executeTakeFirst();
+    // Batch-check which follows we already have
+    const followDids = follows.map((f) => f.did);
+    const existingRows = await ctx.db
+      .selectFrom("user_follows")
+      .select("followsDid")
+      .where("userDid", "=", userDid)
+      .where("followsDid", "in", followDids)
+      .execute();
+    const existingDids = new Set(existingRows.map((r) => r.followsDid));
 
-      if (exists) {
+    for (const follow of follows) {
+      if (existingDids.has(follow.did)) {
         // We've caught up to existing data
         foundExisting = true;
         break;
