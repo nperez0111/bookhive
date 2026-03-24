@@ -245,7 +245,7 @@ export const BookInfo: FC<{
       )}`
     : null;
 
-  const genericShareHref = `https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out "${book.title}" by ${firstAuthor} on BookHive \u{1F4DA} ${origin ? `${origin}/books/${book.id}` : ""}`)}`;
+  const genericShareHref = `https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out "${book.title}" by ${firstAuthor} on BookHive \u{1F4DA}\u{1F499} ${origin ? `${origin}/books/${book.id}` : ""}`)}`;
 
   // Publication details
   const pubDetails: string[] = [];
