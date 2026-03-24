@@ -18,7 +18,7 @@ export const BookReview: FC<{
       <CardBody class="flex gap-4">
         <div class="flex shrink-0 flex-col items-center gap-1">
           <div class="group relative">
-            <a href={`/book/${book.hiveId}`}>
+            <a href={`/books/${book.hiveId}`}>
               <CoverImage book={bookData} class="h-32 w-22 rounded object-cover" />
             </a>
             <BookTooltip book={tooltipData} position="top" />
