@@ -39,18 +39,18 @@ function Hero() {
           BookHive app for
           <span class="ml-2 text-primary">iPhone</span>
         </h1>
-        <p class="mt-4 max-w-xl text-lg text-slate-600 dark:text-slate-400">
+        <p class="mt-4 max-w-xl text-lg text-muted-foreground">
           Manage, organize, and review your books anywhere. Follow friends, leave comments, and
           discover your next great read — all on iOS.
         </p>
         <div class="mt-6 flex flex-col gap-3 sm:flex-row">
           <AppStoreBadge />
-          <a href="https://bookhive.buzz" class="btn btn-ghost">
+          <a href="/" class="btn btn-ghost">
             Continue on the web
           </a>
         </div>
       </div>
-      <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-card to-transparent" />
+      <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-muted to-transparent" />
     </section>
   );
 }
@@ -63,7 +63,7 @@ function Feature({ title, description, icon }: { title: string; description: str
       </div>
       <div>
         <h3 class="text-lg font-semibold">{title}</h3>
-        <p class="mt-2 leading-relaxed text-slate-500 dark:text-slate-300">{description}</p>
+        <p class="mt-2 leading-relaxed text-muted-foreground">{description}</p>
       </div>
     </div>
   );
@@ -76,7 +76,7 @@ function Features() {
         <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
           Everything you love about BookHive — now on iOS
         </h2>
-        <p class="mt-4 text-lg text-slate-600 dark:text-slate-400">
+        <p class="mt-4 text-lg text-muted-foreground">
           Keep your library with you. Add books, track progress, review, and connect with friends
           from anywhere.
         </p>
@@ -213,7 +213,7 @@ function Screenshots() {
       <div class="grid items-center gap-8 sm:gap-10 lg:grid-cols-2">
         <div class="order-1">
           <h3 class="text-2xl font-bold">Track your reading</h3>
-          <p class="mt-3 text-slate-600 dark:text-slate-400">
+          <p class="mt-3 text-muted-foreground">
             Quick actions and clean design make it effortless to add books, update status, and keep
             notes while you read.
           </p>
@@ -246,7 +246,7 @@ function Screenshots() {
         </div>
         <div class="order-1 lg:order-2">
           <h3 class="text-2xl font-bold">Share thoughts & reviews</h3>
-          <p class="mt-3 text-slate-600 dark:text-slate-400">
+          <p class="mt-3 text-muted-foreground">
             Leave comments, reply to friends, and post reviews that sync with your BookHive profile.
           </p>
         </div>
@@ -261,13 +261,13 @@ export const AppPage: FC = () => {
       <Hero />
       <Features />
       <Screenshots />
-      <div class="my-16 text-center text-gray-500">
+      <div class="my-16 text-center text-muted-foreground">
         See this project&nbsp;
-        <a href="https://github.com/nperez0111/bookhive" class="text-blue-600 hover:underline">
+        <a href="https://github.com/nperez0111/bookhive" class="text-primary hover:underline">
           on GitHub
         </a>
         , built by{" "}
-        <a href="https://nickthesick.com" class="text-blue-600 hover:underline">
+        <a href="https://nickthesick.com" class="text-primary hover:underline">
           Nick The Sick
         </a>
       </div>

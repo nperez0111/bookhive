@@ -14,6 +14,8 @@ import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
+import { Layout } from "../pages/layout";
+import { SimpleNavbar } from "../pages/simple-navbar";
 import { getProfiles } from "../utils/getProfile";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { LibraryImport } from "../pages/import";
@@ -103,12 +105,19 @@ const app = new Hono<AppEnv>()
   })
   .get("/.well-known/atproto-did", (c) => c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"))
   .get("/app", (c) =>
-    c.render(<AppPage />, {
-      title: "BookHive App for iOS",
-      description:
-        "The BookHive iOS app lets you manage, organize, and review your books anywhere.",
-      image: "/hive.jpg",
-    }),
+    c.html(
+      <Layout
+        assetUrls={c.get("assetUrls")}
+        title="BookHive App for iOS"
+        description="The BookHive iOS app lets you manage, organize, and review your books anywhere."
+        image="/hive.jpg"
+      >
+        <SimpleNavbar isPds={false} />
+        <div class="mx-auto max-w-5xl px-4 py-12">
+          <AppPage />
+        </div>
+      </Layout>,
+    ),
   )
   .get("/import", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
