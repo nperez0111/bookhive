@@ -170,46 +170,25 @@ const app = new Hono<AppEnv>()
 
       const ctx = c.get("ctx");
 
-      // Run external search (cached) and local DB text search in parallel
-      const pattern = `%${query}%`;
+      // Get search results (cached external + local backfill IDs)
       startTime(c, "search_parallel");
-      const [externalIds, localBooks] = await Promise.all([
-        searchBooks({ query, ctx }),
-        ctx.db
-          .selectFrom("hive_book")
-          .selectAll()
-          .where((eb) =>
-            eb.or([
-              eb("rawTitle", "like", pattern),
-              eb("title", "like", pattern),
-              eb("authors", "like", pattern),
-            ]),
-          )
-          .orderBy("ratingsCount", "desc")
-          .limit(500)
-          .execute(),
-      ]);
+      const searchIds = await searchBooks({ query, ctx });
       endTime(c, "search_parallel");
 
-      // Merge: external results first (relevance-ranked), then local DB hits not already included
-      const externalIdSet = new Set(externalIds);
-      const localOnly = localBooks.filter((b) => !externalIdSet.has(b.id));
-
+      // Fetch full rows by ID, preserving search relevance order
       startTime(c, "search_db_external");
-      const externalBooks = externalIds.length
+      const allBooks = searchIds.length
         ? await ctx.db
             .selectFrom("hive_book")
             .selectAll()
-            .where("id", "in", externalIds)
+            .where("id", "in", searchIds)
             .execute()
             .then((rows) => {
-              rows.sort((a, b) => externalIds.indexOf(a.id) - externalIds.indexOf(b.id));
+              rows.sort((a, b) => searchIds.indexOf(a.id) - searchIds.indexOf(b.id));
               return rows;
             })
         : [];
       endTime(c, "search_db_external");
-
-      const allBooks = [...externalBooks, ...localOnly];
       const totalBooks = allBooks.length;
       const totalPages = Math.ceil(totalBooks / pageSize);
       const offset = (page - 1) * pageSize;

@@ -79,7 +79,13 @@ export async function searchBooks({
       const dbRows = await ctx.db
         .selectFrom("hive_book")
         .select("id")
-        .where((eb) => eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]))
+        .where((eb) =>
+          eb.or([
+            eb("rawTitle", "like", pattern),
+            eb("title", "like", pattern),
+            eb("authors", "like", pattern),
+          ]),
+        )
         .orderBy("ratingsCount", "desc")
         .orderBy("rating", "desc")
         .limit(20)
