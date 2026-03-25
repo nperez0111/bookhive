@@ -64,7 +64,13 @@ export default function SearchScreen() {
     extrapolate: "clamp",
   });
 
-  const renderSearchResultItem = ({ item: book, index }: { item: HiveBook; index: number }) => (
+  const renderSearchResultItem = ({
+    item: book,
+    index,
+  }: {
+    item: HiveBook;
+    index: number;
+  }) => (
     <AnimatedListItem index={index}>
       <Pressable
         onPress={() => router.push(`/book/${book.id}`)}
@@ -80,7 +86,7 @@ export default function SearchScreen() {
         <View style={styles.coverContainer}>
           <FadeInImage
             source={{
-              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`,
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
             }}
             style={styles.searchResultCover}
             resizeMode="cover"
@@ -108,7 +114,8 @@ export default function SearchScreen() {
                 style={[styles.ratingText, { color: colors.secondaryText }]}
                 type="caption"
               >
-                {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0} ratings)
+                {book.rating / 1000} ({book.ratingsCount?.toLocaleString() || 0}{" "}
+                ratings)
               </ThemedText>
             </View>
           )}
@@ -117,13 +124,17 @@ export default function SearchScreen() {
     </AnimatedListItem>
   );
 
-  const hasSearchResults = query.length > 0 && searchResults && searchResults.length > 0;
+  const hasSearchResults =
+    query.length > 0 && searchResults && searchResults.length > 0;
 
   const currentlyReadingBooks =
-    profile.data?.books.filter((book) => book.status === BOOK_STATUS.READING) || [];
+    profile.data?.books.filter((book) => book.status === BOOK_STATUS.READING) ||
+    [];
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor, paddingBottom: bottom }]}
+    >
       {/* Fixed Search Input (always visible) */}
       <Animated.View
         style={[
@@ -143,7 +154,12 @@ export default function SearchScreen() {
             },
           ]}
         >
-          <Ionicons name="search" size={20} color={colors.tertiaryText} style={styles.searchIcon} />
+          <Ionicons
+            name="search"
+            size={20}
+            color={colors.tertiaryText}
+            style={styles.searchIcon}
+          />
           <TextInput
             style={[
               styles.searchInput,
@@ -160,13 +176,20 @@ export default function SearchScreen() {
           />
           {query.length > 0 && (
             <Pressable onPress={() => setQuery("")} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={20} color={colors.tertiaryText} />
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={colors.tertiaryText}
+              />
             </Pressable>
           )}
         </View>
 
         {hasSearchResults && (
-          <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]} type="overline">
+          <ThemedText
+            style={[styles.resultCount, { color: colors.secondaryText }]}
+            type="overline"
+          >
             {searchResults?.length} results
           </ThemedText>
         )}
@@ -194,8 +217,17 @@ export default function SearchScreen() {
       {query.length === 0 ? (
         // No search query - show default content
         <View style={styles.emptySearchState}>
-          <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
-            <Ionicons name="library-outline" size={48} color={colors.tertiaryText} />
+          <View
+            style={[
+              styles.emptyIconContainer,
+              { backgroundColor: colors.inactiveBackground },
+            ]}
+          >
+            <Ionicons
+              name="library-outline"
+              size={48}
+              color={colors.tertiaryText}
+            />
           </View>
           <ThemedText
             style={[styles.emptySearchTitle, { color: colors.primaryText }]}
@@ -204,10 +236,14 @@ export default function SearchScreen() {
             Start exploring
           </ThemedText>
           <ThemedText
-            style={[styles.emptySearchSubtitle, { color: colors.secondaryText }]}
+            style={[
+              styles.emptySearchSubtitle,
+              { color: colors.secondaryText },
+            ]}
             type="body"
           >
-            Search for your favorite books, authors, or genres to discover new reads
+            Search for your favorite books, authors, or genres to discover new
+            reads
           </ThemedText>
         </View>
       ) : (
@@ -216,7 +252,10 @@ export default function SearchScreen() {
           {isLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]} type="body">
+              <ThemedText
+                style={[styles.loadingText, { color: colors.secondaryText }]}
+                type="body"
+              >
                 Searching for books...
               </ThemedText>
             </View>
@@ -232,21 +271,37 @@ export default function SearchScreen() {
               data={searchResults}
               keyExtractor={(item) => item.id}
               renderItem={renderSearchResultItem}
-              contentContainerStyle={[styles.searchResultsList, { paddingBottom: 50 + bottom }]}
+              contentContainerStyle={[
+                styles.searchResultsList,
+                { paddingBottom: 50 + bottom },
+              ]}
               showsVerticalScrollIndicator={false}
-              onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-                useNativeDriver: true,
-              })}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                {
+                  useNativeDriver: true,
+                },
+              )}
               scrollEventThrottle={16}
             />
           ) : (
             <View style={styles.emptyState}>
               <View
-                style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}
+                style={[
+                  styles.emptyIconContainer,
+                  { backgroundColor: colors.inactiveBackground },
+                ]}
               >
-                <Ionicons name="search-outline" size={32} color={colors.tertiaryText} />
+                <Ionicons
+                  name="search-outline"
+                  size={32}
+                  color={colors.tertiaryText}
+                />
               </View>
-              <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
+              <ThemedText
+                style={[styles.emptyTitle, { color: colors.primaryText }]}
+                type="heading"
+              >
                 No books found
               </ThemedText>
               <ThemedText
