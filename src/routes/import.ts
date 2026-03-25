@@ -18,7 +18,6 @@ import {
   type StorygraphBook,
 } from "../utils/csv";
 import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
-import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 import { searchBooks } from "./lib";
 
 const importApp = new Hono<AppEnv>();
@@ -170,12 +169,6 @@ importApp.post(
                             })
                             .where("id", "=", hiveBook.id)
                             .execute();
-                          if (ctx.serviceAccountAgent) {
-                            void writeCatalogBookIfNeeded(
-                              { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent },
-                              hiveBook.id,
-                            ).catch(() => {});
-                          }
                         }
 
                         const existingHiveIds = await existingHiveIdsPromise;
@@ -535,12 +528,6 @@ importApp.post(
                               })
                               .where("id", "=", hiveBook.id)
                               .execute();
-                            if (ctx.serviceAccountAgent) {
-                              void writeCatalogBookIfNeeded(
-                                { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent },
-                                hiveBook.id,
-                              ).catch(() => {});
-                            }
                           }
                         }
 

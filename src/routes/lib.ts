@@ -18,7 +18,6 @@ import { findBookDetails } from "../scrapers";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { serializeUserBook } from "../utils/bookProgress";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
-import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 
 export async function searchBooks({
   query,
@@ -99,23 +98,6 @@ export async function searchBooks({
       requestsPerSecond: 5,
     },
   );
-
-  // Run catalog writes outside the cache so they fire on every call, including
-  // cache hits where books may have been enriched since the result was cached.
-  if (ctx.serviceAccountAgent && combinedIds.length > 0) {
-    const catalogCtx = { db: ctx.db, serviceAccountAgent: ctx.serviceAccountAgent };
-    void Promise.allSettled(
-      combinedIds.map((bookId) =>
-        writeCatalogBookIfNeeded(catalogCtx, bookId).catch((error) => {
-          ctx.addWideEventContext({
-            catalog_book_write_failed: true,
-            bookId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }),
-      ),
-    );
-  }
 
   return combinedIds;
 }
