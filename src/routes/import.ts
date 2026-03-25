@@ -17,6 +17,7 @@ import {
   type GoodreadsBook,
   type StorygraphBook,
 } from "../utils/csv";
+import { normalizeGoodreadsId } from "../utils/bookIdentifiers";
 import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
 import { searchBooks } from "./lib";
 
@@ -148,10 +149,15 @@ importApp.post(
                         const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
                           ? JSON.parse(hiveBook.identifiers)
                           : {};
+                        const validGoodreadsId =
+                          normalizeGoodreadsId(book.bookId) ||
+                          (existingIdentifiers.goodreadsId
+                            ? normalizeGoodreadsId(existingIdentifiers.goodreadsId)
+                            : null);
                         const newIdentifiers: BookIdentifiers = {
                           ...existingIdentifiers,
                           hiveId: hiveBook.id,
-                          goodreadsId: book.bookId || existingIdentifiers.goodreadsId,
+                          goodreadsId: validGoodreadsId ?? undefined,
                           isbn10: book.isbn || existingIdentifiers.isbn10,
                           isbn13: book.isbn13 || existingIdentifiers.isbn13,
                         };

@@ -36,7 +36,7 @@ export function BookGridItem({ book, style, status, numColumns = 2 }: BookGridIt
       <BookCard
         title={book.title}
         authors={book.authors}
-        imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+        imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_%22030712%22/${book.cover || book.thumbnail}`}
         onPress={handlePress}
         orientation="horizontal"
         style={styles.bookCard}

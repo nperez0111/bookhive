@@ -94,17 +94,21 @@ export async function enrichBookWithDetailedData(
       numPages: detailedData.book.details.numPages,
     };
 
-    // Merge identifiers with existing ones
+    // Merge identifiers with existing ones. Only use valid Goodreads IDs
+    // (numeric); reject Amazon/Kindle identifiers like kca://book/amzn1.
     const existingIdentifiers: BookIdentifiers = book.identifiers
       ? JSON.parse(book.identifiers)
       : {};
+    const validGoodreadsId =
+      normalizeGoodreadsId(book.sourceId) ||
+      normalizeGoodreadsId(detailedData.book.id) ||
+      (existingIdentifiers.goodreadsId
+        ? normalizeGoodreadsId(existingIdentifiers.goodreadsId)
+        : null);
     const updatedIdentifiers: BookIdentifiers = {
       ...existingIdentifiers,
       hiveId: book.id,
-      goodreadsId:
-        normalizeGoodreadsId(book.sourceId) ||
-        normalizeGoodreadsId(existingIdentifiers.goodreadsId) ||
-        undefined,
+      goodreadsId: validGoodreadsId ?? undefined,
       isbn10: detailedData.book.details.isbn || existingIdentifiers.isbn10,
       isbn13: detailedData.book.details.isbn13 || existingIdentifiers.isbn13,
     };

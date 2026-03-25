@@ -1,5 +1,6 @@
 import type { HiveBook } from "../types";
 import { getHiveId } from "./getHiveId";
+import { normalizeGoodreadsId } from "../utils/bookIdentifiers";
 
 interface GoodreadsAuthor {
   id: number;
@@ -84,6 +85,8 @@ class Goodreads {
       authors,
     });
 
+    const goodreadsId = normalizeGoodreadsId(result.bookId);
+
     return {
       id: hiveId,
       title: result.bookTitleBare,
@@ -104,7 +107,7 @@ class Goodreads {
       enrichedAt: null,
       identifiers: JSON.stringify({
         hiveId,
-        goodreadsId: result.bookId,
+        ...(goodreadsId && { goodreadsId }),
       }),
       hiveBookAtUri: null,
       hiveBookCatalogUpdatedAt: null,

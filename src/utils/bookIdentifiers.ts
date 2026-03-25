@@ -40,13 +40,17 @@ export function normalizeIsbn13(value: string | null | undefined): string | null
   return compact || null;
 }
 
+/**
+ * Normalize to a valid Goodreads ID (numeric only). Rejects Amazon/Kindle
+ * identifiers (e.g. kca://book/amzn1) that Goodreads may return for some editions.
+ */
 export function normalizeGoodreadsId(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   if (!normalized) {
     return null;
   }
 
-  // Goodreads ids can appear as "12345.title-slug"
+  // Goodreads ids can appear as "12345.title-slug" or "12345-title-slug" (from URL path)
   const [id] = normalized.split(".", 1);
   if (!id) {
     return null;

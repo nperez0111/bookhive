@@ -37,6 +37,8 @@ const enhancedAuthFetch = async <T>(url: string, options?: any): Promise<T> => {
   }
 };
 
+type SearchBooksResponse = { books: HiveBook[]; offset?: number };
+
 export const useSearchBooks = (query: string) => {
   const debouncedQuery = useDebounce(query, 300);
 
@@ -46,7 +48,7 @@ export const useSearchBooks = (query: string) => {
       const result = await enhancedAuthFetch<{ books: HiveBook[] }>(
         `/xrpc/buzz.bookhive.searchBooks?q=${q}`,
       );
-      return result.books;
+      return result?.books ?? [];
     },
     enabled: Boolean(debouncedQuery),
     retry: (failureCount, error: any) => {
