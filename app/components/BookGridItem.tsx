@@ -12,12 +12,7 @@ interface BookGridItemProps {
   numColumns?: number;
 }
 
-export function BookGridItem({
-  book,
-  style,
-  status,
-  numColumns = 2,
-}: BookGridItemProps) {
+export function BookGridItem({ book, style, status, numColumns = 2 }: BookGridItemProps) {
   const handlePress = () => {
     if (status) {
       // Navigate to book detail and pass context about where we came from

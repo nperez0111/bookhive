@@ -108,7 +108,7 @@ export default function (options: Options) {
     process.on("beforeExit", () => {
       debugLog("OpenObserve Pino: Process beforeExit");
       if (logs.length > 0 && !apiCallInProgress) {
-        sendLogs();
+        void sendLogs();
       }
     });
 
@@ -125,10 +125,10 @@ export default function (options: Options) {
       }
 
       if (logs.length >= opts.batchSize && !apiCallInProgress) {
-        sendLogs(callback);
+        void sendLogs(callback);
       } else {
         timer = setTimeout(() => {
-          (async () => {
+          void (async () => {
             await sendLogs(callback);
           })();
         }, opts.timeThresholdMs);
@@ -153,20 +153,16 @@ export default function (options: Options) {
         const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
-            Authorization: `Basic ${Buffer.from(
-              `${auth.username}:${auth.password}`,
-            ).toString("base64")}`,
+            Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString(
+              "base64",
+            )}`,
             "Content-Type": "application/json",
           },
           body: `${bulkLogs}`,
         });
 
         if (!response.ok) {
-          console.error(
-            "Failed to send logs:",
-            response.status,
-            response.statusText,
-          );
+          console.error("Failed to send logs:", response.status, response.statusText);
         } else if (process.env["LOG_OPENOBSERVE_DEBUG"]) {
           debugLog("Logs sent successfully:", await response.json());
         }
@@ -176,10 +172,7 @@ export default function (options: Options) {
           failures++;
           if (failures > 2) {
             disableLogging = true;
-            console.warn(
-              "OpenObserve process not responding. Disabling logging.",
-              error,
-            );
+            console.warn("OpenObserve process not responding. Disabling logging.", error);
           }
         } else {
           console.error("Failed to send logs:", error);

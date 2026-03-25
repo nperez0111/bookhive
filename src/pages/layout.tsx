@@ -19,7 +19,7 @@ export const Layout: FC<
 > = ({
   children,
   title = "Bookhive",
-  image = "/public/full_logo.png",
+  image = "/full_logo.png",
   description = "Goodreads but better. Built on top of Blue Sky.",
   assetUrls: assetUrlsProp,
   url: urlProp,
@@ -37,25 +37,38 @@ export const Layout: FC<
       assetUrls = null;
     }
   }
-  const cssUrls = assetUrls?.css?.length
-    ? assetUrls.css
-    : ["/public/output.css"];
-  const jsUrls = assetUrls?.js?.length
-    ? assetUrls.js
-    : ["/public/js/client.js"];
-  const now = Date.now();
+  // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
+  const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
+  const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
+  // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
+  const isDevVite = assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
 
   return html`<!doctype html>
-    <html lang="en" class="bg-sand h-full dark:bg-zinc-900 dark:text-white">
+    <html lang="en" class="bg-background text-foreground h-full">
       <head>
+        ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
+        <meta name="theme-color" content="#f9eabc" />
+        <script>
+          (function () {
+            const stored = localStorage.getItem("theme");
+            const prefersDark = window.matchMedia(
+              "(prefers-color-scheme: dark)",
+            ).matches;
+            const dark = stored === "dark" || (!stored && prefersDark);
+            document.documentElement.classList.toggle("dark", dark);
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta)
+              meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
+          })();
+        </script>
         <meta property="og:url" content="${url}" />
         <meta property="og:type" content="${ogType}" />
         <meta property="og:title" content="${title}" />
         <meta property="og:site_name" content="BookHive" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${image}" />
-        <meta property="og:logo" content="/public/icon.svg" />
+        <meta property="og:logo" content="/icon.svg" />
         ${ogExtra}
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="bookhive.buzz" />
@@ -66,26 +79,25 @@ export const Layout: FC<
         <link
           rel="apple-touch-icon"
           sizes="180x180"
-          href="/public/apple-touch-icon.png"
+          href="/apple-touch-icon.png"
         />
         <link
           rel="icon"
           type="image/png"
           sizes="32x32"
-          href="/public/favicon-32x32.png"
+          href="/favicon-32x32.png"
         />
         <link
           rel="icon"
           type="image/png"
           sizes="16x16"
-          href="/public/favicon-16x16.png"
+          href="/favicon-16x16.png"
         />
-        <link rel="manifest" href="/public/site.webmanifest" />
+        <link rel="manifest" href="/site.webmanifest" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="${description}" />
         <meta name="robots" content="index, follow" />
         <meta name="author" content="BookHive" />
-        <meta name="theme-color" content="#030712" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -116,64 +128,21 @@ export const Layout: FC<
         </script>
         ${cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
         <style>
-          ${raw(`/* Actor Typeahead theme variables - light mode (default) */
+          ${raw(`/* Actor Typeahead - uses theme tokens so it follows light/dark toggle */
           actor-typeahead {
-            --color-background: #ffffff;
-            --color-border: #d1d5db;
+            --color-background: var(--card);
+            --color-border: var(--border);
             --color-shadow: #000000;
-            --color-hover: #f3f4f6;
-            --color-avatar-fallback: #e5e7eb;
+            --color-hover: var(--muted);
+            --color-avatar-fallback: var(--muted);
             --radius: 8px;
             --padding-menu: 4px;
-          }
-
-          @media (prefers-color-scheme: dark) {
-            actor-typeahead {
-              --color-background: #27272a;
-              --color-border: #3f3f46;
-              --color-shadow: #000000;
-              --color-hover: #3f3f46;
-              --color-avatar-fallback: #52525b;
-            }
-          }
-
-          @media (prefers-color-scheme: light) {
-            actor-typeahead {
-              --color-background: #ffffff;
-              --color-border: #d1d5db;
-              --color-shadow: #000000;
-              --color-hover: #f3f4f6;
-              --color-avatar-fallback: #e5e7eb;
-            }
-          }
-
-          html.dark actor-typeahead,
-          .dark actor-typeahead {
-            --color-background: #27272a;
-            --color-border: #3f3f46;
-            --color-shadow: #000000;
-            --color-hover: #3f3f46;
-            --color-avatar-fallback: #52525b;
-          }
-
-          html.light actor-typeahead,
-          .light actor-typeahead {
-            --color-background: #ffffff;
-            --color-border: #d1d5db;
-            --color-shadow: #000000;
-            --color-hover: #f3f4f6;
-            --color-avatar-fallback: #e5e7eb;
           }`)}
         </style>
-        ${jsUrls.map(
-          (src) => html`<script type="module" src="${src}"></script>`,
-        )}
-        <script
-          type="module"
-          src="/public/js/actor-typeahead.js?v=${now}"
-        ></script>
+        ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
+        <script type="module" src="/js/actor-typeahead.js"></script>
       </head>
-      <body>
+      <body class="bg-background text-foreground min-h-full">
         ${children}
       </body>
     </html>`;

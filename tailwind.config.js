@@ -4,16 +4,14 @@ import * as tailwindcss from "tailwindcss";
 
 /** @type {tailwindcss.Config} */
 export default {
-  content: ["./src/index.css", "./src/pages/**/*.{js,ts,jsx,tsx}", "./src/client/**/*.{js,ts,jsx,tsx}"],
+  darkMode: "class",
+  content: ["./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       colors: {
-        yello: '#f9eabc',
+        yello: "#f9eabc",
       },
     },
   },
-  plugins: [
-    tailwindAnimated,
-    forms,
-  ],
+  plugins: [tailwindAnimated, forms],
 };

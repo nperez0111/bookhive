@@ -59,9 +59,7 @@ export function ThemedButton({
     // Variant styles
     switch (variant) {
       case "primary":
-        baseStyle.backgroundColor = pressed
-          ? colors.primaryDark
-          : colors.primary;
+        baseStyle.backgroundColor = pressed ? colors.primaryDark : colors.primary;
         baseStyle.shadowColor = colors.shadowLight as any;
         baseStyle.shadowOffset = { width: 0, height: 2 } as any;
         baseStyle.shadowOpacity = 0.2 as any;
@@ -69,23 +67,17 @@ export function ThemedButton({
         baseStyle.elevation = 3 as any;
         break;
       case "secondary":
-        baseStyle.backgroundColor = pressed
-          ? colors.activeBackground
-          : colors.buttonBackground;
+        baseStyle.backgroundColor = pressed ? colors.activeBackground : colors.buttonBackground;
         baseStyle.borderWidth = 1;
         baseStyle.borderColor = colors.buttonBorder;
         break;
       case "outline":
-        baseStyle.backgroundColor = pressed
-          ? colors.activeBackground
-          : "transparent";
+        baseStyle.backgroundColor = pressed ? colors.activeBackground : "transparent";
         baseStyle.borderWidth = 2;
         baseStyle.borderColor = colors.primary;
         break;
       case "ghost":
-        baseStyle.backgroundColor = pressed
-          ? colors.activeBackground
-          : "transparent";
+        baseStyle.backgroundColor = pressed ? colors.activeBackground : "transparent";
         break;
     }
 
@@ -148,9 +140,7 @@ export function ThemedButton({
       }}
     >
       {leftIcon}
-      <ThemedText style={[getTextStyle(), textStyle]}>
-        {loading ? "Loading..." : title}
-      </ThemedText>
+      <ThemedText style={[getTextStyle(), textStyle]}>{loading ? "Loading..." : title}</ThemedText>
       {rightIcon}
     </Pressable>
   );

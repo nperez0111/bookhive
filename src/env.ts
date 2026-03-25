@@ -8,8 +8,12 @@ export const env = cleanEnv(process.env, {
     devDefault: testOnly("test"),
     choices: ["development", "production", "test"],
   }),
-  PORT: port({ devDefault: testOnly(3000) }),
-  PUBLIC_URL: str({}),
+  PORT: port({ default: 8080 }),
+  PUBLIC_URL: str({
+    default: "http://127.0.0.1:8080",
+    devDefault: `http://127.0.0.1:${process.env["PORT"] ?? 3000}`,
+    desc: "Public origin for OAuth callbacks (RFC 8252 requires loopback IP not localhost). In dev, auto-derives from PORT when not explicitly set.",
+  }),
   DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
   KV_DB_PATH: str({
     devDefault: ":memory:",
@@ -28,6 +32,22 @@ export const env = cleanEnv(process.env, {
   OPEN_OBSERVE_URL: str({ devDefault: "" }),
   OPEN_OBSERVE_USER: str({ devDefault: "" }),
   OPEN_OBSERVE_PASSWORD: str({ devDefault: "" }),
+  PDS_URL: str({
+    default: "",
+    desc: "Internal URL to reach the PDS (e.g. http://pds:3000). Empty disables signup.",
+  }),
+  PDS_ADMIN_PASSWORD: str({
+    default: "",
+    desc: "Admin password for the PDS, used to mint invite codes.",
+  }),
   /** Optional: set in CI/deploy for observability (e.g. git rev-parse HEAD) */
   BUILD_SHA: str({ default: "", desc: "Commit or build identifier" }),
+  BOOKHIVE_SERVICE_HANDLE: str({
+    default: "",
+    desc: "Handle for @bookhive.buzz service account (app password auth)",
+  }),
+  BOOKHIVE_APP_PASSWORD: str({
+    default: "",
+    desc: "App password for @bookhive.buzz service account",
+  }),
 });

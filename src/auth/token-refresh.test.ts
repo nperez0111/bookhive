@@ -17,7 +17,7 @@ const mockSession = {
 };
 
 // Mock environment
-mock.module("../env", () => ({
+void mock.module("../env", () => ({
   env: {
     COOKIE_SECRET: "test-secret-key-for-testing-purposes-only",
   },
@@ -66,9 +66,7 @@ describe("Token Refresh Logic", () => {
   });
 
   it("should handle token refresh failure gracefully", async () => {
-    mockOAuthSession.getTokenInfo.mockRejectedValueOnce(
-      new Error("Token refresh failed"),
-    );
+    mockOAuthSession.getTokenInfo.mockRejectedValueOnce(new Error("Token refresh failed"));
 
     try {
       const oauthSession = await mockOAuthClient.restore(mockSession.did);
@@ -79,7 +77,7 @@ describe("Token Refresh Logic", () => {
     }
   });
 
-  it('should prioritize automatic refresh over manual refresh', () => {
+  it("should prioritize automatic refresh over manual refresh", () => {
     const autoMode = "auto";
     const manualMode = false;
 

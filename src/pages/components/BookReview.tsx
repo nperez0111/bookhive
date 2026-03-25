@@ -1,41 +1,38 @@
 import { type FC } from "hono/jsx";
 import type { Book } from "../../types";
-import { FallbackCover } from "./fallbackCover";
+import { Card, CardBody } from "./cards";
+import { BookTooltip, CoverImage, normalizeBookData } from "./BookCard";
+import { StarDisplay } from "./cards/StarDisplay";
+import { parseHtmlToText } from "../../utils/htmlToText";
 
 export const BookReview: FC<{
   book: Book;
 }> = ({ book }) => {
+  const bookData = normalizeBookData(book);
+  const communityRating = (book.rating || 0) / 1000;
+  const tooltipData = { ...bookData, rating: communityRating };
+  const rating = book.stars != null ? book.stars / 2 : null;
+
   return (
-    <div class="group mb-2 cursor-pointer rounded-lg border border-slate-200 bg-yellow-50 p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-slate-700 dark:bg-zinc-800">
-      <a href={`/books/${book.hiveId}`} class="flex gap-4">
-        {book.cover || book.thumbnail ? (
-          <img
-            src={`${book.cover || book.thumbnail || ""}`}
-            alt=""
-            class="book-cover h-36 w-24 rounded-lg object-cover shadow-sm"
-            style={`--book-cover-name: book-cover-${book.hiveId}`}
-          />
-        ) : (
-          <FallbackCover 
-            className="book-cover h-36 w-24" 
-            style={`--book-cover-name: book-cover-${book.hiveId}`}
-          />
-        )}
-        <span class="flex flex-col gap-1">
-          <span class="book-title text-lg font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400" style={`--book-title-name: book-title-${book.hiveId}`}>
-            {book.title}
-          </span>
-          <span class="text-sm text-slate-600 dark:text-slate-400">
-            by {book.authors.split("\t").join(", ")}
-            {book.stars ? (
-              <span class="text-md mx-1 text-slate-800 dark:text-slate-200">
-                ({book.stars / 2} ⭐)
-              </span>
-            ) : null}
-          </span>
-          <p class="py-2">{book.review}</p>
-        </span>
-      </a>
-    </div>
+    <Card>
+      <CardBody class="flex gap-4">
+        <div class="flex shrink-0 flex-col items-center gap-1">
+          <div class="group relative">
+            <a href={`/books/${book.hiveId}`}>
+              <CoverImage book={bookData} class="h-32 w-22 rounded object-cover" />
+            </a>
+            <BookTooltip book={tooltipData} position="top" />
+          </div>
+          <div class="flex w-full justify-center">
+            <StarDisplay rating={rating ?? 0} size="md" />
+          </div>
+        </div>
+        <div class="flex min-w-0 flex-1 flex-col">
+          <p class="text-foreground whitespace-pre-wrap text-sm">
+            {parseHtmlToText(book.review ?? "")}
+          </p>
+        </div>
+      </CardBody>
+    </Card>
   );
 };

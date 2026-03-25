@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.addToList",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Add a book to a list.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["listUri", "hiveId"],
+          "properties": {
+            "listUri": {
+              "type": "string",
+              "description": "AT-URI of the list"
+            },
+            "hiveId": {
+              "type": "string",
+              "description": "Hive ID of the book to add"
+            },
+            "description": {
+              "type": "string",
+              "description": "Optional note about this book in the list",
+              "maxLength": 5000
+            },
+            "position": {
+              "type": "integer",
+              "description": "Position in the list (for ordered lists)"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "cid"],
+          "properties": {
+            "uri": { "type": "string" },
+            "cid": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -47,12 +47,7 @@ export function ListItem({
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatar} />
         ) : icon ? (
-          <View
-            style={[
-              styles.iconContainer,
-              { backgroundColor: colors.activeBackground },
-            ]}
-          >
+          <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
             <Ionicons name={icon} size={18} color={colors.primary} />
           </View>
         ) : null}
@@ -69,13 +64,7 @@ export function ListItem({
       </View>
       <View style={styles.right}>
         {right}
-        {onPress ? (
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={colors.tertiaryText}
-          />
-        ) : null}
+        {onPress ? <Ionicons name="chevron-forward" size={18} color={colors.tertiaryText} /> : null}
       </View>
     </Pressable>
   );

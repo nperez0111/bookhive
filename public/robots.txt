@@ -1,7 +1,8 @@
 User-agent: *
 Disallow: /books/
 Disallow: /profile/
-Disallow: /genres/
+Disallow: /authors/
+Disallow: /explore/
 Allow: /
 
 # Allow access to static assets

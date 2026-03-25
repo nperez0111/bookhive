@@ -33,8 +33,7 @@ interface GoodreadsBook {
 class Goodreads {
   public static readonly NAME = "Goodreads";
   private static readonly BOOK_URL = "https://www.goodreads.com/book/show/";
-  private static readonly SEARCH_URL =
-    "https://www.goodreads.com/book/auto_complete";
+  private static readonly SEARCH_URL = "https://www.goodreads.com/book/auto_complete";
 
   private readonly active: boolean;
 
@@ -55,19 +54,17 @@ class Goodreads {
       const params = new URLSearchParams({
         format: "json",
         q: query,
+        limit: "20",
       });
 
-      const response = await fetch(
-        `${Goodreads.SEARCH_URL}?${params.toString()}`,
-        {
-          headers: {
-            accept: "*/*",
-            "cache-control": "no-cache",
-            "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
-            "x-requested-with": "XMLHttpRequest",
-          },
+      const response = await fetch(`${Goodreads.SEARCH_URL}?${params.toString()}`, {
+        headers: {
+          accept: "*/*",
+          "cache-control": "no-cache",
+          "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+          "x-requested-with": "XMLHttpRequest",
         },
-      );
+      });
 
       if (!response.ok) throw new Error(response.statusText);
       const data = (await response.json()) as GoodreadsBook[];
@@ -78,10 +75,7 @@ class Goodreads {
     }
   }
 
-  private parseSearchResult(
-    result: GoodreadsBook,
-    genericCover: string,
-  ): HiveBook {
+  private parseSearchResult(result: GoodreadsBook, genericCover: string): HiveBook {
     const now = new Date().toISOString();
     // Unfortunately, the Goodreads API does not provide a list of authors
     const authors = result.author.name;
@@ -108,7 +102,6 @@ class Goodreads {
       ratingsCount: parseInt(result.ratingsCount.toString()),
       createdAt: now,
       updatedAt: now,
-      genres: null,
       series: null,
       meta: null,
       enrichedAt: null,
@@ -116,6 +109,8 @@ class Goodreads {
         hiveId,
         ...(goodreadsId && { goodreadsId }),
       }),
+      hiveBookAtUri: null,
+      hiveBookCatalogUpdatedAt: null,
     };
   }
 
@@ -128,9 +123,7 @@ class Goodreads {
     return genericCover;
   }
 
-  private parseDescription(
-    description: GoodreadsDescription | undefined,
-  ): string {
+  private parseDescription(description: GoodreadsDescription | undefined): string {
     // Remove HTML tags from description
     return description?.html.replace(/<[^>]*>/g, "") || "";
   }

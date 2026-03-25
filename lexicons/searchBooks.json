@@ -49,6 +49,10 @@
                 "type": "ref",
                 "ref": "buzz.bookhive.hiveBook#main"
               }
+            },
+            "userStatuses": {
+              "type": "unknown",
+              "description": "Map of hiveId to the current user's reading status for that book. Only present when authenticated."
             }
           }
         }

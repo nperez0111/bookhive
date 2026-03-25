@@ -1,43 +1,28 @@
-import path from "node:path";
 import pino from "pino";
 import { env } from "../env";
+import buildOpenObserveTransport from "./open-observe";
 
-const openObserveTransport =
-  env.isDev ||
-  !env.OPEN_OBSERVE_URL ||
-  !env.OPEN_OBSERVE_USER ||
-  !env.OPEN_OBSERVE_PASSWORD
+const openObserveOptions =
+  env.isDev || !env.OPEN_OBSERVE_URL || !env.OPEN_OBSERVE_USER || !env.OPEN_OBSERVE_PASSWORD
     ? undefined
     : {
-        target: path.join(process.cwd(), "logger", "open-observe.js"),
-        options: {
-          url: env.OPEN_OBSERVE_URL,
-          organization: "bookhive",
-          streamName: "server-logs",
-          auth: {
-            username: env.OPEN_OBSERVE_USER,
-            password: env.OPEN_OBSERVE_PASSWORD,
-          },
-          writeToConsole: true,
+        url: env.OPEN_OBSERVE_URL,
+        organization: "bookhive",
+        streamName: "server-logs",
+        auth: {
+          username: env.OPEN_OBSERVE_USER,
+          password: env.OPEN_OBSERVE_PASSWORD,
         },
+        writeToConsole: true,
       };
 
-let openObserveSkippedLogged = false;
+// Build the transport stream once at module load (runs in the main thread, no worker spawned).
+// Using pino(opts, stream) avoids thread-stream entirely, which breaks when bundled by Nitro.
+const transportStream = openObserveOptions
+  ? buildOpenObserveTransport(openObserveOptions)
+  : undefined;
 
 export function getLogger(options: pino.LoggerOptions) {
   const base = { level: env.LOG_LEVEL, ...options };
-  if (!openObserveTransport) return pino(base);
-  try {
-    return pino({ ...base, transport: openObserveTransport });
-  } catch (err) {
-    // Fallback when transport file is missing (e.g. wrong cwd or dev without build)
-    if (!openObserveSkippedLogged) {
-      openObserveSkippedLogged = true;
-      console.warn(
-        "Pino OpenObserve transport skipped:",
-        (err as Error).message,
-      );
-    }
-    return pino(base);
-  }
+  return transportStream ? pino(base, transportStream) : pino(base);
 }

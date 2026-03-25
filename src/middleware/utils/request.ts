@@ -8,20 +8,12 @@ import {
   EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE,
   EXTRA_SEMATTRS_URL_FULL,
 } from "../constants";
-import type {
-  GlobalResponse,
-  HonoResponse,
-  InitParam,
-  InputParam,
-} from "../types";
+import type { GlobalResponse, InitParam, InputParam } from "../types";
 
 // There are so many different types of headers
 // and we want to support all of them so we can
 // use a single function to do it all
-type PossibleHeaders =
-  | Headers
-  | HonoResponse["headers"]
-  | GlobalResponse["headers"];
+type PossibleHeaders = Headers;
 
 export function headersToObject(headers: PossibleHeaders) {
   const returnObject: Record<string, string> = {};
@@ -52,8 +44,7 @@ export async function getRootRequestAttributes(request: Request) {
 }
 
 export function getRequestAttributes(input: InputParam, init?: InitParam) {
-  const requestMethod =
-    typeof input === "string" || input instanceof URL ? "GET" : input.method;
+  const requestMethod = typeof input === "string" || input instanceof URL ? "GET" : input.method;
   const requestUrl = input instanceof Request ? input.url : input;
   const url = new URL(requestUrl);
   const attributes: Attributes = {
@@ -78,12 +69,10 @@ export function getRequestAttributes(input: InputParam, init?: InitParam) {
   return attributes;
 }
 
-export async function getResponseAttributes(
-  response: GlobalResponse | HonoResponse,
-) {
+export async function getResponseAttributes(response: GlobalResponse) {
   const attributes: Attributes = {
     [EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE]: String(response.status),
-    [SEMATTRS_HTTP_SCHEME]: response.url.split(":")[0],
+    [SEMATTRS_HTTP_SCHEME]: response.url.split(":")[0]!,
   };
 
   const contentLength = response.headers.get("content-length");

@@ -57,24 +57,11 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={handleCancel}
-    >
+    <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={handleCancel}>
       <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalContent,
-            { backgroundColor: colors.cardBackground },
-          ]}
-        >
+        <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
           <View style={styles.modalHeader}>
-            <ThemedText
-              style={[styles.modalTitle, { color: colors.primaryText }]}
-              type="heading"
-            >
+            <ThemedText style={[styles.modalTitle, { color: colors.primaryText }]} type="heading">
               {title}
             </ThemedText>
             <Pressable onPress={handleCancel} style={styles.closeButton}>
@@ -97,29 +84,19 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
           {/* Action Buttons */}
           <View style={styles.modalActions}>
             <Pressable
-              style={[
-                styles.cancelButton,
-                { borderColor: colors.buttonBorder },
-              ]}
+              style={[styles.cancelButton, { borderColor: colors.buttonBorder }]}
               onPress={handleCancel}
             >
-              <ThemedText
-                style={[styles.cancelButtonText, { color: colors.primaryText }]}
-              >
+              <ThemedText style={[styles.cancelButtonText, { color: colors.primaryText }]}>
                 Cancel
               </ThemedText>
             </Pressable>
 
             <Pressable
-              style={[
-                styles.confirmButton,
-                { backgroundColor: colors.primary },
-              ]}
+              style={[styles.confirmButton, { backgroundColor: colors.primary }]}
               onPress={handleConfirm}
             >
-              <ThemedText
-                style={[styles.confirmButtonText, { color: colors.background }]}
-              >
+              <ThemedText style={[styles.confirmButtonText, { color: colors.background }]}>
                 Confirm
               </ThemedText>
             </Pressable>

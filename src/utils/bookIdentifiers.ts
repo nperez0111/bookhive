@@ -1,15 +1,7 @@
 import type { Database } from "../db";
-import type {
-  BookIdentifiers,
-  BookIdentifiersRow,
-  HiveBook,
-  HiveId,
-} from "../types";
+import type { BookIdentifiers, BookIdentifiersRow, HiveBook, HiveId } from "../types";
 
-type BookIdentifiersSource = Pick<
-  HiveBook,
-  "id" | "source" | "sourceId" | "sourceUrl" | "meta"
->;
+type BookIdentifiersSource = Pick<HiveBook, "id" | "source" | "sourceId" | "sourceUrl" | "meta">;
 
 type ParsedMeta = {
   isbn?: unknown;
@@ -23,9 +15,7 @@ function normalizeString(value: string | null | undefined): string | null {
   return normalized ? normalized : null;
 }
 
-export function normalizeHiveId(
-  value: string | null | undefined,
-): HiveId | null {
+export function normalizeHiveId(value: string | null | undefined): HiveId | null {
   const normalized = normalizeString(value);
   return normalized ? (normalized as HiveId) : null;
 }
@@ -40,9 +30,7 @@ export function normalizeIsbn(value: string | null | undefined): string | null {
   return compact || null;
 }
 
-export function normalizeIsbn13(
-  value: string | null | undefined,
-): string | null {
+export function normalizeIsbn13(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   if (!normalized) {
     return null;
@@ -56,9 +44,7 @@ export function normalizeIsbn13(
  * Normalize to a valid Goodreads ID (numeric only). Rejects Amazon/Kindle
  * identifiers (e.g. kca://book/amzn1) that Goodreads may return for some editions.
  */
-export function normalizeGoodreadsId(
-  value: string | null | undefined,
-): string | null {
+export function normalizeGoodreadsId(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   if (!normalized) {
     return null;
@@ -66,8 +52,18 @@ export function normalizeGoodreadsId(
 
   // Goodreads ids can appear as "12345.title-slug" or "12345-title-slug" (from URL path)
   const [id] = normalized.split(".", 1);
-  const numericPart = id?.match(/^(\d+)/)?.[1];
-  return numericPart || null;
+  if (!id) {
+    return null;
+  }
+
+  // Real Goodreads IDs are always numeric. Reject non-numeric values like
+  // "kca://book/amzn1" (Kindle Content Address) that the Goodreads API
+  // sometimes returns as bookId.
+  if (!/^\d+$/.test(id)) {
+    return null;
+  }
+
+  return id;
 }
 
 function parseMeta(meta: string | null): ParsedMeta {
@@ -111,9 +107,7 @@ export function deriveBookIdentifiers(
   return {
     hiveId: book.id,
     isbn: normalizeIsbn(typeof meta.isbn === "string" ? meta.isbn : null),
-    isbn13: normalizeIsbn13(
-      typeof meta.isbn13 === "string" ? meta.isbn13 : null,
-    ),
+    isbn13: normalizeIsbn13(typeof meta.isbn13 === "string" ? meta.isbn13 : null),
     goodreadsId: extractGoodreadsId(book),
   };
 }
@@ -135,10 +129,7 @@ export function toBookIdentifiersOutput(
   };
 }
 
-export async function upsertBookIdentifiers(
-  db: Database,
-  book: BookIdentifiersSource,
-) {
+export async function upsertBookIdentifiers(db: Database, book: BookIdentifiersSource) {
   const identifiers = deriveBookIdentifiers(book);
   const updatedAt = new Date().toISOString();
 
@@ -162,10 +153,7 @@ export async function upsertBookIdentifiers(
     .execute();
 }
 
-export async function upsertBookIdentifiersBatch(
-  db: Database,
-  books: BookIdentifiersSource[],
-) {
+export async function upsertBookIdentifiersBatch(db: Database, books: BookIdentifiersSource[]) {
   if (!books.length) {
     return;
   }

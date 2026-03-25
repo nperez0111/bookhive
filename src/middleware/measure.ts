@@ -148,10 +148,7 @@ export function measure<ARGS extends unknown[], RESULT>(
           if (logger) {
             const errorMessage = formatException(convertToException(error));
 
-            logger.warn(
-              `Error in onStart while measuring ${name}:`,
-              errorMessage,
-            );
+            logger.warn(`Error in onStart while measuring ${name}:`, errorMessage);
           }
         }
       }
@@ -212,13 +209,10 @@ export function measure<ARGS extends unknown[], RESULT>(
         span.setStatus({ code: SpanStatusCode.OK });
         if (onSuccess) {
           try {
-            const result = onSuccess(
-              span,
-              returnValue as ExtractInnerResult<RESULT>,
-            );
+            const result = onSuccess(span, returnValue as ExtractInnerResult<RESULT>);
             if (isPromiseLike(result)) {
               shouldEndSpan = false;
-              result.finally(() => {
+              void result.finally(() => {
                 if (!endSpanManually) {
                   span.end();
                 }
@@ -227,10 +221,7 @@ export function measure<ARGS extends unknown[], RESULT>(
           } catch (error) {
             if (logger) {
               const errorMessage = formatException(convertToException(error));
-              logger.warn(
-                `Error in onSuccess while measuring ${name}:`,
-                errorMessage,
-              );
+              logger.warn(`Error in onSuccess while measuring ${name}:`, errorMessage);
             }
           }
         }
@@ -257,11 +248,7 @@ export function measure<ARGS extends unknown[], RESULT>(
     }
 
     const tracer = trace.getTracer("hono-tracer", "0.0.1");
-    return tracer.startActiveSpan(
-      name,
-      { kind: spanKind, attributes },
-      handleActiveSpan,
-    );
+    return tracer.startActiveSpan(name, { kind: spanKind, attributes }, handleActiveSpan);
   };
 }
 
@@ -292,7 +279,7 @@ async function handlePromise<T>(
 
         if (onError) {
           try {
-            await onError(span, exception);
+            onError(span, exception);
           } catch {
             // swallow error
           }
@@ -388,8 +375,7 @@ function handleGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
   }
 
   const active = context.active();
-  return {
-    ...iterable,
+  return Object.assign(Object.create(iterable) as Generator<T, TReturn, TNext>, {
     next: context.bind(
       active,
       measure("iterator.next", function nextFunction(...args: [] | [TNext]) {
@@ -459,7 +445,7 @@ function handleGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     [Symbol.iterator]() {
       return this;
     },
-  };
+  });
 }
 
 /**
@@ -497,41 +483,37 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     span.end();
   }
 
-  return {
-    ...iterable,
+  return Object.assign(Object.create(iterable) as AsyncGenerator<T, TReturn, TNext>, {
     next: context.bind(
       active,
-      measure(
-        "iterator.next",
-        async function nextFunction(...args: [] | [TNext]) {
-          try {
-            const result = await iterable.next(...args);
-            if (result.done) {
-              try {
-                if (checkResult) {
-                  await checkResult(result.value);
-                }
-
-                if (!endSpanManually) {
-                  span.setStatus({ code: SpanStatusCode.OK });
-                  span.end();
-                }
-
-                if (onSuccess) {
-                  await onSuccess(span, result.value);
-                }
-              } catch (error) {
-                handleError(error);
+      measure("iterator.next", async function nextFunction(...args: [] | [TNext]) {
+        try {
+          const result = await iterable.next(...args);
+          if (result.done) {
+            try {
+              if (checkResult) {
+                await checkResult(result.value);
               }
-            }
 
-            return result;
-          } catch (error) {
-            handleError(error);
-            throw error;
+              if (!endSpanManually) {
+                span.setStatus({ code: SpanStatusCode.OK });
+                span.end();
+              }
+
+              if (onSuccess) {
+                onSuccess(span, result.value);
+              }
+            } catch (error) {
+              handleError(error);
+            }
           }
-        },
-      ),
+
+          return result;
+        } catch (error) {
+          handleError(error);
+          throw error;
+        }
+      }),
     ),
     return: context.bind(active, async function returnFunction(value: TReturn) {
       try {
@@ -539,7 +521,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
         if (result.done) {
           try {
             if (checkResult) {
-              checkResult(result.value);
+              void checkResult(result.value);
             }
 
             if (!endSpanManually) {
@@ -571,7 +553,7 @@ function handleAsyncGenerator<T = unknown, TReturn = unknown, TNext = unknown>(
     [Symbol.asyncIterator]() {
       return this;
     },
-  };
+  });
 }
 
 function convertToException(error: unknown) {
@@ -579,20 +561,14 @@ function convertToException(error: unknown) {
 }
 
 function formatException(exception: Exception) {
-  return typeof exception === "string"
-    ? exception
-    : exception.message || "Unknown error occurred";
+  return typeof exception === "string" ? exception : exception.message || "Unknown error occurred";
 }
 
 // const GeneratorFunction = Object.getPrototypeOf(function* () {}).constructor;
-export function isGeneratorValue<
-  T = unknown,
-  TReturn = unknown,
-  TNext = unknown,
->(value: unknown): value is Generator<T, TReturn, TNext> {
-  return (
-    value !== null && typeof value === "object" && Symbol.iterator in value
-  );
+export function isGeneratorValue<T = unknown, TReturn = unknown, TNext = unknown>(
+  value: unknown,
+): value is Generator<T, TReturn, TNext> {
+  return value !== null && typeof value === "object" && Symbol.iterator in value;
 }
 
 /**
@@ -601,12 +577,8 @@ export function isGeneratorValue<
  * @param fn - The function to be checked
  * @returns true if the function is an async generator, otherwise false
  */
-export function isAsyncGeneratorValue<
-  T = unknown,
-  TReturn = unknown,
-  TNext = unknown,
->(value: unknown): value is AsyncGenerator<T, TReturn, TNext> {
-  return (
-    value !== null && typeof value === "object" && Symbol.asyncIterator in value
-  );
+export function isAsyncGeneratorValue<T = unknown, TReturn = unknown, TNext = unknown>(
+  value: unknown,
+): value is AsyncGenerator<T, TReturn, TNext> {
+  return value !== null && typeof value === "object" && Symbol.asyncIterator in value;
 }

@@ -1,0 +1,232 @@
+{
+  "lexicon": 1,
+  "id": "social.popfeed.feed.listItem",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["identifiers", "creativeWorkType", "addedAt", "listUri"],
+        "properties": {
+          "identifiers": {
+            "type": "ref",
+            "ref": "#identifiers",
+            "description": "External identifiers for the creative work."
+          },
+          "creativeWorkType": {
+            "type": "string",
+            "enum": [
+              "movie",
+              "tv_show",
+              "video_game",
+              "album",
+              "book",
+              "book_series",
+              "episode",
+              "album",
+              "ep",
+              "tv_season",
+              "tv_episode",
+              "track"
+            ],
+            "description": "The type of creative work this item represents."
+          },
+          "status": {
+            "type": "string",
+            "knownValues": ["#finished", "#in_progress", "#backlog", "#abandoned"]
+          },
+          "listUri": {
+            "type": "string",
+            "format": "uri",
+            "description": "URI of the list where the item is stored."
+          },
+          "position": {
+            "type": "integer",
+            "description": "DEPRECATED"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "description": "Optional description or commentary for the list item."
+          },
+          "poster": {
+            "type": "blob",
+            "accept": ["image/*"],
+            "maxSize": 2000000
+          },
+          "backdrop": {
+            "type": "blob",
+            "accept": ["image/*"],
+            "maxSize": 4000000
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the creative work was added to the list."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the user started the creative work. Most relevant for books, TV shows, and video games."
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the user finished the creative work. Most relevant for books, TV shows, and video games."
+          },
+          "watchedEpisodes": {
+            "type": "array",
+            "description": "For TV shows, the episodes the user has watched.",
+            "items": { "type": "ref", "ref": "#watchedEpisode" }
+          },
+          "bookProgress": {
+            "type": "ref",
+            "ref": "#bookProgress",
+            "description": "Reading progress for books or book series (also supports audiobooks via time fields)."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Title of the creative work."
+          },
+          "posterUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Poster or cover image URL for the creative work. Soon to be deprecated in favor of the 'poster' blob field"
+          },
+          "backdropUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Backdrop image URL for the creative work. Soon to be deprecated in favor of the 'backdrop' blob field"
+          },
+          "releaseDate": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Release date of the creative work."
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 50
+            }
+          },
+          "mainCredit": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Main actor, director, author, or artist of the creative work."
+          },
+          "mainCreditRole": {
+            "type": "string",
+            "enum": [
+              "director",
+              "author",
+              "artist",
+              "showrunner",
+              "lead_actor",
+              "creator",
+              "studio",
+              "publisher",
+              "developer",
+              "performer",
+              "network"
+            ],
+            "description": "The role of the main credit."
+          },
+          "listType": {
+            "type": "string",
+            "description": "The type of list, e.g., 'watchlist', 'favorites', 'to-read', etc.",
+            "maxLength": 50
+          }
+        }
+      }
+    },
+    "identifiers": {
+      "type": "object",
+      "properties": {
+        "imdbId": { "type": "string", "description": "IMDb ID" },
+        "isbn10": { "type": "string", "description": "ISBN-10 for books" },
+        "isbn13": { "type": "string", "description": "ISBN-13 for books" },
+        "asin": { "type": "string", "description": "Amazon Standard ID" },
+        "hiveId": { "type": "string", "description": "BookHive ID for fast local lookup" },
+        "other": { "type": "string", "description": "Other external ID" },
+        "tmdbId": { "type": "string", "description": "TMDb ID for movies/TV shows" },
+        "igdbId": { "type": "string", "description": "IGDB ID for games" },
+        "mbId": { "type": "string", "description": "DEPRECATED - soon to be ignored" },
+        "mbReleaseId": {
+          "type": "string",
+          "description": "MusicBrainz ID for specific releases (albums, EPs, tracks)"
+        },
+        "parentMbReleaseId": {
+          "type": "string",
+          "description": "MusicBrainz ID for parent release (e.g., album for a track)"
+        },
+        "episodeNumber": {
+          "type": "integer",
+          "description": "Episode number for TV shows or series"
+        },
+        "seasonNumber": {
+          "type": "integer",
+          "description": "Season number for TV shows or series"
+        },
+        "tmdbTvSeriesId": {
+          "type": "string",
+          "description": "TMDb ID for TV series"
+        }
+      }
+    },
+    "watchedEpisode": {
+      "type": "object",
+      "required": ["seasonNumber", "episodeNumber"],
+      "properties": {
+        "seasonNumber": {
+          "type": "integer"
+        },
+        "episodeNumber": {
+          "type": "integer"
+        },
+        "tmdbId": {
+          "type": "string"
+        }
+      }
+    },
+    "bookProgress": {
+      "type": "object",
+      "description": "Tracks reading/listening progress for a book or book series item.",
+      "required": ["status", "updatedAt"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["in_progress", "completed", "paused"],
+          "description": "Overall progress state."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "Last time progress was updated."
+        },
+        "currentPage": {
+          "type": "integer",
+          "description": "Current page number (if applicable)."
+        },
+        "totalPages": {
+          "type": "integer",
+          "description": "Total pages (if known)."
+        },
+        "currentChapter": {
+          "type": "integer",
+          "description": "Current chapter number (optional alternative to pages)."
+        },
+        "totalChapters": {
+          "type": "integer",
+          "description": "Total chapters (if known)."
+        },
+        "percent": {
+          "type": "integer",
+          "description": "Optional explicit progress percentage (0–100)."
+        }
+      }
+    }
+  }
+}

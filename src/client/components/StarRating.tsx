@@ -21,10 +21,7 @@ export function calculateStars(rating: number): StarType[] {
   return stars;
 }
 
-export const StarRating: FC<StarRatingProps> = ({
-  initialRating = 0,
-  onChange,
-}) => {
+export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange }) => {
   const [rating, setRating] = useState(initialRating);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,7 +87,7 @@ export const StarRating: FC<StarRatingProps> = ({
             return (
               <svg
                 key={index}
-                className={`${baseClasses} text-yellow-400`}
+                className={`${baseClasses} text-accent`}
                 fill="currentColor"
                 viewBox="0 0 24 24"
               >
@@ -101,7 +98,7 @@ export const StarRating: FC<StarRatingProps> = ({
             return (
               <svg
                 key={index}
-                className={`${baseClasses} text-yellow-400`}
+                className={`${baseClasses} text-accent`}
                 fill="currentColor"
                 viewBox="0 0 24 24"
               >

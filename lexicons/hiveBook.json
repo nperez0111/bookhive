@@ -8,14 +8,7 @@
       "description": "A book within the hive",
       "record": {
         "type": "object",
-        "required": [
-          "id",
-          "title",
-          "authors",
-          "createdAt",
-          "updatedAt",
-          "thumbnail"
-        ],
+        "required": ["id", "title", "authors", "createdAt", "updatedAt", "thumbnail"],
         "properties": {
           "title": {
             "type": "string",
@@ -80,6 +73,13 @@
             "type": "ref",
             "ref": "buzz.bookhive.defs#bookIdentifiers",
             "description": "External identifiers for the book"
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Book genres"
           }
         }
       }

@@ -10,8 +10,7 @@ export const ENV_FPX_SERVICE_NAME = "FPX_SERVICE_NAME";
  * but are not.
  */
 export const EXTRA_SEMATTRS_HTTP_REQUEST_METHOD = "http.request.method";
-export const EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE =
-  "http.response.status_code";
+export const EXTRA_SEMATTRS_HTTP_RESPONSE_STATUS_CODE = "http.response.status_code";
 export const EXTRA_SEMATTRS_URL_FULL = "url.full";
 
 export const FPX_REQUEST_PATHNAME = "fpx.http.request.pathname";
@@ -30,5 +29,4 @@ export const CF_BINDING_ERROR = "cf.binding.error";
 
 // NOT YET IMPLEMENTED
 export const FPX_REQUEST_HANDLER_FILE = "fpx.http.request.handler.file";
-export const FPX_REQUEST_HANDLER_SOURCE_CODE =
-  "fpx.http.request.handler.source_code";
+export const FPX_REQUEST_HANDLER_SOURCE_CODE = "fpx.http.request.handler.source_code";

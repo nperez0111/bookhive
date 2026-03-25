@@ -34,11 +34,7 @@ function is$type<Id extends string, Hash extends string>(
         $type.endsWith(hash);
 }
 
-export type $TypedObject<
-  V,
-  Id extends string,
-  Hash extends string,
-> = V extends {
+export type $TypedObject<V, Id extends string, Hash extends string> = V extends {
   $type: $Type<Id, Hash>;
 }
   ? V
@@ -61,15 +57,11 @@ export function maybe$typed<V, Id extends string, Hash extends string>(
   id: Id,
   hash: Hash,
 ): v is V & object & { $type?: $Type<Id, Hash> } {
-  return (
-    isObject(v) &&
-    ("$type" in v ? v.$type === undefined || is$type(v.$type, id, hash) : true)
-  );
+  return isObject(v) && ("$type" in v ? v.$type === undefined || is$type(v.$type, id, hash) : true);
 }
 
 export type Validator<R = unknown> = (v: unknown) => ValidationResult<R>;
-export type ValidatorParam<V extends Validator> =
-  V extends Validator<infer R> ? R : never;
+export type ValidatorParam<V extends Validator> = V extends Validator<infer R> ? R : never;
 
 /**
  * Utility function that allows to convert a "validate*" utility function into a

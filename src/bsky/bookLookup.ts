@@ -1,4 +1,3 @@
-import { sql } from "kysely";
 import type { Database } from "../db";
 import type { BookIdentifiers, HiveId } from "../types";
 import type { HiveBook } from "../types";
@@ -22,6 +21,7 @@ export type HiveBookOutput = {
   sourceId?: string;
   sourceUrl?: string;
   identifiers?: BookIdentifiers;
+  genres?: string[];
 };
 
 /**
@@ -31,6 +31,7 @@ export type HiveBookOutput = {
 export function toHiveBookOutput(
   book: HiveBook,
   identifiers: BookIdentifiers,
+  genres?: string[],
 ): HiveBookOutput {
   return {
     $type: "buzz.bookhive.hiveBook",
@@ -48,6 +49,7 @@ export function toHiveBookOutput(
     sourceId: book.sourceId ?? undefined,
     sourceUrl: book.sourceUrl ?? undefined,
     identifiers,
+    ...(genres && genres.length > 0 ? { genres } : {}),
   };
 }
 
@@ -71,14 +73,12 @@ export function transformBookWithIdentifiers<
     | "sourceId"
     | "sourceUrl"
   >,
->(book: T): HiveBookOutput {
+>(book: T, genres?: string[]): HiveBookOutput {
   const identifiers: BookIdentifiers = {
     hiveId: book.id,
-    ...(book.identifiers
-      ? (JSON.parse(book.identifiers) as BookIdentifiers)
-      : {}),
+    ...(book.identifiers ? (JSON.parse(book.identifiers) as BookIdentifiers) : {}),
   };
-  return toHiveBookOutput(book as unknown as HiveBook, identifiers);
+  return toHiveBookOutput(book as unknown as HiveBook, identifiers, genres);
 }
 
 export async function findBookIdentifiersByLookup({
@@ -157,37 +157,26 @@ export async function findHiveBookByBookIdentifiersLookup({
     }
   }
 
-  if (isbn10) {
-    const byIsbn = await ctx.db
-      .selectFrom("hive_book")
-      .selectAll()
-      .where(
-        sql<
-          string | null
-        >`NULLIF(REPLACE(REPLACE(UPPER(CAST(json_extract(meta, '$.isbn') AS TEXT)), '-', ''), ' ', ''), '')`,
-        "=",
-        isbn10,
+  if (isbn10 || isbn13) {
+    const idRow = await ctx.db
+      .selectFrom("book_id_map")
+      .select("hiveId")
+      .where((eb) =>
+        eb.or([
+          ...(isbn10 ? [eb("isbn", "=", isbn10)] : []),
+          ...(isbn13 ? [eb("isbn13", "=", isbn13)] : []),
+        ]),
       )
       .executeTakeFirst();
-    if (byIsbn) {
-      return byIsbn;
-    }
-  }
-
-  if (isbn13) {
-    const byIsbn13 = await ctx.db
-      .selectFrom("hive_book")
-      .selectAll()
-      .where(
-        sql<
-          string | null
-        >`NULLIF(REPLACE(REPLACE(CAST(json_extract(meta, '$.isbn13') AS TEXT), '-', ''), ' ', ''), '')`,
-        "=",
-        isbn13,
-      )
-      .executeTakeFirst();
-    if (byIsbn13) {
-      return byIsbn13;
+    if (idRow) {
+      const byIsbn = await ctx.db
+        .selectFrom("hive_book")
+        .selectAll()
+        .where("id", "=", idRow.hiveId)
+        .executeTakeFirst();
+      if (byIsbn) {
+        return byIsbn;
+      }
     }
   }
 

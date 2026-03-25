@@ -33,6 +33,10 @@ const _mainSchema = /*#__PURE__*/ v.record(
      */
     finishedAt: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.datetimeString()),
     /**
+     * AT-URI of the canonical catalogBook record in \@bookhive.buzz
+     */
+    hiveBookUri: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    /**
      * The book's hive id, used to correlate user's books with the hive
      */
     hiveId: /*#__PURE__*/ v.string(),
@@ -42,6 +46,10 @@ const _mainSchema = /*#__PURE__*/ v.record(
     get identifiers() {
       return /*#__PURE__*/ v.optional(BuzzBookhiveDefs.bookIdentifiersSchema);
     },
+    /**
+     * Whether the user owns this book
+     */
+    owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
     /**
      * The book's review
      * @maxGraphemes 15000
@@ -57,9 +65,7 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @maximum 10
      */
     stars: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 10),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
     ),
     /**
      * The date the user started reading the book
@@ -69,7 +75,6 @@ const _mainSchema = /*#__PURE__*/ v.record(
       /*#__PURE__*/ v.string<
         | "buzz.bookhive.defs#abandoned"
         | "buzz.bookhive.defs#finished"
-        | "buzz.bookhive.defs#owned"
         | "buzz.bookhive.defs#reading"
         | "buzz.bookhive.defs#wantToRead"
         | (string & {})

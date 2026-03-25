@@ -13,25 +13,22 @@ const time = Date.now();
 // - blob:*/*: Required for uploading book cover images
 // - repo:buzz.bookhive.book: Write operations on book records (create, update, delete)
 // - repo:buzz.bookhive.buzz: Write operations on comment records (create, update, delete)
-// - repo:app.bsky.graph.follow: Create follow records (for following users)
+// - repo:app.bsky.graph.follow: Create and delete follow records (follow/unfollow)
 // - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
 // - rpc:app.bsky.actor.getProfile: Required for fetching user profile information from any Audience
 export const OAUTH_SCOPES =
-  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
 
 export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
   const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
-  const isLoopback = !publicUrl;
-  const redirectUris = isLoopback
-    ? [`http://127.0.0.1:${env.PORT}/oauth/callback`]
-    : [`${baseUrl}/oauth/callback`];
+  const isLoopback =
+    !publicUrl || publicUrl.includes("127.0.0.1") || publicUrl.includes("localhost");
+  const redirectUris = [`${baseUrl}/oauth/callback`];
 
   return new OAuthClient({
     metadata: {
-      ...(isLoopback
-        ? {}
-        : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
+      ...(isLoopback ? {} : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
       redirect_uris: redirectUris,
       scope: OAUTH_SCOPES,
       ...(isLoopback
@@ -39,7 +36,7 @@ export async function createOAuthClient(kv: Storage) {
         : {
             client_uri: baseUrl,
             client_name: "BookHive",
-            logo_uri: `${baseUrl}/public/full_logo.jpg`,
+            logo_uri: `${baseUrl}/full_logo.jpg`,
             policy_uri: `${baseUrl}/privacy-policy`,
           }),
     },
@@ -63,10 +60,7 @@ export async function createOAuthClient(kv: Storage) {
       }
       if (lock !== time) {
         return new Promise((resolve, reject) =>
-          setTimeout(
-            () => waitForLock(key, cb, attempt + 1).then(resolve, reject),
-            100,
-          ),
+          setTimeout(() => waitForLock(key, cb, attempt + 1).then(resolve, reject), 100),
         );
       }
       return cb();
@@ -81,21 +75,17 @@ export type SessionClient = {
     name: string,
     opts?: Record<string, unknown>,
   ) => Promise<
-    | { ok: true; data: unknown }
-    | { ok: false; data: { error: string; message?: string } }
+    { ok: true; data: unknown } | { ok: false; data: { error: string; message?: string } }
   >;
   post: (
     name: string,
     opts?: Record<string, unknown>,
   ) => Promise<
-    | { ok: true; data: unknown }
-    | { ok: false; data: { error: string; message?: string } }
+    { ok: true; data: unknown } | { ok: false; data: { error: string; message?: string } }
   >;
 };
 
-export function sessionClientFromOAuthSession(
-  session: OAuthSession,
-): SessionClient {
+export function sessionClientFromOAuthSession(session: OAuthSession): SessionClient {
   const client = new Client({ handler: session });
   return {
     get did() {

@@ -24,9 +24,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   // Internal state represents 0-5 stars (including halves) based on 0-10 rating prop
-  const [currentRating, setCurrentRating] = useState(
-    rating !== undefined ? rating / 2 : 0,
-  );
+  const [currentRating, setCurrentRating] = useState(rating !== undefined ? rating / 2 : 0);
   const containerRef = useRef<View>(null);
   const containerLayoutRef = useRef<{ x: number; width: number } | null>(null);
 
@@ -121,8 +119,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
         >
           {[0, 1, 2, 3, 4].map((index) => {
             const starValue = index + 1;
-            let iconName: React.ComponentProps<typeof Ionicons>["name"] =
-              "star-outline";
+            let iconName: React.ComponentProps<typeof Ionicons>["name"] = "star-outline";
             let starColor = colors.tertiaryText;
 
             if (currentRating >= starValue) {

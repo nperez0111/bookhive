@@ -1,13 +1,9 @@
 import { SpanKind } from "@opentelemetry/api";
 import shimmer from "shimmer";
 import { measure } from "../measure";
-import {
-  getRequestAttributes,
-  getResponseAttributes,
-  isWrapped,
-} from "../utils";
+import { getRequestAttributes, getResponseAttributes, isWrapped } from "../utils";
 
-const { wrap } = shimmer;
+const wrap = shimmer.wrap.bind(shimmer);
 
 export function patchFetch() {
   // Check if the function is already patched
@@ -25,7 +21,7 @@ export function patchFetch() {
           span.setAttributes(getRequestAttributes(input, init));
         },
         onSuccess: async (span, responsePromise) => {
-          const response = await responsePromise;
+          const response = responsePromise;
           const attributeResponse = response.clone();
           const attributes = await getResponseAttributes(attributeResponse);
           span.setAttributes(attributes);

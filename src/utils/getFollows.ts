@@ -9,10 +9,7 @@ export interface FollowsSync {
   cursor: string | null;
 }
 
-export async function syncUserFollows(
-  ctx: AppContext,
-  agent: SessionClient,
-): Promise<void> {
+export async function syncUserFollows(ctx: AppContext, agent: SessionClient): Promise<void> {
   const userDid = agent.did;
 
   try {
@@ -53,8 +50,7 @@ async function determineSyncType(
     }
 
     const lastFullSync = new Date(syncData.lastFullSync);
-    const daysSinceFullSync =
-      (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceFullSync = (Date.now() - lastFullSync.getTime()) / (1000 * 60 * 60 * 24);
 
     ctx.addWideEventContext({
       follows_days_since_full_sync: daysSinceFullSync,
@@ -205,16 +201,18 @@ async function incrementalFollowsSync(
 
     if (follows.length === 0) break;
 
-    // Check if we've seen any of these follows before
-    for (const follow of follows) {
-      const exists = await ctx.db
-        .selectFrom("user_follows")
-        .select("userDid")
-        .where("userDid", "=", userDid)
-        .where("followsDid", "=", follow.did)
-        .executeTakeFirst();
+    // Batch-check which follows we already have
+    const followDids = follows.map((f) => f.did);
+    const existingRows = await ctx.db
+      .selectFrom("user_follows")
+      .select("followsDid")
+      .where("userDid", "=", userDid)
+      .where("followsDid", "in", followDids)
+      .execute();
+    const existingDids = new Set(existingRows.map((r) => r.followsDid));
 
-      if (exists) {
+    for (const follow of follows) {
+      if (existingDids.has(follow.did)) {
         // We've caught up to existing data
         foundExisting = true;
         break;
@@ -308,10 +306,7 @@ export async function getUserFollows(
   return follows.map((f) => f.followsDid);
 }
 
-export async function shouldSyncFollows(
-  ctx: AppContext,
-  userDid: string,
-): Promise<boolean> {
+export async function shouldSyncFollows(ctx: AppContext, userDid: string): Promise<boolean> {
   try {
     const syncData = await ctx.kv.get<FollowsSync>(`follows_sync:${userDid}`);
 

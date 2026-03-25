@@ -208,23 +208,13 @@ function renderElements(
               : href}
           </Text>,
         );
-      } else if (
-        tagName &&
-        DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES]
-      ) {
+      } else if (tagName && DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES]) {
         // Handle other inline elements with nesting
-        const tagStyle = [
-          parentStyle,
-          DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES],
-        ];
+        const tagStyle = [parentStyle, DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES]];
 
         if (element.children && element.children.length > 0) {
           // Render children with the combined style
-          const childComponents = renderElements(
-            element.children,
-            tagStyle,
-            `${key}_children`,
-          );
+          const childComponents = renderElements(element.children, tagStyle, `${key}_children`);
           components.push(
             <Text key={`${key}_${tagName}_${keyCounter++}`} style={tagStyle}>
               {childComponents}
@@ -241,11 +231,7 @@ function renderElements(
       } else {
         // Unknown tag, just render children
         if (element.children) {
-          const childComponents = renderElements(
-            element.children,
-            parentStyle,
-            `${key}_unknown`,
-          );
+          const childComponents = renderElements(element.children, parentStyle, `${key}_unknown`);
           components.push(...childComponents);
         }
       }
@@ -258,11 +244,7 @@ function renderElements(
 /**
  * HTML to React Native Text components parser with nested tag support
  */
-export function HtmlToText({
-  html,
-  style,
-  containerStyle,
-}: HtmlToTextProps): React.ReactElement {
+export function HtmlToText({ html, style, containerStyle }: HtmlToTextProps): React.ReactElement {
   if (!html || typeof html !== "string") {
     return <Text style={style}>No description available</Text>;
   }

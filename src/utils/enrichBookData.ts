@@ -2,10 +2,7 @@ import { syncHiveBookGenres } from "../db";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { AppContext } from "../context";
-import {
-  normalizeGoodreadsId,
-  upsertBookIdentifiers,
-} from "./bookIdentifiers";
+import { normalizeGoodreadsId, upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {
   publisher: string;
@@ -25,10 +22,11 @@ interface BookMeta {
 export async function enrichBookWithDetailedData(
   book: HiveBook,
   ctx: AppContext,
+  options?: { force?: boolean },
 ): Promise<void> {
   try {
     // Skip if already enriched recently (within 30 days)
-    if (book.enrichedAt) {
+    if (!options?.force && book.enrichedAt) {
       const enrichedDate = new Date(book.enrichedAt);
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -60,7 +58,7 @@ export async function enrichBookWithDetailedData(
       sourceUrl: book.sourceUrl,
     });
 
-    const detailedData = await getBookDetailedInfo(book.sourceUrl);
+    const detailedData = await getBookDetailedInfo(book.sourceUrl, ctx.addWideEventContext);
 
     if (!detailedData) {
       ctx.addWideEventContext({
@@ -74,9 +72,7 @@ export async function enrichBookWithDetailedData(
 
     // Map ParsedGoodreadsData to database fields
     const genres =
-      detailedData.book.genres.length > 0
-        ? JSON.stringify(detailedData.book.genres)
-        : null;
+      detailedData.book.genres.length > 0 ? JSON.stringify(detailedData.book.genres) : null;
 
     const series = detailedData.book.series
       ? JSON.stringify({
@@ -122,7 +118,6 @@ export async function enrichBookWithDetailedData(
     await ctx.db
       .updateTable("hive_book")
       .set({
-        genres,
         series,
         meta: serializedMeta,
         identifiers: JSON.stringify(updatedIdentifiers),
@@ -137,9 +132,15 @@ export async function enrichBookWithDetailedData(
 
     await syncHiveBookGenres(ctx.db, book.id, genres);
 
+    // Prefer the numeric sourceId from the search API over the kca:// ID
+    // that the Goodreads page scrape returns in its Apollo state.
+    const enrichedSourceId = normalizeGoodreadsId(detailedData.book.id)
+      ? detailedData.book.id
+      : book.sourceId;
+
     await upsertBookIdentifiers(ctx.db, {
       ...book,
-      sourceId: detailedData.book.id || book.sourceId,
+      sourceId: enrichedSourceId,
       meta: serializedMeta,
     });
 

@@ -18,10 +18,6 @@
       "type": "token",
       "description": "User has abandoned the book"
     },
-    "owned": {
-      "type": "token",
-      "description": "User owns the book"
-    },
     "review": {
       "type": "object",
       "required": ["review", "createdAt", "did", "handle"],
@@ -114,14 +110,7 @@
     },
     "activity": {
       "type": "object",
-      "required": [
-        "type",
-        "createdAt",
-        "hiveId",
-        "title",
-        "userDid",
-        "userHandle"
-      ],
+      "required": ["type", "createdAt", "hiveId", "title", "userDid", "userHandle"],
       "properties": {
         "type": {
           "type": "string",
@@ -151,14 +140,7 @@
     },
     "userBook": {
       "type": "object",
-      "required": [
-        "userDid",
-        "title",
-        "authors",
-        "hiveId",
-        "createdAt",
-        "thumbnail"
-      ],
+      "required": ["userDid", "title", "authors", "hiveId", "createdAt", "thumbnail"],
       "properties": {
         "userDid": {
           "type": "string",
@@ -223,9 +205,12 @@
             "buzz.bookhive.defs#finished",
             "buzz.bookhive.defs#reading",
             "buzz.bookhive.defs#wantToRead",
-            "buzz.bookhive.defs#abandoned",
-            "buzz.bookhive.defs#owned"
+            "buzz.bookhive.defs#abandoned"
           ]
+        },
+        "owned": {
+          "type": "boolean",
+          "description": "Whether the user owns this book"
         },
         "stars": {
           "type": "integer",

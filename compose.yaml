@@ -7,7 +7,32 @@
 # You can add other services your application may depend on here, such as a
 # database or a cache. For examples, see the Awesome Compose repository:
 # https://github.com/docker/awesome-compose
+# External Caddy config needed for bookhive.social:
+# bookhive.social, *.bookhive.social {
+#   reverse_proxy pds:3000
+# }
 services:
+  pds:
+    image: ghcr.io/bluesky-social/pds
+    restart: unless-stopped
+    environment:
+      PDS_HOSTNAME: "bookhive.social"
+      PDS_ADMIN_PASSWORD: "CHANGE_ME_admin_password"
+      PDS_JWT_SECRET: "CHANGE_ME_jwt_secret"
+      PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX: "CHANGE_ME_rotation_key"
+      PDS_INVITE_REQUIRED: "true"
+      PDS_DATA_DIRECTORY: "/pds"
+      PDS_BLOBSTORE_DISK_LOCATION: "/pds/blocks"
+      PDS_EMAIL_SMTP_URL: "smtps://resend:re_CHANGE_ME@smtp.resend.com:465/"
+      PDS_EMAIL_FROM_ADDRESS: "noreply@bookhive.social"
+      PDS_RATE_LIMITS_ENABLED: "true"
+    volumes:
+      - pds_data:/pds
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/xrpc/_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   openobserve:
     image: public.ecr.aws/zinclabs/openobserve:latest
     restart: unless-stopped
@@ -22,12 +47,17 @@ services:
     restart: unless-stopped
     build:
       context: .
+    depends_on:
+      pds:
+        condition: service_healthy
     environment:
       NODE_ENV: "production"
       COOKIE_SECRET: "secret_password_do_not_use_this_please"
       DB_PATH: "/data/db.sqlite"
       KV_DB_PATH: "/data/kv.sqlite"
       PUBLIC_URL: "https://bookhive.buzz"
+      PDS_URL: "http://pds:3000"
+      PDS_ADMIN_PASSWORD: "CHANGE_ME_admin_password"
       OPEN_OBSERVE_USER: "user@bookhive.buzz"
       OPEN_OBSERVE_PASSWORD: "password"
       OPEN_OBSERVE_URL: "http://localhost:5080"
@@ -65,6 +95,7 @@ services:
 volumes:
   data:
   telem_data:
+  pds_data:
 # secrets:
 #   db-password:
 #     file: db/password.txt

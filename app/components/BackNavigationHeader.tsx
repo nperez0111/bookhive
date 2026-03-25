@@ -73,17 +73,19 @@ export function BackNavigationHeader({
 
         {title && (
           <View style={styles.titleContainer}>
-            <ThemedText
-              style={[styles.title, { color: "white" }]}
-              type="heading"
-              numberOfLines={1}
-            >
-              {title}
-            </ThemedText>
+            <View style={styles.titlePill}>
+              <ThemedText
+                style={[styles.title, { color: "white" }]}
+                type="heading"
+                numberOfLines={1}
+              >
+                {title}
+              </ThemedText>
+            </View>
           </View>
         )}
 
-        <View style={styles.rightContainer}>{rightElement}</View>
+        {rightElement ? <View style={styles.rightContainer}>{rightElement}</View> : null}
       </View>
     </View>
   );
@@ -98,8 +100,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 4,
-    height: 36,
-    position: "relative",
   },
   backButton: {
     width: 32,
@@ -111,22 +111,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   titleContainer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    zIndex: 5,
   },
-  title: {
+  titlePill: {
+    flexShrink: 1,
     backgroundColor: "rgba(0, 0, 0, 0.4)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    overflow: "hidden",
+  },
+  title: {
     fontSize: 18,
     fontWeight: "600",
-    textAlign: "center",
-    overflow: "hidden",
   },
   rightContainer: {
     minWidth: 40,

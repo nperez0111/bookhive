@@ -12,6 +12,7 @@ import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 import { hydrateUserBook, serializeUserBook } from "./bookProgress";
+import { ensureBookCataloged } from "./ensureBookCataloged";
 
 /**
  * Normalize a date string to ISO format at midnight UTC
@@ -67,10 +68,7 @@ function inferBookStatusAndDates(updates: {
   let autoStatus = updates.status;
 
   // If user sets startedAt and status is "want to read" or unset, infer they're reading
-  if (
-    updates.startedAt &&
-    (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)
-  ) {
+  if (updates.startedAt && (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)) {
     autoStatus = BOOK_STATUS.READING;
   }
 
@@ -89,28 +87,12 @@ function inferBookStatusAndDates(updates: {
   if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
     const now = new Date();
     autoStartedAt = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
     ).toISOString();
   } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
     const now = new Date();
     autoFinishedAt = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
     ).toISOString();
   }
 
@@ -167,6 +149,7 @@ export async function updateUserBook({
         title: c.ref("excluded.title"),
         hiveId: c.ref("excluded.hiveId"),
         status: c.ref("excluded.status"),
+        owned: c.ref("excluded.owned"),
         startedAt: c.ref("excluded.startedAt"),
         finishedAt: c.ref("excluded.finishedAt"),
         review: c.ref("excluded.review"),
@@ -259,8 +242,8 @@ export async function updateBookRecord({
   });
 
   if (autoStartedAt && autoFinishedAt) {
-    const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
-    const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
+    const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
+    const finishedDateStr = autoFinishedAt.split("T")[0]!; // Extract YYYY-MM-DD
 
     if (finishedDateStr < startedDateStr) {
       throw new Error("Finished date must be on or after started date");
@@ -273,6 +256,11 @@ export async function updateBookRecord({
   const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
   const identifiers = toBookIdentifiersOutput(identifiersRow);
 
+  // Ensure the book is cataloged before writing to the user's PDS so we can embed
+  // hiveBookUri. Fast path (expected): already cataloged, one DB read, no network.
+  // Slow path (last resort): enrich + catalog with timeouts if it slipped through.
+  const hiveBookAtUri = await ensureBookCataloged(ctx, hiveId);
+
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -280,8 +268,7 @@ export async function updateBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    cover:
-      originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent)),
+    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent, 800)),
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
     startedAt:
@@ -305,7 +292,10 @@ export async function updateBookRecord({
         : updates.bookProgress !== undefined
           ? updates.bookProgress
           : originalBook?.bookProgress,
+    // Default to owned when first adding a book to library
+    owned: updates.owned ?? originalBook?.owned ?? true,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
+    hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
   };
 
   const book = BookRecord.validateRecord(bookData);
@@ -359,6 +349,7 @@ export async function updateBookRecord({
     indexedAt: new Date().toISOString(),
     hiveId: record.hiveId as HiveId,
     status: record.status || null,
+    owned: record.owned ? 1 : 0,
     startedAt: record.startedAt || null,
     finishedAt: record.finishedAt || null,
     review: record.review || null,
@@ -404,9 +395,19 @@ export async function updateBookRecords({
     .where("hiveId", "in", hiveIds)
     .selectAll()
     .execute();
-  const identifiersByHiveId = new Map(
-    idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]),
-  );
+  const identifiersByHiveId = new Map(idRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]));
+
+  // Ensure all books are cataloged before writing to the user's PDS.
+  // Fast path (expected): already cataloged via backfill/searchBooks — just a DB read.
+  // Runs in parallel across all books; failures are swallowed inside ensureBookCataloged.
+  const hiveBookUriMap = new Map<HiveId, string | undefined>();
+  if (ctx.serviceAccountAgent) {
+    await Promise.allSettled(
+      hiveIds.map(async (hiveId) => {
+        hiveBookUriMap.set(hiveId, await ensureBookCataloged(ctx, hiveId));
+      }),
+    );
+  }
 
   for (const [hiveId, update] of updates.entries()) {
     const [rkey, originalBook] =
@@ -430,8 +431,8 @@ export async function updateBookRecords({
     });
 
     if (autoStartedAt && autoFinishedAt) {
-      const startedDateStr = autoStartedAt.split("T")[0]; // Extract YYYY-MM-DD
-      const finishedDateStr = autoFinishedAt.split("T")[0]; // Extract YYYY-MM-DD
+      const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
+      const finishedDateStr = autoFinishedAt.split("T")[0]!; // Extract YYYY-MM-DD
 
       if (finishedDateStr < startedDateStr) {
         throw new Error("Finished date must be on or after started date");
@@ -442,8 +443,7 @@ export async function updateBookRecords({
     const finalStatus = autoStatus || originalBook?.status;
 
     const idOutput = identifiersByHiveId.get(hiveId);
-    const identifiers =
-      idOutput && Object.keys(idOutput).length > 0 ? idOutput : undefined;
+    const identifiers = idOutput && Object.keys(idOutput).length > 0 ? idOutput : undefined;
 
     const book = BookRecord.validateRecord({
       $type: ids.BuzzBookhiveBook,
@@ -476,7 +476,10 @@ export async function updateBookRecords({
           : update.bookProgress !== undefined
             ? update.bookProgress
             : originalBook?.bookProgress,
+      // Default to owned when first adding a book to library
+      owned: update.owned ?? originalBook?.owned ?? true,
       identifiers,
+      hiveBookUri: hiveBookUriMap.get(hiveId) ?? originalBook?.hiveBookUri,
     });
 
     if (!book.success) {
@@ -497,6 +500,7 @@ export async function updateBookRecords({
         indexedAt: new Date().toISOString(),
         hiveId: record.hiveId as HiveId,
         status: record.status || null,
+        owned: record.owned ? 1 : 0,
         startedAt: record.startedAt || null,
         finishedAt: record.finishedAt || null,
         review: record.review || null,
@@ -518,6 +522,7 @@ export async function updateBookRecords({
         u.record.cover = (await uploadImageBlob(
           u.originalUpdate.coverImage,
           agent,
+          800,
         )) as typeof u.record.cover;
       }
       return u;
@@ -551,7 +556,7 @@ export async function updateBookRecords({
       index: number,
     ) => {
       await acc;
-      const update = updatesToApply[index];
+      const update = updatesToApply[index]!;
       if (
         result.$type === "com.atproto.repo.applyWrites#updateResult" ||
         result.$type === "com.atproto.repo.applyWrites#createResult"
@@ -599,9 +604,7 @@ export async function getUserRepoRecords({
     params: { did },
     as: "bytes",
   });
-  const data: Uint8Array = res.ok
-    ? (res.data as Uint8Array)
-    : new Uint8Array(0);
+  const data: Uint8Array = res.ok ? (res.data as Uint8Array) : new Uint8Array(0);
 
   const books = new Map<string, BookRecord.Record>();
   const buzzes = new Map<string, BuzzRecord.Record>();

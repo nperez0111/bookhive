@@ -12,8 +12,7 @@ export const classifyNetworkError = (error: any): NetworkError => {
   if (error.name === "TypeError" && error.message.includes("fetch")) {
     return {
       type: "network",
-      message:
-        "Unable to connect to the server. Please check your internet connection.",
+      message: "Unable to connect to the server. Please check your internet connection.",
       retryable: true,
     };
   }
@@ -108,8 +107,7 @@ export const classifyNetworkError = (error: any): NetworkError => {
   if (error.message?.includes("ENOTFOUND") || error.message?.includes("DNS")) {
     return {
       type: "network",
-      message:
-        "Unable to reach the server. Please check your internet connection.",
+      message: "Unable to reach the server. Please check your internet connection.",
       retryable: true,
     };
   }

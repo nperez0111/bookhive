@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -168,16 +167,11 @@ export default function LoginScreen() {
                 ]}
               />
 
-              <ThemedText
-                type="title"
-                style={[styles.title, { color: colors.primaryText }]}
-              >
+              <ThemedText type="title" style={[styles.title, { color: colors.primaryText }]}>
                 Welcome to BookHive
               </ThemedText>
 
-              <ThemedText
-                style={[styles.subtitle, { color: colors.secondaryText }]}
-              >
+              <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
                 Connect with your Bluesky account to start buzzing about books
               </ThemedText>
             </Animated.View>
@@ -204,13 +198,8 @@ export default function LoginScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor:
-                        colorScheme === "dark"
-                          ? colors.cardBackground
-                          : "#ffffff",
-                      borderColor: isFocused
-                        ? colors.primary
-                        : colors.cardBorder,
+                      backgroundColor: colorScheme === "dark" ? colors.cardBackground : "#ffffff",
+                      borderColor: isFocused ? colors.primary : colors.cardBorder,
                       color: colors.primaryText,
                     },
                     isFocused && {
@@ -263,31 +252,19 @@ export default function LoginScreen() {
                 </LinearGradient>
               </Pressable>
 
-              <ThemedText
-                style={[styles.footerText, { color: colors.tertiaryText }]}
-              >
+              <ThemedText style={[styles.footerText, { color: colors.tertiaryText }]}>
                 Your reading journey starts here 🐝
               </ThemedText>
 
               <Pressable
-                onPress={() => {
-                  // Open Bluesky website in browser
-                  if (Platform.OS === "web") {
-                    window.open("https://bsky.app/", "_blank");
-                  } else {
-                    // For mobile, use Linking
-                    Linking.openURL("https://bsky.app/");
-                  }
-                }}
+                onPress={() => router.push("/(auth)/register")}
                 style={({ pressed }) => [
                   styles.createAccountLink,
                   pressed && styles.createAccountLinkPressed,
                 ]}
               >
-                <ThemedText
-                  style={[styles.createAccountText, { color: colors.primary }]}
-                >
-                  Don't have an account? Create one on Bluesky
+                <ThemedText style={[styles.createAccountText, { color: colors.primary }]}>
+                  Don't have an account? Create one
                 </ThemedText>
               </Pressable>
             </Animated.View>

@@ -71,9 +71,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
     // Validate that finishedAt is on or after startedAt (allow same day)
     // Compare date strings directly (handle both YYYY-MM-DD and ISO formats)
     if (finishedAt) {
-      const finishedDateStr = finishedAt.includes("T")
-        ? finishedAt.split("T")[0]
-        : finishedAt;
+      const finishedDateStr = finishedAt.includes("T") ? finishedAt.split("T")[0] : finishedAt;
       if (finishedDateStr < dateString) {
         setDateError("Finished date must be on or after started date");
       } else {
@@ -97,9 +95,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
     // Validate that finishedAt is on or after startedAt (allow same day)
     // Compare date strings directly (handle both YYYY-MM-DD and ISO formats)
     if (startedAt) {
-      const startedDateStr = startedAt.includes("T")
-        ? startedAt.split("T")[0]
-        : startedAt;
+      const startedDateStr = startedAt.includes("T") ? startedAt.split("T")[0] : startedAt;
       if (dateString < startedDateStr) {
         setDateError("Finished date must be on or after started date");
       } else {
@@ -210,12 +206,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                 onPress={onReviewSave}
                 disabled={isPending}
               >
-                <ThemedText
-                  style={[
-                    styles.saveReviewButtonText,
-                    { color: colors.background },
-                  ]}
-                >
+                <ThemedText style={[styles.saveReviewButtonText, { color: colors.background }]}>
                   {isPending ? "Saving..." : "Save Review"}
                 </ThemedText>
               </Pressable>
@@ -228,10 +219,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
           <View style={styles.datesContainer}>
             {/* Started Date */}
             <View style={styles.dateField}>
-              <ThemedText
-                style={[styles.dateLabel, { color: colors.primaryText }]}
-                type="body"
-              >
+              <ThemedText style={[styles.dateLabel, { color: colors.primaryText }]} type="body">
                 Started Reading
               </ThemedText>
               <Pressable
@@ -248,30 +236,19 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                   style={[
                     styles.dateButtonText,
                     {
-                      color: startedAt
-                        ? colors.primaryText
-                        : colors.placeholderText,
+                      color: startedAt ? colors.primaryText : colors.placeholderText,
                     },
                   ]}
                 >
-                  {startedAt
-                    ? format(new Date(startedAt), "MMM d, yyyy")
-                    : "Select date"}
+                  {startedAt ? format(new Date(startedAt), "MMM d, yyyy") : "Select date"}
                 </ThemedText>
-                <Ionicons
-                  name="calendar-outline"
-                  size={20}
-                  color={colors.secondaryText}
-                />
+                <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
             </View>
 
             {/* Finished Date */}
             <View style={styles.dateField}>
-              <ThemedText
-                style={[styles.dateLabel, { color: colors.primaryText }]}
-                type="body"
-              >
+              <ThemedText style={[styles.dateLabel, { color: colors.primaryText }]} type="body">
                 Finished Reading
               </ThemedText>
               <Pressable
@@ -288,21 +265,13 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                   style={[
                     styles.dateButtonText,
                     {
-                      color: finishedAt
-                        ? colors.primaryText
-                        : colors.placeholderText,
+                      color: finishedAt ? colors.primaryText : colors.placeholderText,
                     },
                   ]}
                 >
-                  {finishedAt
-                    ? format(new Date(finishedAt), "MMM d, yyyy")
-                    : "Select date"}
+                  {finishedAt ? format(new Date(finishedAt), "MMM d, yyyy") : "Select date"}
                 </ThemedText>
-                <Ionicons
-                  name="calendar-outline"
-                  size={20}
-                  color={colors.secondaryText}
-                />
+                <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
             </View>
 
@@ -344,29 +313,14 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
 
   return (
     <View style={containerStyle}>
-      <View
-        style={[
-          styles.actionCardHeader,
-          type === "rating" && { marginBottom: 12 },
-        ]}
-      >
-        <View
-          style={[
-            styles.iconContainer,
-            { backgroundColor: colors.activeBackground },
-          ]}
-        >
+      <View style={[styles.actionCardHeader, type === "rating" && { marginBottom: 12 }]}>
+        <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
           <Ionicons name={icon} size={20} color={colors.primary} />
         </View>
-        <ThemedText
-          style={[styles.actionCardTitle, { color: colors.primaryText }]}
-          type="heading"
-        >
+        <ThemedText style={[styles.actionCardTitle, { color: colors.primaryText }]} type="heading">
           {title}
         </ThemedText>
-        {rightAccessory ? (
-          <View style={styles.headerAccessory}>{rightAccessory}</View>
-        ) : null}
+        {rightAccessory ? <View style={styles.headerAccessory}>{rightAccessory}</View> : null}
       </View>
       {renderContent()}
     </View>

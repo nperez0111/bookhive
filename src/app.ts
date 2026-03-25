@@ -1,4 +1,3 @@
-import { serveStatic } from "hono/bun";
 import { prometheus } from "@hono/prometheus";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -6,15 +5,10 @@ import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
 import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
-import { timing } from "hono/timing";
+import { endTime, startTime, timing } from "hono/timing";
 
-import { getBundleAssetUrls } from "./bundle-assets";
-import {
-  createContextMiddleware,
-  type AppDeps,
-  type AppEnv,
-  type HonoServer,
-} from "./context";
+import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
+import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
@@ -28,7 +22,7 @@ export type CreateAppOptions = {
   deps: AppDeps;
 };
 
-export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
+export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
   app.use(timing());
@@ -39,7 +33,11 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   app.use("*", wideEventMiddleware());
   app.use("*", errorCaptureMiddleware());
   app.use("*", async (c, next) => {
-    c.set("assetUrls", await getBundleAssetUrls());
+    startTime(c, "vite_manifest");
+    const manifest = await loadViteManifest();
+    const assetUrls = getAssetUrlsFromManifest(manifest);
+    c.set("assetUrls", assetUrls);
+    endTime(c, "vite_manifest");
     await next();
   });
   app.use(secureHeaders());
@@ -48,7 +46,7 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
 
   app.use("*", opentelemetryMiddleware());
 
-  app.get("/healthcheck", (c) => c.text(startTime));
+  app.get("/healthcheck", (c) => c.text(serverStartTime));
 
   const { printMetrics, registerMetrics } = prometheus();
   app.use("*", registerMetrics);
@@ -60,8 +58,6 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   // TODO enable etag for everything but import route
   app.use(etag());
   app.route("/", mainRouter(deps));
-
-  app.use("/robots.txt", serveStatic({ root: "./public" }));
 
   // Sitemap
   app.get("/sitemap.xml", async (c) => {
@@ -94,14 +90,6 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
       "Content-Type": "application/xml",
     });
   });
-
-  app.use(
-    "/public/*",
-    serveStatic({
-      root: "./",
-      rewriteRequestPath: (path) => path.replace(/^\/static/, "./public"),
-    }),
-  );
 
   // 404 handler
   app.notFound((c) => c.json({ message: "Not Found" }, 404));

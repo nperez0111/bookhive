@@ -70,11 +70,7 @@ function identityCacheValue(entry: IdentityCacheEntry): string {
  * Used by resolvers on miss and by getProfile/getProfiles to warm the cache from profile data.
  * Awaits storage so the next request can hit the cache.
  */
-export async function setIdentityCache(
-  kv: Storage,
-  did: string,
-  handle: string,
-): Promise<void> {
+export async function setIdentityCache(kv: Storage, did: string, handle: string): Promise<void> {
   const value = identityCacheValue({ did, handle });
   const now = Date.now();
   const didKey = IDENTITY_CACHE_PREFIX + "did:" + did;
@@ -178,15 +174,13 @@ export function createBidirectionalResolverAtcute(): BidirectionalResolver {
         return did;
       }
     },
-    async resolveDidsToHandles(
-      dids: string[],
-    ): Promise<Record<string, string>> {
+    async resolveDidsToHandles(dids: string[]): Promise<Record<string, string>> {
       const didHandleMap: Record<string, string> = {};
       const resolves = await Promise.all(
         dids.map((did) => this.resolveDidToHandle(did).catch((_) => did)),
       );
       for (let i = 0; i < dids.length; i++) {
-        didHandleMap[dids[i]] = resolves[i];
+        didHandleMap[dids[i]!] = resolves[i]!;
       }
       return didHandleMap;
     },
@@ -226,22 +220,18 @@ export function createCachingBidirectionalResolver(
       const entry = identityFromCache(raw);
       return entry ? entry.handle : did;
     },
-    async resolveDidsToHandles(
-      dids: string[],
-    ): Promise<Record<string, string>> {
+    async resolveDidsToHandles(dids: string[]): Promise<Record<string, string>> {
       const uniqueDids = [...new Set(dids)];
       const CONCURRENCY = 10;
       const handles: string[] = [];
       for (let i = 0; i < uniqueDids.length; i += CONCURRENCY) {
         const batch = uniqueDids.slice(i, i + CONCURRENCY);
-        const batchHandles = await Promise.all(
-          batch.map((did) => this.resolveDidToHandle(did)),
-        );
+        const batchHandles = await Promise.all(batch.map((did) => this.resolveDidToHandle(did)));
         handles.push(...batchHandles);
       }
       const didHandleMap: Record<string, string> = {};
       for (let i = 0; i < uniqueDids.length; i++) {
-        didHandleMap[uniqueDids[i]] = handles[i];
+        didHandleMap[uniqueDids[i]!] = handles[i]!;
       }
       return didHandleMap;
     },

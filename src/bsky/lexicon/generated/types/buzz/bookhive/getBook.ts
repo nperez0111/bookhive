@@ -30,9 +30,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        * Other users' activity on the book
        */
       get activity() {
-        return /*#__PURE__*/ v.optional(
-          /*#__PURE__*/ v.array(BuzzBookhiveDefs.activitySchema),
-        );
+        return /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(BuzzBookhiveDefs.activitySchema));
       },
       /**
        * The hive book's info
@@ -64,6 +62,10 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        */
       finishedAt: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.datetimeString()),
       /**
+       * Whether the user owns this book
+       */
+      owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
+      /**
        * The book's review
        * @maxGraphemes 15000
        */
@@ -84,9 +86,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        * @maximum 10
        */
       stars: /*#__PURE__*/ v.optional(
-        /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-          /*#__PURE__*/ v.integerRange(1, 10),
-        ]),
+        /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 10)]),
       ),
       /**
        * The date the user started reading the book
@@ -96,7 +96,6 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
         /*#__PURE__*/ v.string<
           | "buzz.bookhive.defs#abandoned"
           | "buzz.bookhive.defs#finished"
-          | "buzz.bookhive.defs#owned"
           | "buzz.bookhive.defs#reading"
           | "buzz.bookhive.defs#wantToRead"
           | (string & {})

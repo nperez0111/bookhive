@@ -1,0 +1,23 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.deleteList",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Delete a book list and all its items.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "AT-URI of the list to delete"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -91,9 +91,7 @@ export default function RootLayout() {
                 value={{
                   ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
                   colors: {
-                    ...(colorScheme === "dark"
-                      ? DarkTheme.colors
-                      : DefaultTheme.colors),
+                    ...(colorScheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
                     primary: Colors[colorScheme ?? "light"].primary,
                     background: Colors[colorScheme ?? "light"].background,
                     text: Colors[colorScheme ?? "light"].text,
@@ -124,21 +122,11 @@ export default function RootLayout() {
                 >
                   <NetworkStatusIndicator />
                   <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen
-                      name="(auth)"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="(tabs)"
-                      options={{ headerShown: false }}
-                    />
+                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   </Stack>
                 </View>
-                <StatusBar
-                  style="light"
-                  backgroundColor="#000000"
-                  translucent={false}
-                />
+                <StatusBar style="light" backgroundColor="#000000" translucent={false} />
               </NavigationThemeProvider>
             </ThemeProvider>
           </AuthProvider>

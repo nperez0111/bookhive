@@ -5,71 +5,114 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { FadeInImage } from "@/components/FadeInImage";
 
+export type BookCardVariant = "dense" | "list" | "row";
+
 export type BookCardProps = {
   title: string;
   authors: string;
   imageUri: string;
   onPress?: () => void;
-  orientation?: "vertical" | "horizontal"; // vertical = image left, text right; horizontal = image on top
+  /** Card variant: dense (cover grid), list (cover + children slot), row (horizontal) */
+  variant?: BookCardVariant;
+  /** @deprecated Use variant instead. "horizontal" → "dense", "vertical" → "row" */
+  orientation?: "vertical" | "horizontal";
   style?: ViewStyle;
   /** Optional extra line of metadata to show under authors, e.g., "@handle" */
   meta?: string;
+  /** Children rendered below the cover in "list" variant */
+  children?: React.ReactNode;
+  /** Row variant size */
+  rowSize?: "compact" | "small" | "medium";
 };
+
+function resolveVariant(
+  variant?: BookCardVariant,
+  orientation?: "vertical" | "horizontal",
+): BookCardVariant {
+  if (variant) return variant;
+  if (orientation === "vertical") return "row";
+  return "dense";
+}
+
+const ROW_SIZES = {
+  compact: { cover: { width: 48, height: 72 }, gap: 8 },
+  small: { cover: { width: 60, height: 90 }, gap: 10 },
+  medium: { cover: { width: 72, height: 108 }, gap: 12 },
+} as const;
 
 export function BookCard({
   title,
   authors,
   imageUri,
   onPress,
-  orientation = "horizontal",
+  variant: variantProp,
+  orientation,
   style,
   meta,
+  children,
+  rowSize = "medium",
 }: BookCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const variant = resolveVariant(variantProp, orientation);
 
-  const isHorizontal = orientation === "horizontal";
-  const horizontalDefaultWidth = 180;
-  const horizontalInfoMinHeight = 60; // tighter baseline while keeping 2-line title + 1-line author
+  if (variant === "dense") {
+    return (
+      <Pressable onPress={onPress} style={[styles.denseContainer, style]}>
+        <View style={styles.denseCoverWrap}>
+          <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+        </View>
+        <View style={styles.denseInfo}>
+          <ThemedText
+            style={[styles.title, { color: colors.primaryText }]}
+            numberOfLines={2}
+            type="label"
+          >
+            {title}
+          </ThemedText>
+          <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
+            {authors}
+          </ThemedText>
+        </View>
+      </Pressable>
+    );
+  }
 
+  if (variant === "list") {
+    return (
+      <Pressable onPress={onPress} style={[styles.listContainer, style]}>
+        <View style={styles.denseCoverWrap}>
+          <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+        </View>
+        {children && <View style={styles.listChildren}>{children}</View>}
+      </Pressable>
+    );
+  }
+
+  // variant === "row"
+  const rowConfig = ROW_SIZES[rowSize];
   return (
     <Pressable
       onPress={onPress}
       style={[
-        styles.container,
+        styles.rowContainer,
         {
           backgroundColor: colors.cardBackground,
           borderColor: colors.cardBorder,
           shadowColor: colors.shadowLight,
-          flexDirection: isHorizontal ? "column" : "row",
-          alignItems: isHorizontal ? "center" : "flex-start",
-          width:
-            isHorizontal && !style?.width ? horizontalDefaultWidth : undefined,
-          paddingBottom: isHorizontal ? 10 : 8,
+          gap: rowConfig.gap,
         },
         style,
       ]}
     >
-      <View
-        style={[
-          styles.coverWrap,
-          isHorizontal ? styles.coverTop : styles.coverLeft,
-        ]}
-      >
+      <View style={styles.rowCoverWrap}>
         <FadeInImage
           source={{ uri: imageUri }}
-          style={isHorizontal ? styles.cover : styles.coverSmall}
+          style={[styles.rowCover, rowConfig.cover]}
           resizeMode="cover"
         />
       </View>
-      <View
-        style={[
-          styles.info,
-          isHorizontal
-            ? { paddingTop: 8, minHeight: horizontalInfoMinHeight }
-            : { paddingLeft: 12, flex: 1 },
-        ]}
-      >
+      <View style={styles.rowInfo}>
         <ThemedText
           style={[styles.title, { color: colors.primaryText }]}
           numberOfLines={2}
@@ -77,11 +120,7 @@ export function BookCard({
         >
           {title}
         </ThemedText>
-        <ThemedText
-          style={[styles.author, { color: colors.secondaryText }]}
-          numberOfLines={1}
-          type="caption"
-        >
+        <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
           {authors}
         </ThemedText>
         {meta ? (
@@ -93,48 +132,67 @@ export function BookCard({
             {meta}
           </ThemedText>
         ) : null}
+        {children}
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  // Dense variant (grid card)
+  denseContainer: {
+    flex: 1,
+  },
+  denseCoverWrap: {
+    aspectRatio: 2 / 3,
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  denseCover: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+  },
+  denseInfo: {
+    paddingTop: 8,
+    paddingHorizontal: 2,
+  },
+
+  // List variant (cover + children below)
+  listContainer: {
+    flex: 1,
+  },
+  listChildren: {
+    paddingTop: 8,
+  },
+
+  // Row variant (horizontal card)
+  rowContainer: {
+    flexDirection: "row",
     borderRadius: 16,
     borderWidth: 1,
+    padding: 8,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  coverWrap: {
+  rowCoverWrap: {
+    borderRadius: 8,
     overflow: "hidden",
-    borderRadius: 12,
   },
-  coverTop: {
-    margin: 10,
-    marginBottom: 6,
-    alignSelf: "center",
-  },
-  coverLeft: {
-    margin: 8,
-    marginRight: 0,
-  },
-  cover: {
-    width: 120,
-    height: 180,
+  rowCover: {
     borderRadius: 8,
   },
-  coverSmall: {
-    width: 72,
-    height: 108,
-    borderRadius: 8,
-  },
-  info: {
-    paddingHorizontal: 10,
+  rowInfo: {
+    flex: 1,
+    justifyContent: "center",
   },
   title: {
     marginBottom: 2,
   },
-  author: {},
 });

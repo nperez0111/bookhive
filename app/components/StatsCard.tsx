@@ -29,10 +29,7 @@ export function StatsCard({ items, style, onItemPress }: StatsCardProps) {
       {items.map((it, idx) => (
         <React.Fragment key={idx}>
           <Pressable
-            style={({ pressed }) => [
-              styles.item,
-              onItemPress && pressed && styles.itemPressed,
-            ]}
+            style={({ pressed }) => [styles.item, onItemPress && pressed && styles.itemPressed]}
             onPress={() => onItemPress?.(it.label)}
             disabled={!onItemPress}
           >
@@ -44,9 +41,7 @@ export function StatsCard({ items, style, onItemPress }: StatsCardProps) {
             </ThemedText>
           </Pressable>
           {idx < items.length - 1 ? (
-            <View
-              style={[styles.divider, { backgroundColor: colors.cardBorder }]}
-            />
+            <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
           ) : null}
         </React.Fragment>
       ))}

@@ -19,9 +19,7 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.searchBooks", {
      * @default 25
      */
     limit: /*#__PURE__*/ v.optional(
-      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [
-        /*#__PURE__*/ v.integerRange(1, 100),
-      ]),
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 100)]),
       25,
     ),
     /**
@@ -43,6 +41,10 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.searchBooks", {
        * The next offset to use for pagination (result of limit + offset)
        */
       offset: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+      /**
+       * Map of hiveId to the current user's reading status for that book. Only present when authenticated.
+       */
+      userStatuses: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.unknown()),
     }),
   },
 });

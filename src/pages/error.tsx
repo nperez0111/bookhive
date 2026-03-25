@@ -1,37 +1,49 @@
 import { type FC } from "hono/jsx";
 
+const ErrorIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="48"
+    height="48"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    class="text-destructive mx-auto size-12 shrink-0"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+
 export const Error: FC<{
   message?: string;
   description?: string;
   statusCode?: number;
-}> = ({
-  message = "Error occurred",
-  description = "Sorry, an error occurred.",
-  statusCode,
-}) => (
-  <main class="grid min-h-full place-items-center bg-white px-6 py-24 sm:py-32 lg:px-8">
-    <div class="text-center">
+}> = ({ message = "Error occurred", description = "Sorry, an error occurred.", statusCode }) => (
+  <main class="grid min-h-full place-items-center px-6 py-24 sm:py-32 lg:px-8">
+    <div class="empty flex flex-col items-center justify-center gap-4 text-center">
+      <ErrorIcon />
       {statusCode ? (
-        <p class="text-base font-semibold text-indigo-600">{statusCode}</p>
+        <p class="text-muted-foreground text-base font-semibold">{statusCode}</p>
       ) : undefined}
       {message ? (
-        <h1 class="mt-4 text-5xl font-semibold tracking-tight text-balance text-gray-900 sm:text-7xl">
+        <h1 class="text-foreground text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
           {message}
         </h1>
       ) : undefined}
       {description ? (
-        <p class="mt-6 text-lg font-medium text-pretty text-gray-500 sm:text-xl/8">
-          {description}
-        </p>
+        <p class="text-muted-foreground max-w-md text-pretty text-sm sm:text-base">{description}</p>
       ) : undefined}
-      <div class="mt-10 flex items-center justify-center gap-x-6">
-        <a
-          href="/"
-          class="rounded-md bg-yellow-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-yellow-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
-        >
+      <div class="mt-2 flex flex-wrap items-center justify-center gap-3">
+        <a href="/" class="btn btn-primary">
           Go back home
         </a>
-        <a href="/support" class="text-sm font-semibold text-gray-900">
+        <a href="/support" class="btn btn-ghost text-sm">
           Contact support <span aria-hidden="true">&rarr;</span>
         </a>
       </div>

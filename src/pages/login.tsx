@@ -4,83 +4,154 @@ import { Script } from "./utils/script";
 export const Login: FC<{
   error?: string;
   handle?: string;
-}> = ({ error, handle }) => (
-  <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-    <div class="sm:mx-auto sm:w-full sm:max-w-sm">
-      <div class="flex justify-center">
-        <img
-          src="/public/full_logo.jpg"
-          alt="BookHive Logo"
-          class="h-64 rounded-md"
+  signupUrl?: string;
+}> = ({ error, handle, signupUrl = "/pds/signup" }) => (
+  <div class="animate-fade relative flex min-h-full flex-col items-center justify-center px-6 py-12 duration-300 lg:px-8">
+    <a
+      href="/"
+      data-tooltip="Back to home"
+      data-tooltip-place="bottom-right"
+      class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex items-center justify-center rounded-md p-2 lg:top-6 lg:left-6"
+    >
+      <span class="sr-only">Back to home</span>
+      <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
         />
+      </svg>
+    </a>
+    <button
+      type="button"
+      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 rounded-md p-2 lg:top-6 lg:right-6"
+      aria-label="Toggle dark mode"
+      id="theme-toggle"
+    >
+      <svg
+        class="size-5 dark:hidden"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M21.752 15.752A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.248z"
+        />
+      </svg>
+      <svg
+        class="hidden size-5 dark:block"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
+        />
+      </svg>
+    </button>
+    <Script
+      script={(document) => {
+        const btn = document.getElementById("theme-toggle");
+        const updateThemeColor = () => {
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) {
+            meta.setAttribute(
+              "content",
+              document.documentElement.classList.contains("dark") ? "#1c1917" : "#d97706",
+            );
+          }
+        };
+        updateThemeColor();
+        btn?.addEventListener("click", () => {
+          const html = document.documentElement;
+          const isDark = html.classList.toggle("dark");
+          localStorage.setItem("theme", isDark ? "dark" : "light");
+          updateThemeColor();
+        });
+      }}
+    />
+    <div class="relative w-full max-w-sm">
+      <img
+        src="/full_logo.jpg"
+        alt="BookHive"
+        class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
+      />
+      <div class="card w-full overflow-visible pt-52">
+        <header class="flex flex-col items-center gap-4">
+          <h2 class="text-foreground text-center text-xl font-semibold tracking-tight">
+            Buzz in to your account
+          </h2>
+        </header>
+
+        <section>
+          <form action="/login" method="post" class="form flex flex-col gap-6" id="login-form">
+            <div class="field">
+              <label for="handle" class="label">
+                Bluesky Handle
+              </label>
+              {error ? (
+                <p class="text-destructive text-sm">
+                  Error: <i>{error}</i>
+                </p>
+              ) : undefined}
+              <actor-typeahead>
+                <input
+                  autofocus
+                  id="handle"
+                  type="text"
+                  name="handle"
+                  value={handle}
+                  placeholder="Enter your handle (eg buzzer.bsky.social)"
+                  required
+                  class="input"
+                />
+              </actor-typeahead>
+            </div>
+
+            <button
+              type="submit"
+              class="btn w-full bg-amber-600 text-white shadow-xs hover:bg-amber-500 focus-visible:ring-amber-600"
+            >
+              Buzz in
+            </button>
+          </form>
+        </section>
+
+        <footer class="justify-center border-t pt-6">
+          <p class="text-muted-foreground text-center text-sm">
+            Don't have an account?{" "}
+            <a href={signupUrl} class="text-primary font-semibold hover:underline">
+              {signupUrl === "/pds/signup"
+                ? "Create a BookHive account"
+                : "Create a Bluesky account"}
+            </a>
+            {signupUrl === "/pds/signup" && (
+              <>
+                <br />
+                <span class="text-xs">
+                  or sign in with an existing{" "}
+                  <a href="https://bsky.app" class="text-primary hover:underline">
+                    Bluesky
+                  </a>{" "}
+                  account
+                </span>
+              </>
+            )}
+          </p>
+        </footer>
       </div>
-
-      <h2 class="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900 dark:text-gray-50">
-        Buzz in to your account
-      </h2>
-    </div>
-
-    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-      <form action="/login" method="post" class="space-y-6" id="login-form">
-        <div>
-          <label
-            for="handle"
-            class="block text-sm/6 font-medium text-gray-900 dark:text-gray-50"
-          >
-            Bluesky Handle
-          </label>
-          {error ? (
-            <p>
-              Error: <i>${error}</i>
-            </p>
-          ) : undefined}
-          <div class="mt-2">
-            <actor-typeahead>
-              <input
-                autofocus
-                id="handle"
-                type="text"
-                name="handle"
-                value={handle}
-                placeholder="Enter your handle (eg buzzer.bsky.social)"
-                required
-                class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-yellow-800 focus:ring-inset sm:text-sm/6 dark:bg-zinc-800 dark:text-gray-50 dark:ring-gray-700"
-              />
-            </actor-typeahead>
-          </div>
-        </div>
-
-        <div>
-          <button
-            type="submit"
-            class="flex w-full cursor-pointer justify-center rounded-md bg-yellow-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-yellow-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600"
-          >
-            Buzz in
-          </button>
-        </div>
-      </form>
-
-      <p class="mt-10 text-center text-sm/6 text-gray-500">
-        Don't have an account?
-        <br />
-        <a
-          href="https://bsky.app"
-          class="font-semibold text-indigo-600 hover:text-indigo-500"
-        >
-          Sign up for Bluesky
-        </a>{" "}
-        to create one now!
-      </p>
     </div>
     <Script
       script={(document) => {
         const STORAGE_KEY = "bookhive_last_handle";
-        const handleInput = document.getElementById(
-          "handle",
-        ) as HTMLInputElement;
-        const loginForm = document.getElementById(
-          "login-form",
-        ) as HTMLFormElement;
+        const handleInput = document.getElementById("handle") as HTMLInputElement;
+        const loginForm = document.getElementById("login-form") as HTMLFormElement;
 
         // Load stored handle on page load
         if (handleInput && !handleInput.value) {

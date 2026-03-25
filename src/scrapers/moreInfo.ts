@@ -72,9 +72,7 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
     const seriesData = seriesRef ? apolloState[seriesRef] : null;
 
     // Parse genres
-    const genres =
-      bookData.bookGenres?.map((bg: any) => bg.genre?.name).filter(Boolean) ||
-      [];
+    const genres = bookData.bookGenres?.map((bg: any) => bg.genre?.name).filter(Boolean) || [];
 
     // Parse secondary contributors (only authors)
     const secondaryContributors =
@@ -135,7 +133,9 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
 
 async function getBookDetailedInfo(
   sourceUrl: string,
+  addWideEventContext?: (context: Record<string, unknown>) => void,
 ): Promise<ParsedGoodreadsData | null> {
+  const addCtx = addWideEventContext ?? (() => {});
   try {
     const response = await fetch(sourceUrl, {
       headers: {
@@ -144,15 +144,31 @@ async function getBookDetailedInfo(
         "Accept-Language": "en-US,en;q=0.9",
       },
     });
+    addCtx({ scrape_status: response.status, scrape_url: sourceUrl });
     if (!response.ok) {
+      addCtx({ scrape_failure: "non_ok_status" });
       return null;
     }
     const data = await response.text();
-    const nextData = data.slice(data.indexOf(startString) + startString.length);
-    const json = JSON.parse(nextData.slice(0, nextData.indexOf("</script>")));
+    const startIdx = data.indexOf(startString);
+    if (startIdx === -1) {
+      addCtx({ scrape_failure: "next_data_not_found" });
+      return null;
+    }
+    const nextData = data.slice(startIdx + startString.length);
+    const endIdx = nextData.indexOf("</script>");
+    if (endIdx === -1) {
+      addCtx({ scrape_failure: "next_data_end_not_found" });
+      return null;
+    }
+    const json = JSON.parse(nextData.slice(0, endIdx));
     return parseGoodreadsData(json);
   } catch (error) {
-    console.error("Error fetching or parsing Goodreads data:", error);
+    addCtx({
+      scrape_failure: "exception",
+      scrape_error: error instanceof Error ? error.message : String(error),
+      scrape_url: sourceUrl,
+    });
     return null;
   }
 }

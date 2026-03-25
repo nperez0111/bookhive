@@ -2,22 +2,17 @@ import { useEffect, useMemo, useState, type FC } from "hono/jsx/dom";
 
 import { BOOK_STATUS_MAP } from "../../../constants";
 import { StarRating } from "../StarRating";
-import type {
-  ImportEvent,
-  ImportRow,
-  BookUploadEvent,
-  BookFailedEvent,
-} from "./types";
+import type { ImportEvent, ImportRow, BookUploadEvent, BookFailedEvent } from "./types";
 
 const STORAGE_KEY = "bookhive_import_results";
 
 const StatusBadge: FC<{ success: boolean }> = ({ success }) => (
   <span
     className={
-      "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium " +
+      "badge " +
       (success
-        ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300"
-        : "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300")
+        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300")
     }
   >
     {success ? "Success" : "Failed"}
@@ -36,10 +31,7 @@ const FailedRow: FC<{
     review?: string;
     reason?: string;
   };
-  onResolved: (
-    success: Extract<ImportRow, { success: true }>,
-    failedKey: string,
-  ) => void;
+  onResolved: (success: Extract<ImportRow, { success: true }>, failedKey: string) => void;
 }> = ({ row, onResolved }) => {
   const getReasonText = (reason?: string): string | null => {
     if (!reason || reason === "no_match") return null;
@@ -61,9 +53,7 @@ const FailedRow: FC<{
   const search = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/xrpc/buzz.bookhive.searchBooks?q=${query}&limit=20`,
-      );
+      const res = await fetch(`/xrpc/buzz.bookhive.searchBooks?q=${query}&limit=20`);
       const data = await res.json();
       const results = Array.isArray(data) ? data : (data?.books ?? []);
       if (!results.length) {
@@ -101,9 +91,7 @@ const FailedRow: FC<{
         }),
       });
       if (!res.ok) return;
-      const bookRes = await fetch(
-        `/xrpc/buzz.bookhive.searchBooks?id=${hiveId}&limit=1`,
-      );
+      const bookRes = await fetch(`/xrpc/buzz.bookhive.searchBooks?id=${hiveId}&limit=1`);
       const data = await bookRes.json();
       const arr = Array.isArray(data) ? data : (data?.books ?? []);
       const b = arr[0] ?? null;
@@ -143,73 +131,53 @@ const FailedRow: FC<{
             <div className="flex items-center gap-3">
               <StatusBadge success={false} />
               <div className="text-sm">
-                <div className="font-medium text-gray-900 dark:text-white">
-                  {row.title}
-                </div>
-                <div className="text-gray-600 dark:text-gray-300">
-                  {row.author}
-                </div>
-                {reasonText && (
-                  <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {reasonText}
-                  </div>
-                )}
+                <div className="font-medium text-foreground">{row.title}</div>
+                <div className="text-muted-foreground">{row.author}</div>
+                {reasonText && <div className="mt-1 text-xs text-destructive">{reasonText}</div>}
               </div>
             </div>
             <button
               type="button"
-              className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium whitespace-nowrap text-gray-800 hover:bg-gray-200 dark:bg-zinc-700 dark:text-gray-200 dark:hover:bg-zinc-600"
+              className="btn btn-ghost btn-sm whitespace-nowrap"
               onClick={() => {
                 setOpen((v) => !v);
-                if (!isOpen) search();
+                if (!isOpen) void search();
               }}
             >
               Match book
             </button>
           </div>
           {isOpen && (
-            <div className="rounded-md border border-gray-200 p-2 dark:border-gray-700">
+            <div className="rounded-md border border-border bg-card p-2">
               {loading ? (
-                <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-300">
-                  Searching…
-                </div>
+                <div className="px-2 py-1 text-sm text-muted-foreground">Searching…</div>
               ) : results.length === 0 ? (
-                <div className="px-2 py-1 text-sm text-gray-600 dark:text-gray-300">
-                  No results
-                </div>
+                <div className="px-2 py-1 text-sm text-muted-foreground">No results</div>
               ) : (
                 <ul className="space-y-2">
                   {results.map((b) => (
                     <li
                       key={b.id}
-                      className="flex items-center justify-between gap-3 rounded-md p-2 hover:bg-yellow-50 dark:hover:bg-zinc-800"
+                      className="flex items-center justify-between gap-3 rounded-md p-2 hover:bg-muted/50"
                     >
                       <div className="flex items-center gap-3">
                         {b.thumbnail && (
-                          <img
-                            src={b.thumbnail}
-                            className="h-10 w-7 rounded object-cover"
-                          />
+                          <img src={b.thumbnail} className="h-10 w-7 rounded object-cover" alt="" />
                         )}
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            {b.title}
-                          </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <div className="text-sm font-medium text-foreground">{b.title}</div>
+                          <div className="text-xs text-muted-foreground">
                             {(b.authors || "").split("\t").join(", ")}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <a
-                          href={`/books/${b.id}`}
-                          className="cursor-pointer text-sm text-yellow-700 hover:underline dark:text-yellow-400"
-                        >
+                        <a href={`/books/${b.id}`} className="text-sm text-primary hover:underline">
                           View
                         </a>
                         <button
                           type="button"
-                          className="cursor-pointer rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-medium whitespace-nowrap text-white hover:bg-yellow-700"
+                          className="btn btn-primary btn-sm whitespace-nowrap"
                           onClick={() => resolveImport(b.id)}
                         >
                           Use this
@@ -243,7 +211,7 @@ const StatusDropdown: FC<{
   );
   const selectedLabel = status
     ? BOOK_STATUS_MAP[status as keyof typeof BOOK_STATUS_MAP] || status
-    : "Add to shelf";
+    : "Reading status";
   return (
     <div className="relative w-full min-w-0">
       <button
@@ -251,20 +219,20 @@ const StatusDropdown: FC<{
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((v) => !v)}
-        className="peer w-full cursor-pointer rounded-md bg-white px-3 py-2 text-left text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-300 ring-inset hover:bg-zinc-50 focus:ring-2 focus:ring-yellow-600 focus:outline-none dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-900"
+        className="input peer w-full cursor-pointer text-left text-sm font-medium text-foreground"
       >
         <span className="flex items-center justify-between capitalize">
           <span className="truncate">{selectedLabel}</span>
           <svg
-            className="h-5 w-5 flex-shrink-0 text-gray-400"
+            className="h-5 w-5 shrink-0 text-muted-foreground"
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden="true"
           >
             <path
-              fill-rule="evenodd"
+              fillRule="evenodd"
               d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-              clip-rule="evenodd"
+              clipRule="evenodd"
             />
           </svg>
         </span>
@@ -272,7 +240,7 @@ const StatusDropdown: FC<{
       {isOpen && (
         <div
           role="listbox"
-          className="absolute z-10 mt-1 w-full rounded-md bg-yellow-50 shadow-lg ring-1 ring-black/5 dark:bg-zinc-800"
+          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-popover shadow-lg"
         >
           <div className="p-1">
             {items.map((item) => (
@@ -287,21 +255,14 @@ const StatusDropdown: FC<{
                 }}
                 className={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
                   status === item.value
-                    ? "bg-yellow-900 text-white"
-                    : "text-gray-900 hover:bg-zinc-50 dark:text-white dark:hover:bg-zinc-700"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-muted"
                 }`}
               >
                 <span className="block truncate">{item.label}</span>
                 {status === item.value && (
-                  <span
-                    className="absolute inset-y-0 right-2 flex items-center"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
+                  <span className="absolute inset-y-0 right-2 flex items-center" aria-hidden="true">
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path
                         fill-rule="evenodd"
                         d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -329,7 +290,7 @@ const SuccessRowView: FC<{
     <tr>
       <td className="px-4 py-2">
         <div className="flex items-center space-x-3">
-          <div className="h-12 w-8 flex-shrink-0 overflow-hidden rounded-md">
+          <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
             {coverImage ? (
               <img
                 src={coverImage}
@@ -337,7 +298,7 @@ const SuccessRowView: FC<{
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-zinc-600 dark:to-zinc-700" />
+              <div className="flex h-full w-full items-center justify-center bg-muted" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -345,7 +306,7 @@ const SuccessRowView: FC<{
               <StatusBadge success={true} />
               <a
                 href={`/books/${hiveId}`}
-                className="text-sm font-medium text-gray-900 hover:underline dark:text-white"
+                className="text-sm font-medium text-foreground hover:underline"
               >
                 {title}
               </a>
@@ -353,9 +314,7 @@ const SuccessRowView: FC<{
           </div>
         </div>
       </td>
-      <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-        {authors.split("\t").join(", ")}
-      </td>
+      <td className="px-4 py-2 text-sm text-muted-foreground">{authors.split("\t").join(", ")}</td>
       <td className="px-4 py-2">
         <div className="flex items-center space-x-1">
           <StarRating
@@ -398,7 +357,7 @@ const SuccessRowView: FC<{
           </div>
           <button
             type="button"
-            className="inline-flex items-center rounded-md p-2 text-red-600 hover:bg-red-50 hover:text-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+            className="btn btn-ghost inline-flex items-center p-2 text-destructive hover:bg-destructive/10"
             title="Delete book from library"
             onClick={async () => {
               onDelete(hiveId);
@@ -488,9 +447,7 @@ export const ImportTableApp: FC = () => {
           });
           if (ev.book) {
             setRows((prev) => {
-              const next = prev.some(
-                (r) => r.success && r.hiveId === ev.book.hiveId,
-              )
+              const next = prev.some((r) => r.success && r.hiveId === ev.book.hiveId)
                 ? prev
                 : prev.concat([{ success: true, ...ev.book }]);
               return next;
@@ -503,13 +460,9 @@ export const ImportTableApp: FC = () => {
           setRows((prev) => {
             const exists = prev.some(
               (r) =>
-                !r.success &&
-                r.title === ev.failedBook.title &&
-                r.author === ev.failedBook.author,
+                !r.success && r.title === ev.failedBook.title && r.author === ev.failedBook.author,
             );
-            return exists
-              ? prev
-              : prev.concat([{ success: false, ...ev.failedBook }]);
+            return exists ? prev : prev.concat([{ success: false, ...ev.failedBook }]);
           });
           break;
         }
@@ -526,15 +479,12 @@ export const ImportTableApp: FC = () => {
       }
     };
     window.addEventListener("bookhive:import-event" as any, handler);
-    return () =>
-      window.removeEventListener("bookhive:import-event" as any, handler);
+    return () => window.removeEventListener("bookhive:import-event" as any, handler);
   }, []);
 
   const updateRow = (hiveId: string, next: Partial<ImportRow>) => {
     setRows((prev) =>
-      prev.map((r) =>
-        r.success && r.hiveId === hiveId ? ({ ...r, ...next } as ImportRow) : r,
-      ),
+      prev.map((r) => (r.success && r.hiveId === hiveId ? ({ ...r, ...next } as ImportRow) : r)),
     );
   };
   const deleteRow = (hiveId: string) => {
@@ -556,65 +506,49 @@ export const ImportTableApp: FC = () => {
     () =>
       rows
         .filter((r) => !r.success)
-        .sort((a, b) =>
-          a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-        ),
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" })),
     [rows],
   );
 
-  const alreadyCount = (successRows as any[]).filter(
-    (r) => r.alreadyExists,
-  ).length;
+  const alreadyCount = (successRows as any[]).filter((r) => r.alreadyExists).length;
 
   return (
-    <div className="mt-8">
+    <div className="mt-8 space-y-6">
       {/* Summary */}
       {(rows.length > 0 || progress) && (
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center dark:border-gray-700 dark:bg-zinc-800">
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              Imported
-            </div>
-            <div className="text-2xl font-semibold text-gray-900 dark:text-white">
-              {successRows.length}
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="card p-4 text-center">
+            <div className="text-sm text-muted-foreground">Imported</div>
+            <div className="text-2xl font-semibold text-foreground">{successRows.length}</div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center dark:border-gray-700 dark:bg-zinc-800">
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              Failed
-            </div>
-            <div className="text-2xl font-semibold text-gray-900 dark:text-white">
-              {failedRows.length}
-            </div>
+          <div className="card p-4 text-center">
+            <div className="text-sm text-muted-foreground">Failed</div>
+            <div className="text-2xl font-semibold text-foreground">{failedRows.length}</div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-center dark:border-gray-700 dark:bg-zinc-800">
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              Already in library
-            </div>
-            <div className="text-2xl font-semibold text-gray-900 dark:text-white">
-              {alreadyCount}
-            </div>
+          <div className="card p-4 text-center">
+            <div className="text-sm text-muted-foreground">Already in library</div>
+            <div className="text-2xl font-semibold text-foreground">{alreadyCount}</div>
           </div>
         </div>
       )}
 
       {/* Progress */}
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Imported books</h3>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h3 className="text-lg font-semibold text-foreground">Imported books</h3>
         <div className="flex items-center gap-2">
           {progress && (
             <div className="w-56">
               <div className="flex justify-between text-sm">
-                <span className="font-medium">
+                <span className="font-medium text-foreground">
                   {progress.message || "Importing..."}
                 </span>
-                <span className="text-gray-600 dark:text-gray-400">
-                  {progress.total - progress.current}/{progress.total}
+                <span className="text-muted-foreground">
+                  {progress.current}/{progress.total}
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-zinc-700">
+              <div className="progress mt-1">
                 <div
-                  className="h-2 rounded-full bg-yellow-500 transition-all duration-300"
+                  className="progress-bar transition-all duration-300"
                   style={{
                     width: `${progress.total ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0}%`,
                   }}
@@ -622,118 +556,100 @@ export const ImportTableApp: FC = () => {
               </div>
             </div>
           )}
-          <button
-            type="button"
-            className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-200 dark:bg-zinc-700 dark:text-gray-200 dark:hover:bg-zinc-600"
-            onClick={() => setRows([])}
-          >
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows([])}>
             Clear list
           </button>
         </div>
       </div>
 
-      {/* Failed table - moved above for visibility */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800">
-        <div className="border-b border-gray-200 px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:border-gray-700 dark:text-white">
-          Failed imports
-        </div>
-        <table className="w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="sticky top-0 z-10 bg-yellow-50 dark:bg-zinc-900">
-            <tr>
-              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Book
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-zinc-800">
-            {failedRows.length === 0 && (
+      {/* Failed table */}
+      <div className="card overflow-hidden">
+        <div className="card-header border-b border-border">Failed imports</div>
+        <div className="overflow-x-auto">
+          <table className="table w-full">
+            <thead className="sticky top-0 z-10 bg-muted/50">
               <tr>
-                <td className="px-4 py-6 text-center text-gray-600 dark:text-gray-300">
-                  No failed books
-                </td>
+                <th className="text-left text-sm font-semibold text-foreground">Book</th>
               </tr>
-            )}
-            {failedRows.map((row) => (
-              <FailedRow
-                key={`${row.title}-${row.author}`}
-                row={row}
-                onResolved={(success, failedKey) => {
-                  const normalize = (s: string) =>
-                    s
-                      ?.normalize("NFKC")
-                      .toLowerCase()
-                      .replace(/\s+/g, " ")
-                      .trim();
-                  const [fkTitle, fkAuthor] = failedKey.split("::");
-                  const failedKeyNorm = `${normalize(fkTitle)}::${normalize(fkAuthor)}`;
+            </thead>
+            <tbody>
+              {failedRows.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground">No failed books</td>
+                </tr>
+              )}
+              {failedRows.map((row) => (
+                <FailedRow
+                  key={`${row.title}-${row.author}`}
+                  row={row}
+                  onResolved={(success, failedKey) => {
+                    const normalize = (s: string) =>
+                      s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+                    const [fkTitle, fkAuthor] = failedKey.split("::");
+                    const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
 
-                  setRows((prev) => {
-                    const next = prev
-                      .filter((r) => {
-                        const isFailed = !(r as any).success;
-                        if (!isFailed) return true;
-                        const rt = normalize((r as any).title || "");
-                        const ra = normalize((r as any).author || "");
-                        return `${rt}::${ra}` !== failedKeyNorm;
-                      })
-                      .concat([success as any]);
-                    try {
-                      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-                    } catch {}
-                    return next;
-                  });
-                }}
-              />
-            ))}
-          </tbody>
-        </table>
+                    setRows((prev) => {
+                      const next = prev
+                        .filter((r) => {
+                          const isFailed = !(r as any).success;
+                          if (!isFailed) return true;
+                          const rt = normalize((r as any).title || "");
+                          const ra = normalize((r as any).author || "");
+                          return `${rt}::${ra}` !== failedKeyNorm;
+                        })
+                        .concat([success as any]);
+                      try {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+                      } catch {}
+                      return next;
+                    });
+                  }}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Successful table */}
-      <div className="mt-8 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-zinc-800">
-        <table className="w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="sticky top-0 z-10 bg-yellow-50 dark:bg-zinc-900">
-            <tr>
-              <th
-                className="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
-                style="width: 60%"
-              >
-                Book
-              </th>
-              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Rating
-              </th>
-              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Status
-              </th>
-              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900 dark:text-white">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-zinc-800">
-            {successRows.length === 0 && (
+      <div className="card overflow-hidden">
+        <div className="card-header border-b border-border">Successfully imported</div>
+        <div className="overflow-x-auto">
+          <table className="table w-full">
+            <thead className="sticky top-0 z-10 bg-muted/50">
               <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-6 text-center text-gray-600 dark:text-gray-300"
+                <th
+                  className="text-left text-sm font-semibold text-foreground"
+                  style={{ width: "60%" }}
                 >
-                  Imported books will appear here as they are processed.
-                </td>
+                  Book
+                </th>
+                <th className="text-left text-sm font-semibold text-foreground">Rating</th>
+                <th className="text-left text-sm font-semibold text-foreground">Status</th>
+                <th className="text-left text-sm font-semibold text-foreground">Actions</th>
               </tr>
-            )}
-            {successRows.map((row) => (
-              <SuccessRowView
-                key={(row as any).hiveId}
-                row={row}
-                onUpdate={(next: Partial<ImportRow>) => {
-                  if (row.success) updateRow(row.hiveId, next);
-                }}
-                onDelete={(hiveId: string) => deleteRow(hiveId)}
-              />
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {successRows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                    Imported books will appear here as they are processed.
+                  </td>
+                </tr>
+              )}
+              {successRows.map((row) => (
+                <SuccessRowView
+                  key={(row as any).hiveId}
+                  row={row}
+                  onUpdate={(next: Partial<ImportRow>) => {
+                    if (row.success) updateRow(row.hiveId, next);
+                  }}
+                  onDelete={(hiveId: string) => deleteRow(hiveId)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

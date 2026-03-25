@@ -60,11 +60,25 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="house.fill"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="house.fill" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="feed"
+        options={{
+          title: "Feed",
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon name="person.2.fill" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: "Explore",
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon name="safari.fill" color={color} focused={focused} />
           ),
         }}
       />
@@ -73,20 +87,16 @@ export default function TabLayout() {
         options={{
           title: "Search",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon
-              name="magnifyingglass"
-              color={color}
-              focused={focused}
-            />
+            <AnimatedTabIcon name="magnifyingglass" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
+          title: "Profile",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon name="gear" color={color} focused={focused} />
+            <AnimatedTabIcon name="person.circle.fill" color={color} focused={focused} />
           ),
         }}
       />
@@ -104,6 +114,36 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="profile/[did]"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="explore/genres/[genre]"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="explore/authors/[author]"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile/[did]/stats"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="lists/index"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="lists/[uri]"
         options={{
           href: null,
         }}

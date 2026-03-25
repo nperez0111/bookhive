@@ -1,5 +1,7 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
 
+export type BlobRef = { ref: { $link: string }; mimeType: string };
+
 export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
 
 export type * as GetBook from "./bsky/lexicon/generated/types/buzz/bookhive/getBook";
@@ -60,6 +62,10 @@ export type UserBook = {
    * Status of the book
    */
   status: string | null;
+  /**
+   * Whether the user owns the book (0 or 1)
+   */
+  owned: number;
   /**
    * Started reading at
    */
@@ -159,7 +165,6 @@ export type HiveBook = {
   createdAt: string;
   updatedAt: string;
   rawTitle: string | null;
-  genres: string | null;
   series: string | null;
   meta: string | null;
   enrichedAt: string | null;
@@ -167,6 +172,15 @@ export type HiveBook = {
    * External identifiers stored as JSON string
    */
   identifiers: string | null;
+  /**
+   * AT-URI of the corresponding catalogBook record in @bookhive.buzz
+   */
+  hiveBookAtUri: string | null;
+  /**
+   * The book's updatedAt value at the time it was last written to the ATProto catalog.
+   * Used to determine if the catalog record needs to be updated.
+   */
+  hiveBookCatalogUpdatedAt: string | null;
 };
 
 /** Row shape for hive_book_genre (denormalized for fast /genres listing). */
@@ -182,6 +196,39 @@ export type BookIdentifiersRow = {
   isbn13: string | null;
   goodreadsId: string | null;
   updatedAt: string;
+};
+
+export type BookListRow = {
+  uri: string;
+  cid: string;
+  userDid: string;
+  name: string;
+  description: string | null;
+  ordered: number;
+  tags: string | null;
+  createdAt: string;
+  indexedAt: string;
+};
+
+export type BookListItemRow = {
+  uri: string;
+  cid: string;
+  userDid: string;
+  listUri: string;
+  /** Null when the item came from another app and we couldn't resolve to a local book. */
+  hiveId: HiveId | null;
+  description: string | null;
+  position: number | null;
+  addedAt: string;
+  indexedAt: string;
+  /** Embedded title from the record (fallback when hiveId is null). */
+  embeddedTitle: string | null;
+  /** Embedded author/mainCredit from the record (fallback when hiveId is null). */
+  embeddedAuthor: string | null;
+  /** Embedded cover/posterUrl from the record (fallback when hiveId is null). */
+  embeddedCoverUrl: string | null;
+  /** JSON-serialized identifiers from the record, for later book matching. */
+  identifiers: string | null;
 };
 
 export type UserFollow = {
@@ -215,10 +262,7 @@ type Simplify<T> = {
   [K in keyof T]: T[K];
 };
 
-type HiveFields = Pick<
-  HiveBook,
-  "cover" | "thumbnail" | "description" | "rating"
->;
+type HiveFields = Pick<HiveBook, "cover" | "thumbnail" | "description" | "rating" | "ratingsCount">;
 
 /**
  * This is the result of a user's actual PDS data which may or may not include Hive data

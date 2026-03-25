@@ -18,6 +18,7 @@ This skill provides guidelines for implementing effective logging in application
 ## When to Apply
 
 Apply these guidelines when:
+
 - Writing or reviewing logging code
 - Adding console.log, logger.info, or similar
 - Designing logging strategy for new services
@@ -31,25 +32,25 @@ Emit **one context-rich event per request per service**. Instead of scattering l
 
 ```typescript
 const wideEvent: Record<string, unknown> = {
-  method: 'POST',
-  path: '/checkout',
-  requestId: c.get('requestId'),
+  method: "POST",
+  path: "/checkout",
+  requestId: c.get("requestId"),
   timestamp: new Date().toISOString(),
 };
 
 try {
-  const user = await getUser(c.get('userId'));
+  const user = await getUser(c.get("userId"));
   wideEvent.user = { id: user.id, subscription: user.subscription };
 
   const cart = await getCart(user.id);
   wideEvent.cart = { total_cents: cart.total, item_count: cart.items.length };
 
   wideEvent.status_code = 200;
-  wideEvent.outcome = 'success';
+  wideEvent.outcome = "success";
   return c.json({ success: true });
 } catch (error) {
   wideEvent.status_code = 500;
-  wideEvent.outcome = 'error';
+  wideEvent.outcome = "error";
   wideEvent.error = { message: error.message, type: error.name };
   throw error;
 } finally {
@@ -97,18 +98,21 @@ Use middleware to handle wide event infrastructure (timing, status, environment,
 ## Guidelines
 
 ### Wide Events (`rules/wide-events.md`)
+
 - Emit one wide event per service hop
 - Include all relevant context
 - Connect events with request ID
 - Emit at request completion in finally block
 
 ### Context (`rules/context.md`)
+
 - Support high cardinality fields (user_id, request_id)
 - Include high dimensionality (many fields)
 - Always include business context
 - Always include environment characteristics (commit_hash, version, region)
 
 ### Structure (`rules/structure.md`)
+
 - Use a single logger throughout the codebase
 - Use middleware for consistent wide events
 - Use JSON format
@@ -117,11 +121,13 @@ Use middleware to handle wide event infrastructure (timing, status, environment,
 - Never log unstructured strings
 
 ### Common Pitfalls (`rules/pitfalls.md`)
+
 - Avoid multiple log lines per request
 - Design for unknown unknowns
 - Always propagate request IDs across services
 
 References:
+
 - [Logging Sucks](https://loggingsucks.com)
 - [Observability Wide Events 101](https://boristane.com/blog/observability-wide-events-101/)
 - [Stripe - Canonical Log Lines](https://stripe.com/blog/canonical-log-lines)

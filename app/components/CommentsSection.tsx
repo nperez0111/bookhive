@@ -6,14 +6,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import React, { useRef, useState } from "react";
-import {
-  Alert,
-  Image,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { ThemedButton } from "./ThemedButton";
 import { ThemedText } from "./ThemedText";
 
@@ -29,17 +22,11 @@ interface CommentsSectionProps {
   comments: CommentItem[];
   hiveId: string;
   onUserPress?: (userDid: string) => void;
-  onReplyClick?: (
-    commentId: string,
-    replyFormRef: React.RefObject<View>,
-  ) => void;
+  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View>) => void;
 }
 
 // Star Rating Component for comments
-const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({
-  rating,
-  size = 16,
-}) => {
+const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size = 16 }) => {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -54,11 +41,7 @@ const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({
           name={starRating >= star ? "star" : "star-outline"}
           size={size}
           color={
-            starRating >= star
-              ? colors.primary
-              : colorScheme === "dark"
-                ? "#9CA3AF"
-                : colors.icon
+            starRating >= star ? colors.primary : colorScheme === "dark" ? "#9CA3AF" : colors.icon
           }
         />
       ))}
@@ -71,10 +54,7 @@ const CommentItem: React.FC<{
   comment: CommentItem;
   hiveId: string;
   onUserPress: (userDid: string) => void;
-  onReplyClick?: (
-    commentId: string,
-    replyFormRef: React.RefObject<View>,
-  ) => void;
+  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View>) => void;
 }> = ({ comment, hiveId, onUserPress, onReplyClick }) => {
   const { authState } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -171,9 +151,7 @@ const CommentItem: React.FC<{
         styles.commentContainer,
         {
           borderBottomColor:
-            colorScheme === "dark"
-              ? "rgba(255, 255, 255, 0.1)"
-              : "rgba(0, 0, 0, 0.1)",
+            colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
         },
       ]}
     >
@@ -188,10 +166,7 @@ const CommentItem: React.FC<{
           />
           <View style={styles.userDetails}>
             <ThemedText
-              style={[
-                styles.userName,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
+              style={[styles.userName, { color: colorScheme === "dark" ? "white" : colors.text }]}
             >
               @{userHandle}
             </ThemedText>
@@ -204,10 +179,7 @@ const CommentItem: React.FC<{
 
       {/* Timestamp */}
       <ThemedText
-        style={[
-          styles.timestamp,
-          { color: colorScheme === "dark" ? "#9CA3AF" : colors.icon },
-        ]}
+        style={[styles.timestamp, { color: colorScheme === "dark" ? "#9CA3AF" : colors.icon }]}
       >
         {formatDistanceToNow(comment.createdAt, { addSuffix: true })}
       </ThemedText>
@@ -252,10 +224,7 @@ const CommentItem: React.FC<{
         </View>
       ) : (
         <ThemedText
-          style={[
-            styles.commentText,
-            { color: colorScheme === "dark" ? "#E5E7EB" : colors.text },
-          ]}
+          style={[styles.commentText, { color: colorScheme === "dark" ? "#E5E7EB" : colors.text }]}
         >
           {content}
         </ThemedText>
@@ -266,10 +235,7 @@ const CommentItem: React.FC<{
         <View style={styles.interactionButtons}>
           {authState && (
             <>
-              <Pressable
-                style={styles.interactionButton}
-                onPress={handleReplyButtonClick}
-              >
+              <Pressable style={styles.interactionButton} onPress={handleReplyButtonClick}>
                 <Ionicons
                   name="chatbubble-outline"
                   size={20}
@@ -287,10 +253,7 @@ const CommentItem: React.FC<{
 
               {/* Edit button - only show for user's own comments */}
               {authState.did === userDid && (
-                <Pressable
-                  style={styles.interactionButton}
-                  onPress={startEditing}
-                >
+                <Pressable style={styles.interactionButton} onPress={startEditing}>
                   <Ionicons
                     name="pencil-outline"
                     size={20}
@@ -369,10 +332,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     onUserPress?.(userDid);
   };
 
-  const handleReplyClick = (
-    commentId: string,
-    replyFormRef: React.RefObject<View>,
-  ) => {
+  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View>) => {
     // Call the parent callback
     onReplyClick?.(commentId, replyFormRef);
   };
@@ -414,10 +374,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   };
 
   // Render a comment with its replies
-  const renderCommentWithReplies = (
-    comment: CommentItem,
-    depth: number = 0,
-  ) => {
+  const renderCommentWithReplies = (comment: CommentItem, depth: number = 0) => {
     // Get replies for this comment using its URI
     let commentUri: string;
     if ("uri" in comment && comment.uri) {
@@ -428,10 +385,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     const replies = repliesByParent.get(commentUri) || [];
 
     return (
-      <View
-        key={comment.id}
-        style={[styles.threadedComment, { marginLeft: depth * 20 }]}
-      >
+      <View key={comment.id} style={[styles.threadedComment, { marginLeft: depth * 20 }]}>
         <CommentItem
           comment={comment}
           hiveId={hiveId}
@@ -446,9 +400,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
               styles.repliesContainer,
               {
                 borderLeftColor:
-                  colorScheme === "dark"
-                    ? "rgba(255, 255, 255, 0.1)"
-                    : "rgba(0, 0, 0, 0.1)",
+                  colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
               },
             ]}
           >
@@ -459,17 +411,13 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     );
   };
 
-  const { topLevelComments, repliesByParent } =
-    organizeCommentsIntoThreads(comments);
+  const { topLevelComments, repliesByParent } = organizeCommentsIntoThreads(comments);
 
   return (
     <View style={styles.container}>
       <View style={styles.sectionHeader}>
         <ThemedText
-          style={[
-            styles.sectionTitle,
-            { color: colorScheme === "dark" ? "white" : colors.text },
-          ]}
+          style={[styles.sectionTitle, { color: colorScheme === "dark" ? "white" : colors.text }]}
         >
           Comments {comments.length > 0 && `(${comments.length})`}
         </ThemedText>
@@ -481,13 +429,9 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
             styles.emptyState,
             {
               backgroundColor:
-                colorScheme === "dark"
-                  ? "rgba(255, 255, 255, 0.05)"
-                  : "rgba(0, 0, 0, 0.05)",
+                colorScheme === "dark" ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
               borderColor:
-                colorScheme === "dark"
-                  ? "rgba(255, 255, 255, 0.1)"
-                  : "rgba(0, 0, 0, 0.1)",
+                colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
             },
           ]}
         >
@@ -516,9 +460,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                     styles.separator,
                     {
                       backgroundColor:
-                        colorScheme === "dark"
-                          ? "rgba(255, 255, 255, 0.1)"
-                          : "rgba(0, 0, 0, 0.1)",
+                        colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
                     },
                   ]}
                 />

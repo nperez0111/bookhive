@@ -5,7 +5,7 @@ import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { endTime, startTime } from "hono/timing";
+import { endTime, startTime, type TimingVariables } from "hono/timing";
 import { getIronSession } from "iron-session";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -16,6 +16,7 @@ import {
   sessionClientFromOAuthSession,
   type SessionClient,
 } from "./auth/client";
+import { createServiceAccountAgent } from "./utils/catalogBookService";
 import { getSessionConfig } from "./auth/router";
 import {
   createBaseIdResolver,
@@ -29,7 +30,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
-import sqliteKv from "./sqlite-kv.ts";
+import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
 
@@ -46,11 +47,13 @@ export type AppContext = {
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
+  /** Service account agent for @bookhive.buzz ATProto writes. Null if env vars not set. */
+  serviceAccountAgent: SessionClient | null;
   /** Add fields to the one wide event logged per request (observability). */
   addWideEventContext: AddWideEventContext;
 };
 
-import type { BundleAssetUrls } from "./bundle-assets";
+import type { BundleAssetUrls } from "./utils/manifest";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -68,7 +71,7 @@ declare module "hono" {
 }
 
 export type AppEnv = {
-  Variables: {
+  Variables: TimingVariables & {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
     requestId: string;
@@ -90,6 +93,7 @@ export type AppDeps = {
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
   ingester: Ingester;
   resolver: BidirectionalResolver;
+  serviceAccountAgent: SessionClient | null;
 };
 
 export async function createAppDeps(): Promise<AppDeps> {
@@ -101,57 +105,58 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
-  const db = createDb(env.DB_PATH);
-  await migrateToLatest(db);
+  const { db, sqlite } = createDb(env.DB_PATH, { exclusive: env.isProd });
+  logger.info("starting DB migrations");
+  const migrationStart = Date.now();
+  const migrationResults = await migrateToLatest(db, sqlite);
+  logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
+  if (migrationResults.length > 0) {
+    logger.info(
+      { migrations: migrationResults.map((r) => r.migrationName) },
+      "migrations applied, deferring VACUUM to background",
+    );
+    // Run VACUUM in the background — it reclaims space but shouldn't block server startup.
+    setTimeout(() => {
+      const vacuumStart = Date.now();
+      sqlite.exec("VACUUM");
+      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
+    }, 5_000);
+  }
 
+  const exclusive = env.isProd;
+  // Single shared connection for all KV tables on KV_DB_PATH. This is critical in production
+  // where exclusive locking mode is enabled — multiple connections to the same file with
+  // PRAGMA locking_mode = EXCLUSIVE will fight for the lock and cause SQLITE_BUSY.
+  const kvDb = createSharedKvDb(env.KV_DB_PATH, exclusive);
   const kv = createStorage({
-    driver: sqliteKv({ location: env.KV_DB_PATH, table: "kv" }),
+    driver: sqliteKv({ table: "kv", db: kvDb }),
   });
 
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount(
-    "profile:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "profile" }),
-  );
-  kv.mount(
-    "identity:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "identity" }),
-  );
-  kv.mount(
-    "follows_sync:",
-    sqliteKv({ location: env.KV_DB_PATH, table: "follows_sync" }),
-  );
-  kv.mount(
-    "auth_session:",
-    sqliteKv({
-      location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
-      table: "auth_sessions",
-    }),
-  );
-  kv.mount(
-    "auth_state:",
-    sqliteKv({
-      location: env.isDevelopment ? "./auth.sqlite" : env.KV_DB_PATH,
-      table: "auth_state",
-    }),
-  );
+  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
+  kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
+  kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
+
+  // Auth tables: in development use a separate file; in production share the main KV connection.
+  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
+  kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
+  kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
   const oauthClient = await createOAuthClient(kv);
-  const baseIdResolver = createCachingBaseIdResolver(
-    kv,
-    createBaseIdResolver(),
-  );
-  const ingester = createIngester(db, kv, (wideEvent) =>
+  const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
+  const resolver = createCachingBidirectionalResolver(kv, createBidirectionalResolverAtcute());
+
+  const serviceAccountAgent =
+    env.BOOKHIVE_SERVICE_HANDLE && env.BOOKHIVE_APP_PASSWORD
+      ? await createServiceAccountAgent(env.BOOKHIVE_SERVICE_HANDLE, env.BOOKHIVE_APP_PASSWORD)
+      : null;
+
+  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) =>
     logger.info(wideEvent),
   );
-  const resolver = createCachingBidirectionalResolver(
-    kv,
-    createBidirectionalResolverAtcute(),
-  );
-
   ingester.start();
 
   return {
@@ -162,6 +167,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     baseIdResolver,
     ingester,
     resolver,
+    serviceAccountAgent,
   };
 }
 
@@ -172,10 +178,7 @@ export type SessionTiming = {
 };
 
 const SESSION_CLIENT_CACHE_TTL_MS = 30_000; // 30s in-memory cache to avoid restore+getTokenInfo on every request
-const sessionClientCache = new Map<
-  string,
-  { client: SessionClient; expiresAt: number }
->();
+const sessionClientCache = new Map<string, { client: SessionClient; expiresAt: number }>();
 
 function getCachedSessionClient(did: string): SessionClient | null {
   const entry = sessionClientCache.get(did);
@@ -233,7 +236,7 @@ export async function getSessionAgent(
       oauth_restore: "failed",
       error: err instanceof Error ? err.message : String(err),
     });
-    await session.destroy();
+    session.destroy();
     return null;
   }
 }

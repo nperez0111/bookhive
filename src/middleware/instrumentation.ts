@@ -5,11 +5,7 @@ import { measure } from "./measure";
 import { patchFetch, patchWaitUntil } from "./patch";
 import { PromiseStore } from "./promiseStore";
 import type { HonoLikeApp, HonoLikeEnv, HonoLikeFetch } from "./types";
-import {
-  getRequestAttributes,
-  getResponseAttributes,
-  getRootRequestAttributes,
-} from "./utils";
+import { getRequestAttributes, getResponseAttributes, getRootRequestAttributes } from "./utils";
 
 /**
  * The type for the configuration object we use to configure the instrumentation
@@ -64,10 +60,7 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           executionContext?: ExecutionContext,
         ) {
           // Merge the default config with the user's config
-          const { serviceName, isEnabled } = mergeConfigs(
-            defaultConfig,
-            config,
-          );
+          const { serviceName, isEnabled } = mergeConfigs(defaultConfig, config);
 
           if (!isEnabled) {
             return await originalFetch(request, rawEnv, executionContext);
@@ -98,9 +91,7 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           // HACK - Duplicate request to be able to read the body and other metadata
           //        in the middleware without messing up the original request
           const clonedRequest = request.clone();
-          const [body1, body2] = clonedRequest.body
-            ? clonedRequest.body.tee()
-            : [null, null];
+          const [body1, body2] = clonedRequest.body ? clonedRequest.body.tee() : [null, null];
 
           // In order to keep `onStart` synchronous (below), we construct
           // some necessary attributes here, using a cloned request
@@ -134,8 +125,7 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           //
           // NOTE - This will add some latency, and it will serialize the env object.
           //        We should not do this in production!
-          const rootRequestAttributes =
-            await getRootRequestAttributes(requestForAttributes);
+          const rootRequestAttributes = await getRootRequestAttributes(requestForAttributes);
 
           const measuredFetch = measure(
             {
@@ -162,10 +152,9 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
 
                 promiseStore.add(updateSpan(attributesResponse));
               },
-              checkResult: async (result) => {
-                const r = await result;
-                if (r.status >= 500) {
-                  throw new Error(r.statusText);
+              checkResult: (result) => {
+                if (result.status >= 500) {
+                  throw new Error(result.statusText);
                 }
               },
             },
@@ -173,9 +162,8 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           );
 
           try {
-            return await context.with(
-              trace.setSpan(context.active(), span),
-              () => measuredFetch(newRequest, rawEnv, proxyExecutionCtx),
+            return await context.with(trace.setSpan(context.active(), span), () =>
+              measuredFetch(newRequest, rawEnv, proxyExecutionCtx),
             );
           } finally {
             // Make sure all promises are resolved before sending data to the server
@@ -202,10 +190,7 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
 /**
  * Last-in-wins deep merge for FpxConfig
  */
-function mergeConfigs(
-  fallbackConfig: FpxConfig,
-  userConfig?: FpxConfigOptions,
-): FpxConfig {
+function mergeConfigs(fallbackConfig: FpxConfig, userConfig?: FpxConfigOptions): FpxConfig {
   const libraryDebugMode =
     typeof userConfig?.libraryDebugMode === "boolean"
       ? userConfig.libraryDebugMode

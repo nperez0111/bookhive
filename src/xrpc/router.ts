@@ -3,18 +3,25 @@
  * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  XRPCRouter,
-  json,
-  XRPCError,
-  AuthRequiredError,
-} from "@atcute/xrpc-server";
+import { XRPCRouter, json, XRPCError, AuthRequiredError } from "@atcute/xrpc-server";
 import {
   BuzzBookhiveSearchBooks,
   BuzzBookhiveListGenres,
   BuzzBookhiveGetBookIdentifiers,
   BuzzBookhiveGetBook,
   BuzzBookhiveGetProfile,
+  BuzzBookhiveGetExplore,
+  BuzzBookhiveGetFeed,
+  BuzzBookhiveGetAuthorBooks,
+  BuzzBookhiveGetReadingStats,
+  BuzzBookhiveGetList,
+  BuzzBookhiveGetUserLists,
+  BuzzBookhiveCreateList,
+  BuzzBookhiveUpdateList,
+  BuzzBookhiveDeleteList,
+  BuzzBookhiveAddToList,
+  BuzzBookhiveRemoveFromList,
+  BuzzBookhiveReorderList,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -32,6 +39,13 @@ import { BookFields } from "../db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
+import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
+import { getTopAuthors } from "../pages/authorDirectory";
+import {
+  computeReadingStats,
+  filterFinishedBooksByYear,
+  filterFinishedBooksAllTime,
+} from "../utils/readingStats";
 import {
   deriveBookIdentifiers,
   normalizeGoodreadsId,
@@ -41,6 +55,16 @@ import {
   toBookIdentifiersOutput,
 } from "../utils/bookIdentifiers";
 import { sql, type NotNull, type SqlBool } from "kysely";
+import {
+  createList,
+  updateList,
+  deleteList,
+  addBookToList,
+  removeBookFromList,
+  reorderListItems,
+  getListWithItems,
+  getUserLists,
+} from "../utils/lists";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
@@ -64,29 +88,22 @@ export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
     query: string;
     ctx: Pick<E, "db" | "kv" | "addWideEventContext">;
   }) => Promise<HiveId[]>;
-  ensureBookIdentifiersCurrent: (opts: {
-    ctx: E;
-    book: HiveBook;
-  }) => Promise<void>;
-  getProfile: (opts: {
-    ctx: E;
-    did: string;
-  }) => Promise<ProfileViewDetailed | null>;
+  ensureBookIdentifiersCurrent: (opts: { ctx: E; book: HiveBook }) => Promise<void>;
+  getProfile: (opts: { ctx: E; did: string }) => Promise<ProfileViewDetailed | null>;
 };
 
 const xrpcContextStorage = new AsyncLocalStorage<XrpcContext>();
 
 function getCtx(): XrpcContext {
   const ctx = xrpcContextStorage.getStore();
-  if (!ctx)
-    throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
+  if (!ctx) throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
   return ctx;
 }
 
-export function createXrpcRouter<
-  E extends XrpcContext,
-  V extends { ctx: E } = { ctx: E },
->(app: import("hono").Hono<{ Variables: V }>, deps: XrpcDeps<E>): void {
+export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = { ctx: E }>(
+  app: import("hono").Hono<{ Variables: V }>,
+  deps: XrpcDeps<E>,
+): void {
   const router = new XRPCRouter();
 
   router.addQuery(BuzzBookhiveSearchBooks, {
@@ -102,10 +119,17 @@ export function createXrpcRouter<
           .limit(1)
           .executeTakeFirst();
 
-        const books = [book]
-          .filter((a): a is HiveBook => a !== undefined)
-          .map((b) => transformBookWithIdentifiers(b));
-        return json({ books });
+        const books = [book].filter((a): a is HiveBook => a !== undefined);
+        const genreMap =
+          books.length > 0
+            ? await loadGenresMapForHiveBooks(
+                ctx.db,
+                books.map((b) => b.id),
+              )
+            : new Map();
+        return json({
+          books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
+        });
       }
 
       const off = offset ?? 0;
@@ -134,8 +158,12 @@ export function createXrpcRouter<
           .offset(off)
           .execute();
 
+        const genreMap = await loadGenresMapForHiveBooks(
+          ctx.db,
+          books.map((b) => b.id),
+        );
         return json({
-          books: books.map((b) => transformBookWithIdentifiers(b)),
+          books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
           offset: off + books.length,
         });
       }
@@ -146,23 +174,68 @@ export function createXrpcRouter<
 
       const bookIds = await deps.searchBooks({ query: q, ctx });
 
-      if (!bookIds.length) {
+      // For limits beyond the cached 20, backfill live with ILIKE
+      let allIds = bookIds;
+      if (limit > 20 && bookIds.length < limit) {
+        const pattern = `%${q}%`;
+        let extraQuery = ctx.db
+          .selectFrom("hive_book")
+          .select("id")
+          .where((eb) => eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]))
+          .orderBy("ratingsCount", "desc")
+          .orderBy("rating", "desc")
+          .limit(limit - bookIds.length);
+
+        if (bookIds.length > 0) {
+          extraQuery = extraQuery.where("id", "not in", bookIds);
+        }
+
+        const extra = await extraQuery.execute();
+        allIds = [...bookIds, ...extra.map((r) => r.id)];
+      }
+
+      if (!allIds.length) {
         return json({ books: [] });
       }
 
       const books = await ctx.db
         .selectFrom("hive_book")
         .selectAll()
-        .where("id", "in", bookIds)
+        .where("id", "in", allIds)
         .limit(limit * off + limit)
         .execute();
 
-      books.sort((a, b) => bookIds.indexOf(a.id) - bookIds.indexOf(b.id));
+      books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
 
       const slice = books.slice(off, off + limit);
+      const genreMap = await loadGenresMapForHiveBooks(
+        ctx.db,
+        slice.map((b) => b.id),
+      );
+
+      // Include current user's statuses if logged in
+      const agent = await ctx.getSessionAgent();
+      let userStatuses: Record<string, string> | undefined;
+      if (agent && slice.length > 0) {
+        const userBooks = await ctx.db
+          .selectFrom("user_book")
+          .select(["hiveId", "status"])
+          .where("userDid", "=", agent.did)
+          .where(
+            "hiveId",
+            "in",
+            slice.map((b) => b.id),
+          )
+          .execute();
+        userStatuses = Object.fromEntries(
+          userBooks.filter((ub) => ub.status).map((ub) => [ub.hiveId, ub.status!]),
+        );
+      }
+
       return json({
-        books: slice.map((b) => transformBookWithIdentifiers(b)),
+        books: slice.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
         offset: off + slice.length,
+        userStatuses,
       });
     },
   });
@@ -206,8 +279,7 @@ export function createXrpcRouter<
         throw new XRPCError({
           status: 400,
           error: "InvalidRequest",
-          description:
-            "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
+          description: "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
         });
       }
 
@@ -265,9 +337,7 @@ export function createXrpcRouter<
           });
         }
         const response: GetBookIdentifiersOutputSchema = {
-          bookIdentifiers: toBookIdentifiersOutput(
-            deriveBookIdentifiers(hiveBook),
-          ),
+          bookIdentifiers: toBookIdentifiersOutput(deriveBookIdentifiers(hiveBook)),
         };
         return json(response);
       }
@@ -320,23 +390,26 @@ export function createXrpcRouter<
         });
       }
 
-      const comments = await ctx.db
-        .selectFrom("buzz")
-        .select([
-          "buzz.bookUri",
-          "buzz.bookCid",
-          "buzz.comment",
-          "buzz.createdAt",
-          "buzz.userDid",
-          "buzz.parentUri",
-          "buzz.parentCid",
-          "buzz.cid",
-          "buzz.uri",
-        ])
-        .where("buzz.hiveId", "=", book.id)
-        .orderBy("buzz.createdAt", "desc")
-        .limit(3000)
-        .execute();
+      const [comments, bookGenres] = await Promise.all([
+        ctx.db
+          .selectFrom("buzz")
+          .select([
+            "buzz.bookUri",
+            "buzz.bookCid",
+            "buzz.comment",
+            "buzz.createdAt",
+            "buzz.userDid",
+            "buzz.parentUri",
+            "buzz.parentCid",
+            "buzz.cid",
+            "buzz.uri",
+          ])
+          .where("buzz.hiveId", "=", book.id)
+          .orderBy("buzz.createdAt", "desc")
+          .limit(3000)
+          .execute(),
+        loadGenresForHiveBook(ctx.db, book.id),
+      ]);
 
       const topLevelReviews = await ctx.db
         .selectFrom("user_book")
@@ -391,9 +464,7 @@ export function createXrpcRouter<
           }
         : {
             hiveId: book.id,
-            ...toBookIdentifiersOutput(
-              await findBookIdentifiersByLookup({ ctx, hiveId: book.id }),
-            ),
+            ...toBookIdentifiersOutput(await findBookIdentifiersByLookup({ ctx, hiveId: book.id })),
           };
 
       const response: GetBookOutputSchema & {
@@ -404,12 +475,13 @@ export function createXrpcRouter<
         startedAt: userBook?.startedAt ?? undefined,
         finishedAt: userBook?.finishedAt ?? undefined,
         status: userBook?.status ?? undefined,
+        owned: userBook?.owned ? true : undefined,
         stars: userBook?.stars ?? undefined,
         review: userBook?.review ?? undefined,
         bookProgress: userBook?.bookProgress ?? undefined,
         userBookUri: userBook?.uri ?? undefined,
         userBookCid: userBook?.cid ?? undefined,
-        book: toHiveBookOutput(book, bookIdentifiers),
+        book: toHiveBookOutput(book, bookIdentifiers, bookGenres),
         comments: comments.map((c) => ({
           book: { cid: c.bookCid, uri: c.bookUri },
           comment: c.comment,
@@ -492,11 +564,7 @@ export function createXrpcRouter<
       const friendsBuzzes = await ctx.db
         .selectFrom("user_book")
         .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .innerJoin(
-          "user_follows",
-          "user_book.userDid",
-          "user_follows.followsDid",
-        )
+        .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
         .select(BookFields)
         .where("user_follows.userDid", "=", did)
         .where("user_follows.isActive", "=", 1)
@@ -504,15 +572,10 @@ export function createXrpcRouter<
         .limit(50)
         .execute();
       const parsedBooks = books.map((book) => hydrateUserBook(book));
-      const parsedFriendsBuzzes = friendsBuzzes.map((book) =>
-        hydrateUserBook(book),
-      );
+      const parsedFriendsBuzzes = friendsBuzzes.map((book) => hydrateUserBook(book));
 
       const profileHiveIds = [
-        ...new Set([
-          ...books.map((b) => b.hiveId),
-          ...friendsBuzzes.map((b) => b.hiveId),
-        ]),
+        ...new Set([...books.map((b) => b.hiveId), ...friendsBuzzes.map((b) => b.hiveId)]),
       ];
       const profileIdRows =
         profileHiveIds.length > 0
@@ -528,11 +591,7 @@ export function createXrpcRouter<
 
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
-          new Set(
-            books
-              .map((c) => c.userDid)
-              .concat(friendsBuzzes.map((r) => r.userDid)),
-          ),
+          new Set(books.map((c) => c.userDid).concat(friendsBuzzes.map((r) => r.userDid))),
         ),
       );
 
@@ -559,8 +618,7 @@ export function createXrpcRouter<
             (b) =>
               b.status &&
               b.status in BOOK_STATUS_MAP &&
-              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] ===
-                "read",
+              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read",
           ).length,
           reviews: books.filter((b) => b.review).length,
           isFollowing,
@@ -578,6 +636,7 @@ export function createXrpcRouter<
           review: b.review ?? undefined,
           stars: b.stars ?? undefined,
           status: b.status ?? undefined,
+          owned: b.owned ? true : undefined,
           description: b.description ?? undefined,
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
@@ -597,6 +656,7 @@ export function createXrpcRouter<
           review: b.review ?? undefined,
           stars: b.stars ?? undefined,
           status: b.status ?? undefined,
+          owned: b.owned ? true : undefined,
           description: b.description ?? undefined,
           rating: b.rating ?? undefined,
           startedAt: b.startedAt ?? undefined,
@@ -607,10 +667,7 @@ export function createXrpcRouter<
           .reduce(
             (acc, b) => {
               const existing = acc.find((a) => a.hiveId === b.hiveId);
-              if (
-                !existing ||
-                new Date(b.createdAt) > new Date(existing.createdAt)
-              ) {
+              if (!existing || new Date(b.createdAt) > new Date(existing.createdAt)) {
                 if (existing) {
                   acc.splice(acc.indexOf(existing), 1);
                 }
@@ -618,9 +675,7 @@ export function createXrpcRouter<
                   type:
                     b.status &&
                     b.status in BOOK_STATUS_MAP &&
-                    BOOK_STATUS_MAP[
-                      b.status as keyof typeof BOOK_STATUS_MAP
-                    ] === "read"
+                    BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
                       ? "finished"
                       : b.review
                         ? "review"
@@ -643,10 +698,7 @@ export function createXrpcRouter<
               userHandle: string;
             }>,
           )
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .slice(0, 15),
       };
 
@@ -654,7 +706,453 @@ export function createXrpcRouter<
     },
   });
 
-  app.all("/xrpc/*", (c) =>
-    xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)),
-  );
+  router.addQuery(BuzzBookhiveGetExplore, {
+    async handler() {
+      const ctx = getCtx();
+
+      const [genreRows, topAuthors] = await Promise.all([
+        ctx.db
+          .selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(6)
+          .execute(),
+        getTopAuthors(ctx.db, 8),
+      ]);
+
+      return json({
+        genres: genreRows.map((g) => ({ genre: g.genre, count: g.count })),
+        topAuthors: topAuthors.map((a) => ({
+          author: a.author,
+          bookCount: a.bookCount,
+          thumbnail: a.thumbnail ?? undefined,
+          // avgRating from DB is already 0-5 (ROUND(AVG(...)/1000, 1)); scale by 10 for integer transport
+          avgRating: a.avgRating != null ? Math.round(a.avgRating * 10) : undefined,
+        })),
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetFeed, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+
+      const tab = (params.tab as "friends" | "all" | "tracking") || "friends";
+      const page = Math.max(1, params.page ?? 1);
+      const limit = Math.min(50, params.limit ?? 25);
+      const offset = (page - 1) * limit;
+
+      if ((tab === "friends" || tab === "tracking") && !agent) {
+        throw new AuthRequiredError({
+          description: `The ${tab} feed requires authentication`,
+        });
+      }
+
+      let query = ctx.db
+        .selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .orderBy("user_book.createdAt", "desc")
+        .limit(limit + 1)
+        .offset(offset);
+
+      if (tab === "friends" && agent) {
+        query = query.where(
+          "user_book.userDid",
+          "in",
+          ctx.db
+            .selectFrom("user_follows")
+            .where("user_follows.userDid", "=", agent.did)
+            .where("user_follows.isActive", "=", 1)
+            .select("user_follows.followsDid"),
+        ) as typeof query;
+      } else if (tab === "tracking" && agent) {
+        query = query.where(
+          "user_book.hiveId",
+          "in",
+          ctx.db
+            .selectFrom("user_book as ub2")
+            .where("ub2.userDid", "=", agent.did)
+            .select("ub2.hiveId"),
+        ) as typeof query;
+      }
+
+      const rows = await query.execute();
+      const hasMore = rows.length > limit;
+      const activities = rows.slice(0, limit);
+
+      const allDids = [...new Set(activities.map((a) => a.userDid))];
+      const didToHandle =
+        allDids.length > 0 ? await ctx.resolver.resolveDidsToHandles(allDids) : {};
+
+      return json({
+        activities: activities.map((a) => ({
+          userDid: a.userDid,
+          userHandle: didToHandle[a.userDid] ?? a.userDid,
+          hiveId: a.hiveId,
+          title: a.title,
+          authors: a.authors,
+          status: a.status ?? undefined,
+          stars: a.stars ?? undefined,
+          review: a.review ?? undefined,
+          createdAt: a.createdAt,
+          thumbnail: a.thumbnail || "",
+          cover: a.cover ?? a.thumbnail ?? undefined,
+        })),
+        hasMore,
+        page,
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetAuthorBooks, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { author, page = 1, limit = 50, sort = "popularity" } = params;
+
+      const pageSize = Math.min(100, limit);
+      const offset = (Math.max(1, page) - 1) * pageSize;
+
+      // Build author matching condition (authors stored tab-separated)
+      const exact = author;
+      const first = `${author}\t%`;
+      const middle = `%\t${author}\t%`;
+      const last = `%\t${author}`;
+      const authorCondition = sql`(
+        authors = ${exact}
+        OR authors LIKE ${first}
+        OR authors LIKE ${middle}
+        OR authors LIKE ${last}
+      )`;
+
+      const [totalCountResult, books] = await Promise.all([
+        ctx.db
+          .selectFrom("hive_book")
+          .select(sql<number>`COUNT(*)`.as("count"))
+          .where(authorCondition as any)
+          .executeTakeFirst(),
+        ctx.db
+          .selectFrom("hive_book")
+          .selectAll()
+          .where(authorCondition as any)
+          .orderBy(sort === "reviews" ? "rating" : "ratingsCount", "desc")
+          .orderBy(sort === "reviews" ? "ratingsCount" : "rating", "desc")
+          .limit(pageSize)
+          .offset(offset)
+          .execute(),
+      ]);
+
+      const totalBooks = Number(totalCountResult?.count ?? 0);
+      const totalPages = Math.max(1, Math.ceil(totalBooks / pageSize));
+      const genreMap = await loadGenresMapForHiveBooks(
+        ctx.db,
+        books.map((b) => b.id),
+      );
+
+      return json({
+        author,
+        books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
+        totalBooks,
+        totalPages,
+        page: Math.max(1, page),
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetReadingStats, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { handle, year: yearParam } = params;
+      const year = yearParam ?? new Date().getFullYear();
+
+      // Resolve handle → DID
+      let did: string | undefined;
+      if (handle.startsWith("did:")) {
+        did = handle;
+      } else {
+        did = await ctx.baseIdResolver.handle.resolve(handle);
+      }
+
+      if (!did) {
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "User not found",
+        });
+      }
+
+      const books = await ctx.db
+        .selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .where("user_book.userDid", "=", did)
+        .orderBy("user_book.indexedAt", "desc")
+        .limit(10_000)
+        .execute();
+      const parsedBooks = books.map((b) => hydrateUserBook(b));
+
+      const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
+
+      let genreStatsForYear: { genre: string; count: number }[] = [];
+      if (finishedInYear.length > 0) {
+        const hiveIds = finishedInYear.map((b) => b.hiveId);
+        const rows = await ctx.db
+          .selectFrom("hive_book_genre")
+          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+          .where("hiveId", "in", hiveIds)
+          .groupBy("genre")
+          .orderBy(sql`COUNT(*)`, "desc")
+          .limit(15)
+          .execute();
+        genreStatsForYear = rows.map((r) => ({
+          genre: r.genre,
+          count: Number(r.count),
+        }));
+      }
+
+      const stats = computeReadingStats(finishedInYear, genreStatsForYear);
+
+      const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
+      const yearSet = new Set(
+        finishedAllTime
+          .map((b) => (b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0))
+          .filter((y) => y >= 2000 && y <= 2100),
+      );
+      const currentYear = new Date().getFullYear();
+      if (!yearSet.has(currentYear)) yearSet.add(currentYear);
+      const availableYears = [...yearSet].sort((a, b) => b - a);
+
+      const toBookSummary = (
+        b: {
+          hiveId: string;
+          title: string;
+          authors: string;
+          cover?: string | null;
+          thumbnail?: string | null;
+          bookProgress?: { totalPages?: number | null } | null;
+          rating?: number | null;
+        } | null,
+      ) => {
+        if (!b) return undefined;
+        return {
+          hiveId: b.hiveId,
+          title: b.title,
+          authors: b.authors,
+          cover: b.cover ?? b.thumbnail ?? undefined,
+          thumbnail: b.thumbnail ?? undefined,
+          pageCount: b.bookProgress?.totalPages ?? undefined,
+          rating: b.rating ?? undefined,
+        };
+      };
+
+      return json({
+        stats: {
+          booksCount: stats.booksCount,
+          pagesRead: stats.pagesRead,
+          averageRating:
+            stats.averageRating != null ? Math.round(stats.averageRating * 10) : undefined,
+          averagePageCount: stats.averagePageCount ?? undefined,
+          ratingDistribution: {
+            one: stats.ratingDistribution[1],
+            two: stats.ratingDistribution[2],
+            three: stats.ratingDistribution[3],
+            four: stats.ratingDistribution[4],
+            five: stats.ratingDistribution[5],
+          },
+          topGenres: stats.topGenres.slice(0, 5),
+          shortestBook: toBookSummary(stats.shortestBook),
+          longestBook: toBookSummary(stats.longestBook),
+          firstBookOfYear: toBookSummary(stats.firstBookOfYear),
+          lastBookOfYear: toBookSummary(stats.lastBookOfYear),
+          mostPopularBook: toBookSummary(stats.mostPopularBook),
+          leastPopularBook: toBookSummary(stats.leastPopularBook),
+        },
+        availableYears,
+        year,
+      });
+    },
+  });
+
+  // ── List CRUD ──
+
+  router.addProcedure(BuzzBookhiveCreateList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await createList({
+        agent,
+        db: ctx.db,
+        name: input.name,
+        description: input.description,
+        ordered: input.ordered,
+        tags: input.tags,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveUpdateList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await updateList({
+        agent,
+        db: ctx.db,
+        uri: input.uri,
+        name: input.name,
+        description: input.description,
+        ordered: input.ordered,
+        tags: input.tags,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveDeleteList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await deleteList({ agent, db: ctx.db, uri: input.uri });
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveAddToList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      const result = await addBookToList({
+        agent,
+        db: ctx.db,
+        listUri: input.listUri,
+        hiveId: input.hiveId as HiveId,
+        description: input.description,
+        position: input.position,
+      });
+
+      return json(result);
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveRemoveFromList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveReorderList, {
+    async handler({ input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+
+      await reorderListItems({
+        agent,
+        db: ctx.db,
+        listUri: input.listUri,
+        itemUris: input.itemUris,
+      });
+
+      return json({});
+    },
+  });
+
+  // ── GetUserLists query ──
+
+  router.addQuery(BuzzBookhiveGetUserLists, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { did } = params;
+
+      const lists = await getUserLists({ db: ctx.db, userDid: did });
+      const dids = [...new Set(lists.map((l) => l.userDid))];
+      const didToHandle = dids.length > 0 ? await ctx.resolver.resolveDidsToHandles(dids) : {};
+
+      return json({
+        lists: lists.map((list) => ({
+          uri: list.uri,
+          cid: list.cid,
+          userDid: list.userDid,
+          userHandle: didToHandle[list.userDid] ?? list.userDid,
+          name: list.name,
+          description: list.description ?? undefined,
+          ordered: Boolean(list.ordered),
+          tags: list.tags ? JSON.parse(list.tags) : undefined,
+          createdAt: list.createdAt,
+          itemCount: list.itemCount ?? 0,
+        })),
+      });
+    },
+  });
+
+  // ── GetList query ──
+
+  router.addQuery(BuzzBookhiveGetList, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { uri } = params;
+
+      const data = await getListWithItems({ db: ctx.db, listUri: uri });
+      if (!data) {
+        throw new XRPCError({
+          status: 404,
+          error: "NotFound",
+          description: "List not found",
+        });
+      }
+
+      const { list, items } = data;
+
+      const didToHandle = await ctx.resolver.resolveDidsToHandles([list.userDid]);
+
+      return json({
+        list: {
+          uri: list.uri,
+          cid: list.cid,
+          userDid: list.userDid,
+          userHandle: didToHandle[list.userDid] ?? list.userDid,
+          name: list.name,
+          description: list.description ?? undefined,
+          ordered: Boolean(list.ordered),
+          tags: list.tags ? JSON.parse(list.tags) : undefined,
+          createdAt: list.createdAt,
+          itemCount: items.length,
+        },
+        items: items.map((item) => ({
+          uri: item.uri,
+          hiveId: item.hiveId ?? undefined,
+          description: item.description ?? undefined,
+          position: item.position ?? undefined,
+          addedAt: item.addedAt,
+          // Use hive_book data when resolved, fall back to embedded metadata
+          title: item.title ?? item.embeddedTitle ?? undefined,
+          authors: item.authors ?? item.embeddedAuthor ?? undefined,
+          thumbnail: item.thumbnail || item.embeddedCoverUrl || undefined,
+          cover: item.cover ?? item.thumbnail ?? item.embeddedCoverUrl ?? undefined,
+          rating: item.rating != null ? Math.round(item.rating * 10) : undefined,
+        })),
+      });
+    },
+  });
+
+  app.all("/xrpc/*", (c) => xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)));
 }

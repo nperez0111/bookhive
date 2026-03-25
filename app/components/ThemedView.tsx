@@ -7,12 +7,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 export type ThemedViewProps = ViewProps & {
   lightColor?: string;
   darkColor?: string;
-  variant?:
-    | "default"
-    | "card"
-    | "surface"
-    | "surfaceSecondary"
-    | "surfaceTertiary";
+  variant?: "default" | "card" | "surface" | "surfaceSecondary" | "surfaceTertiary";
 };
 
 export function ThemedView({
@@ -28,10 +23,7 @@ export function ThemedView({
   let backgroundColor;
 
   if (lightColor || darkColor) {
-    backgroundColor = useThemeColor(
-      { light: lightColor, dark: darkColor },
-      "background",
-    );
+    backgroundColor = useThemeColor({ light: lightColor, dark: darkColor }, "background");
   } else {
     switch (variant) {
       case "card":

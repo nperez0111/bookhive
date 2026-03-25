@@ -58,9 +58,12 @@
                 "buzz.bookhive.defs#finished",
                 "buzz.bookhive.defs#reading",
                 "buzz.bookhive.defs#wantToRead",
-                "buzz.bookhive.defs#abandoned",
-                "buzz.bookhive.defs#owned"
+                "buzz.bookhive.defs#abandoned"
               ]
+            },
+            "owned": {
+              "type": "boolean",
+              "description": "Whether the user owns this book"
             },
             "stars": {
               "type": "integer",

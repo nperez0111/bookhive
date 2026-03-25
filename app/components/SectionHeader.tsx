@@ -14,13 +14,7 @@ type SectionHeaderProps = {
   style?: any;
 };
 
-export function SectionHeader({
-  icon,
-  title,
-  subtitle,
-  right,
-  style,
-}: SectionHeaderProps) {
+export function SectionHeader({ icon, title, subtitle, right, style }: SectionHeaderProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
@@ -36,26 +30,15 @@ export function SectionHeader({
       style={[styles.container, style]}
     >
       <View style={styles.leftGroup}>
-        <View
-          style={[
-            styles.iconContainer,
-            { backgroundColor: colors.activeBackground },
-          ]}
-        >
+        <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
           <Ionicons name={icon} size={20} color={colors.primary} />
         </View>
         <View style={styles.texts}>
-          <ThemedText
-            style={[styles.title, { color: colors.primaryText }]}
-            type="heading"
-          >
+          <ThemedText style={[styles.title, { color: colors.primaryText }]} type="heading">
             {title}
           </ThemedText>
           {subtitle ? (
-            <ThemedText
-              style={[styles.subtitle, { color: colors.secondaryText }]}
-              type="caption"
-            >
+            <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]} type="caption">
               {subtitle}
             </ThemedText>
           ) : null}
