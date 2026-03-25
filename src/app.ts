@@ -5,7 +5,7 @@ import { etag } from "hono/etag";
 import { jsxRenderer } from "hono/jsx-renderer";
 import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
-import { timing } from "hono/timing";
+import { endTime, startTime, timing } from "hono/timing";
 
 import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
@@ -22,7 +22,7 @@ export type CreateAppOptions = {
   deps: AppDeps;
 };
 
-export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
+export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
   app.use(timing());
@@ -33,9 +33,11 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
   app.use("*", wideEventMiddleware());
   app.use("*", errorCaptureMiddleware());
   app.use("*", async (c, next) => {
+    startTime(c, "vite_manifest");
     const manifest = await loadViteManifest();
     const assetUrls = getAssetUrlsFromManifest(manifest);
     c.set("assetUrls", assetUrls);
+    endTime(c, "vite_manifest");
     await next();
   });
   app.use(secureHeaders());
@@ -44,7 +46,7 @@ export function createApp({ startTime, deps }: CreateAppOptions): HonoServer {
 
   app.use("*", opentelemetryMiddleware());
 
-  app.get("/healthcheck", (c) => c.text(startTime));
+  app.get("/healthcheck", (c) => c.text(serverStartTime));
 
   const { printMetrics, registerMetrics } = prometheus();
   app.use("*", registerMetrics);

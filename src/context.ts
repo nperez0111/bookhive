@@ -5,7 +5,7 @@ import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { endTime, startTime } from "hono/timing";
+import { endTime, startTime, type TimingVariables } from "hono/timing";
 import { getIronSession } from "iron-session";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -71,7 +71,7 @@ declare module "hono" {
 }
 
 export type AppEnv = {
-  Variables: {
+  Variables: TimingVariables & {
     ctx: AppContext;
     assetUrls: BundleAssetUrls | null;
     requestId: string;

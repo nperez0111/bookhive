@@ -250,7 +250,9 @@ const app = new Hono<AppEnv>()
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const sortBy = (c.req.query("sort") as "popularity" | "relevance" | "reviews") || "popularity";
     const pageSize = 100;
+    startTime(c, "genre_books");
     const result = await getBooksByGenre(genre, c.get("ctx"), page, pageSize, sortBy, c);
+    endTime(c, "genre_books");
     return c.render(
       <GenreBooks
         genre={genre}
@@ -287,7 +289,9 @@ const app = new Hono<AppEnv>()
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const sortBy = (c.req.query("sort") as "popularity" | "reviews") || "popularity";
     const pageSize = 100;
+    startTime(c, "author_books");
     const result = await getBooksByAuthor(author, c.get("ctx"), page, pageSize, sortBy, c);
+    endTime(c, "author_books");
     return c.render(
       <AuthorBooks
         author={author}

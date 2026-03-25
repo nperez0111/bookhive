@@ -118,15 +118,21 @@ export function mainRouter(deps: AppDeps): HonoServer {
       return c.redirect("/");
     }
     const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    startTime(c, "pds_list_repos");
     const dids = await listRepos();
+    endTime(c, "pds_list_repos");
+    startTime(c, "pds_profiles");
     const profiles = dids.length > 0 ? await getProfiles({ ctx: c.get("ctx"), dids }) : [];
+    endTime(c, "pds_profiles");
     const db = c.get("ctx").db;
+    startTime(c, "pds_book_counts");
     const bookCountRows = await db
       .selectFrom("user_book")
       .select((eb) => ["userDid", eb.fn.countAll<number>().as("count")])
       .where("userDid", "in", dids.length > 0 ? dids : [""])
       .groupBy("userDid")
       .execute();
+    endTime(c, "pds_book_counts");
     const bookCounts = Object.fromEntries(bookCountRows.map((r) => [r.userDid, r.count]));
     return c.html(
       <Layout assetUrls={c.get("assetUrls")}>
@@ -233,7 +239,8 @@ export function mainRouter(deps: AppDeps): HonoServer {
     );
     endTime(c, "marketing_data");
 
-    return c.html(
+    startTime(c, "marketing_render");
+    const html = (
       <Layout
         assetUrls={c.get("assetUrls")}
         url={c.req.url}
@@ -248,8 +255,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
           profileByDid={profileByDid}
           trendingBooks={trendingBooks}
         />
-      </Layout>,
+      </Layout>
     );
+    const response = c.html(html);
+    endTime(c, "marketing_render");
+    return response;
   });
 
   app.use(
