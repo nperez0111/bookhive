@@ -74,7 +74,7 @@ We all know the pitch for atproto. User-owned data. Portability. Open ecosystem.
 
 ---
 
-# BookHive
+<h1 class="font-bold" style="color: #eac741">BookHive</h1>
 
 A Goodreads alternative built on AT Protocol.
 
@@ -98,7 +98,7 @@ Quick context on BookHive. It's a reading tracker -- think Goodreads but built o
 
 ---
 
-# The Temptation
+<h1 class="font-bold" style="color: #eac741">The Temptation</h1>
 
 BookHive has a `hiveId` -- a hash of title + author that uniquely identifies every book.
 
@@ -132,7 +132,7 @@ layout: two-cols
 layoutClass: gap-8
 ---
 
-# What We Actually Store
+<h1 class="font-bold" style="color: #eac741">What We Actually Store</h1>
 
 ```json
 {
@@ -184,7 +184,7 @@ Here's what we actually store. Title, authors, a cover image as a blob, standard
 
 ---
 
-# The "Day After" Test
+<h1 class="font-bold" style="color: #eac741">The "Day After" Test</h1>
 
 > If BookHive disappeared tomorrow, is the data in your PDS still meaningful?
 
@@ -217,7 +217,7 @@ Here's the litmus test I use for every design decision: the "day after" test. If
 
 ---
 
-# The Catalog Account
+<h1 class="font-bold" style="color: #eac741">The Catalog Account</h1>
 
 <CatalogDiagram />
 
@@ -227,7 +227,7 @@ Some data is too large to duplicate into every user's PDS -- full book descripti
 
 ---
 
-# Proof It Works
+<h1 class="font-bold" style="color: #eac741">Proof It Works</h1>
 
 Other apps already consume BookHive data -- without calling our API.
 
@@ -259,7 +259,7 @@ And here's the proof that this approach works. Other developers are already buil
 layout: center
 ---
 
-# A PDS Is Not a Database
+<h1 class="font-bold text-5xl" style="color: #eac741">A PDS Is Not a Database</h1>
 
 <!--
 So let me name the principle behind all of this.
@@ -267,12 +267,12 @@ So let me name the principle behind all of this.
 
 ---
 
-# The Mindset Shift
+<h1 class="font-bold" style="color: #eac741">The Mindset Shift</h1>
 
 <div class="grid grid-cols-2 gap-8 mt-4">
 <div>
 
-### Database Mindset
+<h3 style="color: #d4a017">Database Mindset</h3>
 
 <v-click>
 
@@ -287,7 +287,7 @@ So let me name the principle behind all of this.
 </div>
 <div>
 
-### PDS Mindset
+<h3 style="color: #d4a017">PDS Mindset</h3>
 
 <v-click>
 
@@ -323,7 +323,7 @@ layout: center
 class: text-center
 ---
 
-# "Store the maximally useful data."
+<h1 class="font-bold text-4xl" style="color: #eac741">"Store the maximally useful data."</h1>
 
 <v-click>
 
@@ -337,11 +337,11 @@ So here's the core principle, in one sentence. Store the maximally useful data. 
 
 ---
 
-# Three Principles for Builders
+<h1 class="font-bold" style="color: #eac741">Three Principles for Builders</h1>
 
 <v-click>
 
-### 1. Store what's useful to the user, not just to you.
+<h3 style="color: #d4a017">1. Store what's useful to the user, not just to you.</h3>
 
 Records should be **self-describing**. Someone looking at a PDS record should understand what it represents without calling your API.
 
@@ -349,7 +349,7 @@ Records should be **self-describing**. Someone looking at a PDS record should un
 
 <v-click>
 
-### 2. Use standard identifiers. Publish open datasets on-protocol.
+<h3 style="color: #d4a017">2. Use standard identifiers. Publish open datasets on-protocol.</h3>
 
 ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. The enrichment work you do can benefit the whole ecosystem.
 
@@ -357,7 +357,7 @@ ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. The enrichme
 
 <v-click>
 
-### 3. Apply the "day after" test.
+<h3 style="color: #d4a017">3. Apply the "day after" test.</h3>
 
 If your service shuts down tomorrow, is the user's PDS data still valuable? If not, rethink what you're storing.
 
@@ -372,7 +372,7 @@ layout: center
 class: text-center
 ---
 
-# We have an opportunity to build social software where the data actually belongs to people.
+<h1 class="font-bold" style="color: #eac741">We have an opportunity to build social software where the data actually belongs to people.</h1>
 
 <v-click>
 
