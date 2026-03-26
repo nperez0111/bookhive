@@ -43,7 +43,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Determine the actual theme based on mode and system preference
   const theme: "light" | "dark" =
-    themeMode === "system" ? (systemColorScheme ?? "light") : themeMode;
+    themeMode === "system" ? (systemColorScheme === "dark" ? "dark" : "light") : themeMode;
 
   const isDark = theme === "dark";
 

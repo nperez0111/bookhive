@@ -18,13 +18,14 @@ import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
 import { ThemeProvider } from "@/context/theme";
-import { useColorScheme, View, Platform } from "react-native";
+import { View, Platform } from "react-native";
+import { useColorScheme } from "@/hooks/useColorScheme";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 import { Colors } from "@/constants/Colors";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,7 +68,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [loaded]);
 

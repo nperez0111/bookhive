@@ -269,7 +269,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     router.push(`/profile/${userDid}`);
   };
 
-  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View>) => {
+  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View | null>) => {
     // Scroll to the reply form after a short delay to ensure it's rendered
     setTimeout(() => {
       if (replyFormRef.current && scrollViewRef.current) {

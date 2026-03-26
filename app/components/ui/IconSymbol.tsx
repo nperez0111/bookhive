@@ -18,7 +18,7 @@ const MAPPING = {
   "paperplane.fill": "send",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
-} as Partial<Record<SymbolViewProps["name"], React.ComponentProps<typeof MaterialIcons>["name"]>>;
+} as Record<string, React.ComponentProps<typeof MaterialIcons>["name"]>;
 
 export type IconSymbolName = keyof typeof MAPPING;
 

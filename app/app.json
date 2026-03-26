@@ -7,14 +7,14 @@
     "icon": "./assets/images/icon.png",
     "scheme": "bookhive",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "githubUrl": "https://github.com/nperez0111/bookhive",
     "ios": {
       "icon": "./assets/images/icon.icon",
       "supportsTablet": true,
       "bundleIdentifier": "buzz.bookhive.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true
       },
       "buildNumber": "10101"
     },
@@ -46,7 +46,9 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "splash": {
       "image": "./assets/images/splash-icon.png",

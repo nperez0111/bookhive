@@ -1,5 +1,10 @@
 import React from "react";
-import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+  ReduceMotion,
+} from "react-native-reanimated";
 
 type AnimatedListItemProps = {
   index: number;
@@ -21,7 +26,7 @@ export function AnimatedListItem({
       layout={LinearTransition.springify()
         .damping(18)
         .stiffness(180)
-        .reduceMotion(overshootClamping)}
+        .reduceMotion(overshootClamping ? ReduceMotion.Always : ReduceMotion.Never)}
     >
       {children}
     </Animated.View>

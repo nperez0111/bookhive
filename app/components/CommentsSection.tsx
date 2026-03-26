@@ -22,7 +22,7 @@ interface CommentsSectionProps {
   comments: CommentItem[];
   hiveId: string;
   onUserPress?: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View>) => void;
+  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
 }
 
 // Star Rating Component for comments
@@ -54,7 +54,7 @@ const CommentItem: React.FC<{
   comment: CommentItem;
   hiveId: string;
   onUserPress: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View>) => void;
+  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
 }> = ({ comment, hiveId, onUserPress, onReplyClick }) => {
   const { authState } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -332,7 +332,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     onUserPress?.(userDid);
   };
 
-  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View>) => {
+  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View | null>) => {
     // Call the parent callback
     onReplyClick?.(commentId, replyFormRef);
   };
