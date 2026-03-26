@@ -8,16 +8,20 @@ import type { Storage } from "unstorage";
 
 const time = Date.now();
 
-// OAuth scopes required for BookHive operations:
-// - atproto: Base scope required for AT Protocol authentication
-// - blob:*/*: Required for uploading book cover images
-// - repo:buzz.bookhive.book: Write operations on book records (create, update, delete)
-// - repo:buzz.bookhive.buzz: Write operations on comment records (create, update, delete)
-// - repo:app.bsky.graph.follow: Create and delete follow records (follow/unfollow)
-// - rpc:app.bsky.graph.getFollows: Required for fetching user's follows list from any Audience
-// - rpc:app.bsky.actor.getProfile: Required for fetching user profile information from any Audience
-export const OAUTH_SCOPES =
+// Toggle to use permission-set scopes (requires PDS support for permission sets).
+// When true, uses the bundled `include:buzz.bookhive.auth` scope.
+// When false, uses the granular per-resource scopes (works on all current PDS instances).
+const USE_PERMISSION_SETS = true;
+
+const GRANULAR_SCOPES =
   "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
+
+// Permission set can only cover buzz.bookhive.* namespace (spec namespace authority rule).
+// blob, app.bsky.*, and social.popfeed.* must remain as granular scopes.
+const PERMISSION_SET_SCOPES =
+  "atproto include:buzz.bookhive.auth blob:*/* repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
+
+export const OAUTH_SCOPES = USE_PERMISSION_SETS ? PERMISSION_SET_SCOPES : GRANULAR_SCOPES;
 
 export async function createOAuthClient(kv: Storage) {
   const publicUrl = env.PUBLIC_URL;
