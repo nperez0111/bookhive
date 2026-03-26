@@ -1,10 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import {
-  normalizeGoodreadsId,
-  deriveBookIdentifiers,
-  normalizeIsbn,
-  normalizeIsbn13,
-} from "./bookIdentifiers";
+import { normalizeGoodreadsId, deriveBookIdentifiers } from "./bookIdentifiers";
 
 describe("normalizeGoodreadsId", () => {
   it("returns numeric Goodreads IDs", () => {
