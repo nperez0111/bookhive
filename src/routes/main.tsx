@@ -63,6 +63,29 @@ const ipx = createIPX({
   }),
 });
 
+const MAX_CONCURRENT_IPX = 10;
+let ipxInFlight = 0;
+const ipxQueue: Array<() => void> = [];
+
+function acquireIpxSlot(): Promise<void> {
+  if (ipxInFlight < MAX_CONCURRENT_IPX) {
+    ipxInFlight++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    ipxQueue.push(() => {
+      ipxInFlight++;
+      resolve();
+    });
+  });
+}
+
+function releaseIpxSlot(): void {
+  ipxInFlight--;
+  const next = ipxQueue.shift();
+  if (next) next();
+}
+
 const FORMAT_MIME: Record<string, string> = {
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
@@ -322,11 +345,28 @@ export function mainRouter(deps: AppDeps): HonoServer {
     }
 
     try {
-      const { data, format } = await ipx(id, modifiers).process();
+      await acquireIpxSlot();
+      let data: Buffer | Uint8Array;
+      let format: string | undefined;
+      try {
+        const result = await ipx(id, modifiers).process();
+        data = result.data as Buffer;
+        format = result.format;
+      } finally {
+        releaseIpxSlot();
+      }
+
+      const etag = `"${new Bun.CryptoHasher("sha256").update(data).digest("hex")}"`;
+      if (c.req.header("If-None-Match") === etag) {
+        return new Response(null, { status: 304, headers: { ETag: etag } });
+      }
+
       return new Response(data as BodyInit, {
         headers: {
           "Content-Type": FORMAT_MIME[format ?? ""] ?? "image/jpeg",
           "Cache-Control": `public, max-age=${MAX_AGE}`,
+          "Content-Length": data.byteLength.toString(),
+          ETag: etag,
           "X-Request-Id": c.get("requestId"),
         },
       });

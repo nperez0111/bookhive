@@ -162,7 +162,12 @@ const FailedRow: FC<{
                     >
                       <div className="flex items-center gap-3">
                         {b.thumbnail && (
-                          <img src={b.thumbnail} className="h-10 w-7 rounded object-cover" alt="" />
+                          <img
+                            src={b.thumbnail}
+                            className="h-10 w-7 rounded object-cover"
+                            loading="lazy"
+                            alt=""
+                          />
                         )}
                         <div>
                           <div className="text-sm font-medium text-foreground">{b.title}</div>
@@ -295,6 +300,7 @@ const SuccessRowView: FC<{
               <img
                 src={coverImage}
                 alt={`Cover of ${title}`}
+                loading="lazy"
                 className="h-full w-full object-cover"
               />
             ) : (

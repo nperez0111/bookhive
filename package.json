@@ -92,6 +92,6 @@
   },
   "patchedDependencies": {
     "ipx@4.0.0-alpha.1": "patches/ipx@4.0.0-alpha.1.patch",
-    "nitro-nightly@3.0.1-20260320-182900-2218d454": "patches/nitro-nightly@3.0.1-20260320-182900-2218d454.patch"
+    "nitro-nightly@3.0.1-20260326-192208-2888e8f9": "patches/nitro-nightly@3.0.1-20260326-192208-2888e8f9.patch"
   }
 }

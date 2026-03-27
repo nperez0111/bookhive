@@ -9,6 +9,7 @@ import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
 import { Card, CardBody, UserBlock, StarDisplay, CardActions } from "./components/cards";
 import { Script } from "./utils/script";
+import { parseHtmlToText } from "../utils/htmlToText";
 
 type CommentShape = {
   parentUri?: string;
@@ -113,12 +114,7 @@ function Comment({
           <input type="checkbox" id={`comments-toggle-${commentIdSafe}`} class="peer hidden" />
           <div class="peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0">
             <p class="whitespace-pre-wrap text-foreground">
-              {comment.comment.split("\r\n").map((line, index, array) => (
-                <>
-                  {line}
-                  {index < array.length - 1 && <br />}
-                </>
-              ))}
+              {parseHtmlToText(comment.comment)}
             </p>
           </div>
 

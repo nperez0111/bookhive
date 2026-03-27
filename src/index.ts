@@ -1,13 +1,7 @@
-// Load OpenTelemetry SDK first (replaces node --require ./instrumentation.cjs)
-import "./instrumentation";
-
-import { instrument } from "./middleware/index.ts";
 import app from "./server";
 import { env } from "./env";
 
 import entryHtml from "./entry.html";
-
-const instrumentedApp = instrument(app);
 
 const server = Bun.serve({
   port: env.PORT,
@@ -15,7 +9,7 @@ const server = Bun.serve({
   routes: {
     "/_bundle": entryHtml,
   },
-  fetch: instrumentedApp.fetch,
+  fetch: app.fetch,
 });
 
 console.log(`Server is running on ${server.url}`);

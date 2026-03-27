@@ -88,6 +88,7 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
                 <img
                   src={`/images/w_100/${avatar}`}
                   alt=""
+                  loading="lazy"
                   class="h-8 w-8 shrink-0 rounded-full object-cover"
                 />
               ) : (

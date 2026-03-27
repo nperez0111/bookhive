@@ -206,6 +206,7 @@ export const EditableLibraryTable: FC<{
                       <img
                         src={book.cover || book.thumbnail || ""}
                         alt={`Cover of ${book.title}`}
+                        loading="lazy"
                         class="book-cover h-full w-full object-cover"
                         style={`--book-cover-name: book-cover-${book.hiveId}`}
                         onError={(e: any) => {

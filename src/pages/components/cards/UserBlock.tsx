@@ -23,6 +23,7 @@ export const UserBlock: FC<{
     <img
       src={size === "lg" ? `/images/w_500/${avatar}` : `/images/w_100/${avatar}`}
       alt=""
+      loading="lazy"
       class={`${avatarClass} rounded-full object-cover`}
     />
   ) : (

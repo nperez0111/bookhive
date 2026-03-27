@@ -30,6 +30,7 @@ export const ProfileHeader: FC<{
           <img
             src={`/images/w_500/${profile.avatar}`}
             alt=""
+            loading="lazy"
             class="h-20 w-20 flex-shrink-0 rounded-full object-cover"
           />
         )}

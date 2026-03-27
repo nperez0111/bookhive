@@ -9,6 +9,10 @@ export default defineConfig({
     nitro({
       preset: "bun",
       serverEntry: "./server/server.ts",
+      plugins: [
+        "./server/plugins/otel-sdk.ts",
+        "./server/plugins/request-tracing.ts",
+      ],
       // @takumi-rs/core is a NAPI-RS native module not in nf3's NodeNativePackages list;
       // adding it here ensures Nitro traces and copies the platform-specific binary.
       // See: https://github.com/unjs/nf3 — can be removed once nf3 auto-detects NAPI-RS packages.
