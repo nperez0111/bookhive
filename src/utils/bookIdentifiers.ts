@@ -50,20 +50,11 @@ export function normalizeGoodreadsId(value: string | null | undefined): string |
     return null;
   }
 
-  // Goodreads ids can appear as "12345.title-slug" or "12345-title-slug" (from URL path)
-  const [id] = normalized.split(".", 1);
-  if (!id) {
-    return null;
-  }
-
-  // Real Goodreads IDs are always numeric. Reject non-numeric values like
-  // "kca://book/amzn1" (Kindle Content Address) that the Goodreads API
-  // sometimes returns as bookId.
-  if (!/^\d+$/.test(id)) {
-    return null;
-  }
-
-  return id;
+  // Extract leading digits — real Goodreads IDs are numeric, but may be
+  // followed by a slug (e.g. "12345.My-Book" or "12345-my-book").
+  // Rejects non-numeric values like "kca://book/amzn1" (Kindle Content Address).
+  const match = normalized.match(/^(\d+)/);
+  return match ? match[1] : null;
 }
 
 function parseMeta(meta: string | null): ParsedMeta {
