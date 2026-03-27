@@ -59,6 +59,7 @@ export const PdsLanding: FC<{
                     <img
                       src={`/images/w_100/${profile.avatar}`}
                       alt=""
+                      loading="lazy"
                       class="h-12 w-12 shrink-0 rounded-full object-cover"
                     />
                   ) : (

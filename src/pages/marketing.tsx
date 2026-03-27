@@ -95,6 +95,7 @@ function Hero({ signupUrl }: { signupUrl: string }) {
             <img
               src="/hive.jpg"
               alt="Bee sitting on a stack of books"
+              decoding="async"
               class="w-full rounded-2xl object-cover shadow-xl"
             />
           </div>
@@ -150,6 +151,7 @@ function RecentActivityCard({
                     <img
                       src={`/images/w_100/${prof.avatar}`}
                       alt=""
+                      loading="lazy"
                       class="h-9 w-9 rounded-full object-cover"
                     />
                   ) : (
