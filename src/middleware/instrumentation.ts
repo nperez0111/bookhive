@@ -72,6 +72,8 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
 
           patchFetch();
 
+          const instrumentStart = performance.now();
+
           const span = tracer.startSpan(
             new URL(request.url).pathname,
             {
@@ -127,6 +129,8 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           //        We should not do this in production!
           const rootRequestAttributes = await getRootRequestAttributes(requestForAttributes);
 
+          const instrumentSetupMs = performance.now() - instrumentStart;
+
           const measuredFetch = measure(
             {
               name: "request",
@@ -162,9 +166,19 @@ export function instrument(app: HonoLikeApp, config?: FpxConfigOptions) {
           );
 
           try {
-            return await context.with(trace.setSpan(context.active(), span), () =>
+            const response = await context.with(trace.setSpan(context.active(), span), () =>
               measuredFetch(newRequest, rawEnv, proxyExecutionCtx),
             );
+
+            // Append instrument overhead to Server-Timing header for diagnostics
+            const st = response.headers.get("Server-Timing") ?? "";
+            const instrumentTiming = `instrument_setup;dur=${instrumentSetupMs.toFixed(1)}`;
+            response.headers.set(
+              "Server-Timing",
+              st ? `${instrumentTiming},${st}` : instrumentTiming,
+            );
+
+            return response;
           } finally {
             // Make sure all promises are resolved before sending data to the server
             if (proxyExecutionCtx) {

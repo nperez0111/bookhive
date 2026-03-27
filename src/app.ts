@@ -26,6 +26,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   const app = new Hono<AppEnv>();
 
   app.use(timing());
+
   if (env.isDevelopment) {
     app.use(prettyJSON());
   }
@@ -41,7 +42,15 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     await next();
   });
   app.use(secureHeaders());
+
+  // Wrap compress() to measure time spent in compression
+  app.use("*", async (c, next) => {
+    startTime(c, "compress");
+    await next();
+    endTime(c, "compress");
+  });
   app.use(compress());
+
   app.use(jsxRenderer());
 
   app.use("*", opentelemetryMiddleware());

@@ -4,6 +4,7 @@ import "./instrumentation";
 import { instrument } from "./middleware/index.ts";
 import app from "./server";
 import { env } from "./env";
+import { startEventLoopMonitor } from "./utils/event-loop-monitor";
 
 import entryHtml from "./entry.html";
 
@@ -17,5 +18,7 @@ const server = Bun.serve({
   },
   fetch: instrumentedApp.fetch,
 });
+
+startEventLoopMonitor();
 
 console.log(`Server is running on ${server.url}`);
