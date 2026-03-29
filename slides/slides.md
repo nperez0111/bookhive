@@ -1,13 +1,13 @@
 ---
 theme: seriph
-title: "Store the Maximally Useful Data"
+title: "The Design Philosophy of BookHive"
 info: |
   ATmosphereConf 2026
   Nick (@bookhive.buzz)
 class: text-[#3f2f18]
 transition: slide-left
 comark: true
-duration: 15min
+duration: 10min
 drawings:
   persist: false
 background: '#daa731'
@@ -19,16 +19,16 @@ fonts:
 
 <h1 style="letter-spacing: -0.04em" class="font-bold">The Design Philosophy<br />of BookHive</h1>
 
-<img src="/barry_alone_no_bg.svg" width="250" height="250" style="position: absolute; top: 275px;" />
+<img src="/barry_alone_no_bg.svg" width="250" height="250" style="position: absolute; top: 275px; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.35))" />
 
 
 <span class="text-center">Storing the maximally useful data to the user's PDS</span>
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded">
-    Nick Perez / <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current inline" aria-hidden="true">
+    Nick Perez / <svg viewBox="0 0 24 24" class="h-5 w-5 inline" style="fill: rgb(15, 115, 255)" aria-hidden="true">
       <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
-    </svg>&nbsp;<strong>@nickthesick.com</strong>
+    </svg>&nbsp;<strong style="color: rgb(15, 115, 255); font-weight: 800">@nickthesick.com</strong>
   </span>
 </div>
 
@@ -37,7 +37,7 @@ fonts:
 </div>
 
 <!--
-Welcome everyone. I'm Nick, I build BookHive -- a Goodreads alternative built on AT Protocol. Today I want to talk about something I think is underexplored: not *why* to build on atproto, but *how* to build in a way that's truly atproto-native. Specifically, how to think about the data you store in a user's PDS.
+Welcome everyone. I'm Nick, I build BookHive -- a Goodreads alternative built on AT Protocol. Today I want to talk about the design philosophy behind BookHive, and specifically how I think about the data we store in users' PDSes.
 -->
 
 ---
@@ -52,177 +52,169 @@ ATProto is a _trend-reversal_. The web started open, but became progressively cl
 
 <v-click>
 
- - Social Networks, in particular, have become **data silos**.
+ - Social Networks have become **data silos**. If you don't pay for it, you are the product.
 
 </v-click>
 
 <v-click>
 
- - User agency is at an all-time low, what happened to software _solving your problems_.
+ - User agency is at an all-time low - forced through upgrades, with no other recourse.
 
 </v-click>
 
 <v-click>
 
-Most talks here cover *why* atproto. This one is about **how** -- how do you actually build in a way that's atproto-native?
-
-</v-click>
-
-<!--
-We all know the pitch for atproto. User-owned data. Portability. Open ecosystem. But when you sit down to actually design a lexicon and decide what goes into a PDS record, you face real tradeoffs. And the choices you make there determine whether you're really delivering on the promise or just recreating a silo with extra steps.
--->
-
----
-
-<h1 class="font-bold" style="color: #eac741">BookHive</h1>
-
-A Goodreads alternative built on AT Protocol.
-
-<v-click>
-
-- Users track books, rate them, write reviews
-- All reading data stored in the user's PDS
-- ~3,000 users, ~250,000 book records on protocol
-
-</v-click>
-
-<v-click>
-
-Today: the design decisions behind those records, and what I learned.
+ - APIs are closing down. Especially with AI, data is seen as a **moat**.
 
 </v-click>
 
 <!--
-Quick context on BookHive. It's a reading tracker -- think Goodreads but built on atproto. Users add books to their library, track reading status, rate and review them. All of that data is written to their PDS as AT Protocol records. We've been live for a while now and have about 3,000 users with a quarter million book records on protocol. What I want to share today are the design decisions behind those records and the principles I've extracted from building this.
+What ATProto represents is a trend reversal. The web started as open, and became progressively more closed down. Social networks in particular have become data silos. If you don't pay for it, you are the product. User agency is at an all-time low -- users are forced through upgrades with no other recourse. And APIs are closing down left and right, especially now that AI has made companies view their data as a moat.
+-->
+
+---
+layout: cover
+background: '#3f2b08'
+class: text-white text-left
+---
+
+<h1 class="font-bold">The <span style="color: #eac741">User-Agent</span></h1>
+
+The web came with this idea of a **user-agent** -- allowing users to customize their experience according to their needs.
+
+<v-click>
+
+It largely didn't pan out. The complexity of sharing data naturally led to the rise of locked-down APIs.
+
+</v-click>
+
+<v-click>
+
+But of course, that's why you're all here -- to build an **open web based on user agency**.
+
+</v-click>
+
+
+
+<!--
+We often forget that the web came with this idea of a user-agent, allowing users to customize their experience according to their needs. It largely didn't pan out because of the complexity of sharing data -- it naturally led to the rise of locked-down APIs. But of course, that is part of why you are all here, to see an open web, based on user agency. ATProto gives us the infrastructure to actually deliver on that promise.
+-->
+---
+layout: cover
+background: '#f9eabc'
+class: text-[#3f2b08] text-left
+---
+
+<img src="./screenshot.jpg" width="500px" class="ml-8 mt-4 border-rounded drop-shadow-amber shadow-xl" align="right" />
+
+<h1 class="font-bold" style="color: #3f2b08">BookHive</h1>
+
+<p style="opacity: 1">An <b style="color: #000">open source, open data</b> alternative to Goodreads, built on AT Protocol.</p>
+
+- Track your books, organize your shelves, connect with readers
+- All data stored in the <b style="color: #000">user's PDS</b>
+- ~1,000 users, >=250,000 book records
+
+
+
+
+<!--
+BookHive is an open source, open data alternative to Goodreads. You can track your books, organize your shelves and connect with others who read the same books as you. When building BookHive, my thinking was all about storing the maximally useful data in the user's PDS. This means data the user and other applications can actually work with.
 -->
 
 ---
 
-<h1 class="font-bold" style="color: #eac741">The Temptation</h1>
+<h1 class="font-bold" style="color: #eac741">What We
+  <span style="display: inline-block; position: relative;">
+    <Transition name="swap">
+      <span v-if="$clicks < 1" key="can" style="color: white">Can</span>
+      <span v-else key="do" style="color: white">Do</span>
+    </Transition>
+  </span>
+Store</h1>
 
-BookHive has a `hiveId` -- a hash of title + author that uniquely identifies every book.
+<style>
+.swap-enter-active, .swap-leave-active {
+  transition: all 0.4s ease;
+}
+.swap-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.swap-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+}
+.swap-leave-active {
+  position: absolute;
+}
+</style>
 
-<v-click>
+<span v-if="$clicks < 1">BookHive has a single ID for every book. It _could_ just store that and be done with it.</span>
+<span v-else>A self-describing record of the user's intent: stuff apps or users actually need.</span>
 
-Storing just this ID would be "efficient":
-
+````md magic-move
 ```json
+// The "efficient" approach
 {
-  "hiveId": "a1b2c3d4e5f6",
+  "hiveId": "bk_FEQcl1dxSUgnRbODU6cK",
   "status": "finished",
-  "stars": 8,
-  "createdAt": "2025-06-15T..."
+  "createdAt": "2026-03-26T19:13:50.944Z"
 }
 ```
 
-</v-click>
-
-<v-click>
-
-It's all the app needs to look up the book. But it's **useless** to the user and **useless** to any other app.
-
-</v-click>
-
-<!--
-So here's the temptation. BookHive has an internal ID system -- a hash of title plus author. If I were building a traditional web app, I'd store this ID plus the user's status and rating, and call it a day. It's normalized. It's efficient. It's what any good database design would look like. But a PDS is not a database. If someone exports their data or another app reads their PDS, what does "a1b2c3d4e5f6" mean? Nothing. It's an opaque reference to BookHive's internal system.
--->
-
----
-layout: two-cols
-layoutClass: gap-8
----
-
-<h1 class="font-bold" style="color: #eac741">What We Actually Store</h1>
-
 ```json
+// What we actually store
 {
-  "title": "The Left Hand of Darkness",
-  "authors": "Ursula K. Le Guin",
-  "cover": { /* blob */ },
+  "title": "Bee Movie",
+  "authors": "Susan Korman",
+  "cover": { "$type": "blob", "mimeType": "image/jpeg", "size": 34941 },
+  "owned": true,
+  "status": "buzz.bookhive.defs#finished",
+  "createdAt": "2026-03-26T19:13:50.944Z",
+  "finishedAt": "2026-03-26T00:00:00.000Z",
+  "hiveId": "bk_FEQcl1dxSUgnRbODU6cK",
+  "hiveBookUri": "at://did:plc:.../buzz.bookhive.catalogBook/bk_...",
   "identifiers": {
-    "isbn13": "9780441478125",
-    "isbn10": "0441478123",
-    "goodreadsId": "18423"
-  },
-  "status": "finished",
-  "stars": 9,
-  "review": "A masterwork of ...",
-  "startedAt": "2025-05-01T...",
-  "finishedAt": "2025-06-10T...",
-  "hiveId": "a1b2c3d4e5f6",
-  "hiveBookUri": "at://did:plc:.../..."
+    "isbn13": "9780061251788",
+    "isbn10": "006125178X",
+    "goodreadsId": "1646160"
+  }
 }
 ```
+````
 
-::right::
-
-<div class="mt-12">
-
-<v-click>
-
-**Everything someone needs to understand:**
-
-- What book is this?
-- What's my relationship with it?
-- How can other apps find it?
-
-</v-click>
-
-<v-click>
-
-The record is **self-describing**.
-
-No API call required to make sense of it.
-
-</v-click>
-
-</div>
-
-<!--
-Here's what we actually store. Title, authors, a cover image as a blob, standard identifiers like ISBN-10, ISBN-13, and Goodreads ID. Reading status, rating, review text, dates. And yes, the hiveId is still there for BookHive's internal use, plus a link to our catalog record. But the key point is: this record stands on its own. You can look at it and know exactly what book this is, what the user thought of it, and when they read it. No API call to BookHive required.
--->
-
+---
+layout: cover
 ---
 
 <h1 class="font-bold" style="color: #eac741">The "Day After" Test</h1>
 
-> If BookHive disappeared tomorrow, is the data in your PDS still meaningful?
-
 <v-click>
 
-**With just an ID:** No. An opaque hash with no service to resolve it.
-
-</v-click>
-
-<v-click>
-
-**With full records:** Yes.
-
-- You have your books -- titles, authors, covers
-- You have your ratings and reviews
-- You have your reading history
-- Other apps can use ISBNs to cross-reference
-
-</v-click>
-
-<v-click>
-
-This is the litmus test for every PDS record you design.
+<h2>If BookHive disappeared tomorrow, is the data in your PDS still meaningful?</h2>
 
 </v-click>
 
 <!--
-Here's the litmus test I use for every design decision: the "day after" test. If BookHive shut down tomorrow, what happens to the data in users' PDSes? With the minimal approach -- just an ID -- that data becomes meaningless. An opaque hash pointing to a dead service. With full records, users still have their complete reading history. Titles, authors, covers, reviews, dates. And because we include ISBNs, any other book app can pick up that data and work with it. The records survive the service.
+BookHive already has a single ID for a book -- a hash of title plus author. It could just store that into the user's PDS and be done with it. That's the efficient approach. But the goal should be to store maximally useful data. So instead, we store the title, authors, a cover image, standard identifiers like ISBNs and Goodreads IDs, the reading status, rating, review, dates -- everything someone needs to understand what this book is and what the user's relationship with it is. The record is self-describing. No API call to BookHive required.
 -->
 
 ---
+class: text-[#1c1917] bg-[#f9eabc]
+---
 
-<h1 class="font-bold" style="color: #eac741">The Catalog Account</h1>
+<h1 style="color: rgb(146 64 14)">A central store of book data under the <span class="font-bold">@bookhive.buzz</span></h1>
+
+
+<v-click>
 
 <CatalogDiagram />
 
+</v-click>
+
 <!--
-Some data is too large to duplicate into every user's PDS -- full book descriptions, genre taxonomies, series information. So BookHive scrapes and enriches data from multiple sources -- Goodreads, Google Books, ISBNdb -- and publishes canonical book records to our catalog account @bookhive.buzz, on protocol. Users' records link to these via hiveBookUri. And critically, this catalog data is open. Anyone can read it. Other apps like Popfeed and personal websites can read both the user's PDS and the catalog directly, without calling our API. Pattern: enrich data centrally, publish it openly, let users reference it.
+If BookHive disappeared tomorrow, is the data in your PDS still meaningful? Yes. We maintain a catalog -- a central store of book data under the @bookhive.buzz service account. This means all book data is on protocol. Everything on BookHive can be reconstructed purely from data available on the network. Users' records link to the catalog via a hiveBookUri. The catalog stores the enriched data -- descriptions, genres, series information -- that would be too large to duplicate into every user's PDS.
 -->
 
 ---
@@ -233,117 +225,35 @@ Other apps already consume BookHive data -- without calling our API.
 
 <v-click>
 
-**Personal websites** pull book records from users' PDSes to display "what I'm reading" sections.
+**Popfeed** can interoperate with our lexicon, because all of the data is already in the user's PDS, fully self-contained.
 
 </v-click>
 
 <v-click>
 
-**Popfeed** reads BookHive records and displays books with their own shelf system.
+**Personal websites** display users' libraries without any interaction with BookHive APIs.
 
 </v-click>
 
 <v-click>
 
-This only works **because** the records contain real data -- title, authors, cover, identifiers.
-
-Not opaque IDs that require calling BookHive.
+This only works **because** the records contain real data -- not opaque IDs that require calling BookHive.
 
 </v-click>
 
 <!--
-And here's the proof that this approach works. Other developers are already building on BookHive data without any coordination with us. People have built personal websites that pull their book records directly from their PDS to show a "currently reading" section. Popfeed, another app in the ecosystem, reads BookHive records and displays them with their own UI and shelf system. None of this would work if we'd stored just an opaque ID. These apps don't call BookHive's API -- they read the PDS directly, and the records have everything they need.
--->
-
----
-layout: center
----
-
-<h1 class="font-bold text-5xl" style="color: #eac741">A PDS Is Not a Database</h1>
-
-<!--
-So let me name the principle behind all of this.
+And here's the proof that this approach works. Popfeed.social can interoperate with our lexicon, because all of the data is already in the user's PDS, fully self-contained. Users are able to display their library on personal websites, without any interaction with BookHive APIs. None of this would work if we'd stored just an opaque ID. These apps read the PDS directly, and the records have everything they need.
 -->
 
 ---
 
-<h1 class="font-bold" style="color: #eac741">The Mindset Shift</h1>
-
-<div class="grid grid-cols-2 gap-8 mt-4">
-<div>
-
-<h3 style="color: #d4a017">Database Mindset</h3>
-
-<v-click>
-
-- Deduplicate
-- Normalize
-- Store references
-- Optimize for your queries
-- Data serves the application
-
-</v-click>
-
-</div>
-<div>
-
-<h3 style="color: #d4a017">PDS Mindset</h3>
-
-<v-click>
-
-- Include context
-- Be self-describing
-- Use standard identifiers
-- Optimize for the *user*
-- Data serves the person who owns it
-
-</v-click>
-
-</div>
-</div>
-
-<v-click>
-
-<div class="mt-8 text-center">
-
-When you store data in a user's PDS, you're not optimizing for your app's queries.
-
-You're **giving data to the user**.
-
-</div>
-
-</v-click>
-
-<!--
-When we design traditional databases, we think about normalization. Don't repeat yourself. Store a foreign key, join at query time. That's great for databases. But a PDS is not a database. When you write a record to someone's PDS, you're not optimizing for your app's query patterns. You're giving data to a person. And the question becomes: is this data useful to them? Can they understand it? Can other apps use it? I think of this as "Database User Experience" -- what's the experience of someone looking at their own data?
--->
-
----
-layout: center
-class: text-center
----
-
-<h1 class="font-bold text-4xl" style="color: #eac741">"Store the maximally useful data."</h1>
-
-<v-click>
-
-The data you write to a PDS should be as useful as possible to the person who owns it.
-
-</v-click>
-
-<!--
-So here's the core principle, in one sentence. Store the maximally useful data. Not the minimum your app needs. Not a full database dump. The maximally useful data -- the richest, most self-describing version of the record that makes sense for the user to own.
--->
-
----
-
-<h1 class="font-bold" style="color: #eac741">Three Principles for Builders</h1>
+<h1 class="font-bold" style="color: #eac741">Takeaways for Builders</h1>
 
 <v-click>
 
 <h3 style="color: #d4a017">1. Store what's useful to the user, not just to you.</h3>
 
-Records should be **self-describing**. Someone looking at a PDS record should understand what it represents without calling your API.
+Include enough context that the record is self-describing. The **PDS is not just a database**.
 
 </v-click>
 
@@ -351,20 +261,20 @@ Records should be **self-describing**. Someone looking at a PDS record should un
 
 <h3 style="color: #d4a017">2. Use standard identifiers. Publish open datasets on-protocol.</h3>
 
-ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. The enrichment work you do can benefit the whole ecosystem.
+ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. It's actually _very hard_ to get a good book dataset. Your enrichment work can benefit everyone.
 
 </v-click>
 
 <v-click>
 
-<h3 style="color: #d4a017">3. Apply the "day after" test.</h3>
+<h3 style="color: #d4a017">3. The "day after" test.</h3>
 
 If your service shuts down tomorrow, is the user's PDS data still valuable? If not, rethink what you're storing.
 
 </v-click>
 
 <!--
-Three actionable takeaways. First: store what's useful to the user, not just what's useful to you. Make records self-describing. Second: use standard identifiers wherever they exist, and publish your enriched datasets on protocol. ISBNs for books, DOIs for papers, URLs -- whatever helps other apps cross-reference and build on your work. Third: apply the day after test. If your service disappears, is the data in the PDS still valuable? If the answer is no, you have a design problem.
+Three takeaways. First: store what's useful to the user, not just what's useful to you. Include enough context that the record is self-describing. Someone looking at a PDS record should understand what it represents without calling your API. The PDS is not just a database. Second: use standard identifiers wherever they exist, and publish your enriched datasets on protocol. It's actually very hard to get a good book dataset -- the enrichment work you do can benefit everyone, not just your users. Third: the day after test. If your service shuts down tomorrow, is the user's PDS data still valuable? If not, rethink what you're storing.
 -->
 
 ---
@@ -376,15 +286,7 @@ class: text-center
 
 <v-click>
 
-Let's not waste it by storing opaque IDs.
-
-</v-click>
-
-<v-click>
-
-Next time you design a lexicon, ask:
-
-**"Is this record useful to the person who owns it?"**
+<h2 class="mt-20">Let's not waste it by storing opaque IDs.</h2>
 
 </v-click>
 
@@ -393,5 +295,5 @@ Next time you design a lexicon, ask:
 </div>
 
 <!--
-We have a real opportunity here. AT Protocol gives us the infrastructure to build social software where the data genuinely belongs to people. But infrastructure alone isn't enough -- we have to make good design choices on top of it. So next time you sit down to design a lexicon, ask yourself: is this record useful to the person who owns it? If it is, you're building something that lasts. Thank you.
+We have an opportunity to build social software where the data actually belongs to people. Let's not waste it by storing opaque IDs. Thank you.
 -->
