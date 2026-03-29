@@ -22,7 +22,7 @@ fonts:
 <img src="/barry_alone_no_bg.svg" width="250" height="250" style="position: absolute; top: 275px; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.35))" />
 
 
-<span class="text-center">Storing the maximally useful data to the user's PDS</span>
+<span class="text-center">Storing the maximally useful data for the user's agency</span>
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded">
@@ -32,7 +32,7 @@ fonts:
   </span>
 </div>
 
-<div class="abs-br m-6 flex gap-2 text-sm opacity-70">
+<div class="abs-br m-6 flex gap-2 text-sm">
   ATmosphereConf 2026
 </div>
 
@@ -105,9 +105,9 @@ background: '#f9eabc'
 class: text-[#3f2b08] text-left
 ---
 
-<img src="./screenshot.jpg" width="500px" class="ml-8 mt-4 border-rounded drop-shadow-amber shadow-xl" align="right" />
+<img src="./screenshot.jpg" width="500px" class="ml-8 mt-4 border-rounded drop-shadow-amber drop-shadow-xl" align="right" />
 
-<h1 class="font-bold" style="color: #3f2b08">BookHive</h1>
+<h1 class="font-bold mt-8" style="color: #3f2b08">BookHive</h1>
 
 <p style="opacity: 1">An <b style="color: #000">open source, open data</b> alternative to Goodreads, built on AT Protocol.</p>
 
@@ -185,26 +185,39 @@ Store</h1>
 ````
 
 ---
+layout: center
+class: text-center
+---
+
+<h1 class="font-bold" style="color: #eac741">We have an opportunity to build social software where the data actually belongs to people.</h1>
+
+
+<h2 class="mt-20">Let's not waste it by storing opaque IDs.</h2>
+
+<v-click>
+
+<h1 style="color: #fff" class="mt-12">
+    The PDS is not just a database
+</h1>
+
+</v-click>
+
+
+---
 layout: cover
 ---
 
 <h1 class="font-bold" style="color: #eac741">The "Day After" Test</h1>
 
-<v-click>
 
 <h2>If BookHive disappeared tomorrow, is the data in your PDS still meaningful?</h2>
 
-</v-click>
-
-<!--
-BookHive already has a single ID for a book -- a hash of title plus author. It could just store that into the user's PDS and be done with it. That's the efficient approach. But the goal should be to store maximally useful data. So instead, we store the title, authors, a cover image, standard identifiers like ISBNs and Goodreads IDs, the reading status, rating, review, dates -- everything someone needs to understand what this book is and what the user's relationship with it is. The record is self-describing. No API call to BookHive required.
--->
 
 ---
 class: text-[#1c1917] bg-[#f9eabc]
 ---
 
-<h1 style="color: rgb(146 64 14)">A central store of book data under the <span class="font-bold">@bookhive.buzz</span></h1>
+<h1 style="color: rgb(146 64 14)">A central store of book data within <span class="font-extrabold">@bookhive.buzz</span></h1>
 
 
 <v-click>
@@ -218,40 +231,56 @@ If BookHive disappeared tomorrow, is the data in your PDS still meaningful? Yes.
 -->
 
 ---
+layout: statement
+---
 
 <h1 class="font-bold" style="color: #eac741">Proof It Works</h1>
 
-Other apps already consume BookHive data -- without calling our API.
-
-<v-click>
-
-**Popfeed** can interoperate with our lexicon, because all of the data is already in the user's PDS, fully self-contained.
-
-</v-click>
-
-<v-click>
-
-**Personal websites** display users' libraries without any interaction with BookHive APIs.
-
-</v-click>
-
-<v-click>
-
-This only works **because** the records contain real data -- not opaque IDs that require calling BookHive.
-
-</v-click>
-
-<!--
-And here's the proof that this approach works. Popfeed.social can interoperate with our lexicon, because all of the data is already in the user's PDS, fully self-contained. Users are able to display their library on personal websites, without any interaction with BookHive APIs. None of this would work if we'd stored just an opaque ID. These apps read the PDS directly, and the records have everything they need.
--->
+### Other apps already use BookHive data -- without our API.
 
 ---
+class: text-[#1c1917] bg-[#f9eabc]
+---
+
+<h1 class="font-bold" style="color: #3f2b08">Popfeed</h1>
+
+<p style="color: rgb(146 64 14); opacity: 1">An application for books, movies and tv shows, by <b class="font-bolder">@cjfulton.bsky.social</b></p>
+
+<img src="./popfeed.jpg" class="mx-auto border-rounded drop-shadow-xl" width="530px">
+
+<p class="text-center">Popfeed is able to display BookHive books, within Popfeed</p>
+
+
+
+---
+
+<h1 class="font-bold" style="color: #eac741">Book Explorer</h1>
+
+An **alternative front-end** to manage your books, by **@tijs.org**
+
+<img src="./book-explorer.jpg" class="mx-auto border-rounded drop-shadow-xl" width="530px">
+
+<p class="text-center">They are your books, choose how you want to manage them.</p>
+
+---
+layout: statement
+---
+
+<h2 style="color: #fff" class="mb-8">
+  This only works because BookHive stores
+</h2>
+<h1 class="font-bold" style="color: #fff">The <b style="color: #eac741">maximally useful data</b> <br />in service of the user</h1>
+
+
+
+---
+
 
 <h1 class="font-bold" style="color: #eac741">Takeaways for Builders</h1>
 
 <v-click>
 
-<h3 style="color: #d4a017">1. Store what's useful to the user, not just to you.</h3>
+<h3 style="color: #d4a017; font-size: 1.5em" class="mt-12">1. Store what's useful to the user, not just to you.</h3>
 
 Include enough context that the record is self-describing. The **PDS is not just a database**.
 
@@ -259,7 +288,7 @@ Include enough context that the record is self-describing. The **PDS is not just
 
 <v-click>
 
-<h3 style="color: #d4a017">2. Use standard identifiers. Publish open datasets on-protocol.</h3>
+<h3 style="color: #d4a017; font-size: 1.5em" class="mt-12">2. Use standard identifiers. Publish open datasets on-protocol.</h3>
 
 ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. It's actually _very hard_ to get a good book dataset. Your enrichment work can benefit everyone.
 
@@ -267,7 +296,7 @@ ISBNs, DOIs, URLs -- anything that lets other apps cross-reference. It's actuall
 
 <v-click>
 
-<h3 style="color: #d4a017">3. The "day after" test.</h3>
+<h3 style="color: #d4a017; font-size: 1.5em;" class="mt-12">3. The "day after" test.</h3>
 
 If your service shuts down tomorrow, is the user's PDS data still valuable? If not, rethink what you're storing.
 
@@ -282,18 +311,33 @@ layout: center
 class: text-center
 ---
 
-<h1 class="font-bold" style="color: #eac741">We have an opportunity to build social software where the data actually belongs to people.</h1>
+
+<h1 class="font-bold" style="color: #eac741">Empower users</h1>
 
 <v-click>
-
-<h2 class="mt-20">Let's not waste it by storing opaque IDs.</h2>
-
+<h1 class="font-bold" style="color: #eac741">Be their agent</h1>
 </v-click>
 
-<div class="abs-br m-6 flex gap-2 text-sm opacity-50">
-  @bookhive.buzz
+<v-click>
+<h1 class="font-bold" style="color: #eac741">Open Data</h1>
+</v-click>
+
+<v-click>
+<h1 class="font-bold" style="color: #eac741">Open Source</h1>
+</v-click>
+
+---
+layout: center
+---
+
+<h1 style="color: #fff; font-size: 90px">Thank you!</h1>
+
+<img src="./hive.png" width="450px" class="mt-20 mx-auto border-rounded-xl drop-shadow-amber shadow-xl" />
+
+<div class="abs-bl m-6 flex gap-2 text-lg">
+  @nickthesick.com
 </div>
 
-<!--
-We have an opportunity to build social software where the data actually belongs to people. Let's not waste it by storing opaque IDs. Thank you.
--->
+<div class="abs-br m-6 flex gap-2 text-lg">
+  @bookhive.buzz
+</div>
