@@ -22,7 +22,7 @@ fonts:
 <img src="/barry_alone_no_bg.svg" width="250" height="250" style="position: absolute; top: 275px; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.35))" />
 
 
-<span class="text-center">Storing the maximally useful data for the user's agency</span>
+<span class="text-center">Storing the maximally useful data to enable user agency</span>
 
 <div class="pt-12">
   <span class="px-2 py-1 rounded">
