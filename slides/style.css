@@ -1,0 +1,33 @@
+/* BookHive presentation theme — dark warm brown with amber/gold accents */
+/* Scoped to .slidev-layout to avoid leaking into presenter UI */
+
+.slidev-layout {
+    background: #3f2b08;
+    color: #fafaf9;
+}
+
+/* Code blocks */
+.slidev-layout pre,
+.slidev-layout code {
+    background: #2a1c05 !important;
+}
+
+/* Blockquotes */
+.slidev-layout blockquote {
+    border-left-color: #eac741;
+    color: #d4a017;
+}
+
+/* Links */
+.slidev-layout a {
+    color: #eac741;
+}
+
+/* Strong/bold emphasis */
+.slidev-layout strong {
+    color: #fafaf9;
+}
+
+.slidev-layout h1 + p {
+    opacity: 1;
+}
