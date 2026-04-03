@@ -304,7 +304,7 @@ export const LibraryImport: FC = () => {
                             alreadyExists: event.alreadyExists ?? event.book?.alreadyExists,
                           },
                         });
-                      } else if (event.event === "import-start" || event.event === "upload-start") {
+                      } else if (event.event === "import-start" || event.event === "upload-start" || event.event === "import-error") {
                         dispatchImportEvent(event);
                       } else if (event.event === "import-complete") {
                         dispatchImportEvent(event);
