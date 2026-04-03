@@ -7,7 +7,11 @@ import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
 import type { SessionClient } from "../auth/client";
-import { createActorResolver, createBidirectionalResolverAtcute } from "./id-resolver";
+import {
+  createActorResolver,
+  createBidirectionalResolverAtcute,
+  createCachingBidirectionalResolver,
+} from "./id-resolver";
 import { ids, Book, Buzz, List, ListItem } from "./lexicon";
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
@@ -282,10 +286,55 @@ export function createIngester(
   serviceAccountAgent: SessionClient | null,
   emitWideEvent: EmitWideEvent,
 ): Ingester {
-  const bidirectionalResolver = createBidirectionalResolverAtcute();
+  const bidirectionalResolver = createCachingBidirectionalResolver(
+    kv,
+    createBidirectionalResolverAtcute(),
+  );
   const backfilledDids = new Set<string>();
   let subscription: JetstreamSubscription | null = null;
   let abortController: AbortController | null = null;
+  let destroyed = false;
+
+  // Concurrency limiter for backfill operations
+  const BACKFILL_CONCURRENCY = 3;
+  let activeBackfills = 0;
+  const backfillQueue: Array<() => void> = [];
+
+  function enqueueBackfill(did: string) {
+    if (destroyed) return;
+    const run = async () => {
+      activeBackfills++;
+      try {
+        await backfillUserRepo(did, db, kv, emitWideEvent);
+      } finally {
+        activeBackfills--;
+        const next = backfillQueue.shift();
+        if (next) next();
+      }
+    };
+    if (activeBackfills < BACKFILL_CONCURRENCY) {
+      run().catch(() => {});
+    } else {
+      backfillQueue.push(() => {
+        run().catch(() => {});
+      });
+    }
+  }
+
+  // Log errors from fire-and-forget background operations
+  function tracked(name: string, did: string, fn: () => Promise<unknown>): void {
+    if (destroyed) return;
+    fn().catch((err) => {
+      emitWideEvent({
+        msg: "ingester_bg",
+        op: name,
+        did,
+        outcome: "error",
+        error: { message: err instanceof Error ? err.message : String(err) },
+        timestamp: new Date().toISOString(),
+      });
+    });
+  }
 
   const handleEvent = async (evt: IngesterEvent) => {
     const start = Date.now();
@@ -322,10 +371,12 @@ export function createIngester(
               .executeTakeFirst()
           )?.id;
           if (!hiveId) {
-            void searchBooks({
-              query: book.title,
-              ctx: { db, kv, addWideEventContext: () => {} },
-            });
+            tracked("searchBooks", evt.did, () =>
+              searchBooks({
+                query: book.title,
+                ctx: { db, kv, addWideEventContext: () => {} },
+              }),
+            );
             wideEvent["outcome"] = "error";
             wideEvent["error"] = {
               message: "hiveId not found, triggered search",
@@ -376,7 +427,9 @@ export function createIngester(
             .execute();
 
           if (serviceAccountAgent) {
-            void writeCatalogBookIfNeeded({ db, serviceAccountAgent }, hiveId).catch(() => {});
+            tracked("writeCatalogBook", evt.did, () =>
+              writeCatalogBookIfNeeded({ db, serviceAccountAgent }, hiveId),
+            );
           }
 
           // Proactively backfill full repo for newly-discovered DIDs
@@ -384,7 +437,7 @@ export function createIngester(
             backfilledDids.add(evt.did);
             void kv.get(BACKFILL_DONE_PREFIX + evt.did).then((done) => {
               if (!done) {
-                void backfillUserRepo(evt.did, db, kv, emitWideEvent);
+                enqueueBackfill(evt.did);
               }
             });
           }
@@ -461,6 +514,18 @@ export function createIngester(
           }
           const list = asList.value;
           void bidirectionalResolver.resolveDidToHandle(evt.did);
+
+          // Only store lists from users with BookHive activity
+          const hasBookhiveActivity = await db
+            .selectFrom("user_book")
+            .select(db.fn.count<number>("uri").as("count"))
+            .where("userDid", "=", evt.did)
+            .executeTakeFirst();
+          if (!hasBookhiveActivity?.count) {
+            wideEvent["outcome"] = "skipped";
+            wideEvent["reason"] = "no_bookhive_activity";
+            return;
+          }
 
           await db
             .insertInto("book_list")
@@ -609,7 +674,8 @@ export function createIngester(
         void kv.set(JETSTREAM_CURSOR_KEY, String(event.time_us));
       }
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
+      if (err instanceof Error && (err.name === "AbortError" || abortController?.signal.aborted))
+        return;
       emitWideEvent({
         msg: "ingester",
         outcome: "error",
@@ -622,7 +688,7 @@ export function createIngester(
       });
       setTimeout(() => {
         if (abortController?.signal.aborted) return;
-        void start();
+        start().catch(() => {});
       }, 3000);
     }
   };
@@ -644,19 +710,33 @@ export function createIngester(
           outcome: "connection_error",
           error: {
             message: event.error instanceof Error ? event.error.message : String(event.error),
+            type: event.error instanceof Error ? event.error.name : "Error",
           },
           timestamp: new Date().toISOString(),
           env: { node_env: env.NODE_ENV },
         });
       },
     });
-    void run();
+    run().catch((err) => {
+      emitWideEvent({
+        msg: "ingester",
+        outcome: "error",
+        error: {
+          message: err instanceof Error ? err.message : String(err),
+          type: err instanceof Error ? err.name : "Error",
+        },
+        timestamp: new Date().toISOString(),
+        env: { node_env: env.NODE_ENV },
+      });
+    });
   }
 
   return {
-    start: () => void start(),
+    start: () => void start().catch(() => {}),
     async destroy() {
+      destroyed = true;
       abortController?.abort();
+      backfillQueue.length = 0;
       subscription = null;
       abortController = null;
     },
