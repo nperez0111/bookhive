@@ -152,6 +152,7 @@ export default function (options: Options) {
       try {
         const response = await fetch(apiUrl, {
           method: "POST",
+          signal: AbortSignal.timeout(10_000),
           headers: {
             Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString(
               "base64",

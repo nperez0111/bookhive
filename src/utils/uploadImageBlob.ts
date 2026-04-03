@@ -9,28 +9,32 @@ export async function uploadImageBlob(
   agent: SessionClient,
   maxWidth?: number,
 ): Promise<BlobRef | undefined> {
+  if (!image) return undefined;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
   try {
-    if (image) {
-      const fetchResponse = await fetch(image, { signal: AbortSignal.timeout(10_000) });
-      if (!fetchResponse.ok) return undefined;
-      const contentType = fetchResponse.headers.get("content-type") ?? "";
-      if (!contentType.startsWith("image/")) return undefined;
-      const data = await fetchResponse.arrayBuffer();
+    const fetchResponse = await fetch(image, { signal: controller.signal });
+    if (!fetchResponse.ok) return undefined;
+    const contentType = fetchResponse.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) return undefined;
+    const data = await fetchResponse.arrayBuffer();
 
-      const encoded = await sharp(Buffer.from(data))
-        .resize(maxWidth ? { width: maxWidth, withoutEnlargement: true } : undefined)
-        .jpeg()
-        .toBuffer();
+    const encoded = await sharp(Buffer.from(data))
+      .resize(maxWidth ? { width: maxWidth, withoutEnlargement: true } : undefined)
+      .jpeg()
+      .toBuffer();
 
-      const uploadResponse = await agent.post("com.atproto.repo.uploadBlob", {
-        input: new Blob([new Uint8Array(encoded)], { type: "image/jpeg" }),
-      });
-      if (uploadResponse.ok) {
-        return (uploadResponse.data as { blob?: BlobRef })?.blob;
-      }
+    const uploadResponse = await agent.post("com.atproto.repo.uploadBlob", {
+      input: new Blob([new Uint8Array(encoded)], { type: "image/jpeg" }),
+    });
+    if (uploadResponse.ok) {
+      return (uploadResponse.data as { blob?: BlobRef })?.blob;
     }
   } catch {
     // Caller can add wide-event context if needed
+  } finally {
+    clearTimeout(timeoutId);
   }
   return undefined;
 }

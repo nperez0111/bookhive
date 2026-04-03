@@ -128,7 +128,9 @@ class Google {
       // For now, we are only searching in one language
       searchQuery += "&langRestrict=" + locale;
 
-      const response = await fetch(`${Google.SEARCH_URL}${searchQuery}`);
+      const response = await fetch(`${Google.SEARCH_URL}${searchQuery}`, {
+        signal: AbortSignal.timeout(15_000),
+      });
 
       if (!response.ok) throw new Error(response.statusText);
       const data = (await response.json()) as GoogleSearchResponse;

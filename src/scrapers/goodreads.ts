@@ -58,6 +58,7 @@ class Goodreads {
       });
 
       const response = await fetch(`${Goodreads.SEARCH_URL}?${params.toString()}`, {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           accept: "*/*",
           "cache-control": "no-cache",

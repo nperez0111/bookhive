@@ -94,7 +94,7 @@ async function backfillUserRepo(
         url.searchParams.set("limit", "100");
         if (cursor) url.searchParams.set("cursor", cursor);
 
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
         if (!res.ok) break;
         const data = (await res.json()) as {
           records: Array<{ uri: string; cid: string; value: unknown }>;
