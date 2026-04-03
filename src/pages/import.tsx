@@ -140,7 +140,9 @@ export const LibraryImport: FC = () => {
             <input id="import-file" type="file" name="export" accept=".csv" class="hidden" />
             <Script
               script={(document) => {
-                const shareText = encodeURIComponent(SHARE_TEXT);
+                const shareText = encodeURIComponent(
+                  "I just imported my reading list to BookHive! 📚 https://bookhive.social",
+                );
 
                 function dispatchImportEvent(detail: any) {
                   window.dispatchEvent(new CustomEvent("bookhive:import-event", { detail }));
