@@ -26,11 +26,7 @@ export function useSearchBooks(
 
   useEffect(() => {
     if (!enabled || query.length <= 2) {
-      setState((prev) => ({
-        status: "idle",
-        data: prev.status === "success" ? prev.data : [],
-        userStatuses: prev.status === "success" ? prev.userStatuses : {},
-      }));
+      setState({ status: "idle", data: [], userStatuses: {} });
       return;
     }
 
@@ -49,11 +45,13 @@ export function useSearchBooks(
         return res.json();
       })
       .then((data: { books?: HiveBook[]; userStatuses?: Record<string, string> } | HiveBook[]) => {
+        if (ac.signal.aborted) return;
         const list = Array.isArray(data) ? data : (data?.books ?? []);
         const statuses = Array.isArray(data) ? {} : (data?.userStatuses ?? {});
         setState({ status: "success", data: list, userStatuses: statuses });
       })
-      .catch(() => {
+      .catch((err) => {
+        if (ac.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
         setState((prev) => ({ status: "error", data: prev.data, userStatuses: prev.userStatuses }));
       });
 

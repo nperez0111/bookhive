@@ -34,6 +34,7 @@ export type ImportEventBase = {
     | "book-load"
     | "book-upload"
     | "book-failed"
+    | "import-error"
     | "import-complete";
   stage?: ImportStage;
   stageProgress?: {
@@ -75,12 +76,18 @@ export type ImportCompleteEvent = ImportEventBase & {
   failedBookDetails?: ImportBookFailure[];
 };
 
+export type ImportErrorEvent = ImportEventBase & {
+  event: "import-error";
+  error: string;
+};
+
 export type ImportEvent =
   | ImportStartEvent
   | UploadStartEvent
   | BookLoadEvent
   | BookUploadEvent
   | BookFailedEvent
+  | ImportErrorEvent
   | ImportCompleteEvent;
 
 export type ImportRow =

@@ -297,12 +297,12 @@ export default class ActorTypeahead extends HTMLElement {
     const input = this.querySelector("input");
     if (!input || !button) return;
 
-    // Clear menu and set value
+    // Clear menu, set value, and submit form
     this.#actors = [];
     this.#index = -1;
     this.#render();
     input.value = button.dataset.handle || "";
-    input.focus();
+    input.form?.requestSubmit();
   }
 
   /** @param {MouseEvent & { target: HTMLElement }} evt */
@@ -313,12 +313,12 @@ export default class ActorTypeahead extends HTMLElement {
 
     evt.preventDefault();
     evt.stopPropagation();
-    
-    // Clear menu and set value
+
+    // Clear menu, set value, and submit form
     this.#actors = [];
     this.#index = -1;
     this.#render();
     input.value = button.dataset.handle || "";
-    input.focus();
+    input.form?.requestSubmit();
   }
 }

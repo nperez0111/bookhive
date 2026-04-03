@@ -17,8 +17,17 @@ import {
   type GoodreadsBook,
   type StorygraphBook,
 } from "../utils/csv";
-import { normalizeGoodreadsId } from "../utils/bookIdentifiers";
 import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
+import {
+  normalizeStr,
+  mapGoodreadsStatus,
+  mapStorygraphStatus,
+  mergeGoodreadsIdentifiers,
+  mergeStorygraphIdentifiers,
+  buildGoodreadsBookRecord,
+  buildStorygraphBookRecord,
+  deduplicateUnmatchedWithDetails,
+} from "../utils/importBook";
 import { searchBooks } from "./lib";
 
 const importApp = new Hono<AppEnv>();
@@ -40,8 +49,6 @@ importApp.post(
 
     const { export: exportFile } = c.req.valid("form");
     return streamSSE(c, async (stream) => {
-      const normalizeStr = (s: string) =>
-        s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
       const parser = getGoodreadsCsvParser();
       let id = 0;
       let totalBooks = 0;
@@ -149,24 +156,15 @@ importApp.post(
                         const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
                           ? JSON.parse(hiveBook.identifiers)
                           : {};
-                        const validGoodreadsId =
-                          normalizeGoodreadsId(book.bookId) ||
-                          (existingIdentifiers.goodreadsId
-                            ? normalizeGoodreadsId(existingIdentifiers.goodreadsId)
-                            : null);
-                        const newIdentifiers: BookIdentifiers = {
-                          ...existingIdentifiers,
-                          hiveId: hiveBook.id,
-                          goodreadsId: validGoodreadsId ?? undefined,
-                          isbn10: book.isbn || existingIdentifiers.isbn10,
-                          isbn13: book.isbn13 || existingIdentifiers.isbn13,
-                        };
-                        if (
-                          newIdentifiers.goodreadsId !== existingIdentifiers.goodreadsId ||
-                          newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
-                          newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
-                          !existingIdentifiers.hiveId
-                        ) {
+                        const { identifiers: newIdentifiers, changed } =
+                          mergeGoodreadsIdentifiers({
+                            bookId: book.bookId,
+                            isbn: book.isbn,
+                            isbn13: book.isbn13,
+                            existingIdentifiers,
+                            hiveBookId: hiveBook.id,
+                          });
+                        if (changed) {
                           await ctx.db
                             .updateTable("hive_book")
                             .set({
@@ -180,20 +178,7 @@ importApp.post(
                         const existingHiveIds = await existingHiveIdsPromise;
                         return [
                           hiveBook.id as HiveId,
-                          {
-                            authors: book.author,
-                            title: hiveBook.title,
-                            status: book.dateRead
-                              ? "buzz.bookhive.defs#finished"
-                              : "buzz.bookhive.defs#wantToRead",
-                            hiveId: hiveBook.id,
-                            coverImage: hiveBook.cover ?? undefined,
-                            finishedAt: book.dateRead?.toISOString() ?? undefined,
-                            stars: book.myRating ? book.myRating * 2 : undefined,
-                            review: book.myReview ?? undefined,
-                            owned: book.ownedCopies > 0 ? true : undefined,
-                            alreadyExists: existingHiveIds.has(hiveBook.id),
-                          },
+                          buildGoodreadsBookRecord({ book, hiveBook, existingHiveIds }),
                         ] as const;
                       } catch (e) {
                         ctx.addWideEventContext({
@@ -355,25 +340,22 @@ importApp.post(
             total: totalBooks,
             message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
           },
-          failedBooks: Array.from(
-            new Map(
-              unmatchedBooks.map((b) => [
-                `${normalizeStr(b.book.title)}::${normalizeStr(b.book.author)}`,
-                { title: b.book.title, author: b.book.author },
-              ]),
-            ).values(),
+          ...deduplicateUnmatchedWithDetails(
+            unmatchedBooks,
+            (b) => b.title,
+            (b) => b.author,
+            (b) => ({
+              title: b.book.title,
+              author: b.book.author,
+              isbn10: b.book.isbn || undefined,
+              isbn13: b.book.isbn13 || undefined,
+              stars: b.book.myRating ? b.book.myRating * 2 : undefined,
+              review: b.book.myReview || undefined,
+              finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
+              status: mapGoodreadsStatus(b.book),
+              reason: b.reason,
+            }),
           ),
-          failedBookDetails: unmatchedBooks.map((b) => ({
-            title: b.book.title,
-            author: b.book.author,
-            isbn10: b.book.isbn || undefined,
-            isbn13: b.book.isbn13 || undefined,
-            stars: b.book.myRating ? b.book.myRating * 2 : undefined,
-            review: b.book.myReview || undefined,
-            finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
-            status: b.book.dateRead ? "buzz.bookhive.defs#finished" : undefined,
-            reason: b.reason,
-          })),
           id: id++,
         }),
       });
@@ -398,8 +380,6 @@ importApp.post(
 
     const { export: exportFile } = c.req.valid("form");
     return streamSSE(c, async (stream) => {
-      const normalizeStr = (s: string) =>
-        s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
       const parser = getStorygraphCsvParser();
       let id = 0;
       let totalBooks = 0;
@@ -507,65 +487,30 @@ importApp.post(
                           return null;
                         }
 
-                        if (book.isbn) {
-                          const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-                            ? JSON.parse(hiveBook.identifiers)
-                            : {};
-                          const cleanIsbn = book.isbn.replace(/[-\s]/g, "");
-                          const newIdentifiers: BookIdentifiers = {
-                            ...existingIdentifiers,
-                            hiveId: hiveBook.id,
-                            ...(cleanIsbn.length === 13
-                              ? { isbn13: cleanIsbn }
-                              : cleanIsbn.length === 10
-                                ? { isbn10: cleanIsbn }
-                                : {}),
-                          };
-                          if (
-                            newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
-                            newIdentifiers.isbn13 !== existingIdentifiers.isbn13 ||
-                            !existingIdentifiers.hiveId
-                          ) {
-                            await ctx.db
-                              .updateTable("hive_book")
-                              .set({
-                                identifiers: JSON.stringify(newIdentifiers),
-                                updatedAt: new Date().toISOString(),
-                              })
-                              .where("id", "=", hiveBook.id)
-                              .execute();
-                          }
-                        }
-
-                        let status = "buzz.bookhive.defs#wantToRead";
-                        switch (book.readStatus?.toLowerCase()) {
-                          case "read":
-                            status = "buzz.bookhive.defs#finished";
-                            break;
-                          case "currently-reading":
-                            status = "buzz.bookhive.defs#reading";
-                            break;
-                          default:
-                            break;
+                        const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+                          ? JSON.parse(hiveBook.identifiers)
+                          : {};
+                        const { identifiers: newIdentifiers, changed } =
+                          mergeStorygraphIdentifiers({
+                            isbn: book.isbn,
+                            existingIdentifiers,
+                            hiveBookId: hiveBook.id,
+                          });
+                        if (changed) {
+                          await ctx.db
+                            .updateTable("hive_book")
+                            .set({
+                              identifiers: JSON.stringify(newIdentifiers),
+                              updatedAt: new Date().toISOString(),
+                            })
+                            .where("id", "=", hiveBook.id)
+                            .execute();
                         }
 
                         const existingHiveIds = await existingHiveIdsPromise;
                         return [
                           hiveBook.id as HiveId,
-                          {
-                            authors: book.authors,
-                            title: hiveBook.title,
-                            status,
-                            hiveId: hiveBook.id,
-                            coverImage: hiveBook.cover ?? undefined,
-                            finishedAt: book.lastDateRead?.toISOString() ?? undefined,
-                            stars: book.starRating
-                              ? parseInt(String(book.starRating * 2))
-                              : undefined,
-                            review: book.review || undefined,
-                            owned: book.owned ? true : undefined,
-                            alreadyExists: existingHiveIds.has(hiveBook.id),
-                          },
+                          buildStorygraphBookRecord({ book, hiveBook, existingHiveIds }),
                         ] as const;
                       } catch (e) {
                         ctx.addWideEventContext({
@@ -728,29 +673,25 @@ importApp.post(
             total: totalBooks,
             message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
           },
-          failedBooks: Array.from(
-            new Map(
-              unmatchedBooks.map((b) => [
-                `${normalizeStr(b.book.title)}::${normalizeStr(b.book.authors)}`,
-                { title: b.book.title, author: b.book.authors },
-              ]),
-            ).values(),
+          ...deduplicateUnmatchedWithDetails(
+            unmatchedBooks,
+            (b) => b.title,
+            (b) => b.authors,
+            (b) => {
+              const cleanIsbn = b.book.isbn?.replace(/[-\s]/g, "") || "";
+              return {
+                title: b.book.title,
+                author: b.book.authors,
+                isbn10: cleanIsbn.length === 10 ? cleanIsbn : undefined,
+                isbn13: cleanIsbn.length === 13 ? cleanIsbn : undefined,
+                stars: b.book.starRating ? b.book.starRating * 2 : undefined,
+                review: b.book.review || undefined,
+                finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
+                status: mapStorygraphStatus(b.book),
+                reason: b.reason,
+              };
+            },
           ),
-          failedBookDetails: unmatchedBooks.map((b) => ({
-            title: b.book.title,
-            author: b.book.authors,
-            isbn13: b.book.isbn || undefined,
-            stars: b.book.starRating ? b.book.starRating * 2 : undefined,
-            review: b.book.review || undefined,
-            finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
-            status:
-              b.book.readStatus?.toLowerCase() === "read"
-                ? "buzz.bookhive.defs#finished"
-                : b.book.readStatus?.toLowerCase() === "currently-reading"
-                  ? "buzz.bookhive.defs#reading"
-                  : undefined,
-            reason: b.reason,
-          })),
           id: id++,
         }),
       });

@@ -1,3 +1,15 @@
+diff --git a/dist/runtime/internal/vite/dev-worker.mjs b/dist/runtime/internal/vite/dev-worker.mjs
+--- a/dist/runtime/internal/vite/dev-worker.mjs
++++ b/dist/runtime/internal/vite/dev-worker.mjs
+@@ -67,7 +67,7 @@
+     if (this.entryError) {
+       return renderError(req, this.entryError);
+     }
+-    for (let i = 0; i < 5 && !(this.entry || this.entryError); i++) {
++    for (let i = 0; i < 8 && !(this.entry || this.entryError); i++) {
+       await new Promise((r) => setTimeout(r, 100 * Math.pow(2, i)));
+     }
+     if (this.entryError) {
 diff --git a/dist/_build/common.mjs b/dist/_build/common.mjs
 --- a/dist/_build/common.mjs
 +++ b/dist/_build/common.mjs

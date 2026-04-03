@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState, type FC } from "hono/jsx/dom";
 
 import { BOOK_STATUS_MAP } from "../../../constants";
 import { StarRating } from "../StarRating";
-import type { ImportEvent, ImportRow, BookUploadEvent, BookFailedEvent } from "./types";
+import type {
+  ImportEvent,
+  ImportRow,
+  BookUploadEvent,
+  BookFailedEvent,
+  ImportErrorEvent,
+} from "./types";
 
 const STORAGE_KEY = "bookhive_import_results";
 
@@ -396,6 +402,9 @@ const SuccessRowView: FC<{
   );
 };
 
+const normalizeStr = (s: string) =>
+  (s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+
 export const ImportTableApp: FC = () => {
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [progress, setProgress] = useState<{
@@ -403,7 +412,7 @@ export const ImportTableApp: FC = () => {
     total: number;
     message?: string;
   } | null>(null);
-  // complete flag not currently used for UI; progress presence is enough
+  const [errors, setErrors] = useState<string[]>([]);
 
   // load from storage
   useEffect(() => {
@@ -431,6 +440,7 @@ export const ImportTableApp: FC = () => {
             localStorage.removeItem(STORAGE_KEY);
           } catch {}
           setRows([]);
+          setErrors([]);
           setProgress({ current: 0, total: 0, message: "Starting import..." });
           break;
         }
@@ -464,12 +474,21 @@ export const ImportTableApp: FC = () => {
         case "book-failed": {
           const ev = data as BookFailedEvent;
           setRows((prev) => {
+            const newTitle = normalizeStr(ev.failedBook.title);
+            const newAuthor = normalizeStr(ev.failedBook.author);
             const exists = prev.some(
               (r) =>
-                !r.success && r.title === ev.failedBook.title && r.author === ev.failedBook.author,
+                !r.success &&
+                normalizeStr(r.title) === newTitle &&
+                normalizeStr((r as any).author) === newAuthor,
             );
             return exists ? prev : prev.concat([{ success: false, ...ev.failedBook }]);
           });
+          break;
+        }
+        case "import-error": {
+          const ev = data as ImportErrorEvent;
+          setErrors((prev) => [...prev, ev.error]);
           break;
         }
         case "import-complete": {
@@ -520,6 +539,39 @@ export const ImportTableApp: FC = () => {
 
   return (
     <div className="mt-8 space-y-6">
+      {/* Errors */}
+      {errors.length > 0 && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4">
+          <div className="flex items-start gap-3">
+            <svg
+              className="mt-0.5 h-5 w-5 shrink-0 text-destructive"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="text-sm font-medium text-destructive">
+                Import errors ({errors.length})
+              </div>
+              <div className="max-h-32 overflow-y-auto">
+                {errors.map((err, i) => (
+                  <div key={i} className="text-sm text-destructive/80">
+                    {err}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary */}
       {(rows.length > 0 || progress) && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
