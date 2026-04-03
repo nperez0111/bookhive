@@ -12,6 +12,7 @@ import {
   buildGoodreadsBookRecord,
   buildStorygraphBookRecord,
   deduplicateUnmatched,
+  deduplicateUnmatchedWithDetails,
 } from "./importBook";
 
 // --- Helpers ---
@@ -461,6 +462,41 @@ describe("importBook utilities", () => {
     it("returns empty array for empty input", () => {
       const result = deduplicateUnmatched([], (b: any) => b.title, (b: any) => b.author);
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("deduplicateUnmatchedWithDetails", () => {
+    it("produces aligned failedBooks and failedBookDetails arrays", () => {
+      const books = [
+        { book: { title: "Book A", author: "Author 1" }, reason: "no_match" },
+        { book: { title: "Book B", author: "Author 2" }, reason: "no_match" },
+        { book: { title: "book a", author: "author 1" }, reason: "processing_error" },
+      ];
+      const result = deduplicateUnmatchedWithDetails(
+        books,
+        (b) => b.title,
+        (b) => b.author,
+        (entry) => ({ title: entry.book.title, reason: entry.reason }),
+      );
+      expect(result.failedBooks).toHaveLength(2);
+      expect(result.failedBookDetails).toHaveLength(2);
+      // Both arrays have same order — Book A then Book B
+      expect(result.failedBooks[0]!.title).toBe("book a"); // last win
+      expect(result.failedBooks[1]!.title).toBe("Book B");
+      // Details align by index
+      expect(result.failedBookDetails[0]!.reason).toBe("processing_error"); // last win
+      expect(result.failedBookDetails[1]!.reason).toBe("no_match");
+    });
+
+    it("returns empty arrays for empty input", () => {
+      const result = deduplicateUnmatchedWithDetails(
+        [] as Array<{ book: { title: string; author: string }; reason: string }>,
+        (b) => b.title,
+        (b) => b.author,
+        (entry) => ({ title: entry.book.title }),
+      );
+      expect(result.failedBooks).toHaveLength(0);
+      expect(result.failedBookDetails).toHaveLength(0);
     });
   });
 });

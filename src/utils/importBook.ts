@@ -143,3 +143,26 @@ export function deduplicateUnmatched<T>(
     ).values(),
   );
 }
+
+/**
+ * Deduplicates unmatched books and returns aligned failedBooks + failedBookDetails arrays.
+ * The client zips these by index, so they must have the same length and order.
+ */
+export function deduplicateUnmatchedWithDetails<T, D>(
+  unmatchedBooks: Array<{ book: T; reason: string }>,
+  getTitle: (book: T) => string,
+  getAuthor: (book: T) => string,
+  toDetails: (entry: { book: T; reason: string }) => D,
+): { failedBooks: Array<{ title: string; author: string }>; failedBookDetails: D[] } {
+  const bookMap = new Map<string, { title: string; author: string }>();
+  const detailsMap = new Map<string, D>();
+  for (const entry of unmatchedBooks) {
+    const key = `${normalizeStr(getTitle(entry.book))}::${normalizeStr(getAuthor(entry.book))}`;
+    bookMap.set(key, { title: getTitle(entry.book), author: getAuthor(entry.book) });
+    detailsMap.set(key, toDetails(entry));
+  }
+  return {
+    failedBooks: Array.from(bookMap.values()),
+    failedBookDetails: Array.from(detailsMap.values()),
+  };
+}

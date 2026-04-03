@@ -21,11 +21,12 @@ import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../util
 import {
   normalizeStr,
   mapGoodreadsStatus,
+  mapStorygraphStatus,
   mergeGoodreadsIdentifiers,
   mergeStorygraphIdentifiers,
   buildGoodreadsBookRecord,
   buildStorygraphBookRecord,
-  deduplicateUnmatched,
+  deduplicateUnmatchedWithDetails,
 } from "../utils/importBook";
 import { searchBooks } from "./lib";
 
@@ -339,22 +340,22 @@ importApp.post(
             total: totalBooks,
             message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
           },
-          failedBooks: deduplicateUnmatched(
+          ...deduplicateUnmatchedWithDetails(
             unmatchedBooks,
             (b) => b.title,
             (b) => b.author,
+            (b) => ({
+              title: b.book.title,
+              author: b.book.author,
+              isbn10: b.book.isbn || undefined,
+              isbn13: b.book.isbn13 || undefined,
+              stars: b.book.myRating ? b.book.myRating * 2 : undefined,
+              review: b.book.myReview || undefined,
+              finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
+              status: mapGoodreadsStatus(b.book),
+              reason: b.reason,
+            }),
           ),
-          failedBookDetails: unmatchedBooks.map((b) => ({
-            title: b.book.title,
-            author: b.book.author,
-            isbn10: b.book.isbn || undefined,
-            isbn13: b.book.isbn13 || undefined,
-            stars: b.book.myRating ? b.book.myRating * 2 : undefined,
-            review: b.book.myReview || undefined,
-            finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
-            status: mapGoodreadsStatus(b.book),
-            reason: b.reason,
-          })),
           id: id++,
         }),
       });
@@ -672,26 +673,25 @@ importApp.post(
             total: totalBooks,
             message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
           },
-          failedBooks: deduplicateUnmatched(
+          ...deduplicateUnmatchedWithDetails(
             unmatchedBooks,
             (b) => b.title,
             (b) => b.authors,
+            (b) => {
+              const cleanIsbn = b.book.isbn?.replace(/[-\s]/g, "") || "";
+              return {
+                title: b.book.title,
+                author: b.book.authors,
+                isbn10: cleanIsbn.length === 10 ? cleanIsbn : undefined,
+                isbn13: cleanIsbn.length === 13 ? cleanIsbn : undefined,
+                stars: b.book.starRating ? b.book.starRating * 2 : undefined,
+                review: b.book.review || undefined,
+                finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
+                status: mapStorygraphStatus(b.book),
+                reason: b.reason,
+              };
+            },
           ),
-          failedBookDetails: unmatchedBooks.map((b) => ({
-            title: b.book.title,
-            author: b.book.authors,
-            isbn13: b.book.isbn || undefined,
-            stars: b.book.starRating ? b.book.starRating * 2 : undefined,
-            review: b.book.review || undefined,
-            finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
-            status:
-              b.book.readStatus?.toLowerCase() === "read"
-                ? "buzz.bookhive.defs#finished"
-                : b.book.readStatus?.toLowerCase() === "currently-reading"
-                  ? "buzz.bookhive.defs#reading"
-                  : undefined,
-            reason: b.reason,
-          })),
           id: id++,
         }),
       });
