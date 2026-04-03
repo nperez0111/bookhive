@@ -99,13 +99,33 @@ describe("importBook utilities", () => {
 
   describe("mapGoodreadsStatus", () => {
     it("returns finished when dateRead is set", () => {
-      expect(mapGoodreadsStatus({ dateRead: new Date("2024-01-15") })).toBe(
-        "buzz.bookhive.defs#finished",
-      );
+      expect(
+        mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "read" }),
+      ).toBe("buzz.bookhive.defs#finished");
     });
 
-    it("returns wantToRead when dateRead is null", () => {
-      expect(mapGoodreadsStatus({ dateRead: null })).toBe("buzz.bookhive.defs#wantToRead");
+    it("returns finished when dateRead is set even if shelf is currently-reading", () => {
+      expect(
+        mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "currently-reading" }),
+      ).toBe("buzz.bookhive.defs#finished");
+    });
+
+    it("returns reading when exclusiveShelf is currently-reading and no dateRead", () => {
+      expect(
+        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "currently-reading" }),
+      ).toBe("buzz.bookhive.defs#reading");
+    });
+
+    it("returns wantToRead when dateRead is null and shelf is to-read", () => {
+      expect(
+        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "to-read" }),
+      ).toBe("buzz.bookhive.defs#wantToRead");
+    });
+
+    it("returns wantToRead when dateRead is null and shelf is empty", () => {
+      expect(
+        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "" }),
+      ).toBe("buzz.bookhive.defs#wantToRead");
     });
   });
 
@@ -333,6 +353,7 @@ describe("importBook utilities", () => {
       expect(result.finishedAt).toBeUndefined();
       expect(result.stars).toBeUndefined();
       expect(result.owned).toBeUndefined();
+      expect(result.review).toBeUndefined(); // empty string → undefined
     });
 
     it("sets alreadyExists when hiveId is in the set", () => {
@@ -543,7 +564,7 @@ describe("Goodreads import integration", () => {
         ? JSON.parse(hiveBook.identifiers)
         : {};
 
-      const { identifiers, changed } = mergeGoodreadsIdentifiers({
+      mergeGoodreadsIdentifiers({
         bookId: book.bookId,
         isbn: book.isbn,
         isbn13: book.isbn13,
@@ -561,12 +582,12 @@ describe("Goodreads import integration", () => {
     expect(unmatchedBooks[0]!.book.title).toBe("Rain of Shadows and Endings (Legacy, #1)");
     expect(unmatchedBooks[0]!.reason).toBe("no_match");
 
-    // Onyx Storm: currently-reading on Goodreads → wantToRead (no dateRead)
+    // Onyx Storm: currently-reading on Goodreads → reading (exclusiveShelf driven)
     const onyx = results.find((r) => r.hiveId === "bk_onyxstorm123")!;
     expect(onyx.record).toMatchObject({
       authors: "Rebecca Yarros",
       title: "Onyx Storm",
-      status: "buzz.bookhive.defs#wantToRead",
+      status: "buzz.bookhive.defs#reading",
       hiveId: "bk_onyxstorm123",
       coverImage: "https://covers.example/onyx.jpg",
       alreadyExists: false,

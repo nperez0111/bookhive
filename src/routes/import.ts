@@ -20,6 +20,7 @@ import {
 import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
 import {
   normalizeStr,
+  mapGoodreadsStatus,
   mergeGoodreadsIdentifiers,
   mergeStorygraphIdentifiers,
   buildGoodreadsBookRecord,
@@ -351,7 +352,7 @@ importApp.post(
             stars: b.book.myRating ? b.book.myRating * 2 : undefined,
             review: b.book.myReview || undefined,
             finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
-            status: b.book.dateRead ? "buzz.bookhive.defs#finished" : undefined,
+            status: mapGoodreadsStatus(b.book),
             reason: b.reason,
           })),
           id: id++,

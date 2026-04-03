@@ -6,8 +6,12 @@ export function normalizeStr(s: string): string {
   return s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function mapGoodreadsStatus(book: Pick<GoodreadsBook, "dateRead">): string {
-  return book.dateRead ? "buzz.bookhive.defs#finished" : "buzz.bookhive.defs#wantToRead";
+export function mapGoodreadsStatus(
+  book: Pick<GoodreadsBook, "dateRead" | "exclusiveShelf">,
+): string {
+  if (book.dateRead) return "buzz.bookhive.defs#finished";
+  if (book.exclusiveShelf === "currently-reading") return "buzz.bookhive.defs#reading";
+  return "buzz.bookhive.defs#wantToRead";
 }
 
 export function mapStorygraphStatus(book: Pick<StorygraphBook, "readStatus">): string {
@@ -99,7 +103,7 @@ export function buildGoodreadsBookRecord(params: {
     coverImage: hiveBook.cover ?? undefined,
     finishedAt: book.dateRead?.toISOString() ?? undefined,
     stars: normalizeGoodreadsRating(book.myRating),
-    review: book.myReview ?? undefined,
+    review: book.myReview || undefined,
     owned: book.ownedCopies > 0 ? true : undefined,
     alreadyExists: existingHiveIds.has(hiveBook.id),
   };
