@@ -138,6 +138,7 @@ async function getBookDetailedInfo(
   const addCtx = addWideEventContext ?? (() => {});
   try {
     const response = await fetch(sourceUrl, {
+      signal: AbortSignal.timeout(15_000),
       headers: {
         "User-Agent": "BookHive/1.0 (+https://bookhive.buzz)",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

@@ -89,6 +89,7 @@ export default class IsbnDb {
       const response = await fetch(
         `${IsbnDb.API_URL}/books/${encodeURIComponent(query)}?${params.toString()}`,
         {
+          signal: AbortSignal.timeout(15_000),
           headers: {
             Authorization: this.apiKey,
             "Content-Type": "application/json",
@@ -142,6 +143,7 @@ export default class IsbnDb {
 
     try {
       const response = await fetch(`${IsbnDb.API_URL}/book/${isbn}`, {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           Authorization: this.apiKey,
           "Content-Type": "application/json",
