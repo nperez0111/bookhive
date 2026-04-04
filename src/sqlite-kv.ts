@@ -16,14 +16,12 @@ export type KvDb = Kysely<TableSchema>;
 
 /**
  * Create a single shared KvDb connection for a SQLite file.
- * Pass the result to multiple sqliteKv drivers via the `db` option to avoid
- * multiple exclusive-locked connections to the same file (which causes SQLITE_BUSY).
+ * Pass the result to multiple sqliteKv drivers via the `db` option to share
+ * a single connection to the same file.
  */
-export function createSharedKvDb(location: string, exclusive?: boolean): KvDb {
+export function createSharedKvDb(location: string): KvDb {
   const sqlite = new DatabaseSync(location);
-  if (exclusive) {
-    sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
-  }
+  sqlite.exec("PRAGMA busy_timeout = 5000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   return new Kysely<TableSchema>({
     dialect: new SqliteDialect({
@@ -38,12 +36,11 @@ export default defineDriver<
   {
     location?: string;
     table: string;
-    exclusive?: boolean;
     /** Pre-created shared KvDb connection. Use this when multiple drivers share the same SQLite file. */
     db?: KvDb;
   },
   KvDb
->(({ location, table = "kv", exclusive, db: sharedDb }) => {
+>(({ location, table = "kv", db: sharedDb }) => {
   // _db is a per-driver-instance singleton — must live outside any function body
   // so it is not re-initialized on every getDb() call.
   let _db: KvDb | null = sharedDb ?? null;
@@ -55,9 +52,7 @@ export default defineDriver<
         throw new Error("SQLite location is required");
       }
       const sqlite = new DatabaseSync(location);
-      if (exclusive) {
-        sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
-      }
+      sqlite.exec("PRAGMA busy_timeout = 5000");
       sqlite.exec("PRAGMA journal_mode = WAL");
       _db = new Kysely<TableSchema>({
         dialect: new SqliteDialect({

@@ -25,7 +25,6 @@ import {
   createCachingBidirectionalResolver,
 } from "./bsky/id-resolver";
 import type { BidirectionalResolver } from "./bsky/id-resolver";
-import { createIngester } from "./bsky/ingester";
 import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
@@ -105,7 +104,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
-  const { db, sqlite } = createDb(env.DB_PATH, { exclusive: env.isProd });
+  const { db, sqlite } = createDb(env.DB_PATH);
   logger.info("starting DB migrations");
   const migrationStart = Date.now();
   const migrationResults = await migrateToLatest(db, sqlite);
@@ -123,11 +122,8 @@ export async function createAppDeps(): Promise<AppDeps> {
     }, 5_000);
   }
 
-  const exclusive = env.isProd;
-  // Single shared connection for all KV tables on KV_DB_PATH. This is critical in production
-  // where exclusive locking mode is enabled — multiple connections to the same file with
-  // PRAGMA locking_mode = EXCLUSIVE will fight for the lock and cause SQLITE_BUSY.
-  const kvDb = createSharedKvDb(env.KV_DB_PATH, exclusive);
+  // Single shared connection for all KV tables on KV_DB_PATH.
+  const kvDb = createSharedKvDb(env.KV_DB_PATH);
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });
@@ -154,10 +150,30 @@ export async function createAppDeps(): Promise<AppDeps> {
       ? await createServiceAccountAgent(env.BOOKHIVE_SERVICE_HANDLE, env.BOOKHIVE_APP_PASSWORD)
       : null;
 
-  const ingester = createIngester(db, kv, serviceAccountAgent, (wideEvent) =>
-    logger.info(wideEvent),
-  );
-  ingester.start();
+  // When running the Nitro bundle (.output/server/index.mjs), load the pre-built worker.
+  // In dev, Bun runs the .ts source directly.
+  const isBundled = import.meta.url.includes(".output/");
+  const workerUrl = isBundled
+    ? new URL("./ingester-worker.js", import.meta.url).href
+    : new URL("./workers/ingester-worker.ts", import.meta.url).href;
+  const ingesterWorker = new Worker(workerUrl);
+  ingesterWorker.onmessage = (event: MessageEvent) => {
+    if (event.data.type === "wideEvent") {
+      logger.info(event.data.payload);
+    } else if (event.data.type === "ready") {
+      logger.info("ingester worker ready");
+    }
+  };
+  ingesterWorker.onerror = (event) => {
+    logger.error({ error: event.message }, "ingester worker error");
+  };
+  const ingester: Ingester = {
+    start() {},
+    destroy() {
+      ingesterWorker.terminate();
+      return Promise.resolve();
+    },
+  };
 
   return {
     db,

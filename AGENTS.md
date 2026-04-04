@@ -227,8 +227,7 @@ Applied globally in `src/app.ts`: timing, context, wide-event logging, error cap
 | Command                | What                                                  |
 | ---------------------- | ----------------------------------------------------- |
 | `bun run dev`          | Dev server with `--hot`                               |
-| `bun run build`        | Production build (server + assets)                    |
-| `bun run build:server` | `scripts/build-server.ts` — bundles server + tailwind |
+| `bun run build`        | Production build (lexgen + Vite/Nitro + worker)       |
 | `bun test`             | Run tests                                             |
 | `bun run typecheck`    | Type-check with oxlint                                |
 | `bun run lint`         | Lint codebase                                         |

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type FC } from "hono/jsx/dom";
 
 import { BOOK_STATUS_MAP } from "../../../constants";
-import { StarRating } from "../StarRating";
 import type {
   ImportEvent,
   ImportRow,
+  BookLoadEvent,
   BookUploadEvent,
   BookFailedEvent,
   ImportErrorEvent,
@@ -12,18 +12,7 @@ import type {
 
 const STORAGE_KEY = "bookhive_import_results";
 
-const StatusBadge: FC<{ success: boolean }> = ({ success }) => (
-  <span
-    className={
-      "badge " +
-      (success
-        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300")
-    }
-  >
-    {success ? "Success" : "Failed"}
-  </span>
-);
+// --- Failed row with manual matching ---
 
 const FailedRow: FC<{
   row: {
@@ -45,7 +34,7 @@ const FailedRow: FC<{
       case "processing_error":
         return "Processing error";
       case "update_error":
-        return "Update error";
+        return "Upload error";
       default:
         return reason;
     }
@@ -79,7 +68,6 @@ const FailedRow: FC<{
 
   const resolveImport = async (hiveId: string) => {
     try {
-      // Reuse existing update endpoint to upsert the book with parsed CSV details
       const res = await fetch("/api/update-book", {
         method: "POST",
         headers: {
@@ -114,7 +102,6 @@ const FailedRow: FC<{
         );
         setOpen(false);
       } else {
-        // Even if we can't fetch display details, remove the failed row so user isn't blocked
         onResolved(
           {
             success: true,
@@ -130,176 +117,136 @@ const FailedRow: FC<{
   };
 
   return (
-    <tr>
-      <td className="px-4 py-2">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <StatusBadge success={false} />
-              <div className="text-sm">
-                <div className="font-medium text-foreground">{row.title}</div>
-                <div className="text-muted-foreground">{row.author}</div>
-                {reasonText && <div className="mt-1 text-xs text-destructive">{reasonText}</div>}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm whitespace-nowrap"
-              onClick={() => {
-                setOpen((v) => !v);
-                if (!isOpen) void search();
-              }}
-            >
-              Match book
-            </button>
-          </div>
-          {isOpen && (
-            <div className="rounded-md border border-border bg-card p-2">
-              {loading ? (
-                <div className="px-2 py-1 text-sm text-muted-foreground">Searching…</div>
-              ) : results.length === 0 ? (
-                <div className="px-2 py-1 text-sm text-muted-foreground">No results</div>
-              ) : (
-                <ul className="space-y-2">
-                  {results.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center justify-between gap-3 rounded-md p-2 hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-3">
-                        {b.thumbnail && (
-                          <img
-                            src={b.thumbnail}
-                            className="h-10 w-7 rounded object-cover"
-                            loading="lazy"
-                            alt=""
-                          />
-                        )}
-                        <div>
-                          <div className="text-sm font-medium text-foreground">{b.title}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {(b.authors || "").split("\t").join(", ")}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <a href={`/books/${b.id}`} className="text-sm text-primary hover:underline">
-                          View
-                        </a>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm whitespace-nowrap"
-                          onClick={() => resolveImport(b.id)}
-                        >
-                          Use this
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+    <div className="border-b border-border px-4 py-3 last:border-b-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-foreground truncate">{row.title}</div>
+          <div className="text-xs text-muted-foreground truncate">{row.author}</div>
+          {reasonText && <div className="mt-0.5 text-xs text-destructive">{reasonText}</div>}
         </div>
-      </td>
-    </tr>
-  );
-};
-
-const StatusDropdown: FC<{
-  status?: string;
-  onChange: (status: string) => void;
-}> = ({ status, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const items = useMemo(
-    () => [
-      { value: "buzz.bookhive.defs#finished", label: "Read" },
-      { value: "buzz.bookhive.defs#reading", label: "Reading" },
-      { value: "buzz.bookhive.defs#wantToRead", label: "Want to Read" },
-      { value: "buzz.bookhive.defs#abandoned", label: "Abandoned" },
-    ],
-    [],
-  );
-  const selectedLabel = status
-    ? BOOK_STATUS_MAP[status as keyof typeof BOOK_STATUS_MAP] || status
-    : "Reading status";
-  return (
-    <div className="relative w-full min-w-0">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((v) => !v)}
-        className="input peer w-full cursor-pointer text-left text-sm font-medium text-foreground"
-      >
-        <span className="flex items-center justify-between capitalize">
-          <span className="truncate">{selectedLabel}</span>
-          <svg
-            className="h-5 w-5 shrink-0 text-muted-foreground"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </span>
-      </button>
-      {isOpen && (
-        <div
-          role="listbox"
-          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-popover shadow-lg"
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm shrink-0 whitespace-nowrap"
+          onClick={() => {
+            setOpen((v) => !v);
+            if (!isOpen) void search();
+          }}
         >
-          <div className="p-1">
-            {items.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                role="option"
-                aria-selected={status === item.value}
-                onClick={() => {
-                  onChange(item.value);
-                  setIsOpen(false);
-                }}
-                className={`relative my-1 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
-                  status === item.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground hover:bg-muted"
-                }`}
-              >
-                <span className="block truncate">{item.label}</span>
-                {status === item.value && (
-                  <span className="absolute inset-y-0 right-2 flex items-center" aria-hidden="true">
-                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fill-rule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clip-rule="evenodd"
+          Match book
+        </button>
+      </div>
+      {isOpen && (
+        <div className="mt-2 rounded-md border border-border bg-card p-2">
+          {loading ? (
+            <div className="px-2 py-1 text-sm text-muted-foreground">Searching…</div>
+          ) : results.length === 0 ? (
+            <div className="px-2 py-1 text-sm text-muted-foreground">No results</div>
+          ) : (
+            <ul className="space-y-2">
+              {results.map((b) => (
+                <li
+                  key={b.id}
+                  className="flex items-center justify-between gap-3 rounded-md p-2 hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {b.thumbnail && (
+                      <img
+                        src={b.thumbnail}
+                        className="h-10 w-7 rounded object-cover shrink-0"
+                        loading="lazy"
+                        alt=""
                       />
-                    </svg>
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">{b.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {(b.authors || "").split("\t").join(", ")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a href={`/books/${b.id}`} className="text-sm text-primary hover:underline">
+                      View
+                    </a>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm whitespace-nowrap"
+                      onClick={() => resolveImport(b.id)}
+                    >
+                      Use this
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-const SuccessRowView: FC<{
+// --- Success row matching EditableLibraryTable layout ---
+
+const StatusSelect: FC<{
+  status?: string;
+  onChange: (status: string) => void;
+}> = ({ status, onChange }) => {
+  const items = [
+    { value: "buzz.bookhive.defs#finished", label: "Read" },
+    { value: "buzz.bookhive.defs#reading", label: "Reading" },
+    { value: "buzz.bookhive.defs#wantToRead", label: "Want to Read" },
+    { value: "buzz.bookhive.defs#abandoned", label: "Abandoned" },
+  ];
+  return (
+    <select
+      className="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+      value={status || ""}
+      onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+    >
+      <option value="">Status</option>
+      {items.map((s) => (
+        <option key={s.value} value={s.value}>
+          {s.label}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+const RatingSelect: FC<{
+  stars?: number;
+  onChange: (stars: number) => void;
+}> = ({ stars, onChange }) => {
+  return (
+    <select
+      className="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+      value={stars || ""}
+      onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
+    >
+      <option value="">-</option>
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
+        <option key={val} value={val}>
+          {"★".repeat(Math.floor(val / 2))}
+          {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+const SuccessRow: FC<{
   row: Extract<ImportRow, { success: true }>;
   onUpdate: (next: Partial<ImportRow>) => void;
   onDelete: (hiveId: string) => void;
 }> = ({ row, onUpdate, onDelete }) => {
   const { hiveId, title, authors, coverImage, stars, status } = row;
   return (
-    <tr>
-      <td className="px-4 py-2">
+    <tr
+      className="cursor-pointer transition-colors duration-150 hover:bg-muted/60"
+      onClick={() => (window.location.href = `/books/${hiveId}`)}
+    >
+      <td className="overflow-hidden px-4 py-2">
         <div className="flex items-center space-x-3">
           <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
             {coverImage ? (
@@ -314,104 +261,239 @@ const SuccessRowView: FC<{
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <StatusBadge success={true} />
-              <a
-                href={`/books/${hiveId}`}
-                className="text-sm font-medium text-foreground hover:underline"
-              >
-                {title}
-              </a>
-            </div>
+            <h3 className="line-clamp-1 text-sm leading-tight font-medium text-foreground">
+              {title}
+            </h3>
+            <p className="line-clamp-1 text-xs text-muted-foreground">
+              {authors.split("\t").join(", ")}
+            </p>
           </div>
         </div>
       </td>
-      <td className="px-4 py-2 text-sm text-muted-foreground">{authors.split("\t").join(", ")}</td>
-      <td className="px-4 py-2">
-        <div className="flex items-center space-x-1">
-          <StarRating
-            initialRating={stars || 0}
-            onChange={async (rating) => {
-              onUpdate({ stars: rating });
-              try {
-                await fetch("/api/update-book", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    accept: "application/json",
-                  },
-                  body: JSON.stringify({ hiveId, stars: rating }),
-                });
-              } catch {}
-            }}
-          />
-        </div>
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+        <StatusSelect
+          status={status}
+          onChange={async (nextStatus) => {
+            onUpdate({ status: nextStatus });
+            try {
+              await fetch("/api/update-book", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", accept: "application/json" },
+                body: JSON.stringify({ hiveId, status: nextStatus }),
+              });
+            } catch {}
+          }}
+        />
       </td>
-      <td className="px-4 py-2">
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <StatusDropdown
-              status={status}
-              onChange={async (nextStatus) => {
-                onUpdate({ status: nextStatus });
-                try {
-                  await fetch("/api/update-book", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      accept: "application/json",
-                    },
-                    body: JSON.stringify({ hiveId, status: nextStatus }),
-                  });
-                } catch {}
-              }}
-            />
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost inline-flex items-center p-2 text-destructive hover:bg-destructive/10"
-            title="Delete book from library"
-            onClick={async () => {
-              onDelete(hiveId);
-              try {
-                await fetch(`/books/${hiveId}`, {
-                  method: "DELETE",
-                  headers: { accept: "application/json" },
-                });
-              } catch {}
-            }}
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+        <RatingSelect
+          stars={stars}
+          onChange={async (rating) => {
+            onUpdate({ stars: rating });
+            try {
+              await fetch("/api/update-book", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", accept: "application/json" },
+                body: JSON.stringify({ hiveId, stars: rating }),
+              });
+            } catch {}
+          }}
+        />
+      </td>
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="inline-flex items-center rounded-md p-2 text-red-600 hover:bg-red-50 hover:text-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+          title="Delete book from library"
+          onClick={async () => {
+            onDelete(hiveId);
+            try {
+              await fetch(`/books/${hiveId}`, {
+                method: "DELETE",
+                headers: { accept: "application/json" },
+              });
+            } catch {}
+          }}
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
-        </div>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16"
+            />
+          </svg>
+        </button>
       </td>
     </tr>
+  );
+};
+
+// --- Mobile card for success rows ---
+
+const SuccessCard: FC<{
+  row: Extract<ImportRow, { success: true }>;
+  onUpdate: (next: Partial<ImportRow>) => void;
+  onDelete: (hiveId: string) => void;
+}> = ({ row }) => {
+  const { hiveId, title, authors, coverImage, stars, status } = row;
+  return (
+    <a
+      href={`/books/${hiveId}`}
+      className="flex gap-3 border-b border-border px-4 py-3 last:border-b-0 hover:bg-muted/60 transition-colors"
+    >
+      <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
+        {coverImage ? (
+          <img src={coverImage} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-muted" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="line-clamp-1 text-sm font-medium text-foreground">{title}</div>
+        <div className="line-clamp-1 text-xs text-muted-foreground">
+          {authors.split("\t").join(", ")}
+        </div>
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          {status && (
+            <span className="capitalize">
+              {BOOK_STATUS_MAP[status as keyof typeof BOOK_STATUS_MAP] || status}
+            </span>
+          )}
+          {stars && (
+            <span>
+              {"★".repeat(Math.floor(stars / 2))}
+              {stars % 2 === 1 ? "½" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+    </a>
   );
 };
 
 const normalizeStr = (s: string) =>
   (s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
+// --- Progress display ---
+
+type ProgressState = {
+  stage: "starting" | "matching" | "saving" | "complete" | "error";
+  current: number;
+  total: number;
+  message?: string;
+  bookTitle?: string;
+  bookAuthor?: string;
+  shareText?: string;
+  uploadedCount?: number;
+};
+
+const ProgressCard: FC<{ progress: ProgressState; onImportMore: () => void }> = ({
+  progress,
+  onImportMore,
+}) => {
+  const pct =
+    progress.total > 0
+      ? Math.min(100, Math.round((progress.current / progress.total) * 100))
+      : 0;
+  const isComplete = progress.stage === "complete";
+  const isError = progress.stage === "error";
+
+  const stageLabel = {
+    starting: "Starting import...",
+    matching: "Matching books...",
+    saving: "Saving to library...",
+    complete: "Import complete!",
+    error: "Import failed",
+  }[progress.stage];
+
+  return (
+    <div
+      className={
+        isComplete
+          ? "rounded-xl border border-primary/30 bg-primary p-6 shadow-sm"
+          : isError
+            ? "card border-destructive/30"
+            : "card border-primary/30"
+      }
+    >
+      <div className="card-body">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={`font-semibold ${isComplete ? "text-primary-foreground" : "text-foreground"} flex items-center gap-2`}>
+            {stageLabel}
+            {!isComplete && !isError && (
+              <svg className="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            {progress.total > 0 && (
+              <span className={`text-sm ${isComplete ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                {progress.current}/{progress.total}
+              </span>
+            )}
+            {isComplete && (
+              <button
+                type="button"
+                className="rounded-md bg-primary-foreground px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary-foreground/90 transition-colors"
+                onClick={onImportMore}
+              >
+                Import more
+              </button>
+            )}
+          </div>
+        </div>
+        {!isComplete && !isError && (
+          <div className="mt-3 space-y-2">
+            <div className="progress">
+              <div
+                className="progress-bar transition-all duration-300"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {progress.message && (
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground truncate">
+                {progress.message}
+              </div>
+            )}
+          </div>
+        )}
+        {isComplete && progress.message && (
+          <p className="mt-2 text-sm text-primary-foreground/70">{progress.message}</p>
+        )}
+        {isComplete && progress.shareText && (
+          <div className="mt-3">
+            <a
+              href={`https://bsky.app/intent/compose?text=${progress.shareText}`}
+              className="rounded-md border border-primary-foreground/30 bg-primary-foreground/10 px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-foreground/20 transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Share on Bluesky
+            </a>
+          </div>
+        )}
+        {isError && progress.message && (
+          <p className="mt-2 text-sm text-destructive">{progress.message}</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Main component ---
+
 export const ImportTableApp: FC = () => {
   const [rows, setRows] = useState<ImportRow[]>([]);
-  const [progress, setProgress] = useState<{
-    current: number;
-    total: number;
-    message?: string;
-  } | null>(null);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
 
   // load from storage
@@ -441,26 +523,36 @@ export const ImportTableApp: FC = () => {
           } catch {}
           setRows([]);
           setErrors([]);
-          setProgress({ current: 0, total: 0, message: "Starting import..." });
+          setProgress({
+            stage: "starting",
+            current: 0,
+            total: 0,
+            message: data.stageProgress?.message as string,
+          });
           break;
         }
-        case "upload-start": {
-          const sp = data.stageProgress as any;
-          if (sp)
-            setProgress({
-              current: sp.current || 0,
-              total: sp.total || 0,
-              message: sp.message,
-            });
+        case "book-load": {
+          const ev = data as BookLoadEvent;
+          const sp = ev.stageProgress;
+          setProgress({
+            stage: "matching",
+            current: Number(sp?.current ?? 0),
+            total: Number(sp?.total ?? 0),
+            message: sp?.message as string,
+            bookTitle: ev.title,
+            bookAuthor: ev.author,
+          });
           break;
         }
         case "book-upload": {
           const ev = data as BookUploadEvent;
-          setProgress({
+          setProgress((prev) => ({
+            stage: "saving",
             current: ev.processed,
             total: ev.total,
-            message: ev.stageProgress?.message,
-          });
+            message: ev.stageProgress?.message as string,
+            uploadedCount: (prev?.uploadedCount ?? 0) + (ev.book && !ev.book.alreadyExists ? 1 : 0),
+          }));
           if (ev.book) {
             setRows((prev) => {
               const next = prev.some((r) => r.success && r.hiveId === ev.book.hiveId)
@@ -492,13 +584,15 @@ export const ImportTableApp: FC = () => {
           break;
         }
         case "import-complete": {
-          const sp = data.stageProgress as any;
-          if (sp)
-            setProgress({
-              current: sp.current || 0,
-              total: sp.total || 0,
-              message: sp.message,
-            });
+          const sp = data.stageProgress;
+          setProgress((prev) => ({
+            stage: "complete",
+            current: Number(sp?.current ?? 0),
+            total: Number(sp?.total ?? 0),
+            message: sp?.message as string,
+            uploadedCount: prev?.uploadedCount ?? 0,
+            shareText: (data as any).shareText,
+          }));
           break;
         }
       }
@@ -537,8 +631,18 @@ export const ImportTableApp: FC = () => {
 
   const alreadyCount = (successRows as any[]).filter((r) => r.alreadyExists).length;
 
+  const onImportMore = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    window.location.reload();
+  };
+
   return (
-    <div className="mt-8 space-y-6">
+    <div className="space-y-6">
+      {/* Progress */}
+      {progress && <ProgressCard progress={progress} onImportMore={onImportMore} />}
+
       {/* Errors */}
       {errors.length > 0 && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4">
@@ -572,8 +676,8 @@ export const ImportTableApp: FC = () => {
         </div>
       )}
 
-      {/* Summary */}
-      {(rows.length > 0 || progress) && (
+      {/* Summary cards */}
+      {(rows.length > 0 || progress?.stage === "complete") && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="card p-4 text-center">
             <div className="text-sm text-muted-foreground">Imported</div>
@@ -590,125 +694,115 @@ export const ImportTableApp: FC = () => {
         </div>
       )}
 
-      {/* Progress */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-foreground">Imported books</h3>
-        <div className="flex items-center gap-2">
-          {progress && (
-            <div className="w-56">
-              <div className="flex justify-between text-sm">
-                <span className="font-medium text-foreground">
-                  {progress.message || "Importing..."}
-                </span>
-                <span className="text-muted-foreground">
-                  {progress.current}/{progress.total}
-                </span>
-              </div>
-              <div className="progress mt-1">
-                <div
-                  className="progress-bar transition-all duration-300"
-                  style={{
-                    width: `${progress.total ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows([])}>
-            Clear list
-          </button>
-        </div>
-      </div>
+      {/* Failed imports */}
+      {failedRows.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="card-header border-b border-border flex items-center justify-between gap-2">
+            <span className="font-semibold text-foreground">
+              Failed imports ({failedRows.length})
+            </span>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto">
+            {failedRows.map((row) => (
+              <FailedRow
+                key={`${row.title}-${row.author}`}
+                row={row}
+                onResolved={(success, failedKey) => {
+                  const normalize = (s: string) =>
+                    s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+                  const [fkTitle, fkAuthor] = failedKey.split("::");
+                  const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
 
-      {/* Failed table */}
-      <div className="card overflow-hidden">
-        <div className="card-header border-b border-border">Failed imports</div>
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead className="sticky top-0 z-10 bg-muted/50">
-              <tr>
-                <th className="text-left text-sm font-semibold text-foreground">Book</th>
-              </tr>
-            </thead>
-            <tbody>
-              {failedRows.length === 0 && (
+                  setRows((prev) => {
+                    const next = prev
+                      .filter((r) => {
+                        const isFailed = !(r as any).success;
+                        if (!isFailed) return true;
+                        const rt = normalize((r as any).title || "");
+                        const ra = normalize((r as any).author || "");
+                        return `${rt}::${ra}` !== failedKeyNorm;
+                      })
+                      .concat([success as any]);
+                    try {
+                      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+                    } catch {}
+                    return next;
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Successfully imported — desktop table matching EditableLibraryTable */}
+      {successRows.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="card-header border-b border-border">
+            <span className="font-semibold text-foreground">
+              Successfully imported ({successRows.length})
+            </span>
+          </div>
+          {/* Desktop: table view */}
+          <div className="hidden md:block max-h-[480px] overflow-y-auto">
+            <table className="table w-full table-fixed">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground">No failed books</td>
+                  <th
+                    className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                    style={{ width: "50%" }}
+                  >
+                    Book
+                  </th>
+                  <th
+                    className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                    style={{ width: "18%" }}
+                  >
+                    Status
+                  </th>
+                  <th
+                    className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                    style={{ width: "22%", minWidth: "120px" }}
+                  >
+                    Rating
+                  </th>
+                  <th
+                    className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                    style={{ width: "10%" }}
+                  >
+                    Actions
+                  </th>
                 </tr>
-              )}
-              {failedRows.map((row) => (
-                <FailedRow
-                  key={`${row.title}-${row.author}`}
-                  row={row}
-                  onResolved={(success, failedKey) => {
-                    const normalize = (s: string) =>
-                      s?.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
-                    const [fkTitle, fkAuthor] = failedKey.split("::");
-                    const failedKeyNorm = `${normalize(fkTitle!)}::${normalize(fkAuthor!)}`;
-
-                    setRows((prev) => {
-                      const next = prev
-                        .filter((r) => {
-                          const isFailed = !(r as any).success;
-                          if (!isFailed) return true;
-                          const rt = normalize((r as any).title || "");
-                          const ra = normalize((r as any).author || "");
-                          return `${rt}::${ra}` !== failedKeyNorm;
-                        })
-                        .concat([success as any]);
-                      try {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-                      } catch {}
-                      return next;
-                    });
-                  }}
-                />
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border bg-card">
+                {successRows.map((row) => (
+                  <SuccessRow
+                    key={(row as any).hiveId}
+                    row={row}
+                    onUpdate={(next: Partial<ImportRow>) => {
+                      if (row.success) updateRow(row.hiveId, next);
+                    }}
+                    onDelete={(hiveId: string) => deleteRow(hiveId)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Mobile: compact card list */}
+          <div className="md:hidden max-h-[480px] overflow-y-auto">
+            {successRows.map((row) => (
+              <SuccessCard
+                key={(row as any).hiveId}
+                row={row}
+                onUpdate={(next: Partial<ImportRow>) => {
+                  if (row.success) updateRow(row.hiveId, next);
+                }}
+                onDelete={(hiveId: string) => deleteRow(hiveId)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* Successful table */}
-      <div className="card overflow-hidden">
-        <div className="card-header border-b border-border">Successfully imported</div>
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead className="sticky top-0 z-10 bg-muted/50">
-              <tr>
-                <th
-                  className="text-left text-sm font-semibold text-foreground"
-                  style={{ width: "60%" }}
-                >
-                  Book
-                </th>
-                <th className="text-left text-sm font-semibold text-foreground">Rating</th>
-                <th className="text-left text-sm font-semibold text-foreground">Status</th>
-                <th className="text-left text-sm font-semibold text-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {successRows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
-                    Imported books will appear here as they are processed.
-                  </td>
-                </tr>
-              )}
-              {successRows.map((row) => (
-                <SuccessRowView
-                  key={(row as any).hiveId}
-                  row={row}
-                  onUpdate={(next: Partial<ImportRow>) => {
-                    if (row.success) updateRow(row.hiveId, next);
-                  }}
-                  onDelete={(hiveId: string) => deleteRow(hiveId)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

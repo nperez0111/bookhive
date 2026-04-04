@@ -125,18 +125,19 @@ async function fullFollowsSync(
     const now = new Date().toISOString();
 
     if (follows.length > 0) {
-      // Upsert follows
-      for (const follow of follows) {
+      // Upsert follows in batches of 100
+      const rows = follows.map((follow) => ({
+        userDid,
+        followsDid: follow.did,
+        followedAt: follow.createdAt || now,
+        syncedAt: now,
+        lastSeenAt: now,
+        isActive: 1 as const,
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
         await ctx.db
           .insertInto("user_follows")
-          .values({
-            userDid,
-            followsDid: follow.did,
-            followedAt: follow.createdAt || now,
-            syncedAt: now,
-            lastSeenAt: now,
-            isActive: 1,
-          })
+          .values(rows.slice(i, i + 100))
           .onConflict((oc) =>
             oc.columns(["userDid", "followsDid"]).doUpdateSet({
               lastSeenAt: now,

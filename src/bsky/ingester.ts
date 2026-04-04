@@ -2,7 +2,7 @@ import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import { env } from "../env";
-import { searchBooks } from "../routes/index";
+import { searchBooks } from "../routes/lib";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
@@ -123,29 +123,31 @@ async function backfillUserRepo(
               .execute();
             const existingHiveIds = new Set(existingBooks.map((b) => b.id));
 
-            for (const { record, book } of validBooks) {
-              if (!existingHiveIds.has(book.hiveId as HiveId)) continue;
+            const rowsToInsert = validBooks
+              .filter(({ book }) => existingHiveIds.has(book.hiveId as HiveId))
+              .map(({ record, book }) =>
+                serializeUserBook({
+                  uri: record.uri,
+                  cid: record.cid,
+                  userDid: did,
+                  hiveId: book.hiveId as HiveId,
+                  createdAt: book.createdAt,
+                  indexedAt: now.toISOString(),
+                  title: book.title,
+                  authors: book.authors,
+                  startedAt: book.startedAt ?? null,
+                  finishedAt: book.finishedAt ?? null,
+                  status: book.status ?? null,
+                  owned: book.owned ? 1 : 0,
+                  review: book.review ?? null,
+                  stars: book.stars ?? null,
+                  bookProgress: book.bookProgress ?? null,
+                } satisfies UserBook),
+              );
+            for (let i = 0; i < rowsToInsert.length; i += 100) {
               await db
                 .insertInto("user_book")
-                .values(
-                  serializeUserBook({
-                    uri: record.uri,
-                    cid: record.cid,
-                    userDid: did,
-                    hiveId: book.hiveId as HiveId,
-                    createdAt: book.createdAt,
-                    indexedAt: now.toISOString(),
-                    title: book.title,
-                    authors: book.authors,
-                    startedAt: book.startedAt ?? null,
-                    finishedAt: book.finishedAt ?? null,
-                    status: book.status ?? null,
-                    owned: book.owned ? 1 : 0,
-                    review: book.review ?? null,
-                    stars: book.stars ?? null,
-                    bookProgress: book.bookProgress ?? null,
-                  } satisfies UserBook),
-                )
+                .values(rowsToInsert.slice(i, i + 100))
                 .onConflict((oc) => oc.column("uri").doNothing())
                 .execute();
             }
@@ -167,24 +169,25 @@ async function backfillUserRepo(
               .execute();
             const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
 
-            for (const { record, buzz } of validBuzzes) {
-              const hiveId = uriToHiveId.get(buzz.book.uri);
-              if (!hiveId) continue;
+            const buzzRows = validBuzzes
+              .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
+              .map(({ record, buzz }) => ({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                hiveId: uriToHiveId.get(buzz.book.uri)!,
+                createdAt: buzz.createdAt,
+                indexedAt: now.toISOString(),
+                bookCid: buzz.book.cid,
+                bookUri: buzz.book.uri,
+                comment: buzz.comment,
+                parentCid: buzz.parent.cid,
+                parentUri: buzz.parent.uri,
+              } satisfies BuzzRecord));
+            for (let i = 0; i < buzzRows.length; i += 100) {
               await db
                 .insertInto("buzz")
-                .values({
-                  uri: record.uri,
-                  cid: record.cid,
-                  userDid: did,
-                  hiveId,
-                  createdAt: buzz.createdAt,
-                  indexedAt: now.toISOString(),
-                  bookCid: buzz.book.cid,
-                  bookUri: buzz.book.uri,
-                  comment: buzz.comment,
-                  parentCid: buzz.parent.cid,
-                  parentUri: buzz.parent.uri,
-                } satisfies BuzzRecord)
+                .values(buzzRows.slice(i, i + 100))
                 .onConflict((oc) => oc.column("uri").doNothing())
                 .execute();
             }

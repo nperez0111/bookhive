@@ -506,12 +506,9 @@ migrations["012"] = {
 
 export const createDb = (
   location: string,
-  opts?: { exclusive?: boolean },
 ): { db: Database; sqlite: DatabaseSync } => {
   const sqlite = new DatabaseSync(location);
-  if (opts?.exclusive) {
-    sqlite.exec("PRAGMA locking_mode = EXCLUSIVE");
-  }
+  sqlite.exec("PRAGMA busy_timeout = 5000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
   sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
