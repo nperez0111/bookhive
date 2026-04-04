@@ -53,6 +53,7 @@ importApp.post(
       let id = 0;
       let totalBooks = 0;
       let matchedBooks = 0;
+      let searchedBooks = 0;
       let uploadedBooks = 0;
       const unmatchedBooks: Array<{ book: GoodreadsBook; reason: string }> = [];
       const unmatchedSet = new Set<string>();
@@ -61,7 +62,7 @@ importApp.post(
         data: JSON.stringify({
           event: "import-start",
           stage: "initializing",
-          stageProgress: { message: "Starting import process..." },
+          stageProgress: { message: "Reading CSV file..." },
           id: id++,
         }),
       });
@@ -81,19 +82,6 @@ importApp.post(
       const existingHiveIdsPromise = bookRecords.then(
         (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
       );
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "upload-start",
-          stage: "uploading",
-          stageProgress: {
-            current: 0,
-            total: totalBooks,
-            message: "Starting to upload books to your library...",
-          },
-          id: id++,
-        }),
-      });
 
       await uploadStream
         .pipeThrough(
@@ -115,23 +103,20 @@ importApp.post(
                   await Promise.all(
                     books.map(async (book) => {
                       try {
+                        const searched = ++searchedBooks;
                         await stream.writeSSE({
                           data: JSON.stringify({
                             title: book.title,
                             author: book.author,
                             processed: matchedBooks,
                             failed: unmatchedBooks.length,
-                            failedBooks: unmatchedBooks.map((b) => ({
-                              title: b.book.title,
-                              author: b.book.author,
-                            })),
                             total: totalBooks,
                             event: "book-load",
                             stage: "searching",
                             stageProgress: {
-                              current: totalBooks,
-                              total: "unknown",
-                              message: "Searching for books in Hive...",
+                              current: searched,
+                              total: totalBooks,
+                              message: `Looking up "${book.title}"…`,
                             },
                             id: id++,
                           }),
@@ -384,6 +369,7 @@ importApp.post(
       let id = 0;
       let totalBooks = 0;
       let matchedBooks = 0;
+      let searchedBooks = 0;
       let uploadedBooks = 0;
       const unmatchedBooks: Array<{
         book: StorygraphBook;
@@ -395,7 +381,7 @@ importApp.post(
         data: JSON.stringify({
           event: "import-start",
           stage: "initializing",
-          stageProgress: { message: "Starting import process..." },
+          stageProgress: { message: "Reading CSV file..." },
           id: id++,
         }),
       });
@@ -415,19 +401,6 @@ importApp.post(
       const existingHiveIdsPromise = bookRecords.then(
         (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
       );
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "upload-start",
-          stage: "uploading",
-          stageProgress: {
-            current: 0,
-            total: totalBooks,
-            message: "Starting to upload books to your library...",
-          },
-          id: id++,
-        }),
-      });
 
       await uploadStream
         .pipeThrough(
@@ -449,23 +422,20 @@ importApp.post(
                   await Promise.all(
                     books.map(async (book) => {
                       try {
+                        const searched = ++searchedBooks;
                         await stream.writeSSE({
                           data: JSON.stringify({
                             title: book.title,
                             author: book.authors,
                             processed: matchedBooks,
                             failed: unmatchedBooks.length,
-                            failedBooks: unmatchedBooks.map((b) => ({
-                              title: b.book.title,
-                              author: b.book.authors,
-                            })),
                             total: totalBooks,
                             event: "book-load",
                             stage: "searching",
                             stageProgress: {
-                              current: totalBooks,
-                              total: "unknown",
-                              message: "Searching for books in Hive...",
+                              current: searched,
+                              total: totalBooks,
+                              message: `Looking up "${book.title}"…`,
                             },
                             id: id++,
                           }),

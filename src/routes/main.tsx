@@ -7,6 +7,7 @@ import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
 import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
+import { defineCachedFunction } from "ocache";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
 import { BookFields } from "../db";
@@ -63,29 +64,6 @@ const ipx = createIPX({
   }),
 });
 
-const MAX_CONCURRENT_IPX = 10;
-let ipxInFlight = 0;
-const ipxQueue: Array<() => void> = [];
-
-function acquireIpxSlot(): Promise<void> {
-  if (ipxInFlight < MAX_CONCURRENT_IPX) {
-    ipxInFlight++;
-    return Promise.resolve();
-  }
-  return new Promise<void>((resolve) => {
-    ipxQueue.push(() => {
-      ipxInFlight++;
-      resolve();
-    });
-  });
-}
-
-function releaseIpxSlot(): void {
-  ipxInFlight--;
-  const next = ipxQueue.shift();
-  if (next) next();
-}
-
 const FORMAT_MIME: Record<string, string> = {
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
@@ -96,6 +74,16 @@ const FORMAT_MIME: Record<string, string> = {
   svg: "image/svg+xml",
   tiff: "image/tiff",
 };
+
+const processImage = defineCachedFunction(
+  async (id: string, modifiers: Record<string, string>) => {
+    const result = await ipx(id, modifiers).process();
+    const data = result.data as Buffer;
+    const etag = `"${new Bun.CryptoHasher("sha256").update(data).digest("hex")}"`;
+    return { data, format: result.format ?? "", etag };
+  },
+  { maxAge: 5 * 60, getKey: (id, modifiers) => `${JSON.stringify(modifiers)}:${id}` },
+);
 
 export function mainRouter(deps: AppDeps): HonoServer {
   const app = new Hono<AppEnv>();
@@ -315,8 +303,8 @@ export function mainRouter(deps: AppDeps): HonoServer {
             <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true" />
             <div class="layout-content flex flex-1 flex-col">
               <Navbar profile={profileData} />
-              <main class="flex-1 p-4 lg:p-6">
-                <div class="mx-auto max-w-5xl">{children}</div>
+              <main class="flex-1 overflow-x-auto">
+                <div class="mx-auto max-w-5xl m-4 lg:m-6">{children}</div>
               </main>
             </div>
           </div>
@@ -348,25 +336,15 @@ export function mainRouter(deps: AppDeps): HonoServer {
     }
 
     try {
-      await acquireIpxSlot();
-      let data: Buffer | Uint8Array;
-      let format: string | undefined;
-      try {
-        const result = await ipx(id, modifiers).process();
-        data = result.data as Buffer;
-        format = result.format;
-      } finally {
-        releaseIpxSlot();
-      }
+      const { data, format, etag } = await processImage(id, modifiers);
 
-      const etag = `"${new Bun.CryptoHasher("sha256").update(data).digest("hex")}"`;
       if (c.req.header("If-None-Match") === etag) {
         return new Response(null, { status: 304, headers: { ETag: etag } });
       }
 
       return new Response(data as BodyInit, {
         headers: {
-          "Content-Type": FORMAT_MIME[format ?? ""] ?? "image/jpeg",
+          "Content-Type": FORMAT_MIME[format] ?? "image/jpeg",
           "Cache-Control": `public, max-age=${MAX_AGE}`,
           "Content-Length": data.byteLength.toString(),
           ETag: etag,

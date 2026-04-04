@@ -2,7 +2,7 @@ import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import { env } from "../env";
-import { searchBooks } from "../routes/index";
+import { searchBooks } from "../routes/lib";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
