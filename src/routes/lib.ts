@@ -350,12 +350,11 @@ export async function refetchBooks({
     }
   });
 
-  await bookRecords.reduce(async (acc, record) => {
-    await acc;
+  const indexedAt = new Date().toISOString();
+  const rowsToUpsert = bookRecords.map((record) => {
     const book = record.value;
 
     promises.push(searchBooks({ query: book.title, ctx }));
-
     uris.push(record.uri);
 
     if (!book.hiveBookUri) {
@@ -363,27 +362,29 @@ export async function refetchBooks({
       booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId as HiveId, record: book });
     }
 
+    return serializeUserBook({
+      uri: record.uri,
+      cid: record.cid,
+      userDid: agent.did,
+      createdAt: book.createdAt,
+      title: book.title,
+      authors: book.authors,
+      indexedAt,
+      hiveId: book.hiveId as HiveId,
+      status: book.status,
+      owned: book.owned ? 1 : 0,
+      startedAt: book.startedAt,
+      finishedAt: book.finishedAt,
+      review: book.review,
+      stars: book.stars,
+      bookProgress: book.bookProgress ?? null,
+    });
+  });
+
+  for (let i = 0; i < rowsToUpsert.length; i += 100) {
     await ctx.db
       .insertInto("user_book")
-      .values(
-        serializeUserBook({
-          uri: record.uri,
-          cid: record.cid,
-          userDid: agent.did,
-          createdAt: book.createdAt,
-          title: book.title,
-          authors: book.authors,
-          indexedAt: new Date().toISOString(),
-          hiveId: book.hiveId as HiveId,
-          status: book.status,
-          owned: book.owned ? 1 : 0,
-          startedAt: book.startedAt,
-          finishedAt: book.finishedAt,
-          review: book.review,
-          stars: book.stars,
-          bookProgress: book.bookProgress ?? null,
-        }),
-      )
+      .values(rowsToUpsert.slice(i, i + 100))
       .onConflict((oc) =>
         oc.column("uri").doUpdateSet((c) => ({
           cid: c.ref("excluded.cid"),
@@ -403,7 +404,7 @@ export async function refetchBooks({
         })),
       )
       .execute();
-  }, Promise.resolve());
+  }
 
   await Promise.all(promises);
   if (listData.records.length === 100) {

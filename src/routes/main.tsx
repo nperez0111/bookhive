@@ -188,55 +188,58 @@ export function mainRouter(deps: AppDeps): HonoServer {
       ctx.kv as import("unstorage").Storage<any>,
       "marketing:landing",
       async () => {
-        // Trending: books with most distinct readers in last 7 days
+        // Run trending + recent queries in parallel
         startTime(c, "marketing_trending");
-        let trending = await ctx.db
-          .selectFrom("hive_book as hb")
-          .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-          .select([
-            "hb.id",
-            "hb.title",
-            "hb.authors",
-            "hb.thumbnail",
-            (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-          ])
-          .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-          .groupBy("hb.id")
-          .orderBy("readerCount", "desc")
-          .orderBy("hb.ratingsCount", "desc")
-          .limit(10)
-          .execute();
-        endTime(c, "marketing_trending");
-
-        // Fallback to all-time most-read if not enough recent activity
-        if (trending.length < 10) {
-          startTime(c, "marketing_trending_fallback");
-          trending = await ctx.db
-            .selectFrom("hive_book as hb")
-            .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-            .select([
-              "hb.id",
-              "hb.title",
-              "hb.authors",
-              "hb.thumbnail",
-              (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-            ])
-            .groupBy("hb.id")
-            .orderBy("readerCount", "desc")
-            .limit(10)
-            .execute();
-          endTime(c, "marketing_trending_fallback");
-        }
-
         startTime(c, "marketing_recent");
-        const recent = await ctx.db
-          .selectFrom("user_book")
-          .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .select(BookFields)
-          .orderBy("user_book.createdAt", "desc")
-          .limit(10)
-          .execute();
+        const [trendingResult, recent] = await Promise.all([
+          (async () => {
+            let trending = await ctx.db
+              .selectFrom("hive_book as hb")
+              .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+              .select([
+                "hb.id",
+                "hb.title",
+                "hb.authors",
+                "hb.thumbnail",
+                (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+              ])
+              .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+              .groupBy("hb.id")
+              .orderBy("readerCount", "desc")
+              .orderBy("hb.ratingsCount", "desc")
+              .limit(10)
+              .execute();
+
+            // Fallback to all-time most-read if not enough recent activity
+            if (trending.length < 10) {
+              trending = await ctx.db
+                .selectFrom("hive_book as hb")
+                .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
+                .select([
+                  "hb.id",
+                  "hb.title",
+                  "hb.authors",
+                  "hb.thumbnail",
+                  (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
+                ])
+                .groupBy("hb.id")
+                .orderBy("readerCount", "desc")
+                .limit(10)
+                .execute();
+            }
+            return trending;
+          })(),
+          ctx.db
+            .selectFrom("user_book")
+            .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+            .select(BookFields)
+            .orderBy("user_book.createdAt", "desc")
+            .limit(10)
+            .execute(),
+        ]);
+        endTime(c, "marketing_trending");
         endTime(c, "marketing_recent");
+        const trending = trendingResult;
 
         const allDids = [...new Set(recent.map((r) => r.userDid))];
         startTime(c, "marketing_handles");
