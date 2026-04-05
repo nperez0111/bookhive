@@ -21,8 +21,10 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
 
     if (type === "goodreads") {
       await processGoodreadsImport({ csvData, ctx, agent, onSSE });
-    } else {
+    } else if (type === "storygraph") {
       await processStorygraphImport({ csvData, ctx, agent, onSSE });
+    } else {
+      throw new Error(`Unknown import type: ${type as never as string}`);
     }
 
     self.postMessage({ type: "done" } satisfies ImportWorkerMessage);

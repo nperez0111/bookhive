@@ -2,7 +2,7 @@ import { syncHiveBookGenres } from "../db";
 import { scraperDuration, activeOperations, LABEL } from "../metrics";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
-import type { ImportContext } from "../workers/import/types";
+import type { BookUtilContext } from "../context";
 import { normalizeGoodreadsId, upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {
@@ -22,7 +22,7 @@ interface BookMeta {
 
 export async function enrichBookWithDetailedData(
   book: HiveBook,
-  ctx: Pick<ImportContext, "db" | "addWideEventContext">,
+  ctx: Pick<BookUtilContext, "db" | "addWideEventContext">,
   options?: { force?: boolean },
 ): Promise<void> {
   try {

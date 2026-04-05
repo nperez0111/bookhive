@@ -36,6 +36,8 @@ self.onmessage = async (event: MessageEvent<OgRenderRequest>) => {
       case "app":
         jsx = <AppOgCard {...card.props} />;
         break;
+      default:
+        throw new Error(`Unknown OG card kind: ${(card as any).kind}`);
     }
 
     const response = new ImageResponse(jsx, OG_RENDER_OPTIONS);

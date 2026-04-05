@@ -15,7 +15,7 @@ import { describe, it, expect, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect } from "kysely";
 import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
-import type { DatabaseSchema } from "../../db";
+import { migrateToLatest, type DatabaseSchema } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
@@ -103,7 +103,7 @@ Dreams of Steel,Glen Cook,"",9780765382641,paperback,read,2025/11/13,"","",1,"",
 
 // ─── Test infrastructure ────────────────────────────────────────────────────
 
-function createTestDb() {
+async function createTestDb() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA journal_mode = WAL");
   const db = new Kysely<DatabaseSchema>({
@@ -112,60 +112,8 @@ function createTestDb() {
     }),
   });
 
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS hive_book (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      rawTitle TEXT,
-      authors TEXT NOT NULL,
-      cover TEXT,
-      thumbnail TEXT,
-      description TEXT,
-      rating REAL,
-      ratingsCount INTEGER,
-      source TEXT,
-      sourceId TEXT,
-      sourceUrl TEXT,
-      identifiers TEXT,
-      series TEXT,
-      meta TEXT,
-      enrichedAt TEXT,
-      hiveBookAtUri TEXT,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS user_book (
-      uri TEXT PRIMARY KEY,
-      userDid TEXT NOT NULL,
-      hiveId TEXT NOT NULL,
-      cid TEXT,
-      title TEXT,
-      authors TEXT,
-      status TEXT,
-      owned INTEGER DEFAULT 0,
-      startedAt TEXT,
-      finishedAt TEXT,
-      review TEXT,
-      stars INTEGER,
-      bookProgress TEXT,
-      createdAt TEXT,
-      indexedAt TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS book_id_map (
-      hiveId TEXT,
-      type TEXT,
-      value TEXT,
-      PRIMARY KEY (hiveId, type)
-    );
-
-    CREATE TABLE IF NOT EXISTS hive_book_genre (
-      genre TEXT,
-      hiveId TEXT,
-      PRIMARY KEY (genre, hiveId)
-    );
-  `);
+  // Use the canonical migrations so the test schema stays in sync with the app
+  await migrateToLatest(db, sqlite);
 
   return { db, sqlite };
 }
@@ -178,8 +126,8 @@ function seedHiveBook(
   cover: string | null = null,
 ) {
   const stmt = sqlite.prepare(
-    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, '', datetime('now'), datetime('now'))`,
+    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, source, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, '', 'goodreads', datetime('now'), datetime('now'))`,
   );
   stmt.run(id, rawTitle, rawTitle, authors, cover);
 }
@@ -290,7 +238,7 @@ function collectSSEEvents(): { events: SSEEvent[]; onSSE: (data: string) => void
 
 describe("import pipeline simulation — Goodreads", () => {
   it("processes 15 real CSV rows with correct SSE event ordering", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
 
     // Seed 10 of the 15 books so we get a mix of matched/unmatched
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
@@ -367,7 +315,7 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("emits all timestamps in ascending order", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
 
@@ -390,7 +338,7 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("has no excessively long gaps between consecutive SSE events", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     // Seed all 15 to maximize matched books and see full pipeline
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
     seedHiveBook(
@@ -463,7 +411,7 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("provides granular progress updates with batch size 10", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     // Seed all 15 books
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
     seedHiveBook(
@@ -547,7 +495,7 @@ describe("import pipeline simulation — Goodreads", () => {
 
 describe("import pipeline simulation — StoryGraph", () => {
   it("processes 12 real CSV rows with correct event flow", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
 
     // Seed 8 of 12
     seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
@@ -582,7 +530,7 @@ describe("import pipeline simulation — StoryGraph", () => {
   });
 
   it("batch-save events always precede their book-upload events", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
 
     // Seed all 12
     seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
@@ -641,7 +589,7 @@ describe("import pipeline simulation — StoryGraph", () => {
   });
 
   it("SSE event IDs are strictly monotonically increasing", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
     seedHiveBook(sqlite, "bk_dune", "Dune", "Frank Herbert");
 
@@ -665,7 +613,7 @@ describe("import pipeline simulation — StoryGraph", () => {
 
 describe("import pipeline simulation — batch write fallback", () => {
   it("falls back to individual writes when batch write fails", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
 
@@ -706,7 +654,7 @@ describe("import pipeline simulation — batch write fallback", () => {
 
 describe("import pipeline simulation — timing characteristics", () => {
   it("total pipeline time stays within expected bounds for 15 books", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     // Seed all 15
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
     seedHiveBook(

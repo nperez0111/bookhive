@@ -327,7 +327,6 @@ export function createIngester(
 
   function enqueueBackfill(did: string) {
     if (destroyed) return;
-    ingesterBackfillQueueDepth.set(backfillQueue.length + 1);
     const run = async () => {
       activeBackfills++;
       ingesterBackfillActive.set(activeBackfills);
@@ -347,6 +346,7 @@ export function createIngester(
       backfillQueue.push(() => {
         run().catch(() => {});
       });
+      ingesterBackfillQueueDepth.set(backfillQueue.length);
     }
   }
 

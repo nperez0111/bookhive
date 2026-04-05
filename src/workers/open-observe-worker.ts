@@ -34,7 +34,7 @@ self.onmessage = (event: MessageEvent) => {
   const msg = event.data;
   if (msg.type === "init") {
     const opts: Options = msg.options;
-    apiUrl = `${opts.url}/api/${opts.organization}/${opts.streamName}/_json`;
+    apiUrl = `${opts.url.replace(/\/+$/, "")}/api/${encodeURIComponent(opts.organization)}/${encodeURIComponent(opts.streamName)}/_json`;
     authHeader = `Basic ${Buffer.from(`${opts.auth.username}:${opts.auth.password}`).toString("base64")}`;
     batchSize = opts.batchSize ?? BATCH_SIZE;
     flushMs = opts.timeThresholdMs ?? FLUSH_MS;

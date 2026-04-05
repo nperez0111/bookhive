@@ -30,16 +30,30 @@ import type { OgCard } from "../workers/og-render/types";
 
 // ─── Cache + helpers ─────────────────────────────────────────────────────────
 
-const cachedRenderOg = defineCachedFunction(
-  async (card: OgCard) => {
-    const buffer = await renderOgImage(card);
-    return new Uint8Array(buffer);
-  },
-  {
-    maxAge: 3600,
-    getKey: (card) => `${card.kind}:${JSON.stringify(card.props)}`,
-  },
-);
+function createCachedRenderOg(ttl: number) {
+  return defineCachedFunction(
+    async (card: OgCard) => {
+      const buffer = await renderOgImage(card);
+      return new Uint8Array(buffer);
+    },
+    {
+      maxAge: ttl,
+      getKey: (card) => `${card.kind}:${JSON.stringify(card.props)}`,
+    },
+  );
+}
+
+type CachedRenderOg = ReturnType<typeof createCachedRenderOg>;
+const cachedRenderOgByTTL = new Map<number, CachedRenderOg>();
+
+function getCachedRenderOg(ttl: number): CachedRenderOg {
+  let cached = cachedRenderOgByTTL.get(ttl);
+  if (!cached) {
+    cached = createCachedRenderOg(ttl);
+    cachedRenderOgByTTL.set(ttl, cached);
+  }
+  return cached;
+}
 
 // Cache TTLs in seconds
 const TTL = {
@@ -55,7 +69,7 @@ async function makeOgResponse(card: OgCard, maxAge: number): Promise<Response> {
   const end = imageProcessingDuration.startTimer(LABEL.op.og_image);
   activeOperations.inc(LABEL.op.og_image);
   try {
-    const bytes = await cachedRenderOg(card);
+    const bytes = await getCachedRenderOg(maxAge)(card);
     return new Response(bytes, {
       headers: {
         "Content-Type": "image/webp",

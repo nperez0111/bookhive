@@ -36,6 +36,14 @@ import { readThroughCache } from "./utils/readThroughCache";
 /** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
 export type AddWideEventContext = (context: Record<string, unknown>) => void;
 
+/** Minimal context needed by shared book utilities (getBook, ensureBookCataloged, etc.). */
+export type BookUtilContext = {
+  db: Database;
+  kv: Storage;
+  serviceAccountAgent: SessionClient | null;
+  addWideEventContext: AddWideEventContext;
+};
+
 // Application state passed to the router and elsewhere. No logger – request observability is via addWideEventContext + wide-event middleware.
 export type AppContext = {
   db: Database;

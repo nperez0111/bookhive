@@ -35,13 +35,7 @@ function getWorker(): Worker {
 
   worker.onerror = (event) => {
     console.error("OG render worker error:", event.message);
-    // Reject all pending and reset so next call spawns a fresh worker
-    worker = null;
-    for (const [, entry] of pending) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error("OG render worker crashed"));
-    }
-    pending.clear();
+    destroyOgRenderWorker();
   };
 
   return worker;
@@ -55,6 +49,8 @@ export function renderOgImage(card: OgCard): Promise<ArrayBuffer> {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error("OG render timed out"));
+      // Terminate the hung worker so next call spawns a fresh one
+      destroyOgRenderWorker();
     }, RENDER_TIMEOUT_MS);
 
     pending.set(id, { resolve, reject, timer });

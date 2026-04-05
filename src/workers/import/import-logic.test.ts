@@ -2,7 +2,7 @@ import { describe, it, expect, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect } from "kysely";
 import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
-import type { DatabaseSchema } from "../../db";
+import { migrateToLatest, type DatabaseSchema } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
@@ -26,8 +26,8 @@ const { processGoodreadsImport, processStorygraphImport } = await import("./logi
 
 // --- Test helpers ---
 
-/** Create a real in-memory SQLite DB with just the tables the import logic needs. */
-function createTestDb() {
+/** Create a real in-memory SQLite DB using the canonical migrations. */
+async function createTestDb() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA journal_mode = WAL");
   const db = new Kysely<DatabaseSchema>({
@@ -36,61 +36,7 @@ function createTestDb() {
     }),
   });
 
-  // Create minimal tables needed by import logic
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS hive_book (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      rawTitle TEXT,
-      authors TEXT NOT NULL,
-      cover TEXT,
-      thumbnail TEXT,
-      description TEXT,
-      rating REAL,
-      ratingsCount INTEGER,
-      source TEXT,
-      sourceId TEXT,
-      sourceUrl TEXT,
-      identifiers TEXT,
-      series TEXT,
-      meta TEXT,
-      enrichedAt TEXT,
-      hiveBookAtUri TEXT,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS user_book (
-      uri TEXT PRIMARY KEY,
-      userDid TEXT NOT NULL,
-      hiveId TEXT NOT NULL,
-      cid TEXT,
-      title TEXT,
-      authors TEXT,
-      status TEXT,
-      owned INTEGER DEFAULT 0,
-      startedAt TEXT,
-      finishedAt TEXT,
-      review TEXT,
-      stars INTEGER,
-      bookProgress TEXT,
-      createdAt TEXT,
-      indexedAt TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS book_id_map (
-      hiveId TEXT,
-      type TEXT,
-      value TEXT,
-      PRIMARY KEY (hiveId, type)
-    );
-
-    CREATE TABLE IF NOT EXISTS hive_book_genre (
-      genre TEXT,
-      hiveId TEXT,
-      PRIMARY KEY (genre, hiveId)
-    );
-  `);
+  await migrateToLatest(db, sqlite);
 
   return { db, sqlite };
 }
@@ -104,8 +50,8 @@ function seedHiveBook(
   cover: string | null = null,
 ) {
   const stmt = sqlite.prepare(
-    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, '', datetime('now'), datetime('now'))`,
+    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, source, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, '', 'goodreads', datetime('now'), datetime('now'))`,
   );
   stmt.run(id, rawTitle, rawTitle, authors, cover);
 }
@@ -194,7 +140,7 @@ function createMockCtx(db: Kysely<DatabaseSchema>): ImportContext {
 
 describe("processGoodreadsImport", () => {
   it("emits import-start, book-load, book-upload, and import-complete SSE events for matched books", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     seedHiveBook(
       sqlite,
       "bk_omw",
@@ -238,7 +184,7 @@ describe("processGoodreadsImport", () => {
   });
 
   it("reports all books as failed when none match in the database", async () => {
-    const { db } = createTestDb(); // empty DB — no hive_book rows
+    const { db } = await createTestDb(); // empty DB — no hive_book rows
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
     const sseEvents: any[] = [];
@@ -258,7 +204,7 @@ describe("processGoodreadsImport", () => {
   });
 
   it("handles empty CSV gracefully", async () => {
-    const { db } = createTestDb();
+    const { db } = await createTestDb();
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
     const sseEvents: any[] = [];
@@ -282,7 +228,7 @@ describe("processGoodreadsImport", () => {
 
 describe("processStorygraphImport", () => {
   it("emits correct SSE lifecycle events for StoryGraph CSV", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, sqlite } = await createTestDb();
     seedHiveBook(
       sqlite,
       "bk_omw",

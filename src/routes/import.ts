@@ -15,10 +15,15 @@ import { env } from "../env";
 import { activeOperations, importBatchDuration, LABEL } from "../metrics";
 
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 
 const formSchema = z.object({ export: z.instanceof(File) });
 
 async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRequest["type"]) {
+  // Reject oversized uploads before reading the full body into memory
+  if (exportFile.size > MAX_UPLOAD_BYTES) {
+    return c.json({ success: false, error: "Upload too large (max 50 MB)" }, 413);
+  }
   const ctx = c.get("ctx");
   const agent = await ctx.getSessionAgent();
   if (!agent) {
@@ -74,7 +79,11 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
 
       worker.onmessage = async (event: MessageEvent<ImportWorkerMessage>) => {
         const msg = event.data;
-        if (msg.type === "sse") {
+        if (msg.type === "wide-event") {
+          // Worker observability events — merge into request-scoped wide event
+          ctx.addWideEventContext(msg.context);
+          return;
+        } else if (msg.type === "sse") {
           await stream.writeSSE({ data: msg.data });
         } else if (msg.type === "done") {
           if (msg.error) {
@@ -120,9 +129,8 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
       stream.writeSSE({ data: "", event: "keepalive" }).catch(() => {});
     }, 5_000);
 
-    worker.postMessage(request, [csvData]);
-
     try {
+      worker.postMessage(request, [csvData]);
       await done;
     } finally {
       clearInterval(heartbeat);

@@ -1,16 +1,8 @@
 import type { StoredSession } from "@atcute/oauth-node-client";
-import type { SessionClient } from "../../auth/client";
-import type { Database } from "../../db";
-import type { Storage } from "unstorage";
-import type { AddWideEventContext } from "../../context";
+import type { BookUtilContext } from "../../context";
 
-/** Narrow context for import processing — no ingester, no getProfile, no HTTP request. */
-export type ImportContext = {
-  db: Database;
-  kv: Storage;
-  serviceAccountAgent: SessionClient | null;
-  addWideEventContext: AddWideEventContext;
-};
+/** Narrow context for import processing — identical to BookUtilContext. */
+export type ImportContext = BookUtilContext;
 
 /** Main thread → worker: start an import job. */
 export type ImportRequest = {
@@ -33,4 +25,13 @@ export type ImportDoneMessage = {
   error?: string;
 };
 
-export type ImportWorkerMessage = ImportProgressMessage | ImportDoneMessage;
+/** Worker → main thread: relay a wide event for observability. */
+export type ImportWideEventMessage = {
+  type: "wide-event";
+  context: Record<string, unknown>;
+};
+
+export type ImportWorkerMessage =
+  | ImportProgressMessage
+  | ImportDoneMessage
+  | ImportWideEventMessage;

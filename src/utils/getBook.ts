@@ -4,7 +4,7 @@ import * as TID from "@atcute/tid";
 import type { SessionClient } from "../auth/client";
 import { parseISO, isValid } from "date-fns";
 
-import type { ImportContext } from "../workers/import/types";
+import type { BookUtilContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
 import type { HiveId, UserBook, UserBookRow } from "../types";
 import { findBookIdentifiersByLookup } from "../bsky/bookLookup";
@@ -112,7 +112,7 @@ export async function getUserBook({
   agent,
   hiveId,
 }: {
-  ctx: Pick<ImportContext, "db">;
+  ctx: Pick<BookUtilContext, "db">;
   agent: SessionClient;
   hiveId: HiveId;
 }): Promise<UserBook | null> {
@@ -134,7 +134,7 @@ export async function updateUserBook({
   ctx,
   userBook,
 }: {
-  ctx: Pick<ImportContext, "db">;
+  ctx: Pick<BookUtilContext, "db">;
   userBook: UserBook;
 }): Promise<void> {
   const row: UserBookRow = serializeUserBook(userBook);
@@ -198,7 +198,7 @@ export async function updateBookRecord({
   hiveId,
   updates,
 }: {
-  ctx: ImportContext;
+  ctx: BookUtilContext;
   agent: SessionClient;
   hiveId: HiveId;
   updates: Partial<BookRecord.Record> & { coverImage?: string };
@@ -372,7 +372,7 @@ export async function updateBookRecords({
   bookRecords = getUserRepoRecords({ ctx, agent }),
   overwrite = false,
 }: {
-  ctx: ImportContext;
+  ctx: BookUtilContext;
   agent: SessionClient;
   updates: Map<HiveId, Partial<BookRecord.Record> & { coverImage?: string }>;
   bookRecords?: Promise<{
@@ -587,7 +587,7 @@ export async function getUserRepoRecords({
   agent,
   did = agent.did,
 }: {
-  ctx: Pick<ImportContext, "addWideEventContext">;
+  ctx: Pick<BookUtilContext, "addWideEventContext">;
   agent: SessionClient;
   did?: string;
 }): Promise<{

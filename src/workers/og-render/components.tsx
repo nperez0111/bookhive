@@ -3,6 +3,7 @@
  * Pure OG image JSX components — no DB, Hono, or metrics imports.
  * Used by the OG render worker to generate images off the main thread.
  */
+import type { ReactNode } from "react";
 import type {
   BookOgCardProps,
   StatsOgCardProps,
@@ -123,7 +124,7 @@ function SidebarLayout({
 }: {
   sidebarWidth: number;
   sidebarPadding: string;
-  children: React.ReactNode;
+  children: ReactNode;
   covers: string[];
 }) {
   return (
