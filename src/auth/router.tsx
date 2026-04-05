@@ -58,6 +58,13 @@ export function loginRouter(
     return c.json(c.get("ctx").oauthClient.metadata);
   });
 
+  // JWKS endpoint for confidential client key verification
+  app.get("/jwks.json", (c) => {
+    const jwks = c.get("ctx").oauthClient.jwks;
+    if (!jwks) return c.notFound();
+    return c.json(jwks);
+  });
+
   // OAuth callback to complete session creation
   app.get("/oauth/callback", async (c) => {
     const callbackUrl = new URL(c.req.url);
