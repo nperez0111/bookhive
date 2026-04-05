@@ -21,6 +21,12 @@ function standaloneBundles(): Plugin {
       name: "open-observe-worker.js",
       label: "OpenObserve logger worker",
     },
+    {
+      entrypoint: "./src/workers/og-render/og-render-worker.tsx",
+      outdir: "./.output/server/workers/og-render",
+      name: "og-render-worker.js",
+      label: "OG render worker",
+    },
   ];
 
   return {

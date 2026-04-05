@@ -1,672 +1,149 @@
 /**
- * Import routes: Goodreads and StoryGraph CSV upload (SSE streaming).
+ * Import routes: Goodreads and StoryGraph CSV upload.
+ * Spawns a Bun Worker for the heavy processing and relays SSE events.
  * Mount at /import so paths are /import/goodreads, /import/storygraph.
  */
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import type { BookIdentifiers, HiveId } from "../types";
-import { Book as BookRecord } from "../bsky/lexicon";
-import { createBatchTransform } from "../utils/batchTransform";
-import {
-  getGoodreadsCsvParser,
-  getStorygraphCsvParser,
-  type GoodreadsBook,
-  type StorygraphBook,
-} from "../utils/csv";
-import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../utils/getBook";
-import {
-  normalizeStr,
-  mapGoodreadsStatus,
-  mapStorygraphStatus,
-  mergeGoodreadsIdentifiers,
-  mergeStorygraphIdentifiers,
-  buildGoodreadsBookRecord,
-  buildStorygraphBookRecord,
-  deduplicateUnmatchedWithDetails,
-} from "../utils/importBook";
-import { searchBooks } from "./lib";
+import type { ImportRequest, ImportWorkerMessage } from "../workers/import/types";
+import { env } from "../env";
+import { activeOperations, importBatchDuration, LABEL } from "../metrics";
+
+const IMPORT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+const formSchema = z.object({ export: z.instanceof(File) });
+
+async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRequest["type"]) {
+  const ctx = c.get("ctx");
+  const agent = await ctx.getSessionAgent();
+  if (!agent) {
+    return c.json({ success: false, error: "Invalid Session" }, 401);
+  }
+
+  // Read the stored OAuth session to pass to the worker
+  const storedSession = await ctx.kv.get<import("@atcute/oauth-node-client").StoredSession>(
+    `auth_session:${agent.did}`,
+  );
+  if (!storedSession) {
+    return c.json({ success: false, error: "Session not found" }, 401);
+  }
+
+  const csvData = await exportFile.arrayBuffer();
+
+  return streamSSE(c, async (stream) => {
+    const importKey = type === "goodreads" ? LABEL.import.goodreads : LABEL.import.storygraph;
+    const end = importBatchDuration.startTimer(importKey);
+    activeOperations.inc(LABEL.op.import);
+
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), IMPORT_TIMEOUT_MS);
+
+    const worker = new Worker(new URL("../workers/import/index.ts", import.meta.url));
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      worker.terminate();
+    };
+
+    ac.signal.addEventListener("abort", () => {
+      cleanup();
+      stream
+        .writeSSE({
+          data: JSON.stringify({
+            event: "import-error",
+            stage: "error",
+            stageProgress: { message: "Import timed out after 5 minutes" },
+            error: "Import timed out after 5 minutes",
+          }),
+        })
+        .catch(() => {});
+    });
+
+    stream.onAbort(() => {
+      if (!ac.signal.aborted) ac.abort();
+    });
+
+    // Promise that resolves when the worker finishes (done, error, or timeout)
+    const done = new Promise<void>((resolve) => {
+      ac.signal.addEventListener("abort", () => resolve());
+
+      worker.onmessage = async (event: MessageEvent<ImportWorkerMessage>) => {
+        const msg = event.data;
+        if (msg.type === "sse") {
+          await stream.writeSSE({ data: msg.data });
+        } else if (msg.type === "done") {
+          if (msg.error) {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                event: "import-error",
+                stage: "error",
+                stageProgress: { message: `Import failed: ${msg.error}` },
+                error: msg.error,
+              }),
+            });
+          }
+          cleanup();
+          resolve();
+        }
+      };
+
+      worker.onerror = async (event) => {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            event: "import-error",
+            stage: "error",
+            stageProgress: { message: "Import worker crashed" },
+            error: event.message || "Worker error",
+          }),
+        });
+        cleanup();
+        resolve();
+      };
+    });
+
+    const request: ImportRequest = {
+      type,
+      storedSession,
+      csvData,
+      dbPath: env.DB_PATH,
+      kvPath: env.KV_DB_PATH,
+    };
+
+    // Send SSE keepalives every 5s to prevent Bun's idle timeout (default 10s)
+    // from killing the connection while the worker is starting up.
+    const heartbeat = setInterval(() => {
+      stream.writeSSE({ data: "", comment: "keepalive" }).catch(() => {});
+    }, 5_000);
+
+    worker.postMessage(request, [csvData]);
+
+    try {
+      await done;
+    } finally {
+      clearInterval(heartbeat);
+      end();
+      activeOperations.dec(LABEL.op.import);
+    }
+  });
+}
 
 const importApp = new Hono<AppEnv>();
 
 importApp.post(
   "/goodreads",
-  zValidator(
-    "form",
-    z.object({
-      export: z.instanceof(File),
-    }),
-  ),
-  async (c) => {
-    const ctx = c.get("ctx");
-    const agent = await ctx.getSessionAgent();
-    if (!agent) {
-      return c.json({ success: false, error: "Invalid Session" }, 401);
-    }
-
-    const { export: exportFile } = c.req.valid("form");
-    return streamSSE(c, async (stream) => {
-      const parser = getGoodreadsCsvParser();
-      let id = 0;
-      let totalBooks = 0;
-      let matchedBooks = 0;
-      let searchedBooks = 0;
-      let uploadedBooks = 0;
-      const unmatchedBooks: Array<{ book: GoodreadsBook; reason: string }> = [];
-      const unmatchedSet = new Set<string>();
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "import-start",
-          stage: "initializing",
-          stageProgress: { message: "Reading CSV file..." },
-          id: id++,
-        }),
-      });
-
-      const [countStream, uploadStream] = exportFile.stream().pipeThrough(parser).tee();
-
-      void countStream.pipeTo(
-        new WritableStream({
-          async write(book) {
-            void searchBooks({ query: book.title, ctx });
-            totalBooks++;
-          },
-        }),
-      );
-
-      const bookRecords = getUserRepoRecords({ ctx, agent });
-      const existingHiveIdsPromise = bookRecords.then(
-        (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
-      );
-
-      await uploadStream
-        .pipeThrough(
-          createBatchTransform(
-            25,
-            async (
-              books,
-            ): Promise<
-              Map<
-                HiveId,
-                Partial<BookRecord.Record> & {
-                  coverImage?: string;
-                  alreadyExists?: boolean;
-                }
-              >
-            > => {
-              return new Map(
-                (
-                  await Promise.all(
-                    books.map(async (book) => {
-                      try {
-                        const searched = ++searchedBooks;
-                        await stream.writeSSE({
-                          data: JSON.stringify({
-                            title: book.title,
-                            author: book.author,
-                            processed: matchedBooks,
-                            failed: unmatchedBooks.length,
-                            total: totalBooks,
-                            event: "book-load",
-                            stage: "searching",
-                            stageProgress: {
-                              current: searched,
-                              total: totalBooks,
-                              message: `Looking up "${book.title}"…`,
-                            },
-                            id: id++,
-                          }),
-                        });
-                        await searchBooks({ query: book.title, ctx });
-                        let hiveBook = await ctx.db
-                          .selectFrom("hive_book")
-                          .select(["id", "title", "cover", "identifiers"])
-                          .where("hive_book.rawTitle", "=", book.title)
-                          .where("authors", "=", book.author)
-                          .executeTakeFirst();
-
-                        if (!hiveBook) {
-                          const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
-                          if (!unmatchedSet.has(key)) {
-                            unmatchedSet.add(key);
-                            unmatchedBooks.push({ book, reason: "no_match" });
-                          }
-                          return null;
-                        }
-
-                        const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-                          ? JSON.parse(hiveBook.identifiers)
-                          : {};
-                        const { identifiers: newIdentifiers, changed } =
-                          mergeGoodreadsIdentifiers({
-                            bookId: book.bookId,
-                            isbn: book.isbn,
-                            isbn13: book.isbn13,
-                            existingIdentifiers,
-                            hiveBookId: hiveBook.id,
-                          });
-                        if (changed) {
-                          await ctx.db
-                            .updateTable("hive_book")
-                            .set({
-                              identifiers: JSON.stringify(newIdentifiers),
-                              updatedAt: new Date().toISOString(),
-                            })
-                            .where("id", "=", hiveBook.id)
-                            .execute();
-                        }
-
-                        const existingHiveIds = await existingHiveIdsPromise;
-                        return [
-                          hiveBook.id as HiveId,
-                          buildGoodreadsBookRecord({ book, hiveBook, existingHiveIds }),
-                        ] as const;
-                      } catch (e) {
-                        ctx.addWideEventContext({
-                          import_book_record: "failed",
-                          error: e instanceof Error ? e.message : String(e),
-                          book_title: book?.title,
-                        });
-                        unmatchedBooks.push({
-                          book,
-                          reason: "processing_error",
-                        });
-                        return null;
-                      }
-                    }),
-                  )
-                ).filter((a) => a !== null),
-              );
-            },
-          ),
-        )
-        .pipeTo(
-          new WritableStream({
-            async write(bookUpdates) {
-              const startProcessed = matchedBooks;
-              let idx = 0;
-              for (const book of bookUpdates.values()) {
-                const processed = startProcessed + ++idx;
-                await stream.writeSSE({
-                  data: JSON.stringify({
-                    title: book?.["title"],
-                    author: book?.["authors"],
-                    uploaded: 1,
-                    processed,
-                    failed: unmatchedBooks.length,
-                    total: totalBooks,
-                    event: "book-upload",
-                    stage: "uploading",
-                    stageProgress: {
-                      current: processed,
-                      total: totalBooks,
-                      message: `Uploading books to your library (${processed}/${totalBooks})`,
-                    },
-                    book: book
-                      ? {
-                          hiveId: book["hiveId"],
-                          title: book["title"],
-                          authors: book["authors"],
-                          coverImage: book["coverImage"],
-                          status: book["status"],
-                          finishedAt: book["finishedAt"],
-                          stars: book["stars"],
-                          review: book["review"],
-                          alreadyExists: book["alreadyExists"],
-                        }
-                      : undefined,
-                    id: id++,
-                  }),
-                });
-                if (book && !(book as { alreadyExists?: boolean })["alreadyExists"]) {
-                  uploadedBooks++;
-                }
-              }
-              matchedBooks += bookUpdates.size;
-
-              try {
-                await updateBookRecords({
-                  ctx,
-                  agent,
-                  updates: bookUpdates,
-                  bookRecords,
-                });
-              } catch (error) {
-                ctx.addWideEventContext({
-                  import_batch_update: "failed",
-                  error: error instanceof Error ? error.message : String(error),
-                  book_count: bookUpdates.size,
-                });
-                let individualSuccesses = 0;
-                let individualFailures = 0;
-                for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
-                  try {
-                    await updateBookRecord({
-                      ctx,
-                      agent,
-                      hiveId,
-                      updates: bookUpdate,
-                    });
-                    individualSuccesses++;
-                    if (!(bookUpdate as { alreadyExists?: boolean })["alreadyExists"]) {
-                      uploadedBooks++;
-                    }
-                  } catch (individualError) {
-                    individualFailures++;
-                    ctx.addWideEventContext({
-                      import_individual_book: "failed",
-                      error:
-                        individualError instanceof Error
-                          ? individualError.message
-                          : String(individualError),
-                      hiveId,
-                    });
-                    unmatchedBooks.push({
-                      book: {
-                        bookId: "",
-                        title: bookUpdate.title || "Unknown",
-                        author: bookUpdate.authors || "Unknown",
-                        authorLastFirst: "",
-                        additionalAuthors: [],
-                        isbn: "",
-                        isbn13: "",
-                        myRating: bookUpdate.stars ? bookUpdate.stars / 2 : 0,
-                        averageRating: 0,
-                        publisher: "",
-                        binding: "",
-                        numberOfPages: 0,
-                        yearPublished: 0,
-                        originalPublicationYear: 0,
-                        dateRead: bookUpdate.finishedAt ? new Date(bookUpdate.finishedAt) : null,
-                        dateAdded: new Date(),
-                        bookshelves: [],
-                        bookshelvesWithPositions: "",
-                        exclusiveShelf: "",
-                        myReview: bookUpdate.review || "",
-                        spoiler: false,
-                        privateNotes: "",
-                        readCount: 0,
-                        ownedCopies: 0,
-                      } as GoodreadsBook,
-                      reason: "update_error",
-                    });
-                  }
-                }
-                if (individualFailures > 0) {
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      event: "import-error",
-                      stage: "uploading",
-                      stageProgress: {
-                        current: matchedBooks,
-                        total: totalBooks,
-                        message: `Individual save completed: ${individualSuccesses} succeeded, ${individualFailures} failed`,
-                      },
-                      error: `Individual save: ${individualSuccesses} succeeded, ${individualFailures} failed`,
-                      id: id++,
-                    }),
-                  });
-                }
-              }
-            },
-          }),
-        );
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "import-complete",
-          stage: "complete",
-          stageProgress: {
-            current: matchedBooks,
-            total: totalBooks,
-            message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
-          },
-          ...deduplicateUnmatchedWithDetails(
-            unmatchedBooks,
-            (b) => b.title,
-            (b) => b.author,
-            (b) => ({
-              title: b.book.title,
-              author: b.book.author,
-              isbn10: b.book.isbn || undefined,
-              isbn13: b.book.isbn13 || undefined,
-              stars: b.book.myRating ? b.book.myRating * 2 : undefined,
-              review: b.book.myReview || undefined,
-              finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
-              status: mapGoodreadsStatus(b.book),
-              reason: b.reason,
-            }),
-          ),
-          id: id++,
-        }),
-      });
-    });
-  },
+  zValidator("form", formSchema),
+  async (c) => handleImport(c, c.req.valid("form").export, "goodreads"),
 );
 
 importApp.post(
   "/storygraph",
-  zValidator(
-    "form",
-    z.object({
-      export: z.instanceof(File),
-    }),
-  ),
-  async (c) => {
-    const ctx = c.get("ctx");
-    const agent = await ctx.getSessionAgent();
-    if (!agent) {
-      return c.json({ success: false, error: "Invalid Session" }, 401);
-    }
-
-    const { export: exportFile } = c.req.valid("form");
-    return streamSSE(c, async (stream) => {
-      const parser = getStorygraphCsvParser();
-      let id = 0;
-      let totalBooks = 0;
-      let matchedBooks = 0;
-      let searchedBooks = 0;
-      let uploadedBooks = 0;
-      const unmatchedBooks: Array<{
-        book: StorygraphBook;
-        reason: string;
-      }> = [];
-      const unmatchedSet = new Set<string>();
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "import-start",
-          stage: "initializing",
-          stageProgress: { message: "Reading CSV file..." },
-          id: id++,
-        }),
-      });
-
-      const [countStream, uploadStream] = exportFile.stream().pipeThrough(parser).tee();
-
-      void countStream.pipeTo(
-        new WritableStream({
-          async write(book) {
-            void searchBooks({ query: book.title, ctx });
-            totalBooks++;
-          },
-        }),
-      );
-
-      const bookRecords = getUserRepoRecords({ ctx, agent });
-      const existingHiveIdsPromise = bookRecords.then(
-        (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
-      );
-
-      await uploadStream
-        .pipeThrough(
-          createBatchTransform(
-            25,
-            async (
-              books,
-            ): Promise<
-              Map<
-                HiveId,
-                Partial<BookRecord.Record> & {
-                  coverImage?: string;
-                  alreadyExists?: boolean;
-                }
-              >
-            > => {
-              return new Map(
-                (
-                  await Promise.all(
-                    books.map(async (book) => {
-                      try {
-                        const searched = ++searchedBooks;
-                        await stream.writeSSE({
-                          data: JSON.stringify({
-                            title: book.title,
-                            author: book.authors,
-                            processed: matchedBooks,
-                            failed: unmatchedBooks.length,
-                            total: totalBooks,
-                            event: "book-load",
-                            stage: "searching",
-                            stageProgress: {
-                              current: searched,
-                              total: totalBooks,
-                              message: `Looking up "${book.title}"…`,
-                            },
-                            id: id++,
-                          }),
-                        });
-                        await searchBooks({ query: book.title, ctx });
-                        let hiveBook = await ctx.db
-                          .selectFrom("hive_book")
-                          .select(["id", "title", "cover", "identifiers"])
-                          .where("hive_book.rawTitle", "=", book.title)
-                          .where("authors", "=", book.authors)
-                          .executeTakeFirst();
-
-                        if (!hiveBook) {
-                          const key = `${normalizeStr(book.title)}::${normalizeStr(book.authors)}`;
-                          if (!unmatchedSet.has(key)) {
-                            unmatchedSet.add(key);
-                            unmatchedBooks.push({ book, reason: "no_match" });
-                          }
-                          return null;
-                        }
-
-                        const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-                          ? JSON.parse(hiveBook.identifiers)
-                          : {};
-                        const { identifiers: newIdentifiers, changed } =
-                          mergeStorygraphIdentifiers({
-                            isbn: book.isbn,
-                            existingIdentifiers,
-                            hiveBookId: hiveBook.id,
-                          });
-                        if (changed) {
-                          await ctx.db
-                            .updateTable("hive_book")
-                            .set({
-                              identifiers: JSON.stringify(newIdentifiers),
-                              updatedAt: new Date().toISOString(),
-                            })
-                            .where("id", "=", hiveBook.id)
-                            .execute();
-                        }
-
-                        const existingHiveIds = await existingHiveIdsPromise;
-                        return [
-                          hiveBook.id as HiveId,
-                          buildStorygraphBookRecord({ book, hiveBook, existingHiveIds }),
-                        ] as const;
-                      } catch (e) {
-                        ctx.addWideEventContext({
-                          import_book_record: "failed",
-                          error: e instanceof Error ? e.message : String(e),
-                          book_title: book?.title,
-                        });
-                        unmatchedBooks.push({
-                          book,
-                          reason: "processing_error",
-                        });
-                        return null;
-                      }
-                    }),
-                  )
-                ).filter((a) => a !== null),
-              );
-            },
-          ),
-        )
-        .pipeTo(
-          new WritableStream({
-            async write(bookUpdates) {
-              const startProcessed = matchedBooks;
-              let idx = 0;
-              for (const book of bookUpdates.values()) {
-                const processed = startProcessed + ++idx;
-                await stream.writeSSE({
-                  data: JSON.stringify({
-                    title: book?.["title"],
-                    author: book?.["authors"],
-                    uploaded: 1,
-                    processed,
-                    failed: unmatchedBooks.length,
-                    total: totalBooks,
-                    event: "book-upload",
-                    stage: "uploading",
-                    stageProgress: {
-                      current: processed,
-                      total: totalBooks,
-                      message: `Uploading books to your library (${processed}/${totalBooks})`,
-                    },
-                    book: book
-                      ? {
-                          hiveId: book["hiveId"],
-                          title: book["title"],
-                          authors: book["authors"],
-                          coverImage: book["coverImage"],
-                          status: book["status"],
-                          finishedAt: book["finishedAt"],
-                          stars: book["stars"],
-                          review: book["review"],
-                          alreadyExists: book["alreadyExists"],
-                        }
-                      : undefined,
-                    id: id++,
-                  }),
-                });
-                if (book && !(book as { alreadyExists?: boolean })["alreadyExists"]) {
-                  uploadedBooks++;
-                }
-              }
-              matchedBooks += bookUpdates.size;
-
-              try {
-                await updateBookRecords({
-                  ctx,
-                  agent,
-                  updates: bookUpdates,
-                  bookRecords,
-                });
-              } catch (error) {
-                ctx.addWideEventContext({
-                  import_batch_update: "failed",
-                  error: error instanceof Error ? error.message : String(error),
-                  book_count: bookUpdates.size,
-                });
-                let individualSuccesses = 0;
-                let individualFailures = 0;
-                for (const [hiveId, bookUpdate] of bookUpdates.entries()) {
-                  try {
-                    await updateBookRecord({
-                      ctx,
-                      agent,
-                      hiveId,
-                      updates: bookUpdate,
-                    });
-                    individualSuccesses++;
-                    if (!(bookUpdate as { alreadyExists?: boolean })["alreadyExists"]) {
-                      uploadedBooks++;
-                    }
-                  } catch (individualError) {
-                    individualFailures++;
-                    ctx.addWideEventContext({
-                      import_individual_book: "failed",
-                      error:
-                        individualError instanceof Error
-                          ? individualError.message
-                          : String(individualError),
-                      hiveId,
-                    });
-                    unmatchedBooks.push({
-                      book: {
-                        title: bookUpdate.title || "Unknown",
-                        authors: bookUpdate.authors || "Unknown",
-                        contributors: "",
-                        isbn: "",
-                        format: "",
-                        readStatus: "",
-                        dateAdded: null,
-                        lastDateRead: bookUpdate.finishedAt
-                          ? new Date(bookUpdate.finishedAt)
-                          : null,
-                        datesRead: "",
-                        readCount: 0,
-                        moods: "",
-                        pace: "",
-                        characterOrPlot: "",
-                        strongCharacterDevelopment: "",
-                        loveableCharacters: "",
-                        diverseCharacters: "",
-                        flawedCharacters: "",
-                        starRating: bookUpdate.stars ? bookUpdate.stars / 2 : 0,
-                        review: bookUpdate.review || "",
-                        contentWarnings: "",
-                        contentWarningDescription: "",
-                        tags: "",
-                        owned: false,
-                      } as StorygraphBook,
-                      reason: "update_error",
-                    });
-                  }
-                }
-                if (individualFailures > 0) {
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      event: "import-error",
-                      stage: "uploading",
-                      stageProgress: {
-                        current: matchedBooks,
-                        total: totalBooks,
-                        message: `Individual save completed: ${individualSuccesses} succeeded, ${individualFailures} failed`,
-                      },
-                      error: `Individual save: ${individualSuccesses} succeeded, ${individualFailures} failed`,
-                      id: id++,
-                    }),
-                  });
-                }
-              }
-            },
-          }),
-        );
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          event: "import-complete",
-          stage: "complete",
-          stageProgress: {
-            current: matchedBooks,
-            total: totalBooks,
-            message: `Import complete! Successfully imported ${uploadedBooks} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
-          },
-          ...deduplicateUnmatchedWithDetails(
-            unmatchedBooks,
-            (b) => b.title,
-            (b) => b.authors,
-            (b) => {
-              const cleanIsbn = b.book.isbn?.replace(/[-\s]/g, "") || "";
-              return {
-                title: b.book.title,
-                author: b.book.authors,
-                isbn10: cleanIsbn.length === 10 ? cleanIsbn : undefined,
-                isbn13: cleanIsbn.length === 13 ? cleanIsbn : undefined,
-                stars: b.book.starRating ? b.book.starRating * 2 : undefined,
-                review: b.book.review || undefined,
-                finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
-                status: mapStorygraphStatus(b.book),
-                reason: b.reason,
-              };
-            },
-          ),
-          id: id++,
-        }),
-      });
-    });
-  },
+  zValidator("form", formSchema),
+  async (c) => handleImport(c, c.req.valid("form").export, "storygraph"),
 );
 
 export default importApp;

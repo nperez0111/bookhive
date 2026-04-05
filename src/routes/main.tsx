@@ -303,7 +303,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
             <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true" />
             <div class="layout-content flex flex-1 flex-col">
               <Navbar profile={profileData} />
-              <main class="flex-1 overflow-x-auto">
+              <main class="flex-1 overflow-x-auto flex justify-center">
                 <div class="mx-auto max-w-5xl m-4 lg:m-6">{children}</div>
               </main>
             </div>

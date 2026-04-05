@@ -110,7 +110,7 @@ const app = new Hono<AppEnv>()
         assetUrls={c.get("assetUrls")}
         title="BookHive App for iOS"
         description="The BookHive iOS app lets you manage, organize, and review your books anywhere."
-        image="/hive.jpg"
+        image="/og/app"
       >
         <SimpleNavbar isPds={false} />
         <div class="mx-auto max-w-5xl px-4 py-12">

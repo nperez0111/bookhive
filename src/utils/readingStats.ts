@@ -81,40 +81,40 @@ export function computeReadingStats(
 
   let shortestBook: Book | null = null;
   let longestBook: Book | null = null;
-  if (booksWithPages.length > 0) {
-    const byPages = [...booksWithPages].sort(
-      (a, b) => (getPageCount(a) ?? 0) - (getPageCount(b) ?? 0),
-    );
-    shortestBook = byPages[0] ?? null;
-    longestBook = byPages[byPages.length - 1] ?? null;
+  let shortestPages = Infinity;
+  let longestPages = -1;
+  for (const b of booksWithPages) {
+    const p = getPageCount(b)!;
+    if (p < shortestPages) { shortestPages = p; shortestBook = b; }
+    if (p > longestPages) { longestPages = p; longestBook = b; }
   }
   const averagePageCount =
     booksWithPages.length > 0 ? Math.round(pagesRead / booksWithPages.length) : null;
 
-  const withPopularity = finished.filter(
-    (b) => b.rating != null || (b.ratingsCount != null && b.ratingsCount > 0),
-  );
-  const sortedByPopularity = [...withPopularity].sort((a, b) => {
-    const ar = a.rating ?? 0;
-    const br = b.rating ?? 0;
-    if (br !== ar) return br - ar;
-    return (b.ratingsCount ?? 0) - (a.ratingsCount ?? 0);
-  });
-  const mostPopularBook = sortedByPopularity[0] ?? null;
-  const leastPopularBook =
-    sortedByPopularity.length > 0
-      ? (sortedByPopularity[sortedByPopularity.length - 1] ?? null)
-      : null;
+  let mostPopularBook: Book | null = null;
+  let leastPopularBook: Book | null = null;
+  let bestScore = -Infinity;
+  let worstScore = Infinity;
+  for (const b of finished) {
+    if (b.rating == null && (b.ratingsCount == null || b.ratingsCount <= 0)) continue;
+    const rating = b.rating ?? 0;
+    const count = b.ratingsCount ?? 0;
+    // Compare by rating first, then ratingsCount as tiebreaker (matching original sort)
+    const score = rating * 1e9 + count;
+    if (score > bestScore) { bestScore = score; mostPopularBook = b; }
+    if (score < worstScore) { worstScore = score; leastPopularBook = b; }
+  }
 
-  const withFinishedAt = finished.filter(
-    (b): b is Book & { finishedAt: string } => b.finishedAt != null,
-  );
-  const byFinishedAt = [...withFinishedAt].sort(
-    (a, b) => new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime(),
-  );
-  const firstBookOfYear = byFinishedAt[0] ?? null;
-  const lastBookOfYear =
-    byFinishedAt.length > 0 ? (byFinishedAt[byFinishedAt.length - 1] ?? null) : null;
+  let firstBookOfYear: Book | null = null;
+  let lastBookOfYear: Book | null = null;
+  let earliestTs = Infinity;
+  let latestTs = -Infinity;
+  for (const b of finished) {
+    if (b.finishedAt == null) continue;
+    const ts = new Date(b.finishedAt).getTime();
+    if (ts < earliestTs) { earliestTs = ts; firstBookOfYear = b; }
+    if (ts > latestTs) { latestTs = ts; lastBookOfYear = b; }
+  }
 
   return {
     booksCount,

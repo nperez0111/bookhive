@@ -1,4 +1,4 @@
-import type { AppContext } from "../context";
+import type { ImportContext } from "../workers/import/types";
 import type { HiveId } from "../types";
 import { enrichBookWithDetailedData } from "./enrichBookData";
 import { writeCatalogBookIfNeeded } from "./catalogBookService";
@@ -29,7 +29,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * or any step fails/times out (PDS write will proceed without hiveBookUri).
  */
 export async function ensureBookCataloged(
-  ctx: AppContext,
+  ctx: ImportContext,
   hiveId: HiveId,
 ): Promise<string | undefined> {
   if (!ctx.serviceAccountAgent) return undefined;

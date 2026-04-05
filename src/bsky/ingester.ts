@@ -2,6 +2,13 @@ import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import { env } from "../env";
+import {
+  ingesterEventDuration,
+  ingesterEventsTotal,
+  ingesterBackfillActive,
+  ingesterBackfillQueueDepth,
+  labelKey,
+} from "../metrics";
 import { searchBooks } from "../routes/lib";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
@@ -13,6 +20,18 @@ import {
   createCachingBidirectionalResolver,
 } from "./id-resolver";
 import { ids, Book, Buzz, List, ListItem } from "./lexicon";
+
+// Pre-compute label keys for ingester metrics to avoid JSON.stringify per event
+const ingesterLabelCache = new Map<string, string>();
+function getIngesterLabel(labels: Record<string, string>): string {
+  const cacheKey = `${labels["collection"]}:${labels["event"] ?? labels["outcome"] ?? ""}`;
+  let key = ingesterLabelCache.get(cacheKey);
+  if (!key) {
+    key = labelKey(labels);
+    ingesterLabelCache.set(cacheKey, key);
+  }
+  return key;
+}
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
 
@@ -305,13 +324,17 @@ export function createIngester(
 
   function enqueueBackfill(did: string) {
     if (destroyed) return;
+    ingesterBackfillQueueDepth.set(backfillQueue.length + 1);
     const run = async () => {
       activeBackfills++;
+      ingesterBackfillActive.set(activeBackfills);
       try {
         await backfillUserRepo(did, db, kv, emitWideEvent);
       } finally {
         activeBackfills--;
+        ingesterBackfillActive.set(activeBackfills);
         const next = backfillQueue.shift();
+        ingesterBackfillQueueDepth.set(backfillQueue.length);
         if (next) next();
       }
     };
@@ -661,8 +684,17 @@ export function createIngester(
         type: err instanceof Error ? err.name : "Error",
       };
     } finally {
-      wideEvent["duration_ms"] = Date.now() - start;
+      const durationMs = Date.now() - start;
+      wideEvent["duration_ms"] = durationMs;
       emitWideEvent(wideEvent);
+      ingesterEventDuration.observe(
+        durationMs / 1000,
+        getIngesterLabel({ collection: evt.collection, event: evt.event }),
+      );
+      const outcome = typeof wideEvent["outcome"] === "string" ? wideEvent["outcome"] : "unknown";
+      ingesterEventsTotal.inc(
+        getIngesterLabel({ collection: evt.collection, outcome }),
+      );
     }
   };
 
