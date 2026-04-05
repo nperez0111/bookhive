@@ -49,10 +49,7 @@ export function getLogger(options: pino.LoggerOptions) {
   if (!ooStream) return pino(base);
 
   // Write to both stdout and the OpenObserve worker thread.
-  return pino(
-    base,
-    pino.multistream([{ stream: pino.destination(1) }, { stream: ooStream }]),
-  );
+  return pino(base, pino.multistream([{ stream: pino.destination(1) }, { stream: ooStream }]));
 }
 
 /** Terminate the logger worker thread. Call during server shutdown. */

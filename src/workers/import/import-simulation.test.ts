@@ -11,7 +11,7 @@
  * These tests verify SSE event flow timing, ordering, and progress granularity
  * without hitting any real network endpoints.
  */
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect } from "kysely";
 import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
@@ -49,14 +49,14 @@ const mockUpdateBookRecord = mock(async () => {
   return { book: {}, userBook: {} };
 });
 
-mock.module("../../routes/lib", () => ({
-  searchBooks: async ({ query }: { query: string }) => {
+void mock.module("../../routes/lib", () => ({
+  searchBooks: async ({ query: _query }: { query: string }) => {
     await delay(realisticSearchDelay());
     return mockSearchBooks();
   },
 }));
 
-mock.module("../../utils/getBook", () => ({
+void mock.module("../../utils/getBook", () => ({
   getUserRepoRecords: mockGetUserRepoRecords,
   updateBookRecords: mockUpdateBookRecords,
   updateBookRecord: mockUpdateBookRecord,
@@ -66,9 +66,7 @@ mock.module("../../utils/getBook", () => ({
 }));
 
 // Import after mocking
-const { processGoodreadsImport, processStorygraphImport } = await import(
-  "./logic"
-);
+const { processGoodreadsImport, processStorygraphImport } = await import("./logic");
 
 // ─── Real CSV data from actual exports ──────────────────────────────────────
 
@@ -296,15 +294,30 @@ describe("import pipeline simulation — Goodreads", () => {
 
     // Seed 10 of the 15 books so we get a mix of matched/unmatched
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(sqlite, "bk_sotg", "The Shadow of the Gods (The Bloodsworn Saga, #1)", "John Gwynne");
+    seedHiveBook(
+      sqlite,
+      "bk_sotg",
+      "The Shadow of the Gods (The Bloodsworn Saga, #1)",
+      "John Gwynne",
+    );
     seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(sqlite, "bk_dall", "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)", "Lee Mi-ye");
+    seedHiveBook(
+      sqlite,
+      "bk_dall",
+      "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
+      "Lee Mi-ye",
+    );
     seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_nhd", "A Natural History of Dragons (The Memoirs of Lady Trent, #1)", "Marie Brennan");
+    seedHiveBook(
+      sqlite,
+      "bk_nhd",
+      "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
+      "Marie Brennan",
+    );
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -380,19 +393,49 @@ describe("import pipeline simulation — Goodreads", () => {
     const { db, sqlite } = createTestDb();
     // Seed all 15 to maximize matched books and see full pipeline
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(sqlite, "bk_fotg", "The Fury of the Gods (The Bloodsworn Saga, #3)", "John Gwynne");
-    seedHiveBook(sqlite, "bk_sotg", "The Shadow of the Gods (The Bloodsworn Saga, #1)", "John Gwynne");
+    seedHiveBook(
+      sqlite,
+      "bk_fotg",
+      "The Fury of the Gods (The Bloodsworn Saga, #3)",
+      "John Gwynne",
+    );
+    seedHiveBook(
+      sqlite,
+      "bk_sotg",
+      "The Shadow of the Gods (The Bloodsworn Saga, #1)",
+      "John Gwynne",
+    );
     seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(sqlite, "bk_dall", "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)", "Lee Mi-ye");
+    seedHiveBook(
+      sqlite,
+      "bk_dall",
+      "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
+      "Lee Mi-ye",
+    );
     seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_adsm", "A Darker Shade of Magic (Shades of Magic, #1)", "Victoria E. Schwab");
+    seedHiveBook(
+      sqlite,
+      "bk_adsm",
+      "A Darker Shade of Magic (Shades of Magic, #1)",
+      "Victoria E. Schwab",
+    );
     seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(sqlite, "bk_notw", "The Name of the Wind (The Kingkiller Chronicle, #1)", "Patrick Rothfuss");
+    seedHiveBook(
+      sqlite,
+      "bk_notw",
+      "The Name of the Wind (The Kingkiller Chronicle, #1)",
+      "Patrick Rothfuss",
+    );
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_nhd", "A Natural History of Dragons (The Memoirs of Lady Trent, #1)", "Marie Brennan");
+    seedHiveBook(
+      sqlite,
+      "bk_nhd",
+      "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
+      "Marie Brennan",
+    );
     seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
@@ -423,19 +466,49 @@ describe("import pipeline simulation — Goodreads", () => {
     const { db, sqlite } = createTestDb();
     // Seed all 15 books
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(sqlite, "bk_fotg", "The Fury of the Gods (The Bloodsworn Saga, #3)", "John Gwynne");
-    seedHiveBook(sqlite, "bk_sotg", "The Shadow of the Gods (The Bloodsworn Saga, #1)", "John Gwynne");
+    seedHiveBook(
+      sqlite,
+      "bk_fotg",
+      "The Fury of the Gods (The Bloodsworn Saga, #3)",
+      "John Gwynne",
+    );
+    seedHiveBook(
+      sqlite,
+      "bk_sotg",
+      "The Shadow of the Gods (The Bloodsworn Saga, #1)",
+      "John Gwynne",
+    );
     seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(sqlite, "bk_dall", "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)", "Lee Mi-ye");
+    seedHiveBook(
+      sqlite,
+      "bk_dall",
+      "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
+      "Lee Mi-ye",
+    );
     seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_adsm", "A Darker Shade of Magic (Shades of Magic, #1)", "Victoria E. Schwab");
+    seedHiveBook(
+      sqlite,
+      "bk_adsm",
+      "A Darker Shade of Magic (Shades of Magic, #1)",
+      "Victoria E. Schwab",
+    );
     seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(sqlite, "bk_notw", "The Name of the Wind (The Kingkiller Chronicle, #1)", "Patrick Rothfuss");
+    seedHiveBook(
+      sqlite,
+      "bk_notw",
+      "The Name of the Wind (The Kingkiller Chronicle, #1)",
+      "Patrick Rothfuss",
+    );
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_nhd", "A Natural History of Dragons (The Memoirs of Lady Trent, #1)", "Marie Brennan");
+    seedHiveBook(
+      sqlite,
+      "bk_nhd",
+      "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
+      "Marie Brennan",
+    );
     seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
@@ -513,7 +586,12 @@ describe("import pipeline simulation — StoryGraph", () => {
 
     // Seed all 12
     seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
-    seedHiveBook(sqlite, "bk_tomb", "The Adventures of Tom Bombadil and Other Verses from the Red Book", "J.R.R. Tolkien");
+    seedHiveBook(
+      sqlite,
+      "bk_tomb",
+      "The Adventures of Tom Bombadil and Other Verses from the Red Book",
+      "J.R.R. Tolkien",
+    );
     seedHiveBook(sqlite, "bk_whip", "Whipping Star", "Frank Herbert");
     seedHiveBook(sqlite, "bk_oath", "Oathbringer", "Brandon Sanderson");
     seedHiveBook(sqlite, "bk_fotg", "The Fury of the Gods", "John Gwynne");
@@ -631,24 +709,54 @@ describe("import pipeline simulation — timing characteristics", () => {
     const { db, sqlite } = createTestDb();
     // Seed all 15
     seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(sqlite, "bk_fotg", "The Fury of the Gods (The Bloodsworn Saga, #3)", "John Gwynne");
-    seedHiveBook(sqlite, "bk_sotg", "The Shadow of the Gods (The Bloodsworn Saga, #1)", "John Gwynne");
+    seedHiveBook(
+      sqlite,
+      "bk_fotg",
+      "The Fury of the Gods (The Bloodsworn Saga, #3)",
+      "John Gwynne",
+    );
+    seedHiveBook(
+      sqlite,
+      "bk_sotg",
+      "The Shadow of the Gods (The Bloodsworn Saga, #1)",
+      "John Gwynne",
+    );
     seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(sqlite, "bk_dall", "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)", "Lee Mi-ye");
+    seedHiveBook(
+      sqlite,
+      "bk_dall",
+      "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
+      "Lee Mi-ye",
+    );
     seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
     seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_adsm", "A Darker Shade of Magic (Shades of Magic, #1)", "Victoria E. Schwab");
+    seedHiveBook(
+      sqlite,
+      "bk_adsm",
+      "A Darker Shade of Magic (Shades of Magic, #1)",
+      "Victoria E. Schwab",
+    );
     seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(sqlite, "bk_notw", "The Name of the Wind (The Kingkiller Chronicle, #1)", "Patrick Rothfuss");
+    seedHiveBook(
+      sqlite,
+      "bk_notw",
+      "The Name of the Wind (The Kingkiller Chronicle, #1)",
+      "Patrick Rothfuss",
+    );
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_nhd", "A Natural History of Dragons (The Memoirs of Lady Trent, #1)", "Marie Brennan");
+    seedHiveBook(
+      sqlite,
+      "bk_nhd",
+      "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
+      "Marie Brennan",
+    );
     seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
-    const { events, onSSE } = collectSSEEvents();
+    const { onSSE } = collectSSEEvents();
 
     const start = performance.now();
     await processGoodreadsImport({

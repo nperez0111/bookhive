@@ -190,19 +190,22 @@ async function backfillUserRepo(
 
             const buzzRows = validBuzzes
               .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
-              .map(({ record, buzz }) => ({
-                uri: record.uri,
-                cid: record.cid,
-                userDid: did,
-                hiveId: uriToHiveId.get(buzz.book.uri)!,
-                createdAt: buzz.createdAt,
-                indexedAt: now.toISOString(),
-                bookCid: buzz.book.cid,
-                bookUri: buzz.book.uri,
-                comment: buzz.comment,
-                parentCid: buzz.parent.cid,
-                parentUri: buzz.parent.uri,
-              } satisfies BuzzRecord));
+              .map(
+                ({ record, buzz }) =>
+                  ({
+                    uri: record.uri,
+                    cid: record.cid,
+                    userDid: did,
+                    hiveId: uriToHiveId.get(buzz.book.uri)!,
+                    createdAt: buzz.createdAt,
+                    indexedAt: now.toISOString(),
+                    bookCid: buzz.book.cid,
+                    bookUri: buzz.book.uri,
+                    comment: buzz.comment,
+                    parentCid: buzz.parent.cid,
+                    parentUri: buzz.parent.uri,
+                  }) satisfies BuzzRecord,
+              );
             for (let i = 0; i < buzzRows.length; i += 100) {
               await db
                 .insertInto("buzz")
@@ -692,9 +695,7 @@ export function createIngester(
         getIngesterLabel({ collection: evt.collection, event: evt.event }),
       );
       const outcome = typeof wideEvent["outcome"] === "string" ? wideEvent["outcome"] : "unknown";
-      ingesterEventsTotal.inc(
-        getIngesterLabel({ collection: evt.collection, outcome }),
-      );
+      ingesterEventsTotal.inc(getIngesterLabel({ collection: evt.collection, outcome }));
     }
   };
 

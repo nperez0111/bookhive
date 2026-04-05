@@ -399,9 +399,7 @@ const ProgressCard: FC<{ progress: ProgressState; onImportMore: () => void }> = 
   onImportMore,
 }) => {
   const pct =
-    progress.total > 0
-      ? Math.min(100, Math.round((progress.current / progress.total) * 100))
-      : 0;
+    progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0;
   const isComplete = progress.stage === "complete";
   const isError = progress.stage === "error";
 
@@ -425,18 +423,33 @@ const ProgressCard: FC<{ progress: ProgressState; onImportMore: () => void }> = 
     >
       <div className="card-body">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className={`font-semibold ${isComplete ? "text-primary-foreground" : "text-foreground"} flex items-center gap-2`}>
+          <span
+            className={`font-semibold ${isComplete ? "text-primary-foreground" : "text-foreground"} flex items-center gap-2`}
+          >
             {stageLabel}
             {!isComplete && !isError && (
               <svg className="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
             )}
           </span>
           <div className="flex items-center gap-2">
             {progress.total > 0 && (
-              <span className={`text-sm ${isComplete ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+              <span
+                className={`text-sm ${isComplete ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+              >
                 {progress.current}/{progress.total}
               </span>
             )}

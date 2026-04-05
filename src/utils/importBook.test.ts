@@ -100,33 +100,36 @@ describe("importBook utilities", () => {
 
   describe("mapGoodreadsStatus", () => {
     it("returns finished when dateRead is set", () => {
-      expect(
-        mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "read" }),
-      ).toBe("buzz.bookhive.defs#finished");
+      expect(mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "read" })).toBe(
+        "buzz.bookhive.defs#finished",
+      );
     });
 
     it("returns finished when dateRead is set even if shelf is currently-reading", () => {
       expect(
-        mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "currently-reading" }),
+        mapGoodreadsStatus({
+          dateRead: new Date("2024-01-15"),
+          exclusiveShelf: "currently-reading",
+        }),
       ).toBe("buzz.bookhive.defs#finished");
     });
 
     it("returns reading when exclusiveShelf is currently-reading and no dateRead", () => {
-      expect(
-        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "currently-reading" }),
-      ).toBe("buzz.bookhive.defs#reading");
+      expect(mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "currently-reading" })).toBe(
+        "buzz.bookhive.defs#reading",
+      );
     });
 
     it("returns wantToRead when dateRead is null and shelf is to-read", () => {
-      expect(
-        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "to-read" }),
-      ).toBe("buzz.bookhive.defs#wantToRead");
+      expect(mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "to-read" })).toBe(
+        "buzz.bookhive.defs#wantToRead",
+      );
     });
 
     it("returns wantToRead when dateRead is null and shelf is empty", () => {
-      expect(
-        mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "" }),
-      ).toBe("buzz.bookhive.defs#wantToRead");
+      expect(mapGoodreadsStatus({ dateRead: null, exclusiveShelf: "" })).toBe(
+        "buzz.bookhive.defs#wantToRead",
+      );
     });
   });
 
@@ -142,9 +145,7 @@ describe("importBook utilities", () => {
     });
 
     it('maps "to-read" to wantToRead', () => {
-      expect(mapStorygraphStatus({ readStatus: "to-read" })).toBe(
-        "buzz.bookhive.defs#wantToRead",
-      );
+      expect(mapStorygraphStatus({ readStatus: "to-read" })).toBe("buzz.bookhive.defs#wantToRead");
     });
 
     it("maps empty string to wantToRead", () => {
@@ -315,7 +316,11 @@ describe("importBook utilities", () => {
   });
 
   describe("buildGoodreadsBookRecord", () => {
-    const hiveBook = { id: "bk_abc", title: "The Book Title", cover: "https://img.example/cover.jpg" };
+    const hiveBook = {
+      id: "bk_abc",
+      title: "The Book Title",
+      cover: "https://img.example/cover.jpg",
+    };
 
     it("builds a full record for a read book", () => {
       const book = makeGoodreadsBook({
@@ -442,9 +447,16 @@ describe("importBook utilities", () => {
       const books = [
         { book: { title: "The Book", author: "Author Name" }, reason: "no_match" },
         { book: { title: "the book", author: "author name" }, reason: "no_match" },
-        { book: { title: "  THE  BOOK  ", author: "  AUTHOR  NAME  " }, reason: "processing_error" },
+        {
+          book: { title: "  THE  BOOK  ", author: "  AUTHOR  NAME  " },
+          reason: "processing_error",
+        },
       ];
-      const result = deduplicateUnmatched(books, (b) => b.title, (b) => b.author);
+      const result = deduplicateUnmatched(
+        books,
+        (b) => b.title,
+        (b) => b.author,
+      );
       expect(result).toHaveLength(1);
       expect(result[0]!.title).toBe("  THE  BOOK  ");
       expect(result[0]!.author).toBe("  AUTHOR  NAME  ");
@@ -455,12 +467,20 @@ describe("importBook utilities", () => {
         { book: { title: "The Book", author: "Author A" }, reason: "no_match" },
         { book: { title: "The Book", author: "Author B" }, reason: "no_match" },
       ];
-      const result = deduplicateUnmatched(books, (b) => b.title, (b) => b.author);
+      const result = deduplicateUnmatched(
+        books,
+        (b) => b.title,
+        (b) => b.author,
+      );
       expect(result).toHaveLength(2);
     });
 
     it("returns empty array for empty input", () => {
-      const result = deduplicateUnmatched([], (b: any) => b.title, (b: any) => b.author);
+      const result = deduplicateUnmatched(
+        [],
+        (b: any) => b.title,
+        (b: any) => b.author,
+      );
       expect(result).toHaveLength(0);
     });
   });
@@ -521,7 +541,10 @@ describe("Goodreads import integration", () => {
 28194,"Inkheart (Inkworld, #1)",Cornelia Funke,"Funke, Cornelia",Anthea Bell,"=""""","=""""",0,3.92,Scholastic Paperbacks,Paperback,563,2005,2003,,2025/04/14,to-read,to-read (#104),to-read,,,,0,0`;
 
   // Simulated hive_book DB rows — Rain of Shadows has no match
-  const hiveBookDb: Record<string, { id: string; title: string; cover: string | null; identifiers: string | null }> = {
+  const hiveBookDb: Record<
+    string,
+    { id: string; title: string; cover: string | null; identifiers: string | null }
+  > = {
     "Onyx Storm (The Empyrean, #3)::Rebecca Yarros": {
       id: "bk_onyxstorm123",
       title: "Onyx Storm",
@@ -585,7 +608,8 @@ describe("Goodreads import integration", () => {
   it("processes the full pipeline: parse → match → merge identifiers → build record", async () => {
     const books = await parseCsv();
     const unmatchedBooks: Array<{ book: import("./csv").GoodreadsBook; reason: string }> = [];
-    const results: Array<{ hiveId: string; record: ReturnType<typeof buildGoodreadsBookRecord> }> = [];
+    const results: Array<{ hiveId: string; record: ReturnType<typeof buildGoodreadsBookRecord> }> =
+      [];
 
     for (const book of books) {
       const key = `${book.title}::${book.author}`;
@@ -717,7 +741,11 @@ describe("Goodreads import integration", () => {
       { book: rainBook, reason: "no_match" },
       { book: rainBook, reason: "processing_error" },
     ];
-    const deduped = deduplicateUnmatched(unmatchedBooks, (b) => b.title, (b) => b.author);
+    const deduped = deduplicateUnmatched(
+      unmatchedBooks,
+      (b) => b.title,
+      (b) => b.author,
+    );
     expect(deduped).toHaveLength(1);
     expect(deduped[0]).toEqual({
       title: "Rain of Shadows and Endings (Legacy, #1)",

@@ -636,10 +636,7 @@ export function AppOgCard({ origin }: AppOgCardProps) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <img
-            src={`${origin}/download_app_store.svg`}
-            style={{ height: 54 }}
-          />
+          <img src={`${origin}/download_app_store.svg`} style={{ height: 54 }} />
           <BrandMark size={30} />
         </div>
       </div>

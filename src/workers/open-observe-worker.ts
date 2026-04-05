@@ -75,7 +75,12 @@ async function flush() {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      console.error("OpenObserve: failed to send logs:", response.status, response.statusText, body);
+      console.error(
+        "OpenObserve: failed to send logs:",
+        response.status,
+        response.statusText,
+        body,
+      );
     }
   } catch (error: any) {
     const code = error?.cause?.code ?? error?.code;

@@ -113,9 +113,7 @@ function Comment({
 
           <input type="checkbox" id={`comments-toggle-${commentIdSafe}`} class="peer hidden" />
           <div class="peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0">
-            <p class="whitespace-pre-wrap text-foreground">
-              {parseHtmlToText(comment.comment)}
-            </p>
+            <p class="whitespace-pre-wrap text-foreground">{parseHtmlToText(comment.comment)}</p>
           </div>
 
           <CardActions class="relative mt-3 flex-wrap">

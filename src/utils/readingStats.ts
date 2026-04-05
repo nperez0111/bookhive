@@ -85,8 +85,14 @@ export function computeReadingStats(
   let longestPages = -1;
   for (const b of booksWithPages) {
     const p = getPageCount(b)!;
-    if (p < shortestPages) { shortestPages = p; shortestBook = b; }
-    if (p > longestPages) { longestPages = p; longestBook = b; }
+    if (p < shortestPages) {
+      shortestPages = p;
+      shortestBook = b;
+    }
+    if (p > longestPages) {
+      longestPages = p;
+      longestBook = b;
+    }
   }
   const averagePageCount =
     booksWithPages.length > 0 ? Math.round(pagesRead / booksWithPages.length) : null;
@@ -101,8 +107,14 @@ export function computeReadingStats(
     const count = b.ratingsCount ?? 0;
     // Compare by rating first, then ratingsCount as tiebreaker (matching original sort)
     const score = rating * 1e9 + count;
-    if (score > bestScore) { bestScore = score; mostPopularBook = b; }
-    if (score < worstScore) { worstScore = score; leastPopularBook = b; }
+    if (score > bestScore) {
+      bestScore = score;
+      mostPopularBook = b;
+    }
+    if (score < worstScore) {
+      worstScore = score;
+      leastPopularBook = b;
+    }
   }
 
   let firstBookOfYear: Book | null = null;
@@ -112,8 +124,14 @@ export function computeReadingStats(
   for (const b of finished) {
     if (b.finishedAt == null) continue;
     const ts = new Date(b.finishedAt).getTime();
-    if (ts < earliestTs) { earliestTs = ts; firstBookOfYear = b; }
-    if (ts > latestTs) { latestTs = ts; lastBookOfYear = b; }
+    if (ts < earliestTs) {
+      earliestTs = ts;
+      firstBookOfYear = b;
+    }
+    if (ts > latestTs) {
+      latestTs = ts;
+      lastBookOfYear = b;
+    }
   }
 
   return {

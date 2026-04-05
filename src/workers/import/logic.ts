@@ -114,9 +114,7 @@ async function flushBatch({
         ctx.addWideEventContext({
           import_individual_book: "failed",
           error:
-            individualError instanceof Error
-              ? individualError.message
-              : String(individualError),
+            individualError instanceof Error ? individualError.message : String(individualError),
           hiveId,
         });
         unmatchedBooks.push({ book: makeFallbackBook(bookUpdate), reason: "update_error" });
@@ -334,8 +332,15 @@ export async function processGoodreadsImport({
         if (currentBatch.size >= BATCH_SIZE) {
           await flushBatch({
             batch: currentBatch,
-            ctx, agent, bookRecords, onSSE, id,
-            matchedBooks, uploadedBooks, unmatchedBooks, totalBooks,
+            ctx,
+            agent,
+            bookRecords,
+            onSSE,
+            id,
+            matchedBooks,
+            uploadedBooks,
+            unmatchedBooks,
+            totalBooks,
             makeFallbackBook: grFallback,
           });
           currentBatch = new Map();
@@ -537,8 +542,15 @@ export async function processStorygraphImport({
         if (currentBatch.size >= BATCH_SIZE) {
           await flushBatch({
             batch: currentBatch,
-            ctx, agent, bookRecords, onSSE, id,
-            matchedBooks, uploadedBooks, unmatchedBooks, totalBooks,
+            ctx,
+            agent,
+            bookRecords,
+            onSSE,
+            id,
+            matchedBooks,
+            uploadedBooks,
+            unmatchedBooks,
+            totalBooks,
             makeFallbackBook: sgFallback,
           });
           currentBatch = new Map();
@@ -548,8 +560,15 @@ export async function processStorygraphImport({
 
     await flushBatch({
       batch: currentBatch,
-      ctx, agent, bookRecords, onSSE, id,
-      matchedBooks, uploadedBooks, unmatchedBooks, totalBooks,
+      ctx,
+      agent,
+      bookRecords,
+      onSSE,
+      id,
+      matchedBooks,
+      uploadedBooks,
+      unmatchedBooks,
+      totalBooks,
       makeFallbackBook: sgFallback,
     });
 

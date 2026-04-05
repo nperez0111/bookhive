@@ -83,7 +83,10 @@ export async function createWorkerContext({
   authKv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: kvDb }));
   authKv.mount("auth_state:", sqliteKv({ table: "auth_state", db: kvDb }));
 
-  const oauthClient = await createOAuthClient(authKv, { sessions: sessionStore, states: createNoopStateStore() });
+  const oauthClient = await createOAuthClient(authKv, {
+    sessions: sessionStore,
+    states: createNoopStateStore(),
+  });
   const oauthSession = await oauthClient.restore(did as Did, { refresh: "auto" });
   const agent = sessionClientFromOAuthSession(oauthSession);
 

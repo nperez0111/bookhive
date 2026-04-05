@@ -117,7 +117,7 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
     // Send SSE keepalives every 5s to prevent Bun's idle timeout (default 10s)
     // from killing the connection while the worker is starting up.
     const heartbeat = setInterval(() => {
-      stream.writeSSE({ data: "", comment: "keepalive" }).catch(() => {});
+      stream.writeSSE({ data: "", event: "keepalive" }).catch(() => {});
     }, 5_000);
 
     worker.postMessage(request, [csvData]);
@@ -134,16 +134,12 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
 
 const importApp = new Hono<AppEnv>();
 
-importApp.post(
-  "/goodreads",
-  zValidator("form", formSchema),
-  async (c) => handleImport(c, c.req.valid("form").export, "goodreads"),
+importApp.post("/goodreads", zValidator("form", formSchema), async (c) =>
+  handleImport(c, c.req.valid("form").export, "goodreads"),
 );
 
-importApp.post(
-  "/storygraph",
-  zValidator("form", formSchema),
-  async (c) => handleImport(c, c.req.valid("form").export, "storygraph"),
+importApp.post("/storygraph", zValidator("form", formSchema), async (c) =>
+  handleImport(c, c.req.valid("form").export, "storygraph"),
 );
 
 export default importApp;

@@ -85,10 +85,7 @@ export class Gauge {
 }
 
 export class Histogram {
-  private series = new Map<
-    string,
-    { buckets: number[]; sum: number; count: number }
-  >();
+  private series = new Map<string, { buckets: number[]; sum: number; count: number }>();
 
   /** Pre-built le= suffix strings for each bucket, computed once in constructor */
   private leSuffixes: string[];
@@ -98,9 +95,7 @@ export class Histogram {
   constructor(
     private name: string,
     private help: string,
-    private bucketValues: number[] = [
-      0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-    ],
+    private bucketValues: number[] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
   ) {
     this.bucketLen = bucketValues.length;
     // Pre-compute le= label suffixes so toString() is just string concat
@@ -233,63 +228,39 @@ export const followSyncDuration = registry.register(
 // ─── Concurrency gauges ─────────────────────────────────────────────────────
 
 export const activeOperations = registry.register(
-  new Gauge(
-    "bookhive_active_operations",
-    "Number of currently active expensive operations",
-  ),
+  new Gauge("bookhive_active_operations", "Number of currently active expensive operations"),
 );
 
 export const ingesterBackfillActive = registry.register(
-  new Gauge(
-    "bookhive_ingester_backfill_active",
-    "Number of currently active ingester backfills",
-  ),
+  new Gauge("bookhive_ingester_backfill_active", "Number of currently active ingester backfills"),
 );
 
 export const ingesterBackfillQueueDepth = registry.register(
-  new Gauge(
-    "bookhive_ingester_backfill_queue_depth",
-    "Number of backfills waiting in queue",
-  ),
+  new Gauge("bookhive_ingester_backfill_queue_depth", "Number of backfills waiting in queue"),
 );
 
 // ─── Counters ───────────────────────────────────────────────────────────────
 
 export const importBooksTotal = registry.register(
-  new Counter(
-    "bookhive_import_books_total",
-    "Total books processed during imports",
-  ),
+  new Counter("bookhive_import_books_total", "Total books processed during imports"),
 );
 
 export const ingesterEventsTotal = registry.register(
-  new Counter(
-    "bookhive_ingester_events_total",
-    "Total ingester events processed",
-  ),
+  new Counter("bookhive_ingester_events_total", "Total ingester events processed"),
 );
 
 export const scraperRequestsTotal = registry.register(
-  new Counter(
-    "bookhive_scraper_requests_total",
-    "Total scraper requests",
-  ),
+  new Counter("bookhive_scraper_requests_total", "Total scraper requests"),
 );
 
 // ─── Runtime gauges ─────────────────────────────────────────────────────────
 
 export const processMemoryBytes = registry.register(
-  new Gauge(
-    "bookhive_process_memory_bytes",
-    "Process memory usage in bytes",
-  ),
+  new Gauge("bookhive_process_memory_bytes", "Process memory usage in bytes"),
 );
 
 export const processCpuSecondsTotal = registry.register(
-  new Counter(
-    "bookhive_process_cpu_seconds_total",
-    "Total CPU time in seconds",
-  ),
+  new Counter("bookhive_process_cpu_seconds_total", "Total CPU time in seconds"),
 );
 
 export const eventLoopLag = registry.register(

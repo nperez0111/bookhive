@@ -170,7 +170,10 @@ export const LibraryImport: FC = () => {
                   importCard?.classList.add("hidden");
                   table?.classList.remove("hidden");
 
-                  dispatchImportEvent({ event: "import-start", stageProgress: { message: "Starting import..." } });
+                  dispatchImportEvent({
+                    event: "import-start",
+                    stageProgress: { message: "Starting import..." },
+                  });
 
                   try {
                     const response = await fetch(endpoint, {

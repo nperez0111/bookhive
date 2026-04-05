@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect } from "kysely";
 import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
@@ -12,7 +12,7 @@ const mockGetUserRepoRecords = mock(async () => ({
   buzzes: new Map(),
 }));
 
-mock.module("../../utils/getBook", () => ({
+void mock.module("../../utils/getBook", () => ({
   getUserRepoRecords: mockGetUserRepoRecords,
   updateBookRecords: mock(async () => {}),
   updateBookRecord: mock(async () => ({ book: {}, userBook: {} })),
@@ -195,7 +195,13 @@ function createMockCtx(db: Kysely<DatabaseSchema>): ImportContext {
 describe("processGoodreadsImport", () => {
   it("emits import-start, book-load, book-upload, and import-complete SSE events for matched books", async () => {
     const { db, sqlite } = createTestDb();
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi", "https://covers.example/omw.jpg");
+    seedHiveBook(
+      sqlite,
+      "bk_omw",
+      "Old Man's War",
+      "John Scalzi",
+      "https://covers.example/omw.jpg",
+    );
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -277,7 +283,13 @@ describe("processGoodreadsImport", () => {
 describe("processStorygraphImport", () => {
   it("emits correct SSE lifecycle events for StoryGraph CSV", async () => {
     const { db, sqlite } = createTestDb();
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi", "https://covers.example/omw.jpg");
+    seedHiveBook(
+      sqlite,
+      "bk_omw",
+      "Old Man's War",
+      "John Scalzi",
+      "https://covers.example/omw.jpg",
+    );
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();

@@ -224,14 +224,14 @@ Applied globally in `src/app.ts`: timing, context, wide-event logging, error cap
 
 ## Build & Dev
 
-| Command                | What                                                  |
-| ---------------------- | ----------------------------------------------------- |
-| `bun run dev`          | Dev server with `--hot`                               |
-| `bun run build`        | Production build (lexgen + Vite/Nitro + worker)       |
-| `bun test`             | Run tests                                             |
-| `bun run typecheck`    | Type-check with oxlint                                |
-| `bun run lint`         | Lint codebase                                         |
-| `bun run lexgen`       | Regenerate AT Protocol XRPC types from lexicons       |
+| Command             | What                                            |
+| ------------------- | ----------------------------------------------- |
+| `bun run dev`       | Dev server with `--hot`                         |
+| `bun run build`     | Production build (lexgen + Vite/Nitro + worker) |
+| `bun test`          | Run tests                                       |
+| `bun run typecheck` | Type-check with oxlint                          |
+| `bun run lint`      | Lint codebase                                   |
+| `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons |
 
 Asset pipeline: `src/bundle-assets.ts` fetches `/_bundle` to extract Bun-generated CSS/JS URLs, injected into Layout. Production falls back to pre-built `public/output.css` and `public/js/client.js`.
 

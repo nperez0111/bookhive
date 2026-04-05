@@ -11,10 +11,10 @@ Fonts are configured in the global frontmatter (the very first `---` block).
 ```yaml
 ---
 fonts:
-  sans: Inter          # body text and headings
-  serif: Lora          # available via `font-serif` class
+  sans: Inter # body text and headings
+  serif: Lora # available via `font-serif` class
   mono: JetBrains Mono # code blocks
-  weights: '300,400,600,700'
+  weights: "300,400,600,700"
   italic: true
 ---
 ```
@@ -25,13 +25,14 @@ fonts:
 
 ```yaml
 fonts:
-  sans: 'Helvetica Neue'
-  local: Helvetica Neue   # tells Slidev not to try importing this from CDN
+  sans: "Helvetica Neue"
+  local: Helvetica Neue # tells Slidev not to try importing this from CDN
 ```
 
 - To disable CDN imports entirely: `provider: none`
 
 **Quick wins for your deck:**
+
 - Swap to `Inter` or `DM Sans` for a cleaner, modern look.
 - Use `Playfair Display` as `serif` for pull quotes — your "day after" test slide quote would benefit from `<span class="font-serif italic">`.
 
@@ -53,18 +54,18 @@ zoom: 0.9
 
 **Full list of per-slide options:**
 
-| Option | What it does |
-|--------|-------------|
-| `layout` | Which layout component to use (see §3) |
-| `background` | Background image URL or CSS color/gradient |
-| `class` | CSS classes added to the slide root element |
-| `transition` | Transition animation into this slide |
-| `zoom` | Scale the slide canvas (e.g. `0.8` to shrink content) |
-| `clicks` | Override how many clicks before advancing |
-| `hide` / `disabled` | Hide the slide entirely |
-| `hideInToc` | Exclude from auto-generated table of contents |
-| `title` | Override the slide's title in navigation |
-| `routeAlias` | Give this slide a URL-friendly alias |
+| Option              | What it does                                          |
+| ------------------- | ----------------------------------------------------- |
+| `layout`            | Which layout component to use (see §3)                |
+| `background`        | Background image URL or CSS color/gradient            |
+| `class`             | CSS classes added to the slide root element           |
+| `transition`        | Transition animation into this slide                  |
+| `zoom`              | Scale the slide canvas (e.g. `0.8` to shrink content) |
+| `clicks`            | Override how many clicks before advancing             |
+| `hide` / `disabled` | Hide the slide entirely                               |
+| `hideInToc`         | Exclude from auto-generated table of contents         |
+| `title`             | Override the slide's title in navigation              |
+| `routeAlias`        | Give this slide a URL-friendly alias                  |
 
 ---
 
@@ -72,24 +73,24 @@ zoom: 0.9
 
 Your current deck uses `layout: two-cols`, `layout: center`, and the default. Here's the full built-in set:
 
-| Layout | Best for | Notes |
-|--------|----------|-------|
-| `default` | Most slides | What you get with no `layout` set |
-| `cover` | Title slide | Styled for big hero presentation |
-| `center` | Single statements | Content centered vertically and horizontally |
-| `section` | Chapter dividers | Bold section heading |
-| `statement` | Key assertions | Large single line — great for "A PDS Is Not a Database" |
-| `fact` | Stats / numbers | Prominent data display |
-| `quote` | Pull quotes | Styled quotation — good for the "Day After" blockquote |
-| `image-left` | Image + text | `image: /path.jpg` in frontmatter |
-| `image-right` | Image + text | Same as above, flipped |
-| `image` | Full-bleed photo | `image:` + `backgroundSize: cover` |
-| `two-cols` | Side-by-side | Use `::right::` to split content |
-| `two-cols-header` | Header + two cols | Use `::left::` and `::right::` plus a top section |
-| `iframe-left` | Live web page + text | `url:` in frontmatter |
-| `full` | No padding | Content fills entire canvas |
-| `none` | Bare canvas | No theme styles at all |
-| `end` | Final slide | Themed closing page |
+| Layout            | Best for             | Notes                                                   |
+| ----------------- | -------------------- | ------------------------------------------------------- |
+| `default`         | Most slides          | What you get with no `layout` set                       |
+| `cover`           | Title slide          | Styled for big hero presentation                        |
+| `center`          | Single statements    | Content centered vertically and horizontally            |
+| `section`         | Chapter dividers     | Bold section heading                                    |
+| `statement`       | Key assertions       | Large single line — great for "A PDS Is Not a Database" |
+| `fact`            | Stats / numbers      | Prominent data display                                  |
+| `quote`           | Pull quotes          | Styled quotation — good for the "Day After" blockquote  |
+| `image-left`      | Image + text         | `image: /path.jpg` in frontmatter                       |
+| `image-right`     | Image + text         | Same as above, flipped                                  |
+| `image`           | Full-bleed photo     | `image:` + `backgroundSize: cover`                      |
+| `two-cols`        | Side-by-side         | Use `::right::` to split content                        |
+| `two-cols-header` | Header + two cols    | Use `::left::` and `::right::` plus a top section       |
+| `iframe-left`     | Live web page + text | `url:` in frontmatter                                   |
+| `full`            | No padding           | Content fills entire canvas                             |
+| `none`            | Bare canvas          | No theme styles at all                                  |
+| `end`             | Final slide          | Themed closing page                                     |
 
 **Example — upgrading your quote slide:**
 
@@ -140,7 +141,7 @@ For your title slide specifically, a dark gradient background with `class: text-
 ```yaml
 ---
 layout: cover
-background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)'
+background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)"
 class: text-white
 ---
 ```
@@ -209,11 +210,12 @@ Set a global default in your headmatter (you already have `transition: slide-lef
 
 ```yaml
 ---
-transition: slide-left   # global default
+transition: slide-left # global default
 ---
 ```
 
 Per-slide override:
+
 ```yaml
 ---
 transition: fade
@@ -222,17 +224,18 @@ transition: fade
 
 **Built-in transitions:**
 
-| Name | Effect |
-|------|--------|
-| `fade` | Cross-fade |
-| `fade-out` | Fade out then in |
-| `slide-left` | Slide in from right (default forward) |
-| `slide-right` | Slide in from left |
-| `slide-up` | Slide in from bottom |
-| `slide-down` | Slide in from top |
-| `view-transition` | Browser View Transition API |
+| Name              | Effect                                |
+| ----------------- | ------------------------------------- |
+| `fade`            | Cross-fade                            |
+| `fade-out`        | Fade out then in                      |
+| `slide-left`      | Slide in from right (default forward) |
+| `slide-right`     | Slide in from left                    |
+| `slide-up`        | Slide in from bottom                  |
+| `slide-down`      | Slide in from top                     |
+| `view-transition` | Browser View Transition API           |
 
 **Asymmetric forward/back transitions:**
+
 ```yaml
 ---
 transition: slide-left | slide-right
@@ -246,15 +249,17 @@ transition: slide-left | slide-right
 Your deck uses `theme: seriph` — the official Slidev default. It's a clean, serif-accented academic theme.
 
 **Theme-level config** via `themeConfig` in headmatter:
+
 ```yaml
 ---
 theme: seriph
 themeConfig:
-  primary: '#5d8392'   # accent color used for highlights, links, etc.
+  primary: "#5d8392" # accent color used for highlights, links, etc.
 ---
 ```
 
 **To deeply customize the theme**, eject it into your project:
+
 ```bash
 npx slidev theme eject
 ```
@@ -262,6 +267,7 @@ npx slidev theme eject
 This copies all theme files into `./theme/` and updates your frontmatter to `theme: ./theme`. You can then edit layouts, components, and CSS directly. Good option if you want to tweak the cover layout or heading styles fundamentally.
 
 **Alternative themes worth trying:**
+
 - `default` — minimal, no serif flourishes
 - `apple-basic` — clean Apple-keynote inspired
 - `bricks` — bold, geometric
@@ -277,8 +283,8 @@ Default is `16/9` at `980px` canvas width. Override in headmatter:
 
 ```yaml
 ---
-aspectRatio: 16/9    # or '4/3', '1/1'
-canvasWidth: 1280    # wider canvas = more breathing room for content
+aspectRatio: 16/9 # or '4/3', '1/1'
+canvasWidth: 1280 # wider canvas = more breathing room for content
 ---
 ```
 
@@ -291,24 +297,26 @@ Increasing `canvasWidth` is useful if your code blocks feel cramped — wider ca
 Based on `slides.md` as it stands:
 
 **Title slide** — add a background gradient and lean into the cover layout:
+
 ```yaml
 ---
 layout: cover
-background: 'linear-gradient(160deg, #0f172a 0%, #1e3a5f 100%)'
+background: "linear-gradient(160deg, #0f172a 0%, #1e3a5f 100%)"
 class: text-white
 ---
 ```
 
 **"A PDS Is Not a Database" slide** — swap to `statement` layout for maximum impact:
+
 ```yaml
 ---
 layout: statement
 ---
-
 # A PDS Is Not a Database
 ```
 
 **"Day After Test" blockquote** — use `quote` layout:
+
 ```yaml
 ---
 layout: quote
@@ -318,6 +326,7 @@ layout: quote
 ```
 
 **Core principle slide** — already uses `layout: center`, which is correct. Add a class for sizing:
+
 ```yaml
 ---
 layout: center
@@ -328,9 +337,10 @@ class: text-center text-2xl
 **Code example slide** — the two-cols layout is right. If the JSON feels cramped, try `zoom: 0.85` in the frontmatter to shrink just that slide.
 
 **Fonts** — your current setup uses seriph defaults. For a tech/protocol talk, consider:
+
 ```yaml
 fonts:
   sans: Inter
   mono: JetBrains Mono
-  weights: '400,600,700'
+  weights: "400,600,700"
 ```

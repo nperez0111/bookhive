@@ -191,7 +191,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
                 "hb.thumbnail",
                 (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
               ])
-              .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+              .where(
+                "ub.createdAt",
+                ">",
+                new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              )
               .groupBy("hb.id")
               .orderBy("readerCount", "desc")
               .orderBy("hb.ratingsCount", "desc")
