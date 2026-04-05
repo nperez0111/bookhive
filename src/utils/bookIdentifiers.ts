@@ -54,7 +54,7 @@ export function normalizeGoodreadsId(value: string | null | undefined): string |
   // followed by a slug (e.g. "12345.My-Book" or "12345-my-book").
   // Rejects non-numeric values like "kca://book/amzn1" (Kindle Content Address).
   const match = normalized.match(/^(\d+)/);
-  return match ? match[1] : null;
+  return match ? (match[1] ?? null) : null;
 }
 
 function parseMeta(meta: string | null): ParsedMeta {

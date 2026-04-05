@@ -6,10 +6,22 @@
         <rect x="5" y="20" width="250" height="130" rx="10" class="box user-box" />
         <text x="130" y="46" class="label tag user-tag">Alice's PDS</text>
         <rect x="21" y="56" width="218" height="84" rx="6" class="box record user-record" />
-        <text x="52" y="76" class="label field"><tspan class="key">title:</tspan> "Bee Movie"</text>
-        <text x="52" y="94" class="label field"><tspan class="key">status:</tspan> "finished"</text>
-        <text x="52" y="112" class="label field"><tspan class="key">stars:</tspan> 10</text>
-        <text x="52" y="130" class="label field uri"><tspan class="key">hiveBookUri:</tspan> at://...</text>
+        <text x="52" y="76" class="label field">
+          <tspan class="key">title:</tspan>
+          "Bee Movie"
+        </text>
+        <text x="52" y="94" class="label field">
+          <tspan class="key">status:</tspan>
+          "finished"
+        </text>
+        <text x="52" y="112" class="label field">
+          <tspan class="key">stars:</tspan>
+          10
+        </text>
+        <text x="52" y="130" class="label field uri">
+          <tspan class="key">hiveBookUri:</tspan>
+          at://...
+        </text>
       </g>
 
       <!-- Bob's PDS (minimal) -->
@@ -18,7 +30,10 @@
         <text x="390" y="46" class="label tag user-tag">Bob's PDS</text>
         <rect x="301" y="56" width="178" height="54" rx="6" class="box record user-record" />
         <text x="332" y="78" class="label field"><tspan class="key">user-book</tspan></text>
-        <text x="332" y="96" class="label field uri"><tspan class="key">hiveBookUri:</tspan> at://...</text>
+        <text x="332" y="96" class="label field uri">
+          <tspan class="key">hiveBookUri:</tspan>
+          at://...
+        </text>
       </g>
 
       <!-- Carol's PDS (minimal) -->
@@ -27,7 +42,10 @@
         <text x="630" y="46" class="label tag user-tag">Carol's PDS</text>
         <rect x="541" y="56" width="178" height="54" rx="6" class="box record user-record" />
         <text x="562" y="78" class="label field"><tspan class="key">user-book</tspan></text>
-        <text x="562" y="96" class="label field uri"><tspan class="key">hiveBookUri:</tspan> at://...</text>
+        <text x="562" y="96" class="label field uri">
+          <tspan class="key">hiveBookUri:</tspan>
+          at://...
+        </text>
       </g>
 
       <!-- BookHive Catalog PDS -->
@@ -36,10 +54,21 @@
         <text x="390" y="256" class="label tag">@bookhive.buzz PDS</text>
         <rect x="266" y="266" width="248" height="114" rx="6" class="box record catalog-record" />
         <text x="282" y="286" class="label field key">catalogBook</text>
-        <text x="282" y="306" class="label field"><tspan class="key">title:</tspan> "Bee Movie"</text>
-        <text x="282" y="324" class="label field"><tspan class="key">description:</tspan> "Best movie ever..."</text>
-        <text x="282" y="342" class="label field"><tspan class="key">authors:</tspan> "Susan Korman"</text>
-        <text x="282" y="360" class="label field dim"><tspan class="key">genres, series, isbn...</tspan></text>
+        <text x="282" y="306" class="label field">
+          <tspan class="key">title:</tspan>
+          "Bee Movie"
+        </text>
+        <text x="282" y="324" class="label field">
+          <tspan class="key">description:</tspan>
+          "Best movie ever..."
+        </text>
+        <text x="282" y="342" class="label field">
+          <tspan class="key">authors:</tspan>
+          "Susan Korman"
+        </text>
+        <text x="282" y="360" class="label field dim">
+          <tspan class="key">genres, series, isbn...</tspan>
+        </text>
       </g>
 
       <!-- Arrows -->
@@ -63,35 +92,35 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted } from 'vue'
-import { onSlideEnter, onSlideLeave } from '@slidev/client'
+import { ref, onUnmounted } from "vue";
+import { onSlideEnter, onSlideLeave } from "@slidev/client";
 
-const step = ref(0)
-let interval = null
+const step = ref(0);
+let interval = null;
 
 function animate() {
-  step.value = 0
+  step.value = 0;
   interval = setInterval(() => {
     if (step.value < 4) {
-      step.value++
+      step.value++;
     } else {
-      clearInterval(interval)
+      clearInterval(interval);
     }
-  }, 600)
+  }, 600);
 }
 
 onSlideEnter(() => {
-  animate()
-})
+  animate();
+});
 
 onSlideLeave(() => {
-  clearInterval(interval)
-  step.value = 0
-})
+  clearInterval(interval);
+  step.value = 0;
+});
 
 onUnmounted(() => {
-  clearInterval(interval)
-})
+  clearInterval(interval);
+});
 </script>
 
 <style scoped>
@@ -106,12 +135,14 @@ svg {
   height: auto;
 }
 
-.node, .arrow {
+.node,
+.arrow {
   opacity: 0;
   transition: opacity 0.5s ease;
 }
 
-.node.visible, .arrow.visible {
+.node.visible,
+.arrow.visible {
   opacity: 1;
 }
 

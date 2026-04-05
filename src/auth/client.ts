@@ -1,5 +1,5 @@
 import { Client } from "@atcute/client";
-import type { OAuthSession } from "@atcute/oauth-node-client";
+import type { OAuthSession, SessionStore, StateStore } from "@atcute/oauth-node-client";
 import { OAuthClient } from "@atcute/oauth-node-client";
 import { createActorResolver } from "../bsky/id-resolver";
 import { env } from "../env";
@@ -23,7 +23,10 @@ const PERMISSION_SET_SCOPES =
 
 export const OAUTH_SCOPES = USE_PERMISSION_SETS ? PERMISSION_SET_SCOPES : GRANULAR_SCOPES;
 
-export async function createOAuthClient(kv: Storage) {
+export async function createOAuthClient(
+  kv: Storage,
+  storeOverrides?: { sessions: SessionStore; states: StateStore },
+) {
   const publicUrl = env.PUBLIC_URL;
   const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
   const isLoopback =
@@ -46,8 +49,8 @@ export async function createOAuthClient(kv: Storage) {
     },
     actorResolver: createActorResolver(),
     stores: {
-      sessions: createSessionStore(kv),
-      states: createStateStore(kv),
+      sessions: storeOverrides?.sessions ?? createSessionStore(kv),
+      states: storeOverrides?.states ?? createStateStore(kv),
     },
     requestLock: async function waitForLock(key, cb, attempt = 0) {
       if (attempt > 10) {

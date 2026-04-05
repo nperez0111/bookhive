@@ -2,6 +2,13 @@ import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import { env } from "../env";
+import {
+  ingesterEventDuration,
+  ingesterEventsTotal,
+  ingesterBackfillActive,
+  ingesterBackfillQueueDepth,
+  labelKey,
+} from "../metrics";
 import { searchBooks } from "../routes/lib";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
@@ -13,6 +20,18 @@ import {
   createCachingBidirectionalResolver,
 } from "./id-resolver";
 import { ids, Book, Buzz, List, ListItem } from "./lexicon";
+
+// Pre-compute label keys for ingester metrics to avoid JSON.stringify per event
+const ingesterLabelCache = new Map<string, string>();
+function getIngesterLabel(labels: Record<string, string>): string {
+  const cacheKey = `${labels["collection"]}:${labels["event"] ?? labels["outcome"] ?? ""}`;
+  let key = ingesterLabelCache.get(cacheKey);
+  if (!key) {
+    key = labelKey(labels);
+    ingesterLabelCache.set(cacheKey, key);
+  }
+  return key;
+}
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
 
@@ -171,19 +190,22 @@ async function backfillUserRepo(
 
             const buzzRows = validBuzzes
               .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
-              .map(({ record, buzz }) => ({
-                uri: record.uri,
-                cid: record.cid,
-                userDid: did,
-                hiveId: uriToHiveId.get(buzz.book.uri)!,
-                createdAt: buzz.createdAt,
-                indexedAt: now.toISOString(),
-                bookCid: buzz.book.cid,
-                bookUri: buzz.book.uri,
-                comment: buzz.comment,
-                parentCid: buzz.parent.cid,
-                parentUri: buzz.parent.uri,
-              } satisfies BuzzRecord));
+              .map(
+                ({ record, buzz }) =>
+                  ({
+                    uri: record.uri,
+                    cid: record.cid,
+                    userDid: did,
+                    hiveId: uriToHiveId.get(buzz.book.uri)!,
+                    createdAt: buzz.createdAt,
+                    indexedAt: now.toISOString(),
+                    bookCid: buzz.book.cid,
+                    bookUri: buzz.book.uri,
+                    comment: buzz.comment,
+                    parentCid: buzz.parent.cid,
+                    parentUri: buzz.parent.uri,
+                  }) satisfies BuzzRecord,
+              );
             for (let i = 0; i < buzzRows.length; i += 100) {
               await db
                 .insertInto("buzz")
@@ -307,11 +329,14 @@ export function createIngester(
     if (destroyed) return;
     const run = async () => {
       activeBackfills++;
+      ingesterBackfillActive.set(activeBackfills);
       try {
         await backfillUserRepo(did, db, kv, emitWideEvent);
       } finally {
         activeBackfills--;
+        ingesterBackfillActive.set(activeBackfills);
         const next = backfillQueue.shift();
+        ingesterBackfillQueueDepth.set(backfillQueue.length);
         if (next) next();
       }
     };
@@ -321,6 +346,7 @@ export function createIngester(
       backfillQueue.push(() => {
         run().catch(() => {});
       });
+      ingesterBackfillQueueDepth.set(backfillQueue.length);
     }
   }
 
@@ -661,8 +687,15 @@ export function createIngester(
         type: err instanceof Error ? err.name : "Error",
       };
     } finally {
-      wideEvent["duration_ms"] = Date.now() - start;
+      const durationMs = Date.now() - start;
+      wideEvent["duration_ms"] = durationMs;
       emitWideEvent(wideEvent);
+      ingesterEventDuration.observe(
+        durationMs / 1000,
+        getIngesterLabel({ collection: evt.collection, event: evt.event }),
+      );
+      const outcome = typeof wideEvent["outcome"] === "string" ? wideEvent["outcome"] : "unknown";
+      ingesterEventsTotal.inc(getIngesterLabel({ collection: evt.collection, outcome }));
     }
   };
 

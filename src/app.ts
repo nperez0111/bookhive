@@ -10,6 +10,7 @@ import { endTime, startTime, timing } from "hono/timing";
 import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
+import { registry, startRuntimeMetricsCollection } from "./metrics";
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
@@ -59,7 +60,17 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
   const { printMetrics, registerMetrics } = prometheus();
   app.use("*", registerMetrics);
-  app.get("/metrics", printMetrics);
+  app.get("/metrics", async (c) => {
+    // Combine @hono/prometheus default metrics with our custom metrics
+    const honoResponse = await printMetrics(c);
+    const honoText = await honoResponse.text();
+    const customMetrics = registry.format();
+    return c.text(honoText + "\n" + customMetrics, 200, {
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+  });
+
+  startRuntimeMetricsCollection();
 
   app.route("/admin", adminRoutes);
   app.route("/import", importRoutes);

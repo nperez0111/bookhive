@@ -191,7 +191,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
                 "hb.thumbnail",
                 (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
               ])
-              .where("ub.createdAt", ">", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+              .where(
+                "ub.createdAt",
+                ">",
+                new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              )
               .groupBy("hb.id")
               .orderBy("readerCount", "desc")
               .orderBy("hb.ratingsCount", "desc")
@@ -303,7 +307,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
             <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true" />
             <div class="layout-content flex flex-1 flex-col">
               <Navbar profile={profileData} />
-              <main class="flex-1 overflow-x-auto">
+              <main class="flex-1 overflow-x-auto flex justify-center">
                 <div class="mx-auto max-w-5xl m-4 lg:m-6">{children}</div>
               </main>
             </div>

@@ -1,6 +1,7 @@
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
+import { followSyncDuration, LABEL } from "../metrics";
 
 export interface FollowsSync {
   userDid: string;
@@ -14,11 +15,16 @@ export async function syncUserFollows(ctx: AppContext, agent: SessionClient): Pr
 
   try {
     const syncType = await determineSyncType(ctx, userDid);
+    const end = followSyncDuration.startTimer(LABEL.followSync[syncType]);
 
-    if (syncType === "full") {
-      await fullFollowsSync(ctx, agent, userDid);
-    } else {
-      await incrementalFollowsSync(ctx, agent, userDid);
+    try {
+      if (syncType === "full") {
+        await fullFollowsSync(ctx, agent, userDid);
+      } else {
+        await incrementalFollowsSync(ctx, agent, userDid);
+      }
+    } finally {
+      end();
     }
 
     await updateSyncMetadata(ctx, userDid, syncType);

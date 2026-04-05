@@ -34,7 +34,7 @@ self.onmessage = (event: MessageEvent) => {
   const msg = event.data;
   if (msg.type === "init") {
     const opts: Options = msg.options;
-    apiUrl = `${opts.url}/api/${opts.organization}/${opts.streamName}/_multi`;
+    apiUrl = `${opts.url.replace(/\/+$/, "")}/api/${encodeURIComponent(opts.organization)}/${encodeURIComponent(opts.streamName)}/_json`;
     authHeader = `Basic ${Buffer.from(`${opts.auth.username}:${opts.auth.password}`).toString("base64")}`;
     batchSize = opts.batchSize ?? BATCH_SIZE;
     flushMs = opts.timeThresholdMs ?? FLUSH_MS;
@@ -74,7 +74,13 @@ async function flush() {
     });
 
     if (!response.ok) {
-      console.error("OpenObserve: failed to send logs:", response.status, response.statusText);
+      const body = await response.text().catch(() => "");
+      console.error(
+        "OpenObserve: failed to send logs:",
+        response.status,
+        response.statusText,
+        body,
+      );
     }
   } catch (error: any) {
     const code = error?.cause?.code ?? error?.code;

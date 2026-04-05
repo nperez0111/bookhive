@@ -54,20 +54,31 @@ export const BookList: FC<{
   }
 
   // Default to first non-empty tab
-  const defaultTab = readingBooks.length
-    ? "reading"
-    : wantBooks.length
-      ? "want"
-      : "read";
+  const defaultTab = readingBooks.length ? "reading" : wantBooks.length ? "want" : "read";
 
   return (
     <div class="relative overflow-x-clip rounded-lg bg-card pb-16">
-      <input type="radio" id="tab-read" name="tabs" class="peer/read hidden"
-        checked={defaultTab === "read" || undefined} />
-      <input type="radio" id="tab-want" name="tabs" class="peer/want hidden"
-        checked={defaultTab === "want" || undefined} />
-      <input type="radio" id="tab-reading" name="tabs" class="peer/reading hidden"
-        checked={defaultTab === "reading" || undefined} />
+      <input
+        type="radio"
+        id="tab-read"
+        name="tabs"
+        class="peer/read hidden"
+        checked={defaultTab === "read" || undefined}
+      />
+      <input
+        type="radio"
+        id="tab-want"
+        name="tabs"
+        class="peer/want hidden"
+        checked={defaultTab === "want" || undefined}
+      />
+      <input
+        type="radio"
+        id="tab-reading"
+        name="tabs"
+        class="peer/reading hidden"
+        checked={defaultTab === "reading" || undefined}
+      />
 
       <div class="mb-4 border-b border-border peer-checked/read:[&_label[for='tab-read']]:border-primary peer-checked/read:[&_label[for='tab-read']]:text-primary peer-checked/reading:[&_label[for='tab-reading']]:border-primary peer-checked/reading:[&_label[for='tab-reading']]:text-primary peer-checked/want:[&_label[for='tab-want']]:border-primary peer-checked/want:[&_label[for='tab-want']]:text-primary">
         <ul class="-mb-px flex flex-wrap text-center text-sm font-medium" role="tablist">

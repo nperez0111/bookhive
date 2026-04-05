@@ -10,17 +10,16 @@ comark: true
 duration: 10min
 drawings:
   persist: false
-background: '#daa731'
+background: "#daa731"
 fonts:
   sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-        "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"
   provider: none
 ---
 
 <h1 style="letter-spacing: -0.04em" class="font-bold">The Design Philosophy<br />of BookHive</h1>
 
 <img src="/barry_alone_no_bg.svg" width="250" height="250" style="position: absolute; top: 275px; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.35))" />
-
 
 <span class="text-center">Storing the maximally useful data to enable user agency</span>
 
@@ -41,9 +40,11 @@ Welcome everyone. I'm Nick, I build BookHive -- a Goodreads alternative built on
 -->
 
 ---
+
 layout: cover
 background: '#3f2b08'
 class: text-white text-left
+
 ---
 
 <h1 class="font-bold">The <span style="color: #eac741">Opportunity</span></h1>
@@ -52,19 +53,19 @@ ATProto is a _trend-reversal_. The web started open, but became progressively cl
 
 <v-click>
 
- - Social Networks have become **data silos**. If you don't pay for it, you are the product.
+- Social Networks have become **data silos**. If you don't pay for it, you are the product.
 
 </v-click>
 
 <v-click>
 
- - User agency is at an all-time low - forced through upgrades, with no other recourse.
+- User agency is at an all-time low - forced through upgrades, with no other recourse.
 
 </v-click>
 
 <v-click>
 
- - APIs are closing down. Especially with AI, data is seen as a **moat**.
+- APIs are closing down. Especially with AI, data is seen as a **moat**.
 
 </v-click>
 
@@ -73,9 +74,11 @@ What ATProto represents is a trend reversal. The web started as open, and became
 -->
 
 ---
+
 layout: cover
 background: '#3f2b08'
 class: text-white text-left
+
 ---
 
 <h1 class="font-bold">The <span style="color: #eac741">User-Agent</span></h1>
@@ -94,15 +97,16 @@ But of course, that's why you're all here -- to build an **open web based on use
 
 </v-click>
 
-
-
 <!--
 We often forget that the web came with this idea of a user-agent, allowing users to customize their experience according to their needs. It largely didn't pan out because of the complexity of sharing data -- it naturally led to the rise of locked-down APIs. But of course, that is part of why you are all here, to see an open web, based on user agency. ATProto gives us the infrastructure to actually deliver on that promise.
 -->
+
 ---
+
 layout: cover
 background: '#f9eabc'
 class: text-[#3f2b08] text-left
+
 ---
 
 <img src="./screenshot.jpg" width="500px" class="ml-8 mt-4 border-rounded drop-shadow-amber drop-shadow-xl" align="right" />
@@ -114,9 +118,6 @@ class: text-[#3f2b08] text-left
 - Track your books, organize your shelves, connect with readers
 - All data stored in the <b style="color: #000">user's PDS</b>
 - ~1,000 users, >=250,000 book records
-
-
-
 
 <!--
 BookHive is an open source, open data alternative to Goodreads. You can track your books, organize your shelves and connect with others who read the same books as you. When building BookHive, my thinking was all about storing the maximally useful data in the user's PDS. This means data the user and other applications can actually work with.
@@ -185,12 +186,13 @@ Store</h1>
 ````
 
 ---
+
 layout: center
 class: text-center
+
 ---
 
 <h1 class="font-bold" style="color: #eac741">We have an opportunity to build social software where the data actually belongs to people.</h1>
-
 
 <h2 class="mt-20">Let's not waste it by storing opaque IDs.</h2>
 
@@ -202,23 +204,19 @@ class: text-center
 
 </v-click>
 
+---
 
----
-layout: cover
----
+## layout: cover
 
 <h1 class="font-bold" style="color: #eac741">The "Day After" Test</h1>
 
-
 <h2>If BookHive disappeared tomorrow, is the data in your PDS still meaningful?</h2>
 
+---
 
----
-class: text-[#1c1917] bg-[#f9eabc]
----
+## class: text-[#1c1917] bg-[#f9eabc]
 
 <h1 style="color: rgb(146 64 14)">A central store of book data within <span class="font-extrabold">@bookhive.buzz</span></h1>
-
 
 <v-click>
 
@@ -231,16 +229,16 @@ If BookHive disappeared tomorrow, is the data in your PDS still meaningful? Yes.
 -->
 
 ---
-layout: statement
----
+
+## layout: statement
 
 <h1 class="font-bold" style="color: #eac741">Proof It Works</h1>
 
 ### Other apps already use BookHive data -- without our API.
 
 ---
-class: text-[#1c1917] bg-[#f9eabc]
----
+
+## class: text-[#1c1917] bg-[#f9eabc]
 
 <h1 class="font-bold" style="color: #3f2b08">Popfeed</h1>
 
@@ -249,8 +247,6 @@ class: text-[#1c1917] bg-[#f9eabc]
 <img src="./popfeed.jpg" class="mx-auto border-rounded drop-shadow-xl" width="530px">
 
 <p class="text-center">Popfeed is able to display BookHive books, within Popfeed</p>
-
-
 
 ---
 
@@ -263,18 +259,15 @@ An **alternative front-end** to manage your books, by **@tijs.org**
 <p class="text-center">They are your books, choose how you want to manage them.</p>
 
 ---
-layout: statement
----
+
+## layout: statement
 
 <h2 style="color: #fff" class="mb-8">
   This only works because BookHive stores
 </h2>
 <h1 class="font-bold" style="color: #fff">The <b style="color: #eac741">maximally useful data</b> <br />in service of the user</h1>
 
-
-
 ---
-
 
 <h1 class="font-bold" style="color: #eac741">Takeaways for Builders</h1>
 
@@ -307,10 +300,11 @@ Three takeaways. First: store what's useful to the user, not just what's useful 
 -->
 
 ---
+
 layout: center
 class: text-center
----
 
+---
 
 <h1 class="font-bold" style="color: #eac741">Empower users</h1>
 
@@ -327,8 +321,8 @@ class: text-center
 </v-click>
 
 ---
-layout: center
----
+
+## layout: center
 
 <h1 style="color: #fff; font-size: 90px">Thank you!</h1>
 

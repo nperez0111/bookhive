@@ -1,7 +1,8 @@
 import { syncHiveBookGenres } from "../db";
+import { scraperDuration, activeOperations, LABEL } from "../metrics";
 import type { BookIdentifiers, HiveBook } from "../types";
 import { getBookDetailedInfo } from "../scrapers/moreInfo";
-import type { AppContext } from "../context";
+import type { BookUtilContext } from "../context";
 import { normalizeGoodreadsId, upsertBookIdentifiers } from "./bookIdentifiers";
 
 interface BookMeta {
@@ -21,7 +22,7 @@ interface BookMeta {
 
 export async function enrichBookWithDetailedData(
   book: HiveBook,
-  ctx: AppContext,
+  ctx: Pick<BookUtilContext, "db" | "addWideEventContext">,
   options?: { force?: boolean },
 ): Promise<void> {
   try {
@@ -58,7 +59,15 @@ export async function enrichBookWithDetailedData(
       sourceUrl: book.sourceUrl,
     });
 
-    const detailedData = await getBookDetailedInfo(book.sourceUrl, ctx.addWideEventContext);
+    const endEnrich = scraperDuration.startTimer(LABEL.scraper.enrich);
+    activeOperations.inc(LABEL.op.scrape);
+    let detailedData: Awaited<ReturnType<typeof getBookDetailedInfo>>;
+    try {
+      detailedData = await getBookDetailedInfo(book.sourceUrl, ctx.addWideEventContext);
+    } finally {
+      endEnrich();
+      activeOperations.dec(LABEL.op.scrape);
+    }
 
     if (!detailedData) {
       ctx.addWideEventContext({
