@@ -28,7 +28,7 @@ export const ProfileHeader: FC<{
       <div class="card-body flex flex-col items-start gap-4 md:flex-row md:items-start">
         {profile?.avatar && (
           <img
-            src={`/images/w_500/${profile.avatar}`}
+            src={profile.avatar}
             alt=""
             loading="lazy"
             class="h-20 w-20 flex-shrink-0 rounded-full object-cover"

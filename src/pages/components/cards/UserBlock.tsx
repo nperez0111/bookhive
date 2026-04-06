@@ -21,7 +21,7 @@ export const UserBlock: FC<{
 
   const avatarEl = avatar ? (
     <img
-      src={size === "lg" ? `/images/w_500/${avatar}` : `/images/w_100/${avatar}`}
+      src={avatar}
       alt=""
       loading="lazy"
       class={`${avatarClass} rounded-full object-cover`}

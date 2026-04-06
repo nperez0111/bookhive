@@ -87,7 +87,7 @@ const app = new Hono<AppEnv>()
         { title: "Profile Not Found" },
       );
     }
-    return c.redirect(`/images/w_500/${profile.avatar}`);
+    return c.redirect(profile.avatar);
   })
   .get("/profile/:handle/stats", async (c) => {
     const year = new Date().getFullYear();

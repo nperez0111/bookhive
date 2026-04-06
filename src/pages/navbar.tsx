@@ -113,7 +113,7 @@ export const Navbar: FC<{
                 {profile?.avatar ? (
                   <img
                     class="size-8 rounded-full"
-                    src={`/images/w_100/${profile.avatar}`}
+                    src={profile.avatar}
                     loading="lazy"
                     alt=""
                   />
