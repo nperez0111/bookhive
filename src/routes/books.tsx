@@ -18,6 +18,7 @@ import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 
 const app = new Hono<AppEnv>()
   .get("/:hiveId", async (c) => {
+    c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
     const hiveId = c.req.param("hiveId") as HiveId;

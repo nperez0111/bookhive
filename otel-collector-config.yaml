@@ -1,0 +1,21 @@
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: "bookhive"
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["server:8080"]
+
+exporters:
+  otlphttp/openobserve:
+    endpoint: http://openobserve:5080/api/default
+    headers:
+      Authorization: "Basic dXNlckBib29raGl2ZS5idXp6OnBhc3N3b3Jk"
+      stream-name: bookhive
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [otlphttp/openobserve]

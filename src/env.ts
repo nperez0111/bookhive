@@ -50,4 +50,8 @@ export const env = cleanEnv(process.env, {
     default: "",
     desc: "App password for @bookhive.buzz service account",
   }),
+  PRIVATE_KEY_JWK: str({
+    default: "",
+    desc: "ES256 private JWK for confidential OAuth client (generate with `bun run scripts/generate-jwk.ts`). When empty, falls back to public client.",
+  }),
 });

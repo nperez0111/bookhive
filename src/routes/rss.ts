@@ -147,7 +147,10 @@ const app = new Hono<AppEnv>()
       description: `Book activity for @${handle} on BookHive`,
     });
 
-    return c.text(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
+    return c.text(xml, 200, {
+      "Content-Type": "application/rss+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+    });
   })
   .get("/book/:hiveId", async (c) => {
     const ctx = c.get("ctx");
@@ -225,7 +228,10 @@ ${itemsXml}
   </channel>
 </rss>`;
 
-    return c.text(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
+    return c.text(xml, 200, {
+      "Content-Type": "application/rss+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+    });
   })
   .get("/friends/:handle", async (c) => {
     const ctx = c.get("ctx");
@@ -273,7 +279,10 @@ ${itemsXml}
       description: `Book activity from accounts followed by @${handle} on BookHive`,
     });
 
-    return c.text(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
+    return c.text(xml, 200, {
+      "Content-Type": "application/rss+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+    });
   });
 
 export default app;

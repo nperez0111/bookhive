@@ -1,6 +1,6 @@
 import { Client } from "@atcute/client";
 import type { OAuthSession, SessionStore, StateStore } from "@atcute/oauth-node-client";
-import { OAuthClient } from "@atcute/oauth-node-client";
+import { OAuthClient, type ClientAssertionPrivateJwk } from "@atcute/oauth-node-client";
 import { createActorResolver } from "../bsky/id-resolver";
 import { env } from "../env";
 import { createSessionStore, createStateStore } from "./storage";
@@ -23,6 +23,16 @@ const PERMISSION_SET_SCOPES =
 
 export const OAUTH_SCOPES = USE_PERMISSION_SETS ? PERMISSION_SET_SCOPES : GRANULAR_SCOPES;
 
+function parseKeyset(): ClientAssertionPrivateJwk[] | undefined {
+  const raw = env.PRIVATE_KEY_JWK;
+  if (!raw) return undefined;
+  try {
+    return [JSON.parse(raw) as ClientAssertionPrivateJwk];
+  } catch {
+    throw new Error("PRIVATE_KEY_JWK is set but contains invalid JSON");
+  }
+}
+
 export async function createOAuthClient(
   kv: Storage,
   storeOverrides?: { sessions: SessionStore; states: StateStore },
@@ -33,6 +43,59 @@ export async function createOAuthClient(
     !publicUrl || publicUrl.includes("127.0.0.1") || publicUrl.includes("localhost");
   const redirectUris = [`${baseUrl}/oauth/callback`];
 
+  const keyset = isLoopback ? undefined : parseKeyset();
+
+  const sharedStores = {
+    sessions: storeOverrides?.sessions ?? createSessionStore(kv),
+    states: storeOverrides?.states ?? createStateStore(kv),
+  };
+
+  const requestLock = async function waitForLock<T>(
+    key: string,
+    cb: () => Promise<T>,
+    attempt = 0,
+  ): Promise<T> {
+    if (attempt > 10) {
+      throw new Error(`Lock timeout for ${key}`);
+    }
+    const lock = await kv.get<number>(`auth_lock:${key}`);
+    if (!lock) {
+      try {
+        await kv.set(`auth_lock:${key}`, time);
+        return cb();
+      } finally {
+        await kv.del(`auth_lock:${key}`);
+      }
+    }
+    if (lock !== time) {
+      return new Promise((resolve, reject) =>
+        setTimeout(() => waitForLock(key, cb, attempt + 1).then(resolve, reject), 100),
+      );
+    }
+    return cb();
+  };
+
+  if (keyset) {
+    // Confidential client: private_key_jwt auth, up to 180-day sessions
+    return new OAuthClient({
+      metadata: {
+        client_id: `${baseUrl}/oauth-client-metadata.json`,
+        redirect_uris: redirectUris,
+        scope: OAUTH_SCOPES,
+        client_uri: baseUrl,
+        client_name: "BookHive",
+        logo_uri: `${baseUrl}/full_logo.jpg`,
+        policy_uri: `${baseUrl}/privacy-policy`,
+        jwks_uri: `${baseUrl}/jwks.json`,
+      },
+      keyset,
+      actorResolver: createActorResolver(),
+      stores: sharedStores,
+      requestLock,
+    });
+  }
+
+  // Public client: loopback or production without PRIVATE_KEY_JWK
   return new OAuthClient({
     metadata: {
       ...(isLoopback ? {} : { client_id: `${baseUrl}/oauth-client-metadata.json` }),
@@ -48,30 +111,8 @@ export async function createOAuthClient(
           }),
     },
     actorResolver: createActorResolver(),
-    stores: {
-      sessions: storeOverrides?.sessions ?? createSessionStore(kv),
-      states: storeOverrides?.states ?? createStateStore(kv),
-    },
-    requestLock: async function waitForLock(key, cb, attempt = 0) {
-      if (attempt > 10) {
-        throw new Error(`Lock timeout for ${key}`);
-      }
-      const lock = await kv.get<number>(`auth_lock:${key}`);
-      if (!lock) {
-        try {
-          await kv.set(`auth_lock:${key}`, time);
-          return cb();
-        } finally {
-          await kv.del(`auth_lock:${key}`);
-        }
-      }
-      if (lock !== time) {
-        return new Promise((resolve, reject) =>
-          setTimeout(() => waitForLock(key, cb, attempt + 1).then(resolve, reject), 100),
-        );
-      }
-      return cb();
-    },
+    stores: sharedStores,
+    requestLock,
   });
 }
 

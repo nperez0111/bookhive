@@ -2,8 +2,10 @@
  * Shared route helpers: search, refetch, sync, ensure book identifiers.
  * Used by main router, import routes, and xrpc.
  */
+import { createMiddleware } from "hono/factory";
+
 import type { SessionClient } from "../auth/client";
-import type { AppContext } from "../context";
+import type { AppEnv, AppContext } from "../context";
 import {
   ids,
   Book as BookRecord,
@@ -18,6 +20,15 @@ import { findBookDetails } from "../scrapers";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { serializeUserBook } from "../utils/bookProgress";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
+
+/** Sets Cache-Control header on successful responses. Won't override if already set by the handler. */
+export const cacheControl = (directive: string) =>
+  createMiddleware<AppEnv>(async (c, next) => {
+    await next();
+    if (!c.res.headers.has("Cache-Control") && c.res.status < 400) {
+      c.header("Cache-Control", directive);
+    }
+  });
 
 export async function searchBooks({
   query,

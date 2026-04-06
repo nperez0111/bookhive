@@ -110,6 +110,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
     return c.text(sitemap, 200, {
       "Content-Type": "application/xml",
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
     });
   });
 
