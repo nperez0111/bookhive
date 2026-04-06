@@ -61,7 +61,9 @@ console.log("══════════════════════�
 console.log(`  Duration:    ${(totalDuration / 1_000_000).toFixed(2)}s`);
 console.log(`  Samples:     ${sampleCount.toLocaleString()}`);
 console.log(`  Nodes:       ${profile.nodes.length.toLocaleString()}`);
-console.log(`  Sample rate: ~${sampleCount > 1 ? Math.round(1_000_000 / (totalDuration / sampleCount)) : 0} Hz`);
+console.log(
+  `  Sample rate: ~${sampleCount > 1 ? Math.round(1_000_000 / (totalDuration / sampleCount)) : 0} Hz`,
+);
 console.log();
 
 // ── Build lookup maps ────────────────────────────────────────────────
@@ -170,7 +172,8 @@ function shortUrl(url: string): string {
 function categorize(url: string, name: string): Category {
   if (!url && !name) return "idle";
   if (name === "(garbage collector)" || name === "(GC)") return "gc";
-  if (!url || name === "(program)" || name === "(idle)") return name === "(idle)" ? "idle" : "native";
+  if (!url || name === "(program)" || name === "(idle)")
+    return name === "(idle)" ? "idle" : "native";
   if (url.includes("/node_modules/")) return "deps";
   if (url.includes("/src/") || url.includes("/scripts/")) return "app";
   // Bun/Node internals
@@ -189,11 +192,7 @@ const bySelf = allStats
   .slice(0, 20);
 
 console.log(
-  padR("Self Time", 12) +
-    padR("Self %", 9) +
-    padR("Hits", 8) +
-    padR("Function", 40) +
-    "Location"
+  padR("Self Time", 12) + padR("Self %", 9) + padR("Hits", 8) + padR("Function", 40) + "Location",
 );
 console.log("─".repeat(100));
 for (const s of bySelf) {
@@ -202,7 +201,7 @@ for (const s of bySelf) {
       padR(fmtPct(s.selfTime), 9) +
       padR(s.selfHits.toLocaleString(), 8) +
       padR(truncate(s.name, 38), 40) +
-      `${shortUrl(s.url)}:${s.line}`
+      `${shortUrl(s.url)}:${s.line}`,
   );
 }
 console.log();
@@ -222,7 +221,7 @@ console.log(
     padR("Total %", 9) +
     padR("Self %", 9) +
     padR("Function", 40) +
-    "Location"
+    "Location",
 );
 console.log("─".repeat(100));
 for (const s of byTotal) {
@@ -231,7 +230,7 @@ for (const s of byTotal) {
       padR(fmtPct(s.totalTime), 9) +
       padR(fmtPct(s.selfTime), 9) +
       padR(truncate(s.name, 38), 40) +
-      `${shortUrl(s.url)}:${s.line}`
+      `${shortUrl(s.url)}:${s.line}`,
   );
 }
 console.log();
@@ -262,7 +261,9 @@ for (const cat of categories) {
   if (t === 0) continue;
   const pct = (t / totalDuration) * 100;
   const bar = "█".repeat(Math.round(pct / 2)) + "░".repeat(Math.max(0, 50 - Math.round(pct / 2)));
-  console.log(`  ${padR(catLabels[cat], 30)} ${padR(fmtTime(t), 10)} ${padR(pct.toFixed(1) + "%", 7)} ${bar}`);
+  console.log(
+    `  ${padR(catLabels[cat], 30)} ${padR(fmtTime(t), 10)} ${padR(pct.toFixed(1) + "%", 7)} ${bar}`,
+  );
 }
 console.log();
 
@@ -283,7 +284,9 @@ for (let i = 0; i < profile.samples.length; i++) {
     visited.add(nodeId);
     const node = nodeMap.get(nodeId);
     if (node && node.callFrame.functionName && node.callFrame.functionName !== "(root)") {
-      stack.push(`${node.callFrame.functionName} (${shortUrl(node.callFrame.url)}:${node.callFrame.lineNumber})`);
+      stack.push(
+        `${node.callFrame.functionName} (${shortUrl(node.callFrame.url)}:${node.callFrame.lineNumber})`,
+      );
     }
     nodeId = parentMap.get(nodeId);
   }
@@ -324,12 +327,30 @@ console.log("── Suspicious Patterns ──");
 console.log();
 
 const suspiciousPatterns = [
-  { label: "JSON.parse / JSON.stringify", test: (name: string) => /JSON\.(parse|stringify)/i.test(name) },
-  { label: "RegExp / match / replace", test: (name: string) => /regexp|\.match|\.replace|\.test|\.exec/i.test(name) },
-  { label: "Crypto / hashing", test: (name: string) => /crypto|hash|sha|md5|hmac|pbkdf/i.test(name) },
-  { label: "Compression (gzip/deflate/zlib)", test: (name: string) => /gzip|deflate|zlib|compress|brotli/i.test(name) },
-  { label: "Template / JSX rendering", test: (name: string) => /render|jsx|template|html|serialize/i.test(name) },
-  { label: "Database / SQL", test: (name: string) => /query|sql|sqlite|prepare|execute|kysely/i.test(name) },
+  {
+    label: "JSON.parse / JSON.stringify",
+    test: (name: string) => /JSON\.(parse|stringify)/i.test(name),
+  },
+  {
+    label: "RegExp / match / replace",
+    test: (name: string) => /regexp|\.match|\.replace|\.test|\.exec/i.test(name),
+  },
+  {
+    label: "Crypto / hashing",
+    test: (name: string) => /crypto|hash|sha|md5|hmac|pbkdf/i.test(name),
+  },
+  {
+    label: "Compression (gzip/deflate/zlib)",
+    test: (name: string) => /gzip|deflate|zlib|compress|brotli/i.test(name),
+  },
+  {
+    label: "Template / JSX rendering",
+    test: (name: string) => /render|jsx|template|html|serialize/i.test(name),
+  },
+  {
+    label: "Database / SQL",
+    test: (name: string) => /query|sql|sqlite|prepare|execute|kysely/i.test(name),
+  },
   { label: "Garbage Collection", test: (name: string) => /garbage collector|GC/i.test(name) },
 ];
 
