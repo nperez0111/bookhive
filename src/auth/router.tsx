@@ -50,11 +50,13 @@ export function loginRouter(
 ) {
   // OAuth metadata (deprecated)
   app.get("/client-metadata.json", async (c) => {
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.json(c.get("ctx").oauthClient.metadata);
   });
 
   // OAuth metadata
   app.get("/oauth-client-metadata.json", async (c) => {
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.json(c.get("ctx").oauthClient.metadata);
   });
 
@@ -62,6 +64,7 @@ export function loginRouter(
   app.get("/jwks.json", (c) => {
     const jwks = c.get("ctx").oauthClient.jwks;
     if (!jwks) return c.notFound();
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.json(jwks);
   });
 

@@ -106,6 +106,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   // Standalone pages (no sidebar/navbar) — must be registered before jsxRenderer
   app.get("/privacy-policy", (c) => {
     const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.html(
       <Layout assetUrls={c.get("assetUrls")}>
         <SimpleNavbar isPds={isPds} />
@@ -116,6 +117,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
 
   app.get("/legal", (c) => {
     const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.html(
       <Layout assetUrls={c.get("assetUrls")}>
         <SimpleNavbar isPds={isPds} />
@@ -145,6 +147,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
       .execute();
     endTime(c, "pds_book_counts");
     const bookCounts = Object.fromEntries(bookCountRows.map((r) => [r.userDid, r.count]));
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
     return c.html(
       <Layout assetUrls={c.get("assetUrls")}>
         <SimpleNavbar isPds={isPds} />
@@ -275,6 +278,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
         />
       </Layout>
     );
+    c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
     const response = c.html(html);
     endTime(c, "marketing_render");
     return response;

@@ -25,7 +25,7 @@ import { GenreBooks, getBooksByGenre } from "../pages/genreBooks";
 import { AuthorDirectory } from "../pages/authorDirectory";
 import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
-import { searchBooks } from "./lib";
+import { searchBooks, cacheControl } from "./lib";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
@@ -103,9 +103,13 @@ const app = new Hono<AppEnv>()
       { title: "BookHive | Activity Feed" },
     );
   })
-  .get("/.well-known/atproto-did", (c) => c.text("did:plc:enu2j5xjlqsjaylv3du4myh4"))
-  .get("/app", (c) =>
-    c.html(
+  .get("/.well-known/atproto-did", (c) => {
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
+    return c.text("did:plc:enu2j5xjlqsjaylv3du4myh4");
+  })
+  .get("/app", (c) => {
+    c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
+    return c.html(
       <Layout
         assetUrls={c.get("assetUrls")}
         title="BookHive App for iOS"
@@ -117,8 +121,8 @@ const app = new Hono<AppEnv>()
           <AppPage />
         </div>
       </Layout>,
-    ),
-  )
+    );
+  })
   .get("/import", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
@@ -210,7 +214,10 @@ const app = new Hono<AppEnv>()
       );
     },
   )
-  // Explore hub
+  // Explore & author pages — publicly cacheable
+  .use("/explore", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
+  .use("/explore/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
+  .use("/authors/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
   .get("/explore", (c) =>
     c.render(<Explore />, {
       title: "BookHive | Explore",
