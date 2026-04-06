@@ -40,6 +40,7 @@ import books from "./books";
 import comments from "./comments";
 import api from "./api";
 import rss from "./rss";
+import settings from "./settings";
 import og from "./og";
 import shelves from "./shelves";
 
@@ -391,6 +392,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.route("/shelves", shelves);
   app.route("/comments", comments);
   app.route("/api", api);
+  app.route("/settings", settings);
   app.route("/rss", rss);
   app.route("/og", og);
 
