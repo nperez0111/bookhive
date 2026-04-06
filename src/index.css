@@ -185,12 +185,14 @@ body {
   @apply mt-auto flex flex-col gap-1 px-4 pt-4;
 }
 
-.sidebar footer a {
+.sidebar footer a,
+.sidebar footer button {
   @apply text-muted-foreground inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm no-underline transition-colors;
   white-space: nowrap;
 }
 
-.sidebar footer a:hover {
+.sidebar footer a:hover,
+.sidebar footer button:hover {
   @apply bg-muted text-foreground;
 }
 

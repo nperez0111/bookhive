@@ -587,7 +587,7 @@ function OpenSourceSection() {
             </p>
           </div>
           <a
-            href="https://github.com/nicholasgasior/bookhive"
+            href="https://github.com/nperez0111/bookhive"
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-ghost shrink-0"
