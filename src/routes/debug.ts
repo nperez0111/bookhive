@@ -51,10 +51,11 @@ const debug = new Hono<AppEnv>()
       }
 
       const { duration } = c.req.valid("query");
+      const abortSignal = c.req.raw.signal;
       isProfilingActive = true;
 
+      const session = new inspector.Session();
       try {
-        const session = new inspector.Session();
         session.connect();
 
         const post = (method: string, params?: Record<string, unknown>) =>
@@ -68,7 +69,21 @@ const debug = new Hono<AppEnv>()
         await post("Profiler.enable");
         await post("Profiler.start");
 
-        await new Promise((resolve) => setTimeout(resolve, duration * 1000));
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, duration * 1000);
+          abortSignal.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException("Client disconnected", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+
+        if (abortSignal.aborted) {
+          throw new DOMException("Client disconnected", "AbortError");
+        }
 
         const { profile } = await post("Profiler.stop");
         await post("Profiler.disable");
@@ -79,6 +94,24 @@ const debug = new Hono<AppEnv>()
           "Content-Disposition": `attachment; filename="cpu-${timestamp}.cpuprofile"`,
           "Cache-Control": "no-store",
         });
+      } catch (err) {
+        // Always stop the profiler cleanly on any error
+        try {
+          const quietPost = (method: string) =>
+            new Promise<void>((resolve) => {
+              session.post(method, {}, () => resolve());
+            });
+          await quietPost("Profiler.stop");
+          await quietPost("Profiler.disable");
+          session.disconnect();
+        } catch {
+          // Best-effort cleanup
+        }
+
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return c.json({ message: "Profile aborted: client disconnected" }, 408);
+        }
+        throw err;
       } finally {
         isProfilingActive = false;
       }
