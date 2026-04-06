@@ -43,6 +43,14 @@ services:
       - "5080:5080"
     volumes:
       - telem_data:/data
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - openobserve
+      - server
   server:
     restart: unless-stopped
     build:
