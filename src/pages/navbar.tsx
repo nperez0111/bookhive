@@ -111,12 +111,7 @@ export const Navbar: FC<{
                 aria-haspopup="true"
               >
                 {profile?.avatar ? (
-                  <img
-                    class="size-8 rounded-full"
-                    src={profile.avatar}
-                    loading="lazy"
-                    alt=""
-                  />
+                  <img class="size-8 rounded-full" src={profile.avatar} loading="lazy" alt="" />
                 ) : (
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
