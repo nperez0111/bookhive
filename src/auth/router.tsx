@@ -26,7 +26,7 @@ export function getSessionConfig(): SessionOptions {
   return {
     cookieName: "sid",
     password: env.COOKIE_SECRET,
-    ttl: 60 * 60 * 24, // 24 hours
+    ttl: 60 * 60 * 24 * 180, // 180 days — match confidential OAuth client session length
     cookieOptions: {
       // For localhost development, we need to disable secure flag
       secure: env.NODE_ENV === "production",
