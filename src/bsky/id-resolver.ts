@@ -127,7 +127,7 @@ export function createCachingBaseIdResolver(
             return identityCacheValue({ did, handle });
           },
           "",
-          { ttl },
+          { revalidateAfter: ttl, ttl: 30 * 24 * 60 * 60 * 1000 },
         );
         const entry = identityFromCache(raw);
         if (entry) return entry.did;
@@ -215,7 +215,7 @@ export function createCachingBidirectionalResolver(
           return identityCacheValue({ did, handle });
         },
         "",
-        { ttl },
+        { revalidateAfter: ttl, ttl: 30 * 24 * 60 * 60 * 1000 },
       );
       const entry = identityFromCache(raw);
       return entry ? entry.handle : did;

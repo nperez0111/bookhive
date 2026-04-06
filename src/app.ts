@@ -15,6 +15,7 @@ import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
 import adminRoutes from "./routes/admin";
+import debugRoutes from "./routes/debug";
 import importRoutes from "./routes/import";
 import { mainRouter } from "./routes";
 
@@ -73,6 +74,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   startRuntimeMetricsCollection();
 
   app.route("/admin", adminRoutes);
+  app.route("/debug", debugRoutes);
   app.route("/import", importRoutes);
 
   // TODO enable etag for everything but import route

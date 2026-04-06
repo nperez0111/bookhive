@@ -149,7 +149,7 @@ function RecentActivityCard({
                 <a href={`/profile/${handle}`} class="shrink-0">
                   {prof?.avatar ? (
                     <img
-                      src={`/images/w_100/${prof.avatar}`}
+                      src={prof.avatar}
                       alt=""
                       loading="lazy"
                       class="h-9 w-9 rounded-full object-cover"

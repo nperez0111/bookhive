@@ -20,12 +20,7 @@ export const UserBlock: FC<{
   const showName = showDisplayName && (displayName ?? null);
 
   const avatarEl = avatar ? (
-    <img
-      src={size === "lg" ? `/images/w_500/${avatar}` : `/images/w_100/${avatar}`}
-      alt=""
-      loading="lazy"
-      class={`${avatarClass} rounded-full object-cover`}
-    />
+    <img src={avatar} alt="" loading="lazy" class={`${avatarClass} rounded-full object-cover`} />
   ) : (
     <div class={`bg-muted ${avatarClass} rounded-full`} />
   );

@@ -52,6 +52,12 @@ export type ReadThroughCacheOptions = {
    * @default 86400000 (1 day in ms)
    */
   ttl?: number;
+  /**
+   * Enables stale-while-revalidate. When cache age is between revalidateAfter and ttl,
+   * serve stale data immediately while triggering a background fetch.
+   * Must be less than ttl. In milliseconds.
+   */
+  revalidateAfter?: number;
 };
 
 /**
@@ -69,6 +75,7 @@ export async function readThroughCache<T extends StorageValue>(
 
   // TTL in ms, default to 1 day
   const ttl = options.ttl ?? 24 * 60 * 60 * 1000;
+  const revalidateAfter = options.revalidateAfter;
 
   // Dedupe requests for the same key.
   if (dupeRequestsCache.has(key)) {
@@ -78,17 +85,49 @@ export async function readThroughCache<T extends StorageValue>(
   const unresolvedPromise = Promise.all([kv.get<T>(key), kv.getMeta(key)]).then(
     async ([cached, meta]) => {
       const now = Date.now();
-      const isExpired = meta
-        ? cached && typeof meta["timestamp"] === "number"
-          ? now - meta["timestamp"] > ttl
-          : true
-        : true;
+      const timestamp = meta && typeof meta["timestamp"] === "number" ? meta["timestamp"] : null;
+      const age = timestamp !== null ? now - timestamp : Infinity;
 
-      if (cached && !isExpired) {
+      // Fresh: within revalidateAfter (if SWR) or within ttl
+      const isFresh = cached && timestamp !== null && age < (revalidateAfter ?? ttl);
+      // Stale but serveable: SWR enabled, between revalidateAfter and ttl
+      const isStale =
+        cached &&
+        timestamp !== null &&
+        revalidateAfter != null &&
+        age >= revalidateAfter &&
+        age < ttl;
+
+      if (isFresh) {
         return cached;
       }
 
-      // Apply rate limiting before fetch if enabled
+      if (isStale) {
+        // Serve stale immediately, revalidate in background
+        const bgKey = `__bg:${key}`;
+        if (!dupeRequestsCache.has(bgKey)) {
+          const bgPromise = (async () => {
+            if (rateLimiter) await rateLimiter.acquireToken();
+            const fresh = await fetch({ key });
+            await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: Date.now() })]);
+            return fresh;
+          })()
+            .catch((err) => {
+              console.warn(
+                `[readThroughCache] background revalidation failed for key "${key}":`,
+                err,
+              );
+              return cached;
+            })
+            .finally(() => {
+              dupeRequestsCache.delete(bgKey);
+            });
+          dupeRequestsCache.set(bgKey, bgPromise as Promise<StorageValue>);
+        }
+        return cached;
+      }
+
+      // Expired or miss: block on fetch
       if (rateLimiter) {
         await rateLimiter.acquireToken();
       }

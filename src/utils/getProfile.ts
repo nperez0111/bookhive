@@ -42,6 +42,8 @@ export async function getProfile({
         return null;
       }
     },
+    undefined,
+    { revalidateAfter: 24 * 60 * 60 * 1000, ttl: 30 * 24 * 60 * 60 * 1000 },
   );
   return profile;
 }

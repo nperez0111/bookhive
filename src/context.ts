@@ -319,6 +319,8 @@ export function createContextMiddleware(deps: AppDeps) {
             endTime(c, "get_profile_network");
           }
         },
+        undefined,
+        { revalidateAfter: 24 * 60 * 60 * 1000, ttl: 30 * 24 * 60 * 60 * 1000 },
       );
       endTime(c, "get_profile_cache");
       return result;
