@@ -393,9 +393,10 @@ export function createContextMiddleware(deps: AppDeps) {
       );
       endTime(c, "get_profile_cache");
 
-      // Fire off session restore in the background so it's warm for subsequent API calls.
-      // Don't await — this is purely speculative warming.
-      if (!getCachedSessionClient(did)) {
+      // Fire off session restore in the background so it's warm for subsequent API calls,
+      // and to keep the iron-session cookie's rolling TTL fresh even on cache hits.
+      const cached = getCachedSessionClient(did);
+      if (!cached || cached.needsSave) {
         sessionLazy.value.catch(() => {});
       }
 
