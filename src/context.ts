@@ -201,19 +201,49 @@ export type SessionTiming = {
   end: (name: string) => void;
 };
 
-const SESSION_CLIENT_CACHE_TTL_MS = 30_000; // 30s in-memory cache to avoid restore+getTokenInfo on every request
-const sessionClientCache = new Map<string, { client: SessionClient; expiresAt: number }>();
+const MAX_CACHE_TTL_MS = 10 * 60 * 1000; // 10-minute cap on session cache
+const MIN_CACHE_TTL_MS = 10_000; // 10-second minimum
+const TOKEN_EXPIRY_BUFFER_MS = 60_000; // re-restore 60s before token expires
+const SESSION_SAVE_INTERVAL_MS = 24 * 60 * 60 * 1000; // re-save iron-session cookie every 24h
 
-function getCachedSessionClient(did: string): SessionClient | null {
+type CachedSession = {
+  client: SessionClient;
+  /** When this cache entry should be evicted (triggers a fresh restore). */
+  expiresAt: number;
+  /** Last time we called session.save() to extend the iron-session cookie TTL. */
+  lastSaveAt: number;
+};
+
+const sessionClientCache = new Map<string, CachedSession>();
+
+function getCachedSessionClient(did: string): { client: SessionClient; needsSave: boolean } | null {
   const entry = sessionClientCache.get(did);
-  if (!entry || Date.now() > entry.expiresAt) return null;
-  return entry.client;
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    sessionClientCache.delete(did);
+    return null;
+  }
+  return {
+    client: entry.client,
+    needsSave: Date.now() - entry.lastSaveAt > SESSION_SAVE_INTERVAL_MS,
+  };
 }
 
-function setCachedSessionClient(did: string, client: SessionClient): void {
+function setCachedSessionClient(
+  did: string,
+  client: SessionClient,
+  tokenExpiresAt: number | undefined,
+): void {
+  const now = Date.now();
+  let ttl = MAX_CACHE_TTL_MS;
+  if (tokenExpiresAt) {
+    const timeUntilExpiry = tokenExpiresAt - now - TOKEN_EXPIRY_BUFFER_MS;
+    ttl = Math.max(MIN_CACHE_TTL_MS, Math.min(timeUntilExpiry, MAX_CACHE_TTL_MS));
+  }
   sessionClientCache.set(did, {
     client,
-    expiresAt: Date.now() + SESSION_CLIENT_CACHE_TTL_MS,
+    expiresAt: now + ttl,
+    lastSaveAt: now,
   });
 }
 
@@ -234,7 +264,15 @@ export async function getSessionAgent(
 
   const cached = getCachedSessionClient(session.did);
   if (cached) {
-    return cached;
+    ctx.addWideEventContext({ session_cache: "hit" });
+    // Periodically re-save the iron-session cookie to keep its 180-day TTL rolling.
+    if (cached.needsSave) {
+      session.updateConfig(getSessionConfig());
+      await session.save();
+      const entry = sessionClientCache.get(session.did);
+      if (entry) entry.lastSaveAt = Date.now();
+    }
+    return cached.client;
   }
 
   try {
@@ -244,8 +282,15 @@ export async function getSessionAgent(
     });
     timing?.end("session_restore");
 
-    // Don't await getTokenInfo: OAuthSession.handle() calls getTokenSet('auto') on first
-    // request, so the token is loaded/refreshed when we first use the client (e.g. getProfile).
+    // Get token expiration so we can cache until just before it expires.
+    // This is cheap: reads from the session store with allowStale (no network calls).
+    const tokenInfo = await oauthSession.getTokenInfo(false);
+    const tokenExpiresAt = tokenInfo.expiresAt?.getTime();
+
+    ctx.addWideEventContext({
+      session_cache: "miss",
+      token_expires_in_ms: tokenExpiresAt ? tokenExpiresAt - Date.now() : undefined,
+    });
 
     timing?.start("session_save");
     session.updateConfig(getSessionConfig());
@@ -253,7 +298,7 @@ export async function getSessionAgent(
     timing?.end("session_save");
 
     const client = sessionClientFromOAuthSession(oauthSession);
-    setCachedSessionClient(session.did, client);
+    setCachedSessionClient(session.did, client, tokenExpiresAt);
     return client;
   } catch (err) {
     ctx.addWideEventContext({
