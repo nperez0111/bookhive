@@ -52,6 +52,8 @@ export type AppContext = {
   oauthClient: OAuthClient;
   resolver: BidirectionalResolver;
   baseIdResolver: ReturnType<typeof createBaseIdResolver>;
+  /** Cheap DID lookup from iron-session cookie — no OAuth restore, no network calls. */
+  getSessionDid: () => Promise<string | null>;
   getSessionAgent: () => Promise<SessionClient | null>;
   getProfile: () => Promise<ProfileViewDetailed | null>;
   /** Service account agent for @bookhive.buzz ATProto writes. Null if env vars not set. */
@@ -322,6 +324,9 @@ export function createContextMiddleware(deps: AppDeps) {
       addWideEventContext(context: Record<string, unknown>) {
         Object.assign(c.get("wideEventBag"), context);
       },
+      getSessionDid(): Promise<string | null> {
+        return didLazy.value;
+      },
       getSessionAgent(): Promise<SessionClient | null> {
         return sessionLazy.value;
       },
@@ -333,6 +338,15 @@ export function createContextMiddleware(deps: AppDeps) {
       start: (name) => startTime(c, name),
       end: (name) => endTime(c, name),
     };
+
+    // Fast path: read DID from iron-session cookie only (no OAuth restore).
+    const didLazy = lazy(async () => {
+      startTime(c, "session_iron");
+      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+      endTime(c, "session_iron");
+      return session.did || null;
+    });
+
     const sessionLazy = lazy(() =>
       getSessionAgent(c.req.raw, c.res, ctx, sessionTiming).then((client) => {
         if (client) {
@@ -341,18 +355,28 @@ export function createContextMiddleware(deps: AppDeps) {
         return client;
       }),
     );
+
+    // getProfile uses the fast DID path for cache lookups.
+    // The expensive OAuth restore only happens on profile cache miss.
     const profileLazy = lazy(async () => {
-      startTime(c, "get_profile_session");
-      const client = await sessionLazy.value;
-      endTime(c, "get_profile_session");
-      if (!client?.did) {
+      startTime(c, "get_profile_did");
+      const did = await didLazy.value;
+      endTime(c, "get_profile_did");
+      if (!did) {
         return null;
       }
+      ctx.addWideEventContext({ userDid: did });
+
       startTime(c, "get_profile_cache");
       const result = await readThroughCache<ProfileViewDetailed | null>(
         deps.kv,
-        "profile:" + client.did,
+        "profile:" + did,
         async () => {
+          // Cache miss — need a full session to call the Bluesky API.
+          startTime(c, "get_profile_session");
+          const client = await sessionLazy.value;
+          endTime(c, "get_profile_session");
+          if (!client) return null;
           startTime(c, "get_profile_network");
           try {
             const res = await client.get("app.bsky.actor.getProfile", {
@@ -368,6 +392,13 @@ export function createContextMiddleware(deps: AppDeps) {
         { revalidateAfter: 24 * 60 * 60 * 1000, ttl: 30 * 24 * 60 * 60 * 1000 },
       );
       endTime(c, "get_profile_cache");
+
+      // Fire off session restore in the background so it's warm for subsequent API calls.
+      // Don't await — this is purely speculative warming.
+      if (!getCachedSessionClient(did)) {
+        sessionLazy.value.catch(() => {});
+      }
+
       return result;
     });
     c.set("ctx", ctx);

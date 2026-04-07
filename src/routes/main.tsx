@@ -135,18 +135,18 @@ export function mainRouter(deps: AppDeps): HonoServer {
     startTime(c, "pds_list_repos");
     const dids = await listRepos();
     endTime(c, "pds_list_repos");
-    startTime(c, "pds_profiles");
-    const profiles = dids.length > 0 ? await getProfiles({ ctx: c.get("ctx"), dids }) : [];
-    endTime(c, "pds_profiles");
     const db = c.get("ctx").db;
-    startTime(c, "pds_book_counts");
-    const bookCountRows = await db
-      .selectFrom("user_book")
-      .select((eb) => ["userDid", eb.fn.countAll<number>().as("count")])
-      .where("userDid", "in", dids.length > 0 ? dids : [""])
-      .groupBy("userDid")
-      .execute();
-    endTime(c, "pds_book_counts");
+    startTime(c, "pds_profiles+book_counts");
+    const [profiles, bookCountRows] = await Promise.all([
+      dids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids }) : [],
+      db
+        .selectFrom("user_book")
+        .select((eb) => ["userDid", eb.fn.countAll<number>().as("count")])
+        .where("userDid", "in", dids.length > 0 ? dids : [""])
+        .groupBy("userDid")
+        .execute(),
+    ]);
+    endTime(c, "pds_profiles+book_counts");
     const bookCounts = Object.fromEntries(bookCountRows.map((r) => [r.userDid, r.count]));
     c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
     return c.html(

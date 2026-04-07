@@ -22,25 +22,23 @@ const app = new Hono<AppEnv>()
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
     const hiveId = c.req.param("hiveId") as HiveId;
-    const book = await c
-      .get("ctx")
-      .db.selectFrom("hive_book")
-      .selectAll()
-      .where("id", "=", hiveId)
-      .limit(1)
-      .executeTakeFirst();
-
-    let isbn: string | undefined;
-    if (book) {
-      const idMap = await c
+    const [book, idMap] = await Promise.all([
+      c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("id", "=", hiveId)
+        .limit(1)
+        .executeTakeFirst(),
+      c
         .get("ctx")
         .db.selectFrom("book_id_map")
         .select(["isbn13", "isbn"])
         .where("hiveId", "=", hiveId)
         .limit(1)
-        .executeTakeFirst();
-      isbn = idMap?.isbn13 || idMap?.isbn || undefined;
-    }
+        .executeTakeFirst(),
+    ]);
+    const isbn = idMap?.isbn13 || idMap?.isbn || undefined;
     endTime(c, "db_fetch_book");
 
     if (!book) {

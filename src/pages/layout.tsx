@@ -48,6 +48,8 @@ export const Layout: FC<
       <head>
         ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
+        <link rel="preconnect" href="https://i.gr-assets.com" crossorigin />
+        <link rel="preconnect" href="https://cdn.bsky.app" crossorigin />
         <meta name="theme-color" content="#f9eabc" />
         <script>
           (function () {
@@ -62,6 +64,28 @@ export const Layout: FC<
               meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
           })();
         </script>
+        ${cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
+        <style>
+          ${raw(`/* Actor Typeahead - uses theme tokens so it follows light/dark toggle */
+          actor-typeahead {
+            --color-background: var(--card);
+            --color-border: var(--border);
+            --color-shadow: #000000;
+            --color-hover: var(--muted);
+            --color-avatar-fallback: var(--muted);
+            --radius: 8px;
+            --padding-menu: 4px;
+          }`)}
+        </style>
+        ${!isDevVite && jsUrls.map((src) => html`<link rel="modulepreload" href="${src}" />`)}
+        ${
+          !isDevVite &&
+          html`
+            <link rel="modulepreload" href="/js/actor-typeahead.js" />
+          `
+        }
+        ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
+        <script type="module" src="/js/actor-typeahead.js"></script>
         <meta property="og:url" content="${url}" />
         <meta property="og:type" content="${ogType}" />
         <meta property="og:title" content="${title}" />
@@ -126,21 +150,24 @@ export const Layout: FC<
             }
           }
         </script>
-        ${cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
-        <style>
-          ${raw(`/* Actor Typeahead - uses theme tokens so it follows light/dark toggle */
-          actor-typeahead {
-            --color-background: var(--card);
-            --color-border: var(--border);
-            --color-shadow: #000000;
-            --color-hover: var(--muted);
-            --color-avatar-fallback: var(--muted);
-            --radius: 8px;
-            --padding-menu: 4px;
-          }`)}
-        </style>
-        ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
-        <script type="module" src="/js/actor-typeahead.js"></script>
+        ${raw(`<script type="speculationrules">
+          {
+            "prefetch": [{
+              "where": {
+                "and": [
+                  { "href_matches": "/*" },
+                  { "not": { "href_matches": "/logout" } },
+                  { "not": { "href_matches": "/login" } },
+                  { "not": { "href_matches": "/api/*" } },
+                  { "not": { "href_matches": "/images/*" } },
+                  { "not": { "selector_matches": "[download]" } },
+                  { "not": { "selector_matches": "[target=_blank]" } }
+                ]
+              },
+              "eagerness": "moderate"
+            }]
+          }
+        </script>`)}
       </head>
       <body class="bg-background text-foreground min-h-full">
         ${children}
