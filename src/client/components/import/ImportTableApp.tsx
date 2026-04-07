@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type FC } from "hono/jsx/dom";
 
 import { BOOK_STATUS_MAP } from "../../../constants";
+import {
+  StatusSelect,
+  RatingSelect,
+  DeleteButton,
+  BookCover,
+  updateBook as updateBookApi,
+  deleteBook as deleteBookApi,
+} from "../bookActions";
 import type {
   ImportEvent,
   ImportRow,
@@ -188,53 +196,6 @@ const FailedRow: FC<{
 
 // --- Success row matching EditableLibraryTable layout ---
 
-const StatusSelect: FC<{
-  status?: string;
-  onChange: (status: string) => void;
-}> = ({ status, onChange }) => {
-  const items = [
-    { value: "buzz.bookhive.defs#finished", label: "Read" },
-    { value: "buzz.bookhive.defs#reading", label: "Reading" },
-    { value: "buzz.bookhive.defs#wantToRead", label: "Want to Read" },
-    { value: "buzz.bookhive.defs#abandoned", label: "Abandoned" },
-  ];
-  return (
-    <select
-      className="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-      value={status || ""}
-      onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
-    >
-      <option value="">Status</option>
-      {items.map((s) => (
-        <option key={s.value} value={s.value}>
-          {s.label}
-        </option>
-      ))}
-    </select>
-  );
-};
-
-const RatingSelect: FC<{
-  stars?: number;
-  onChange: (stars: number) => void;
-}> = ({ stars, onChange }) => {
-  return (
-    <select
-      className="w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-      value={stars || ""}
-      onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
-    >
-      <option value="">-</option>
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
-        <option key={val} value={val}>
-          {"★".repeat(Math.floor(val / 2))}
-          {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
-        </option>
-      ))}
-    </select>
-  );
-};
-
 const SuccessRow: FC<{
   row: Extract<ImportRow, { success: true }>;
   onUpdate: (next: Partial<ImportRow>) => void;
@@ -249,16 +210,7 @@ const SuccessRow: FC<{
       <td className="overflow-hidden px-4 py-2">
         <div className="flex items-center space-x-3">
           <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
-            {coverImage ? (
-              <img
-                src={coverImage}
-                alt={`Cover of ${title}`}
-                loading="lazy"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-muted" />
-            )}
+            <BookCover src={coverImage} alt={`Cover of ${title}`} />
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-1 text-sm leading-tight font-medium text-foreground">
@@ -273,63 +225,28 @@ const SuccessRow: FC<{
       <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
         <StatusSelect
           status={status}
-          onChange={async (nextStatus) => {
+          onChange={(nextStatus) => {
             onUpdate({ status: nextStatus });
-            try {
-              await fetch("/api/update-book", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ hiveId, status: nextStatus }),
-              });
-            } catch {}
+            void updateBookApi(hiveId, { status: nextStatus });
           }}
         />
       </td>
       <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
         <RatingSelect
           stars={stars}
-          onChange={async (rating) => {
+          onChange={(rating) => {
             onUpdate({ stars: rating });
-            try {
-              await fetch("/api/update-book", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ hiveId, stars: rating }),
-              });
-            } catch {}
+            void updateBookApi(hiveId, { stars: rating });
           }}
         />
       </td>
       <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className="inline-flex items-center rounded-md p-2 text-red-600 hover:bg-red-50 hover:text-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-          title="Delete book from library"
-          onClick={async () => {
+        <DeleteButton
+          onDelete={() => {
             onDelete(hiveId);
-            try {
-              await fetch(`/books/${hiveId}`, {
-                method: "DELETE",
-                headers: { accept: "application/json" },
-              });
-            } catch {}
+            void deleteBookApi(hiveId);
           }}
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16"
-            />
-          </svg>
-        </button>
+        />
       </td>
     </tr>
   );
@@ -349,11 +266,7 @@ const SuccessCard: FC<{
       className="flex gap-3 border-b border-border px-4 py-3 last:border-b-0 hover:bg-muted/60 transition-colors"
     >
       <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
-        {coverImage ? (
-          <img src={coverImage} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted" />
-        )}
+        <BookCover src={coverImage} alt={`Cover of ${title}`} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="line-clamp-1 text-sm font-medium text-foreground">{title}</div>

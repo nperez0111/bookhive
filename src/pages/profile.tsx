@@ -4,7 +4,6 @@ import type { BookListRow, ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
-import { EditableLibraryTable } from "./components/EditableLibraryTable";
 import { BOOK_STATUS } from "../constants";
 import { UserBlock } from "./components/cards";
 
@@ -144,7 +143,25 @@ export const ProfilePage: FC<{
           <section>
             <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
             {isOwnProfile ? (
-              <EditableLibraryTable books={books} redirectUrl={`/profile/${handle}`} />
+              <div
+                id="mount-library-table"
+                data-books={JSON.stringify(
+                  books.map((b) => ({
+                    hiveId: b.hiveId,
+                    title: b.title,
+                    authors: b.authors,
+                    cover: b.cover,
+                    thumbnail: b.thumbnail,
+                    status: b.status,
+                    stars: b.stars,
+                    startedAt: b.startedAt,
+                    finishedAt: b.finishedAt,
+                    createdAt: b.createdAt,
+                    owned: b.owned,
+                    review: b.review,
+                  })),
+                )}
+              />
             ) : (
               <BookList books={books} />
             )}
