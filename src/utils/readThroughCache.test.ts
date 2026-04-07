@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 import { readThroughCache, type ReadThroughCacheOptions } from "./readThroughCache";
 import type { Storage, StorageMeta } from "unstorage";
 
