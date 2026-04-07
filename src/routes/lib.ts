@@ -220,6 +220,8 @@ export async function refetchBuzzes({
       : [];
   const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
 
+  const buzzValues = [];
+
   for (const record of validRecords) {
     const book = record.value as BuzzRecord.Record;
     const hiveId = uriToHiveId.get(book.book.uri);
@@ -233,22 +235,25 @@ export async function refetchBuzzes({
     }
 
     uris.push(record.uri);
+    buzzValues.push({
+      uri: record.uri,
+      cid: record.cid,
+      userDid: agent.did,
+      createdAt: book.createdAt,
+      indexedAt: new Date().toISOString(),
+      hiveId: hiveId,
+      comment: book.comment ?? "",
+      parentUri: book.parent.uri,
+      parentCid: book.parent.cid,
+      bookCid: book.book.cid,
+      bookUri: book.book.uri,
+    });
+  }
 
+  if (buzzValues.length > 0) {
     await ctx.db
       .insertInto("buzz")
-      .values({
-        uri: record.uri,
-        cid: record.cid,
-        userDid: agent.did,
-        createdAt: book.createdAt,
-        indexedAt: new Date().toISOString(),
-        hiveId: hiveId,
-        comment: book.comment,
-        parentUri: book.parent.uri,
-        parentCid: book.parent.cid,
-        bookCid: book.book.cid,
-        bookUri: book.book.uri,
-      })
+      .values(buzzValues)
       .onConflict((oc) =>
         oc.column("uri").doUpdateSet((c) => ({
           cid: c.ref("excluded.cid"),

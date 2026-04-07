@@ -130,17 +130,28 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    startTime(c, "isBuzzer");
-    const isBuzzer = Boolean(
-      await c
+    startTime(c, "isBuzzer+profile+books");
+    const [isBuzzerRow, profile, books] = await Promise.all([
+      c
         .get("ctx")
         .db.selectFrom("user_book")
         .select("userDid")
         .where("userDid", "=", did)
         .limit(1)
         .executeTakeFirst(),
-    );
-    endTime(c, "isBuzzer");
+      getProfile({ ctx: c.get("ctx"), did }),
+      c
+        .get("ctx")
+        .db.selectFrom("user_book")
+        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+        .select(BookFields)
+        .where("user_book.userDid", "=", did)
+        .orderBy("user_book.indexedAt", "desc")
+        .limit(10_000)
+        .execute(),
+    ]);
+    const isBuzzer = Boolean(isBuzzerRow);
+    endTime(c, "isBuzzer+profile+books");
 
     if (!isBuzzer) {
       c.status(404);
@@ -156,22 +167,7 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    startTime(c, "profile");
-    const profile = await getProfile({ ctx: c.get("ctx"), did });
-    endTime(c, "profile");
-
-    startTime(c, "books");
-    const books = await c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.userDid", "=", did)
-      .orderBy("user_book.indexedAt", "desc")
-      .limit(10_000)
-      .execute();
     const parsedBooks = books.map((book) => hydrateUserBook(book));
-    endTime(c, "books");
 
     const sessionAgent = await c.get("ctx").getSessionAgent();
     const isOwnProfile = sessionAgent?.did === did;
@@ -287,39 +283,39 @@ const app = new Hono<AppEnv>()
       }
     }
 
-    startTime(c, "isBuzzer");
-    const isBuzzer = Boolean(
-      await c
+    startTime(c, "isBuzzer+profile");
+    const [isBuzzerRow, profile] = await Promise.all([
+      c
         .get("ctx")
         .db.selectFrom("user_book")
         .select("userDid")
         .where("userDid", "=", did)
         .limit(1)
         .executeTakeFirst(),
-    );
-    endTime(c, "isBuzzer");
+      getProfile({ ctx: c.get("ctx"), did }),
+    ]);
+    const isBuzzer = Boolean(isBuzzerRow);
+    endTime(c, "isBuzzer+profile");
 
-    startTime(c, "profile");
-    const profile = await getProfile({ ctx: c.get("ctx"), did });
-    endTime(c, "profile");
-
-    startTime(c, "books");
-    const books = isBuzzer
-      ? await c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .select(BookFields)
-          .where("user_book.userDid", "=", did)
-          .orderBy("user_book.indexedAt", "desc")
-          .limit(10_000)
-          .execute()
-      : [];
+    startTime(c, "books+session");
+    const [books, sessionAgent] = await Promise.all([
+      isBuzzer
+        ? c
+            .get("ctx")
+            .db.selectFrom("user_book")
+            .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+            .select(BookFields)
+            .where("user_book.userDid", "=", did)
+            .orderBy("user_book.indexedAt", "desc")
+            .limit(10_000)
+            .execute()
+        : Promise.resolve([]),
+      c.get("ctx").getSessionAgent(),
+    ]);
     const parsedBooks = books.map((book) => hydrateUserBook(book));
-    endTime(c, "books");
+    endTime(c, "books+session");
 
-    startTime(c, "session");
-    const sessionAgent = await c.get("ctx").getSessionAgent();
+    startTime(c, "isFollowing");
     const isFollowing =
       sessionAgent && sessionAgent.did !== did
         ? Boolean(
@@ -333,7 +329,7 @@ const app = new Hono<AppEnv>()
               .executeTakeFirst(),
           )
         : undefined;
-    endTime(c, "session");
+    endTime(c, "isFollowing");
 
     // DIDs that have at least one book on BookHive (for following/followers filtering)
     const buzzersSubquery = c.get("ctx").db.selectFrom("user_book").select("userDid").distinct();
