@@ -6,6 +6,7 @@ import { SearchTrigger } from "./components/SearchBox";
 import { SearchPalette } from "./components/SearchPalette";
 import { StarRating } from "./components/StarRating";
 import { ImportTableApp } from "./components/import/ImportTableApp";
+import { LibraryTable } from "./components/LibraryTable";
 
 document.addEventListener("DOMContentLoaded", () => {
   // Shared open function: SearchPalette registers it, SearchTrigger calls it
@@ -51,6 +52,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const importTable = document.getElementById("import-table");
   if (importTable) {
     render(<ImportTableApp />, importTable);
+  }
+
+  const libraryTable = document.getElementById("mount-library-table");
+  if (libraryTable) {
+    const books = JSON.parse(libraryTable.dataset["books"] || "[]");
+    render(<LibraryTable initialBooks={books} />, libraryTable);
   }
 
   // Update page title based on active tab on home page
