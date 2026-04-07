@@ -511,9 +511,7 @@ export const createDb = (location: string): { db: Database; sqlite: DatabaseSync
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
   sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  // mmap intentionally omitted: prod DB is ~800 MB and growing; mmap_size = 0 (default)
-  // keeps memory usage bounded and predictable. The 64 MB page cache covers the full
-  // hot index working set (~56 MB: genre + thumbnail + author-ratings indexes).
+  sqlite.exec("PRAGMA mmap_size = 1073741824"); // 1 GB — keep full DB memory-mapped
 
   const db = new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
