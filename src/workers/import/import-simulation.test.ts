@@ -12,10 +12,8 @@
  * without hitting any real network endpoints.
  */
 import { describe, it, expect, mock } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect } from "kysely";
-import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
-import { migrateToLatest, type DatabaseSchema } from "../../db";
+import { createDb, migrateToLatest } from "../../db";
+import type { Database } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
@@ -103,33 +101,50 @@ Dreams of Steel,Glen Cook,"",9780765382641,paperback,read,2025/11/13,"","",1,"",
 
 // ─── Test infrastructure ────────────────────────────────────────────────────
 
+const TEST_DATABASE_URL =
+  process.env["TEST_DATABASE_URL"] || "postgres://localhost:5432/bookhive_test";
+
 async function createTestDb() {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  const db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({
-      database: wrapBunSqliteForKysely(sqlite),
-    }),
-  });
+  const { db, pool } = createDb(TEST_DATABASE_URL);
 
-  // Use the canonical migrations so the test schema stays in sync with the app
-  await migrateToLatest(db, sqlite);
+  await migrateToLatest(db);
 
-  return { db, sqlite };
+  // Clean tables for test isolation
+  await db.deleteFrom("book_list_item").execute();
+  await db.deleteFrom("book_list").execute();
+  await db.deleteFrom("hive_book_genre").execute();
+  await db.deleteFrom("book_id_map").execute();
+  await db.deleteFrom("buzz").execute();
+  await db.deleteFrom("user_book").execute();
+  await db.deleteFrom("user_follows").execute();
+  await db.deleteFrom("hive_book").execute();
+
+  return { db, pool };
 }
 
-function seedHiveBook(
-  sqlite: DatabaseSync,
+async function seedHiveBook(
+  db: Database,
   id: string,
   rawTitle: string,
   authors: string,
   cover: string | null = null,
 ) {
-  const stmt = sqlite.prepare(
-    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, source, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, '', 'goodreads', datetime('now'), datetime('now'))`,
-  );
-  stmt.run(id, rawTitle, rawTitle, authors, cover);
+  const now = new Date().toISOString();
+  await db
+    .insertInto("hive_book")
+    .values({
+      id: id as any,
+      title: rawTitle,
+      rawTitle,
+      authors,
+      cover,
+      thumbnail: "",
+      source: "goodreads",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
 }
 
 function createMockAgent(): SessionClient {
@@ -164,7 +179,7 @@ function createMockAgent(): SessionClient {
   } as SessionClient & { _calls: typeof calls };
 }
 
-function createMockCtx(db: Kysely<DatabaseSchema>): ImportContext {
+function createMockCtx(db: Database): ImportContext {
   const events: Record<string, unknown>[] = [];
 
   const kv = {
@@ -238,30 +253,30 @@ function collectSSEEvents(): { events: SSEEvent[]; onSSE: (data: string) => void
 
 describe("import pipeline simulation — Goodreads", () => {
   it("processes 15 real CSV rows with correct SSE event ordering", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
 
     // Seed 10 of the 15 books so we get a mix of matched/unmatched
-    seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
+    await seedHiveBook(
+      db,
       "bk_sotg",
       "The Shadow of the Gods (The Bloodsworn Saga, #1)",
       "John Gwynne",
     );
-    seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
-    seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
+    await seedHiveBook(db, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
+    await seedHiveBook(
+      db,
       "bk_dall",
       "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
       "Lee Mi-ye",
     );
-    seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(
+      db,
       "bk_nhd",
       "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
       "Marie Brennan",
@@ -277,6 +292,8 @@ describe("import pipeline simulation — Goodreads", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     const eventTypes = events.map((e) => e.event);
 
@@ -315,9 +332,9 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("emits all timestamps in ascending order", async () => {
-    const { db, sqlite } = await createTestDb();
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
+    const { db, pool } = await createTestDb();
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(db, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -329,6 +346,8 @@ describe("import pipeline simulation — Goodreads", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     // All timestamps should be in non-decreasing order
     const timestamps = events.map((e) => new Date(e.ts).getTime());
@@ -338,53 +357,53 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("has no excessively long gaps between consecutive SSE events", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
     // Seed all 15 to maximize matched books and see full pipeline
-    seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
+    await seedHiveBook(
+      db,
       "bk_fotg",
       "The Fury of the Gods (The Bloodsworn Saga, #3)",
       "John Gwynne",
     );
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(
+      db,
       "bk_sotg",
       "The Shadow of the Gods (The Bloodsworn Saga, #1)",
       "John Gwynne",
     );
-    seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
-    seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
+    await seedHiveBook(db, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
+    await seedHiveBook(
+      db,
       "bk_dall",
       "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
       "Lee Mi-ye",
     );
-    seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
+    await seedHiveBook(
+      db,
       "bk_adsm",
       "A Darker Shade of Magic (Shades of Magic, #1)",
       "Victoria E. Schwab",
     );
-    seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
+    await seedHiveBook(
+      db,
       "bk_notw",
       "The Name of the Wind (The Kingkiller Chronicle, #1)",
       "Patrick Rothfuss",
     );
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(
+      db,
       "bk_nhd",
       "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
       "Marie Brennan",
     );
-    seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
+    await seedHiveBook(db, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -396,6 +415,8 @@ describe("import pipeline simulation — Goodreads", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     const timestamps = events.map((e) => new Date(e.ts).getTime());
 
@@ -411,53 +432,53 @@ describe("import pipeline simulation — Goodreads", () => {
   });
 
   it("provides granular progress updates with batch size 10", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
     // Seed all 15 books
-    seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
+    await seedHiveBook(
+      db,
       "bk_fotg",
       "The Fury of the Gods (The Bloodsworn Saga, #3)",
       "John Gwynne",
     );
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(
+      db,
       "bk_sotg",
       "The Shadow of the Gods (The Bloodsworn Saga, #1)",
       "John Gwynne",
     );
-    seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
-    seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
+    await seedHiveBook(db, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
+    await seedHiveBook(
+      db,
       "bk_dall",
       "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
       "Lee Mi-ye",
     );
-    seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
+    await seedHiveBook(
+      db,
       "bk_adsm",
       "A Darker Shade of Magic (Shades of Magic, #1)",
       "Victoria E. Schwab",
     );
-    seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
+    await seedHiveBook(
+      db,
       "bk_notw",
       "The Name of the Wind (The Kingkiller Chronicle, #1)",
       "Patrick Rothfuss",
     );
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(
+      db,
       "bk_nhd",
       "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
       "Marie Brennan",
     );
-    seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
+    await seedHiveBook(db, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -469,6 +490,8 @@ describe("import pipeline simulation — Goodreads", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     // With 15 books and batch size 10, expect 2 batches (10 + 5).
     // Each batch should produce: book-load events, then batch-save, then book-upload events.
@@ -495,17 +518,17 @@ describe("import pipeline simulation — Goodreads", () => {
 
 describe("import pipeline simulation — StoryGraph", () => {
   it("processes 12 real CSV rows with correct event flow", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
 
     // Seed 8 of 12
-    seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
-    seedHiveBook(sqlite, "bk_oath", "Oathbringer", "Brandon Sanderson");
-    seedHiveBook(sqlite, "bk_neuro", "Neuromancer", "William Gibson");
-    seedHiveBook(sqlite, "bk_wok", "The Way of Kings", "Brandon Sanderson");
-    seedHiveBook(sqlite, "bk_deep", "A Deepness in the Sky", "Vernor Vinge");
-    seedHiveBook(sqlite, "bk_dune", "Dune", "Frank Herbert");
-    seedHiveBook(sqlite, "bk_lev", "Leviathan Wakes", "James S.A. Corey");
-    seedHiveBook(sqlite, "bk_ch", "Chapterhouse: Dune", "Frank Herbert");
+    await seedHiveBook(db, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
+    await seedHiveBook(db, "bk_oath", "Oathbringer", "Brandon Sanderson");
+    await seedHiveBook(db, "bk_neuro", "Neuromancer", "William Gibson");
+    await seedHiveBook(db, "bk_wok", "The Way of Kings", "Brandon Sanderson");
+    await seedHiveBook(db, "bk_deep", "A Deepness in the Sky", "Vernor Vinge");
+    await seedHiveBook(db, "bk_dune", "Dune", "Frank Herbert");
+    await seedHiveBook(db, "bk_lev", "Leviathan Wakes", "James S.A. Corey");
+    await seedHiveBook(db, "bk_ch", "Chapterhouse: Dune", "Frank Herbert");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -517,6 +540,8 @@ describe("import pipeline simulation — StoryGraph", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     const eventTypes = events.map((e) => e.event);
 
@@ -530,26 +555,26 @@ describe("import pipeline simulation — StoryGraph", () => {
   });
 
   it("batch-save events always precede their book-upload events", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
 
     // Seed all 12
-    seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
+    await seedHiveBook(
+      db,
       "bk_tomb",
       "The Adventures of Tom Bombadil and Other Verses from the Red Book",
       "J.R.R. Tolkien",
     );
-    seedHiveBook(sqlite, "bk_whip", "Whipping Star", "Frank Herbert");
-    seedHiveBook(sqlite, "bk_oath", "Oathbringer", "Brandon Sanderson");
-    seedHiveBook(sqlite, "bk_fotg", "The Fury of the Gods", "John Gwynne");
-    seedHiveBook(sqlite, "bk_neuro", "Neuromancer", "William Gibson");
-    seedHiveBook(sqlite, "bk_wok", "The Way of Kings", "Brandon Sanderson");
-    seedHiveBook(sqlite, "bk_deep", "A Deepness in the Sky", "Vernor Vinge");
-    seedHiveBook(sqlite, "bk_dune", "Dune", "Frank Herbert");
-    seedHiveBook(sqlite, "bk_lev", "Leviathan Wakes", "James S.A. Corey");
-    seedHiveBook(sqlite, "bk_ch", "Chapterhouse: Dune", "Frank Herbert");
-    seedHiveBook(sqlite, "bk_dos", "Dreams of Steel", "Glen Cook");
+    await seedHiveBook(db, "bk_whip", "Whipping Star", "Frank Herbert");
+    await seedHiveBook(db, "bk_oath", "Oathbringer", "Brandon Sanderson");
+    await seedHiveBook(db, "bk_fotg", "The Fury of the Gods", "John Gwynne");
+    await seedHiveBook(db, "bk_neuro", "Neuromancer", "William Gibson");
+    await seedHiveBook(db, "bk_wok", "The Way of Kings", "Brandon Sanderson");
+    await seedHiveBook(db, "bk_deep", "A Deepness in the Sky", "Vernor Vinge");
+    await seedHiveBook(db, "bk_dune", "Dune", "Frank Herbert");
+    await seedHiveBook(db, "bk_lev", "Leviathan Wakes", "James S.A. Corey");
+    await seedHiveBook(db, "bk_ch", "Chapterhouse: Dune", "Frank Herbert");
+    await seedHiveBook(db, "bk_dos", "Dreams of Steel", "Glen Cook");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -561,6 +586,8 @@ describe("import pipeline simulation — StoryGraph", () => {
       agent,
       onSSE,
     });
+
+    await pool.end();
 
     const eventTypes = events.map((e) => e.event);
     const batchSaveIndices = eventTypes
@@ -589,9 +616,9 @@ describe("import pipeline simulation — StoryGraph", () => {
   });
 
   it("SSE event IDs are strictly monotonically increasing", async () => {
-    const { db, sqlite } = await createTestDb();
-    seedHiveBook(sqlite, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
-    seedHiveBook(sqlite, "bk_dune", "Dune", "Frank Herbert");
+    const { db, pool } = await createTestDb();
+    await seedHiveBook(db, "bk_aa", "Assassin's Apprentice", "Robin Hobb");
+    await seedHiveBook(db, "bk_dune", "Dune", "Frank Herbert");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -604,6 +631,8 @@ describe("import pipeline simulation — StoryGraph", () => {
       onSSE,
     });
 
+    await pool.end();
+
     const ids = events.map((e) => e.id!);
     for (let i = 1; i < ids.length; i++) {
       expect(ids[i]!).toBeGreaterThan(ids[i - 1]!);
@@ -613,9 +642,9 @@ describe("import pipeline simulation — StoryGraph", () => {
 
 describe("import pipeline simulation — batch write fallback", () => {
   it("falls back to individual writes when batch write fails", async () => {
-    const { db, sqlite } = await createTestDb();
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
+    const { db, pool } = await createTestDb();
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(db, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
 
     // Make batch write fail so it falls back to individual writes
     mockUpdateBookRecords.mockImplementationOnce(async () => {
@@ -639,6 +668,8 @@ describe("import pipeline simulation — batch write fallback", () => {
       onSSE,
     });
 
+    await pool.end();
+
     const eventTypes = events.map((e) => e.event);
 
     // Should still complete successfully via individual fallback
@@ -654,53 +685,53 @@ describe("import pipeline simulation — batch write fallback", () => {
 
 describe("import pipeline simulation — timing characteristics", () => {
   it("total pipeline time stays within expected bounds for 15 books", async () => {
-    const { db, sqlite } = await createTestDb();
+    const { db, pool } = await createTestDb();
     // Seed all 15
-    seedHiveBook(sqlite, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_onyx", "Onyx Storm (The Empyrean, #3)", "Rebecca Yarros");
+    await seedHiveBook(
+      db,
       "bk_fotg",
       "The Fury of the Gods (The Bloodsworn Saga, #3)",
       "John Gwynne",
     );
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(
+      db,
       "bk_sotg",
       "The Shadow of the Gods (The Bloodsworn Saga, #1)",
       "John Gwynne",
     );
-    seedHiveBook(sqlite, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
-    seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_wild", "Wild Dark Shore", "Charlotte McConaghy");
+    await seedHiveBook(db, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
+    await seedHiveBook(
+      db,
       "bk_dall",
       "DallerGut Dream Department Store (DallerGut Dream Department Store, #1)",
       "Lee Mi-ye",
     );
-    seedHiveBook(sqlite, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
-    seedHiveBook(sqlite, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_koa", "Kingdom of Ash (Throne of Glass, #7)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_tod", "Tower of Dawn (Throne of Glass, #6)", "Sarah J. Maas");
+    await seedHiveBook(db, "bk_eos", "Empire of Storms (Throne of Glass, #5)", "Sarah J. Maas");
+    await seedHiveBook(
+      db,
       "bk_adsm",
       "A Darker Shade of Magic (Shades of Magic, #1)",
       "Victoria E. Schwab",
     );
-    seedHiveBook(sqlite, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_afe", "A Fire Endless (Elements of Cadence, #2)", "Rebecca   Ross");
+    await seedHiveBook(
+      db,
       "bk_notw",
       "The Name of the Wind (The Kingkiller Chronicle, #1)",
       "Patrick Rothfuss",
     );
-    seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
-    seedHiveBook(
-      sqlite,
+    await seedHiveBook(db, "bk_omw", "Old Man's War", "John Scalzi");
+    await seedHiveBook(
+      db,
       "bk_nhd",
       "A Natural History of Dragons (The Memoirs of Lady Trent, #1)",
       "Marie Brennan",
     );
-    seedHiveBook(sqlite, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
+    await seedHiveBook(db, "bk_med", "Medusa's Sisters", "Lauren J.A. Bear");
 
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
@@ -714,6 +745,8 @@ describe("import pipeline simulation — timing characteristics", () => {
       onSSE,
     });
     const elapsed = performance.now() - start;
+
+    await pool.end();
 
     // With batch size 10 and concurrent search within each batch:
     // Batch 1: ~SEARCH_DELAY_P50 (concurrent) + PDS_BATCH_DELAY = ~130ms

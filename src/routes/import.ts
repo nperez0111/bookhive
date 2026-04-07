@@ -119,8 +119,7 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
       type,
       storedSession,
       csvData,
-      dbPath: env.DB_PATH,
-      kvPath: env.KV_DB_PATH,
+      databaseUrl: env.DATABASE_URL,
     };
 
     // Send SSE keepalives every 5s to prevent Bun's idle timeout (default 10s)

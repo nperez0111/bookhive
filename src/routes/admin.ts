@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import fs from "node:fs";
-import path from "node:path";
 
 import type { AppEnv } from "../context";
 import { env } from "../env";
@@ -85,17 +84,7 @@ const admin = new Hono<AppEnv>()
         return c.json({ message: "Not Found" }, 404);
       }
 
-      if (!env.DB_PATH || env.DB_PATH === ":memory:") {
-        ctx.addWideEventContext({
-          admin_export: "invalid",
-          client_ip: clientIp,
-          db_path: env.DB_PATH,
-        });
-        return c.json({ message: "DB exports require DB_PATH to be a file path" }, 400);
-      }
-
-      const exportDir =
-        env.DB_EXPORT_DIR?.trim() || path.join(path.dirname(env.DB_PATH), "exports");
+      const exportDir = env.DB_EXPORT_DIR?.trim() || "/tmp/bookhive-exports";
 
       ctx.addWideEventContext({
         admin_export: "started",
@@ -113,14 +102,9 @@ const admin = new Hono<AppEnv>()
       try {
         await fs.promises.mkdir(exportDir, { recursive: true });
 
-        const includeKv =
-          Boolean(env.KV_DB_PATH) && env.KV_DB_PATH !== ":memory:" && fs.existsSync(env.KV_DB_PATH);
-
         prepared = await prepareSanitizedExportFiles({
-          dbPath: env.DB_PATH,
-          kvPath: includeKv ? env.KV_DB_PATH : undefined,
+          databaseUrl: env.DATABASE_URL,
           exportDir,
-          includeKv,
         });
       } catch (err) {
         const duration = Date.now() - startTimeExport;

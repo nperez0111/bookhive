@@ -29,7 +29,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
-import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
+import pgKv from "./pg-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
 
@@ -112,41 +112,31 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
-  const { db, sqlite } = createDb(env.DB_PATH);
+  const { db, pool } = createDb(env.DATABASE_URL);
   logger.info("starting DB migrations");
   const migrationStart = Date.now();
-  const migrationResults = await migrateToLatest(db, sqlite);
+  const migrationResults = await migrateToLatest(db);
   logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
   if (migrationResults.length > 0) {
     logger.info(
       { migrations: migrationResults.map((r) => r.migrationName) },
-      "migrations applied, deferring VACUUM to background",
+      "migrations applied",
     );
-    // Run VACUUM in the background — it reclaims space but shouldn't block server startup.
-    setTimeout(() => {
-      const vacuumStart = Date.now();
-      sqlite.exec("VACUUM");
-      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
-    }, 5_000);
   }
 
-  // Single shared connection for all KV tables on KV_DB_PATH.
-  const kvDb = createSharedKvDb(env.KV_DB_PATH);
+  // KV tables share the same PostgreSQL pool.
   const kv = createStorage({
-    driver: sqliteKv({ table: "kv", db: kvDb }),
+    driver: pgKv({ table: "kv", pool }),
   });
 
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
-  kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
-  kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
-
-  // Auth tables: in development use a separate file; in production share the main KV connection.
-  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
-  kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
-  kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
+  kv.mount("profile:", pgKv({ table: "kv_profile", pool }));
+  kv.mount("identity:", pgKv({ table: "kv_identity", pool }));
+  kv.mount("follows_sync:", pgKv({ table: "kv_follows_sync", pool }));
+  kv.mount("auth_session:", pgKv({ table: "kv_auth_sessions", pool }));
+  kv.mount("auth_state:", pgKv({ table: "kv_auth_state", pool }));
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
   const oauthClient = await createOAuthClient(kv);

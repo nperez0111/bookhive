@@ -183,8 +183,11 @@ export type HiveBook = {
   hiveBookCatalogUpdatedAt: string | null;
 };
 
+import type { Generated } from "kysely";
+
 /** Row shape for hive_book_genre (denormalized for fast /genres listing). */
 export type HiveBookGenre = {
+  id: Generated<number>;
   hiveId: HiveId;
   genre: string;
 };

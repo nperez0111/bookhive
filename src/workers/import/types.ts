@@ -9,8 +9,7 @@ export type ImportRequest = {
   type: "goodreads" | "storygraph";
   storedSession: StoredSession;
   csvData: ArrayBuffer;
-  dbPath: string;
-  kvPath: string;
+  databaseUrl: string;
 };
 
 /** Worker → main thread: relay an SSE event. */

@@ -1,0 +1,23 @@
+# Dev-only PostgreSQL. Start with: docker compose -f compose.dev.yaml up -d
+# Stop with:                      docker compose -f compose.dev.yaml down
+# Wipe data:                      docker compose -f compose.dev.yaml down -v
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bookhive
+      POSTGRES_PASSWORD: bookhive
+      POSTGRES_USER: bookhive
+    ports:
+      - "5432:5432"
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bookhive"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  dev-db-data:

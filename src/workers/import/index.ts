@@ -10,10 +10,10 @@ import { processGoodreadsImport, processStorygraphImport } from "./logic";
 declare var self: Worker;
 
 self.onmessage = async (event: MessageEvent<ImportRequest>) => {
-  const { type, storedSession, csvData, dbPath, kvPath } = event.data;
+  const { type, storedSession, csvData, databaseUrl } = event.data;
 
   try {
-    const { ctx, agent } = await createWorkerContext({ storedSession, dbPath, kvPath });
+    const { ctx, agent } = await createWorkerContext({ storedSession, databaseUrl });
 
     const onSSE = (data: string) => {
       self.postMessage({ type: "sse", data } satisfies ImportWorkerMessage);
