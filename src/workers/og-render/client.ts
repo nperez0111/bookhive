@@ -13,7 +13,7 @@ function getWorker(): Worker {
 
   const isBundled = import.meta.url.includes(".output/");
   const workerUrl = isBundled
-    ? new URL("./workers/og-render/og-render-worker.js", import.meta.url).href
+    ? new URL("./workers/og-render-worker.js", import.meta.url).href
     : new URL("./og-render-worker.tsx", import.meta.url).href;
 
   worker = new Worker(workerUrl);

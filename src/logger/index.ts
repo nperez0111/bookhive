@@ -14,7 +14,7 @@ function createOpenObserveStream(): Writable | null {
   }
 
   const workerUrl = isBundled
-    ? new URL("./logger/open-observe-worker.js", import.meta.url).href
+    ? new URL("./workers/open-observe-worker.js", import.meta.url).href
     : new URL("../workers/open-observe-worker.ts", import.meta.url).href;
 
   loggerWorker = new Worker(workerUrl);
