@@ -165,10 +165,10 @@ export function mainRouter(deps: AppDeps): HonoServer {
     if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
       return c.redirect("/app");
     }
-    startTime(c, "marketing_profile_check");
-    const profile = await c.get("ctx").getProfile();
-    endTime(c, "marketing_profile_check");
-    if (profile) {
+    startTime(c, "marketing_session_check");
+    const did = await c.get("ctx").getSessionDid();
+    endTime(c, "marketing_session_check");
+    if (did) {
       return c.redirect("/home");
     }
     const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";

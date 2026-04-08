@@ -1,9 +1,35 @@
-import React from "react";
-import { Pressable, StyleSheet, View, ViewStyle } from "react-native";
+import React, { useCallback } from "react";
+import { Animated, Pressable, StyleSheet, View, ViewStyle } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { FadeInImage } from "@/components/FadeInImage";
+
+const PRESS_SCALE = 0.96;
+
+function useScalePress() {
+  const scale = React.useRef(new Animated.Value(1)).current;
+
+  const onPressIn = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: PRESS_SCALE,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 0,
+    }).start();
+  }, [scale]);
+
+  const onPressOut = useCallback(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 0,
+    }).start();
+  }, [scale]);
+
+  return { scale, onPressIn, onPressOut };
+}
 
 export type BookCardVariant = "dense" | "list" | "row";
 
@@ -40,6 +66,23 @@ const ROW_SIZES = {
   medium: { cover: { width: 72, height: 108 }, gap: 12 },
 } as const;
 
+/** Inset outline overlay that gives book covers consistent edge definition against any background. */
+function CoverOutline({ borderRadius }: { borderRadius: number }) {
+  return (
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          borderRadius,
+          borderWidth: 1,
+          borderColor: "rgba(0,0,0,0.08)",
+        },
+      ]}
+      pointerEvents="none"
+    />
+  );
+}
+
 export function BookCard({
   title,
   authors,
@@ -55,14 +98,73 @@ export function BookCard({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const variant = resolveVariant(variantProp, orientation);
+  const { scale, onPressIn, onPressOut } = useScalePress();
 
   if (variant === "dense") {
     return (
-      <Pressable onPress={onPress} style={[styles.denseContainer, style]}>
-        <View style={styles.denseCoverWrap}>
-          <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+      <Animated.View style={[styles.denseContainer, { transform: [{ scale }] }, style]}>
+        <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+          <View style={styles.denseCoverWrap}>
+            <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+            <CoverOutline borderRadius={12} />
+          </View>
+          <View style={styles.denseInfo}>
+            <ThemedText
+              style={[styles.title, { color: colors.primaryText }]}
+              numberOfLines={2}
+              type="label"
+            >
+              {title}
+            </ThemedText>
+            <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
+              {authors}
+            </ThemedText>
+          </View>
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
+  if (variant === "list") {
+    return (
+      <Animated.View style={[styles.listContainer, { transform: [{ scale }] }, style]}>
+        <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+          <View style={styles.denseCoverWrap}>
+            <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+            <CoverOutline borderRadius={12} />
+          </View>
+          {children && <View style={styles.listChildren}>{children}</View>}
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
+  // variant === "row"
+  const rowConfig = ROW_SIZES[rowSize];
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={[
+          styles.rowContainer,
+          {
+            backgroundColor: colors.cardBackground,
+            shadowColor: colors.shadowMedium,
+            gap: rowConfig.gap,
+          },
+        ]}
+      >
+        <View style={styles.rowCoverWrap}>
+          <FadeInImage
+            source={{ uri: imageUri }}
+            style={[styles.rowCover, rowConfig.cover]}
+            resizeMode="cover"
+          />
+          <CoverOutline borderRadius={8} />
         </View>
-        <View style={styles.denseInfo}>
+        <View style={styles.rowInfo}>
           <ThemedText
             style={[styles.title, { color: colors.primaryText }]}
             numberOfLines={2}
@@ -73,68 +175,19 @@ export function BookCard({
           <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
             {authors}
           </ThemedText>
+          {meta ? (
+            <ThemedText
+              style={{ color: colors.tertiaryText, marginTop: 2 }}
+              numberOfLines={1}
+              type="caption"
+            >
+              {meta}
+            </ThemedText>
+          ) : null}
+          {children}
         </View>
       </Pressable>
-    );
-  }
-
-  if (variant === "list") {
-    return (
-      <Pressable onPress={onPress} style={[styles.listContainer, style]}>
-        <View style={styles.denseCoverWrap}>
-          <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
-        </View>
-        {children && <View style={styles.listChildren}>{children}</View>}
-      </Pressable>
-    );
-  }
-
-  // variant === "row"
-  const rowConfig = ROW_SIZES[rowSize];
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.rowContainer,
-        {
-          backgroundColor: colors.cardBackground,
-          borderColor: colors.cardBorder,
-          shadowColor: colors.shadowLight,
-          gap: rowConfig.gap,
-        },
-        style,
-      ]}
-    >
-      <View style={styles.rowCoverWrap}>
-        <FadeInImage
-          source={{ uri: imageUri }}
-          style={[styles.rowCover, rowConfig.cover]}
-          resizeMode="cover"
-        />
-      </View>
-      <View style={styles.rowInfo}>
-        <ThemedText
-          style={[styles.title, { color: colors.primaryText }]}
-          numberOfLines={2}
-          type="label"
-        >
-          {title}
-        </ThemedText>
-        <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
-          {authors}
-        </ThemedText>
-        {meta ? (
-          <ThemedText
-            style={{ color: colors.tertiaryText, marginTop: 2 }}
-            numberOfLines={1}
-            type="caption"
-          >
-            {meta}
-          </ThemedText>
-        ) : null}
-        {children}
-      </View>
-    </Pressable>
+    </Animated.View>
   );
 }
 
@@ -174,11 +227,10 @@ const styles = StyleSheet.create({
   rowContainer: {
     flexDirection: "row",
     borderRadius: 16,
-    borderWidth: 1,
     padding: 8,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
     elevation: 3,
   },
   rowCoverWrap: {

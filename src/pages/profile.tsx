@@ -87,19 +87,19 @@ export const ProfilePage: FC<{
             <div class="card-body">
               <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">{booksThisYear}</div>
+                  <div class="text-3xl font-bold text-foreground tabular-nums">{booksThisYear}</div>
                   <div class="text-muted-foreground text-sm">Books in {year}</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">{avgRating}</div>
+                  <div class="text-3xl font-bold text-foreground tabular-nums">{avgRating}</div>
                   <div class="text-muted-foreground text-sm">Avg Rating</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">{booksPerMonth}</div>
+                  <div class="text-3xl font-bold text-foreground tabular-nums">{booksPerMonth}</div>
                   <div class="text-muted-foreground text-sm">Books/Month</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-3xl font-bold text-foreground">
+                  <div class="text-3xl font-bold text-foreground tabular-nums">
                     {pagesRead > 0 ? pagesRead.toLocaleString() : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Pages Read</div>
@@ -121,7 +121,7 @@ export const ProfilePage: FC<{
                             style={`width: ${(g.count / totalBooksForGenre) * 100}%`}
                           />
                         </div>
-                        <span class="text-muted-foreground text-sm">{g.count}</span>
+                        <span class="text-muted-foreground tabular-nums text-sm">{g.count}</span>
                       </div>
                     ))}
                   </div>
@@ -131,7 +131,7 @@ export const ProfilePage: FC<{
               <p class="mt-4">
                 <a
                   href={`/profile/${handle}/stats/${year}`}
-                  class="text-primary hover:underline text-sm font-medium"
+                  class="text-primary hover:underline text-sm font-medium min-h-[40px] inline-flex items-center"
                 >
                   See your Year in Books →
                 </a>
@@ -186,7 +186,7 @@ export const ProfilePage: FC<{
                     <a
                       key={list.uri}
                       href={`/shelves/${handle}/${rkey}`}
-                      class="card group flex flex-col gap-1 p-4 transition-colors hover:border-primary/50"
+                      class="card group flex flex-col gap-1 p-4 transition-[box-shadow,color] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                     >
                       <h3 class="font-semibold text-foreground group-hover:text-primary line-clamp-1">
                         {list.name}
@@ -195,7 +195,8 @@ export const ProfilePage: FC<{
                         <p class="text-sm text-muted-foreground line-clamp-1">{list.description}</p>
                       )}
                       <p class="mt-auto text-xs text-muted-foreground">
-                        {list.itemCount ?? 0} {(list.itemCount ?? 0) === 1 ? "book" : "books"}
+                        <span class="tabular-nums">{list.itemCount ?? 0}</span>{" "}
+                        {(list.itemCount ?? 0) === 1 ? "book" : "books"}
                       </p>
                     </a>
                   );
@@ -244,7 +245,7 @@ export const ProfilePage: FC<{
                       <a
                         key={user.did}
                         href={`/profile/${user.handle ?? user.did}`}
-                        class="card flex items-center gap-2 p-2 transition-colors hover:border-primary/50"
+                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
                           handle={user.handle ?? user.did}
@@ -263,7 +264,7 @@ export const ProfilePage: FC<{
                       <a
                         key={user.did}
                         href={`/profile/${user.handle ?? user.did}`}
-                        class="card flex items-center gap-2 p-2 transition-colors hover:border-primary/50"
+                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
                           handle={user.handle ?? user.did}

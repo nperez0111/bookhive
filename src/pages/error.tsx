@@ -40,10 +40,10 @@ export const Error: FC<{
         <p class="text-muted-foreground max-w-md text-pretty text-sm sm:text-base">{description}</p>
       ) : undefined}
       <div class="mt-2 flex flex-wrap items-center justify-center gap-3">
-        <a href="/" class="btn btn-primary">
+        <a href="/" class="btn btn-primary min-h-10 min-w-10">
           Go back home
         </a>
-        <a href="/support" class="btn btn-ghost text-sm">
+        <a href="/support" class="btn btn-ghost min-h-10 min-w-10 text-sm">
           Contact support <span aria-hidden="true">&rarr;</span>
         </a>
       </div>

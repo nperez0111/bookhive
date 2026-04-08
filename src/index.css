@@ -55,6 +55,11 @@ body {
   @apply h-full;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* Subtle honeycomb - no pattern (Firefox fix), explicit colors, theme-aware */
 /* SVGs inlined as data URIs to avoid Bun bundler resolution and eliminate extra HTTP requests */
 html {
@@ -102,6 +107,12 @@ body {
 /* Book cover view transitions */
 .book-cover {
   view-transition-name: var(--book-cover-name);
+  outline: 1px solid rgba(0, 0, 0, 0.1);
+  outline-offset: -1px;
+}
+
+.dark .book-cover {
+  outline-color: rgba(255, 255, 255, 0.1);
 }
 
 .book-title {
@@ -161,12 +172,21 @@ body {
 }
 
 .sidebar > ul a {
-  @apply text-foreground block rounded-md px-3 py-2 text-sm font-medium transition-colors;
+  @apply text-foreground block rounded-md px-3 py-2 text-sm font-medium;
+  transition-property: background-color, color, scale;
+  transition-duration: 150ms;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
 }
 
 .sidebar > ul a:hover {
   @apply bg-muted text-foreground;
+}
+
+.sidebar > ul a:active {
+  scale: 0.96;
 }
 
 .sidebar > ul a[aria-current="page"] {
@@ -187,13 +207,21 @@ body {
 
 .sidebar footer a,
 .sidebar footer button {
-  @apply text-muted-foreground inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm no-underline transition-colors;
+  @apply text-muted-foreground inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm no-underline;
+  transition-property: background-color, color, scale;
+  transition-duration: 150ms;
+  min-height: 40px;
   white-space: nowrap;
 }
 
 .sidebar footer a:hover,
 .sidebar footer button:hover {
   @apply bg-muted text-foreground;
+}
+
+.sidebar footer a:active,
+.sidebar footer button:active {
+  scale: 0.96;
 }
 
 .sidebar footer a[aria-current="page"] {
@@ -331,6 +359,28 @@ select.select,
 .dark :is(.form, .field) select,
 .dark :is(.form, .field) textarea {
   background-color: var(--input);
+}
+
+/* Tactile button feedback */
+.btn {
+  transition-property: scale, background-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.btn:active:not(:disabled) {
+  scale: 0.96;
+}
+
+/* Typography polish */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 /* Card parts (used with .card from basecoat) */

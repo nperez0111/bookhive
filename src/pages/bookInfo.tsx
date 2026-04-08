@@ -55,7 +55,7 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
 
   if (!peerBooks.length) {
     return (
-      <div class="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-sm">
+      <div class="rounded-xl bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
         Be the first to read this on BookHive!
       </div>
     );
@@ -63,7 +63,10 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div class="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-sm">
+      <div
+        class="rounded-xl bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
+        style={{ textWrap: "balance" }}
+      >
         You are the only one to have added this on BookHive, so far!
       </div>
     );
@@ -82,14 +85,14 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
             <a
               key={related.userDid}
               href={`/profile/${handle}`}
-              class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
+              class="flex items-center gap-3 rounded-xl bg-card px-3 py-2 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] transition-[background-color] duration-150 hover:bg-muted"
             >
               {avatar ? (
                 <img
                   src={avatar}
                   alt=""
                   loading="lazy"
-                  class="h-8 w-8 shrink-0 rounded-full object-cover"
+                  class="h-8 w-8 shrink-0 rounded-full object-cover outline outline-1 outline-black/10 dark:outline-white/10"
                 />
               ) : (
                 <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
@@ -114,7 +117,10 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
         })}
       </div>
       {remaining > 0 && (
-        <p class="px-1 text-xs text-muted-foreground">
+        <p
+          class="px-1 text-xs text-muted-foreground"
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
           + {remaining} more {remaining === 1 ? "person" : "people"}
         </p>
       )}
@@ -265,15 +271,15 @@ export const BookInfo: FC<{
               <div class="relative m-0 grid cursor-default break-inside-avoid">
                 <div class="relative">
                   <div class="absolute top-[1%] left-4 h-[96%] w-[90%] rounded-r-md border border-gray-400 bg-white shadow-[10px_40px_40px_-10px_rgba(0,0,0,0.12),inset_-2px_0_0_gray,inset_-3px_0_0_#dbdbdb,inset_-4px_0_0_white,inset_-5px_0_0_#dbdbdb,inset_-6px_0_0_white,inset_-7px_0_0_#dbdbdb,inset_-8px_0_0_white,inset_-9px_0_0_#dbdbdb]" />
-                  <div class="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
+                  <div class="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-[transform,box-shadow] duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
                     <img
                       src={`${book.cover || book.thumbnail}`}
                       alt={`Cover of ${book.title}`}
-                      class="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover"
+                      class="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover outline outline-1 outline-black/5"
                       style={`--book-cover-name: book-cover-${book.id}`}
                     />
-                    <div class="absolute top-0 z-[5] ml-4 h-full w-5 border-l-2 border-black/5 bg-gradient-to-r from-white/20 to-transparent transition-all duration-500 group-hover:ml-[14px]" />
-                    <div class="absolute top-0 right-0 z-[4] h-full w-[90%] rounded bg-gradient-to-r from-transparent to-white/20 opacity-10 transition-all duration-500" />
+                    <div class="absolute top-0 z-[5] ml-4 h-full w-5 border-l-2 border-black/5 bg-gradient-to-r from-white/20 to-transparent transition-[margin] duration-500 group-hover:ml-[14px]" />
+                    <div class="absolute top-0 right-0 z-[4] h-full w-[90%] rounded bg-gradient-to-r from-transparent to-white/20 opacity-10 transition-opacity duration-500" />
                   </div>
                 </div>
               </div>
@@ -283,7 +289,7 @@ export const BookInfo: FC<{
             <div class="flex-1">
               <h1
                 class="book-title mb-1 text-2xl font-bold md:text-3xl dark:text-gray-100"
-                style={`--book-title-name: book-title-${book.id}`}
+                style={`--book-title-name: book-title-${book.id}; text-wrap: balance`}
               >
                 {book.title}
               </h1>
@@ -305,9 +311,19 @@ export const BookInfo: FC<{
               {/* Rating display */}
               <div class="mb-4 flex items-center gap-2">
                 <StarDisplay rating={(book.rating || 0) / 1000} />
-                {book.rating && <span class="text-lg font-semibold">{book.rating / 1000}</span>}
+                {book.rating && (
+                  <span
+                    class="text-lg font-semibold"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {book.rating / 1000}
+                  </span>
+                )}
                 {book.ratingsCount && (
-                  <span class="text-sm text-muted-foreground">
+                  <span
+                    class="text-sm text-muted-foreground"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
                     ({book.ratingsCount.toLocaleString()} ratings)
                   </span>
                 )}
@@ -347,7 +363,7 @@ export const BookInfo: FC<{
                           aria-haspopup="listbox"
                           aria-expanded="false"
                           id="status-dropdown"
-                          class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
+                          class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
                             usersBook?.status
                               ? "bg-primary text-primary-foreground hover:bg-primary/90"
                               : "bg-accent text-accent-foreground hover:bg-accent/80"
@@ -381,7 +397,7 @@ export const BookInfo: FC<{
                         <div
                           role="listbox"
                           id="status-dropdown-menu"
-                          class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                          class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
                         >
                           <div class="p-1">
                             {[
@@ -397,7 +413,7 @@ export const BookInfo: FC<{
                                 aria-selected={usersBook?.status === status.value}
                                 name="status"
                                 value={status.value}
-                                class={`relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${
+                                class={`relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
                                   usersBook?.status === status.value
                                     ? "bg-primary text-primary-foreground"
                                     : "text-foreground hover:bg-muted"
@@ -474,7 +490,7 @@ export const BookInfo: FC<{
                         type="submit"
                         name="owned"
                         value={usersBook?.owned ? "false" : "true"}
-                        class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-colors focus:ring-2 focus:ring-primary focus:outline-none ${
+                        class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
                           usersBook?.owned
                             ? "bg-primary text-primary-foreground hover:bg-primary/90"
                             : "bg-accent text-accent-foreground hover:bg-accent/80"
@@ -504,7 +520,7 @@ export const BookInfo: FC<{
                     <button
                       type="button"
                       id="share-btn"
-                      class="btn btn-ghost btn-sm"
+                      class="btn btn-ghost btn-sm min-h-10 min-w-10"
                       aria-haspopup="true"
                       aria-expanded="false"
                     >
@@ -525,7 +541,7 @@ export const BookInfo: FC<{
                     </button>
                     <div
                       id="share-menu"
-                      class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                      class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
                     >
                       <div class="p-1">
                         <a
@@ -644,7 +660,7 @@ export const BookInfo: FC<{
               {/* Metadata row */}
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {pubDetails.length > 0 && <span>{pubDetails.join(" \u00B7 ")}</span>}
-                {meta?.numPages && <span>{meta.numPages} pages</span>}
+                {meta?.numPages && <span class="tabular-nums">{meta.numPages} pages</span>}
                 {seriesData && (
                   <span>
                     {seriesData.title}
@@ -683,7 +699,7 @@ export const BookInfo: FC<{
                     <a
                       key={index}
                       href={`/genres/${encodeURIComponent(genre)}`}
-                      class="genre-name rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
+                      class="genre-name min-h-[40px] inline-flex items-center rounded-full bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
                       style={`--genre-name: genre-${genre}`}
                     >
                       {genre}
@@ -704,7 +720,7 @@ export const BookInfo: FC<{
             <input type="checkbox" id="desc-expand" class="peer hidden" />
             <div
               class="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-gray-700 peer-checked:line-clamp-none dark:text-gray-300"
-              style="display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden;"
+              style="display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty"
               id="desc-content"
               dangerouslySetInnerHTML={{ __html: book.description }}
             />
@@ -809,7 +825,7 @@ export const BookInfo: FC<{
                     {!!usersBook?.bookProgress?.percent && (
                       <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                         <div
-                          class="h-full rounded-full bg-primary transition-all"
+                          class="h-full rounded-full bg-primary transition-[width] duration-300"
                           style={`width: ${usersBook.bookProgress.percent}%`}
                         />
                       </div>
@@ -927,7 +943,10 @@ export const BookInfo: FC<{
                 )}
 
                 {/* Save button */}
-                <button type="submit" class="btn btn-primary w-full sm:w-auto">
+                <button
+                  type="submit"
+                  class="btn btn-primary w-full transition-[scale] duration-150 active:scale-[0.96] sm:w-auto"
+                >
                   Save
                 </button>
               </div>
@@ -939,7 +958,7 @@ export const BookInfo: FC<{
                 <button
                   type="button"
                   id="delete-book-btn"
-                  class="cursor-pointer text-xs text-muted-foreground hover:text-destructive"
+                  class="min-h-[40px] inline-flex items-center cursor-pointer text-xs text-muted-foreground hover:text-destructive"
                 >
                   Remove from library
                 </button>
@@ -948,7 +967,7 @@ export const BookInfo: FC<{
                   class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
                 >
                   <h3 class="mb-2 text-lg font-semibold">Remove book?</h3>
-                  <p class="mb-4 text-sm text-muted-foreground">
+                  <p class="mb-4 text-sm text-muted-foreground" style={{ textWrap: "pretty" }}>
                     This will remove "{book.title}" from your library. This cannot be undone.
                   </p>
                   <div class="flex justify-end gap-2">
@@ -1114,7 +1133,7 @@ export const BookInfo: FC<{
                           <BookTooltip book={bookData} position="bottom" />
                           <a
                             href={`/books/${other.id}`}
-                            class="block overflow-hidden rounded-lg transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+                            class="block overflow-hidden rounded-lg outline outline-1 outline-black/10 transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg dark:outline-white/10"
                           >
                             <CoverImage book={bookData} class="h-28 w-20 object-cover" />
                           </a>
@@ -1196,7 +1215,7 @@ export const BookInfo: FC<{
                             <button
                               type="submit"
                               title={`Remove from ${shelf.name}`}
-                              class="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                              class="relative flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color] duration-150 before:absolute before:inset-[-8px] before:content-[''] hover:bg-destructive/20 hover:text-destructive"
                             >
                               <svg
                                 viewBox="0 0 24 24"
@@ -1255,7 +1274,7 @@ export const BookInfo: FC<{
                       <div
                         role="listbox"
                         id="add-to-shelf-menu"
-                        class="invisible absolute z-10 mt-1 w-full rounded-md bg-card opacity-0 shadow-lg ring-1 ring-border transition-all duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                        class="invisible absolute z-10 mt-1 w-full rounded-md bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
                       >
                         <div class="p-1">
                           {availableShelves.map((list) => {
@@ -1267,7 +1286,7 @@ export const BookInfo: FC<{
                                 role="option"
                                 name="shelfPath"
                                 value={`${userHandle}/${rkey}`}
-                                class="relative my-0.5 w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                                class="relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                               >
                                 {list.name}
                               </button>
@@ -1314,7 +1333,12 @@ export const BookInfo: FC<{
       <div>
         <CommentsSection book={book} did={did} reviewId={reviewId}>
           <h2 class="mb-5 text-2xl font-bold text-foreground">
-            Reviews{reviewsOfThisBook.length > 0 && ` (${reviewsOfThisBook.length})`}
+            Reviews
+            {reviewsOfThisBook.length > 0 && (
+              <span
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >{` (${reviewsOfThisBook.length})`}</span>
+            )}
           </h2>
           {reviewsOfThisBook.length === 0 && (
             <p class="mb-4 text-sm text-muted-foreground">

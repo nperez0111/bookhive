@@ -37,7 +37,10 @@ export const ShelfViewPage: FC<{
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <a href={`/shelves/${handle}`} class="text-sm text-muted-foreground hover:text-primary">
+            <a
+              href={`/shelves/${handle}`}
+              class="inline-flex min-h-[40px] items-center text-sm text-muted-foreground hover:text-primary"
+            >
               Shelves
             </a>
             <span class="text-muted-foreground">/</span>
@@ -45,10 +48,13 @@ export const ShelfViewPage: FC<{
           <h1 class="mt-1 text-2xl font-bold text-foreground">{list.name}</h1>
           {list.description && <p class="mt-2 text-muted-foreground">{list.description}</p>}
           <div class="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
-            <a href={`/profile/${handle}`} class="hover:text-primary">
+            <a
+              href={`/profile/${handle}`}
+              class="inline-flex min-h-[40px] items-center hover:text-primary"
+            >
               @{handle}
             </a>
-            <span>
+            <span class="tabular-nums">
               {items.length} {items.length === 1 ? "book" : "books"}
             </span>
             {Boolean(list.ordered) && <span class="badge badge-sm">Ranked</span>}
@@ -113,13 +119,13 @@ export const ShelfViewPage: FC<{
             {searchResults.length > 0 && (
               <div class="space-y-2">
                 <p class="text-xs font-medium text-muted-foreground">
-                  {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for "
-                  {searchQuery}"
+                  <span class="tabular-nums">{searchResults.length}</span> result
+                  {searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
                 </p>
                 {searchResults.map((book) => (
                   <div
                     key={book.id}
-                    class="flex items-center gap-3 rounded-lg border border-border bg-background p-2"
+                    class="flex items-center gap-3 rounded-xl bg-background p-2 shadow-sm"
                   >
                     <BookCard
                       variant="row"
@@ -150,7 +156,7 @@ export const ShelfViewPage: FC<{
 
       {/* Book list */}
       {items.length === 0 && !searchQuery ? (
-        <div class="rounded-xl border border-border bg-card px-6 py-12 text-center">
+        <div class="rounded-xl bg-card px-6 py-12 text-center shadow-sm">
           <p class="text-lg text-muted-foreground">This shelf is empty.</p>
           {isOwner && (
             <p class="mt-2 text-sm text-muted-foreground">
@@ -177,7 +183,7 @@ export const ShelfViewPage: FC<{
                 book={bookData}
                 badge={
                   list.ordered ? (
-                    <div class="absolute top-1 left-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold text-white">
+                    <div class="absolute top-1 left-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold tabular-nums text-white">
                       {index + 1}
                     </div>
                   ) : undefined
@@ -198,7 +204,7 @@ export const ShelfViewPage: FC<{
                         <input type="hidden" name="itemUri" value={item.uri} />
                         <button
                           type="submit"
-                          class="rounded bg-destructive/80 px-1.5 py-0.5 text-xs text-white hover:bg-destructive"
+                          class="min-h-[32px] min-w-[40px] rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
                           title="Remove from shelf"
                         >
                           Remove

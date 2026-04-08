@@ -23,13 +23,13 @@ export const LibraryImport: FC = () => {
                   class="peer sr-only"
                   defaultChecked
                 />
-                <div class="card flex flex-1 items-center border-2 px-4 py-3 transition-colors peer-checked:border-primary peer-checked:bg-primary/5 hover:border-border min-w-[140px]">
+                <div class="card flex flex-1 items-center px-4 py-3 shadow-sm min-h-[44px] transition-[box-shadow,background-color] duration-150 peer-checked:shadow-[0_0_0_2px_var(--primary)] peer-checked:bg-primary/5 hover:shadow-md min-w-[140px]">
                   <span class="font-medium text-foreground">From Goodreads</span>
                 </div>
               </label>
               <label class="flex cursor-pointer">
                 <input type="radio" name="import-service" value="storygraph" class="peer sr-only" />
-                <div class="card flex flex-1 items-center border-2 px-4 py-3 transition-colors peer-checked:border-primary peer-checked:bg-primary/5 hover:border-border min-w-[140px]">
+                <div class="card flex flex-1 items-center px-4 py-3 shadow-sm min-h-[44px] transition-[box-shadow,background-color] duration-150 peer-checked:shadow-[0_0_0_2px_var(--primary)] peer-checked:bg-primary/5 hover:shadow-md min-w-[140px]">
                   <span class="font-medium text-foreground">From StoryGraph</span>
                 </div>
               </label>
@@ -70,7 +70,7 @@ export const LibraryImport: FC = () => {
           {/* File upload: drag-drop zone visual */}
           <label
             id="import-controls"
-            class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 transition-colors hover:border-primary/50 hover:bg-muted/50"
+            class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 transition-[border-color,background-color,scale] duration-150 hover:border-primary/50 hover:bg-muted/50 active:scale-[0.98]"
             role="button"
             tabindex={0}
           >

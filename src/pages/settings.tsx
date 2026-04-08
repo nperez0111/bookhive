@@ -18,7 +18,7 @@ export const SettingsPage: FC<{ handle: string }> = ({ handle }) => {
           <button
             type="button"
             id="delete-account-btn"
-            class="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            class="mt-4 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-[background-color,scale] duration-150 ease-out hover:bg-red-700 active:scale-[0.96]"
           >
             Delete my account
           </button>
@@ -42,11 +42,11 @@ export const SettingsPage: FC<{ handle: string }> = ({ handle }) => {
                   type="submit"
                   id="confirm-delete-btn"
                   disabled
-                  class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white opacity-50 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-[background-color,scale,opacity] duration-150 ease-out hover:bg-red-700 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Permanently delete my data
                 </button>
-                <button type="button" id="cancel-delete-btn" class="btn btn-ghost">
+                <button type="button" id="cancel-delete-btn" class="btn btn-ghost min-h-[40px]">
                   Cancel
                 </button>
               </div>
