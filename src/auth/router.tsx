@@ -6,6 +6,7 @@ import type { Did } from "@atcute/lexicons";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import { env } from "../env";
 import type { AppContext, HonoServer, Session } from "../context";
+import { setCachedSessionClient } from "../context";
 import { Layout } from "../pages/layout";
 
 import { Error } from "../pages/error";
@@ -81,6 +82,12 @@ export function loginRouter(
       await clientSession.save();
 
       const agent = sessionClientFromOAuthSession(session);
+
+      // Pre-warm the in-memory session cache so the first request after login
+      // doesn't need to call oauthClient.restore() (which can race with onLogin background tasks).
+      const tokenInfo = await session.getTokenInfo(false);
+      setCachedSessionClient(session.did, agent, tokenInfo.expiresAt?.getTime());
+
       await onLogin({ agent, ctx: c.get("ctx") });
 
       if (state && typeof state === "object" && "redirectUri" in state) {
@@ -115,7 +122,11 @@ export function loginRouter(
         }
       }
 
-      return c.redirect("/");
+      // Redirect to /home instead of / — the marketing page at / is cached by the browser
+      // (Cache-Control: public, max-age=3600), so a redirect there after login would serve
+      // the stale signed-out page. /home is never cached and handles unauthenticated users
+      // by redirecting to / itself.
+      return c.redirect("/home");
     } catch (err: unknown) {
       const errMsg =
         typeof err === "object" && err !== null && "message" in err
