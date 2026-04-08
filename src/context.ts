@@ -231,7 +231,7 @@ function getCachedSessionClient(did: string): { client: SessionClient; needsSave
   };
 }
 
-function setCachedSessionClient(
+export function setCachedSessionClient(
   did: string,
   client: SessionClient,
   tokenExpiresAt: number | undefined,
