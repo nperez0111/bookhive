@@ -164,7 +164,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   // In dev, Bun runs the .ts source directly.
   const isBundled = import.meta.url.includes(".output/");
   const workerUrl = isBundled
-    ? new URL("./ingester-worker.js", import.meta.url).href
+    ? new URL("./workers/ingester-worker.js", import.meta.url).href
     : new URL("./workers/ingester-worker.ts", import.meta.url).href;
   const ingesterWorker = new Worker(workerUrl);
   ingesterWorker.onmessage = (event: MessageEvent) => {

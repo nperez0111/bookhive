@@ -11,21 +11,27 @@ function standaloneBundles(): Plugin {
   const bundles = [
     {
       entrypoint: "./src/workers/ingester-worker.ts",
-      outdir: "./.output/server",
+      outdir: "./.output/server/workers",
       name: "ingester-worker.js",
       label: "Ingester worker",
     },
     {
       entrypoint: "./src/workers/open-observe-worker.ts",
-      outdir: "./.output/server/logger",
+      outdir: "./.output/server/workers",
       name: "open-observe-worker.js",
       label: "OpenObserve logger worker",
     },
     {
       entrypoint: "./src/workers/og-render/og-render-worker.tsx",
-      outdir: "./.output/server/workers/og-render",
+      outdir: "./.output/server/workers",
       name: "og-render-worker.js",
       label: "OG render worker",
+    },
+    {
+      entrypoint: "./src/workers/import/index.ts",
+      outdir: "./.output/server/workers",
+      name: "import-worker.js",
+      label: "Import worker",
     },
   ];
 

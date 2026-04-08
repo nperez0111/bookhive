@@ -48,7 +48,11 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), IMPORT_TIMEOUT_MS);
 
-    const worker = new Worker(new URL("../workers/import/index.ts", import.meta.url));
+    const isBundled = import.meta.url.includes(".output/");
+    const workerUrl = isBundled
+      ? new URL("./workers/import-worker.js", import.meta.url).href
+      : new URL("../workers/import/index.ts", import.meta.url).href;
+    const worker = new Worker(workerUrl);
 
     const cleanup = () => {
       clearTimeout(timeout);
