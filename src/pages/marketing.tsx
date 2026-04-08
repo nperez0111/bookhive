@@ -33,13 +33,10 @@ function MarketingNav({ signupUrl }: { signupUrl: string }) {
           <span class="text-foreground text-lg font-bold">BookHive</span>
         </a>
         <div class="flex items-center gap-2">
-          <a href="/login" class="btn btn-ghost text-sm">
+          <a href="/login" class="btn btn-ghost min-h-[40px] min-w-[40px] text-sm">
             Sign in
           </a>
-          <a
-            href={signupUrl}
-            class="text-primary hover:bg-primary/10 inline-flex h-9 items-center rounded-md px-4 py-2 text-sm font-medium transition-colors"
-          >
+          <a href={signupUrl} class="btn btn-ghost min-h-[40px] min-w-[40px] text-sm">
             Create account
           </a>
         </div>
@@ -83,10 +80,7 @@ function Hero({ signupUrl }: { signupUrl: string }) {
               <a href="/login" class="btn btn-primary">
                 Sign in with Bluesky
               </a>
-              <a
-                href={signupUrl}
-                class="text-primary hover:bg-primary/10 inline-flex items-center rounded-md px-4 py-2.5 text-sm font-medium transition-colors"
-              >
+              <a href={signupUrl} class="btn btn-ghost">
                 Create a free account
               </a>
             </div>
@@ -96,7 +90,7 @@ function Hero({ signupUrl }: { signupUrl: string }) {
               src="/hive.jpg"
               alt="Bee sitting on a stack of books"
               decoding="async"
-              class="w-full rounded-2xl object-cover shadow-xl"
+              class="w-full rounded-2xl object-cover shadow-xl outline outline-1 outline-black/5 dark:outline-white/10"
             />
           </div>
         </div>
@@ -144,7 +138,7 @@ function RecentActivityCard({
 
           return (
             <>
-              {i > 0 && <div class="border-border border-t" />}
+              {i > 0 && <div class="h-px bg-border/60" />}
               <div class="flex gap-3" key={`${activity.userDid}-${activity.hiveId}`}>
                 <a href={`/profile/${handle}`} class="shrink-0">
                   {prof?.avatar ? (
@@ -152,7 +146,7 @@ function RecentActivityCard({
                       src={prof.avatar}
                       alt=""
                       loading="lazy"
-                      class="h-9 w-9 rounded-full object-cover"
+                      class="h-9 w-9 rounded-full object-cover outline outline-1 outline-black/5 dark:outline-white/10"
                     />
                   ) : (
                     <div class="bg-primary/20 flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold">
@@ -435,16 +429,16 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
                 <a
                   key={book.id}
                   href={`/books/${book.id}`}
-                  class="flex items-center gap-3 rounded-lg transition-colors hover:bg-muted/50 p-1 -m-1"
+                  class="flex min-h-[40px] items-center gap-3 rounded-xl transition-colors hover:bg-muted/50 p-2 -m-2"
                 >
-                  <span class="text-muted-foreground w-5 text-center text-sm font-bold">
+                  <span class="text-muted-foreground w-5 text-center text-sm font-bold tabular-nums">
                     {i + 1}
                   </span>
                   {book.thumbnail ? (
                     <img
                       src={book.thumbnail}
                       alt=""
-                      class="h-12 w-8 shrink-0 rounded object-cover"
+                      class="h-12 w-8 shrink-0 rounded object-cover outline outline-1 outline-black/5 dark:outline-white/10"
                       loading="lazy"
                     />
                   ) : (
@@ -454,7 +448,9 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
                     <div class="text-foreground text-sm font-semibold">{book.title}</div>
                     <div class="text-muted-foreground text-xs">{book.authors}</div>
                   </div>
-                  <div class="text-muted-foreground text-xs">{book.readerCount} readers</div>
+                  <div class="text-muted-foreground text-xs">
+                    <span class="tabular-nums">{book.readerCount}</span> readers
+                  </div>
                 </a>
               ))}
             </div>
@@ -652,7 +648,7 @@ function ImportSection() {
                 ].map((source) => (
                   <div
                     key={source.name}
-                    class="border-border flex items-start gap-3 rounded-lg border p-3"
+                    class="flex items-start gap-3 rounded-lg p-3 shadow-[0_0_0_1px_var(--border),0_1px_2px_rgba(0,0,0,0.04)]"
                   >
                     <div class="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
                       <svg
@@ -700,13 +696,13 @@ function FinalCta({ signupUrl }: { signupUrl: string }) {
         <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
           <a
             href="/login"
-            class="bg-primary-foreground text-primary hover:bg-primary-foreground/90 inline-flex items-center justify-center rounded-md px-6 py-2.5 text-sm font-semibold transition-colors"
+            class="btn bg-primary-foreground text-primary hover:bg-primary-foreground/90"
           >
             Sign in with Bluesky
           </a>
           <a
             href={signupUrl}
-            class="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 inline-flex items-center justify-center rounded-md border px-6 py-2.5 text-sm font-semibold transition-colors"
+            class="btn border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 border bg-transparent shadow-none"
           >
             Create a free account
           </a>
@@ -735,7 +731,7 @@ function Footer() {
               <a
                 key={link.href}
                 href={link.href}
-                class="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                class="text-muted-foreground hover:text-foreground min-h-[40px] inline-flex items-center text-sm transition-colors"
               >
                 {link.label}
               </a>

@@ -150,11 +150,17 @@ export const AuthorDirectory: FC = async () => {
     <div class="bg-background -mx-4 -my-4 min-h-full px-4 py-6 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-8">
       <div class="mx-auto max-w-5xl space-y-8">
         <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-          <a href="/" class="hover:text-foreground transition-colors">
+          <a
+            href="/"
+            class="hover:text-foreground min-h-[40px] inline-flex items-center transition-[color]"
+          >
             Home
           </a>
           <span aria-hidden="true">›</span>
-          <a href="/explore" class="hover:text-foreground transition-colors">
+          <a
+            href="/explore"
+            class="hover:text-foreground min-h-[40px] inline-flex items-center transition-[color]"
+          >
             Explore
           </a>
           <span aria-hidden="true">›</span>
@@ -179,7 +185,7 @@ export const AuthorDirectory: FC = async () => {
             {featured.map((author) => (
               <a
                 href={`/authors/${encodeURIComponent(author.author)}`}
-                class="card group flex items-center gap-3 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                class="card group flex items-center gap-3 p-4 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
               >
                 <AuthorCover thumbnail={author.thumbnail} author={author.author} />
                 <div class="min-w-0">
@@ -190,7 +196,9 @@ export const AuthorDirectory: FC = async () => {
                     {formatCount(author.bookCount)} books
                   </p>
                   {author.avgRating && (
-                    <p class="text-muted-foreground text-xs">★ {author.avgRating.toFixed(1)}</p>
+                    <p class="text-muted-foreground tabular-nums text-xs">
+                      ★ {author.avgRating.toFixed(1)}
+                    </p>
                   )}
                 </div>
               </a>
@@ -234,7 +242,7 @@ export const AuthorDirectory: FC = async () => {
                 <a
                   href={`/authors/${encodeURIComponent(author.author)}`}
                   data-author={author.author.toLowerCase()}
-                  class="group flex items-center gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/60"
+                  class="group flex min-h-[40px] items-center gap-3 border-b border-border px-4 py-3 transition-[color,background-color] hover:bg-muted/60"
                 >
                   <span class="flex-1 truncate text-sm font-medium text-foreground group-hover:text-primary">
                     {author.author}

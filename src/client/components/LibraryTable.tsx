@@ -35,12 +35,12 @@ const TableRow: FC<{
   onDelete: () => void;
 }> = ({ book, onUpdate, onDelete }) => (
   <tr
-    className="cursor-pointer transition-colors duration-150 hover:bg-muted/60"
+    className="cursor-pointer transition-[background-color] duration-150 hover:bg-muted/60 active:bg-muted/80"
     onClick={() => (window.location.href = `/books/${book.hiveId}`)}
   >
     <td className="overflow-hidden px-4 py-2">
       <div className="flex items-center space-x-3">
-        <div className="h-12 w-8 shrink-0 overflow-hidden rounded-md">
+        <div className="h-12 w-8 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
         <div className="min-w-0 flex-1">
@@ -139,10 +139,10 @@ const MobileCard: FC<{
   onUpdate: (fields: Partial<LibraryBook>) => void;
   onDelete: () => void;
 }> = ({ book, onUpdate, onDelete }) => (
-  <div className="card">
+  <div className="card transition-[box-shadow] duration-150 active:shadow-none">
     <div className="card-body flex gap-3">
       <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
-        <div className="h-16 w-12 shrink-0 overflow-hidden rounded">
+        <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
         <div className="min-w-0 flex-1 flex flex-col justify-center">
@@ -221,7 +221,7 @@ const MobileCard: FC<{
         </div>
         <button
           type="button"
-          className="mt-1 self-end text-xs text-destructive hover:text-destructive/80 focus:outline-none"
+          className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
           onClick={() => {
             onDelete();
             void deleteBook(book.hiveId);
@@ -263,8 +263,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
 
   if (!books.length) {
     return (
-      <div className="rounded-xl border border-border bg-card px-6 py-8 text-center shadow-sm">
-        <p className="text-lg text-muted-foreground">
+      <div className="rounded-xl bg-card px-6 py-8 text-center shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
+        <p className="text-lg text-muted-foreground" style={{ textWrap: "balance" }}>
           No books in your library yet. Start adding books to see them here!
         </p>
       </div>
@@ -274,7 +274,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
   return (
     <>
       {/* Desktop: table view */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
+      <div className="hidden overflow-hidden rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] md:block">
         <table className="table w-full table-fixed">
           <thead className="sticky top-0 z-10 bg-muted">
             <tr>

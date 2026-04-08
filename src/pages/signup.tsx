@@ -11,7 +11,7 @@ export const Signup: FC<{
       href="/"
       data-tooltip="Back to home"
       data-tooltip-place="bottom-right"
-      class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex items-center justify-center rounded-md p-2 lg:top-6 lg:left-6"
+      class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex size-10 items-center justify-center rounded-md lg:top-6 lg:left-6"
     >
       <span class="sr-only">Back to home</span>
       <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -24,7 +24,7 @@ export const Signup: FC<{
     </a>
     <button
       type="button"
-      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 rounded-md p-2 lg:top-6 lg:right-6"
+      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 flex size-10 items-center justify-center rounded-md lg:top-6 lg:right-6"
       aria-label="Toggle dark mode"
       id="theme-toggle"
     >
@@ -136,7 +136,7 @@ export const Signup: FC<{
               <button
                 type="button"
                 id="avatar-btn"
-                class="group relative size-20 overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-100 transition hover:border-amber-500 dark:border-gray-600 dark:bg-gray-800"
+                class="group relative size-20 overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-100 transition-colors hover:border-amber-500 dark:border-gray-600 dark:bg-gray-800"
                 aria-label="Upload profile photo"
               >
                 <img
@@ -265,7 +265,7 @@ export const Signup: FC<{
               />
             </div>
 
-            <p class="text-muted-foreground rounded-md border px-3 py-2 text-xs">
+            <p class="text-muted-foreground rounded-md bg-card shadow-sm px-3 py-2 text-xs">
               After your account is created, you'll be asked to sign in with the password you just
               chose. Have it ready!
             </p>

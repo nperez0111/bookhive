@@ -83,7 +83,7 @@ export const GenresDirectory: FC = async () => {
             {featured.map((genre) => (
               <a
                 href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
-                class="card group flex flex-col justify-between p-5 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                class="card group flex flex-col justify-between p-5 transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.06)] active:scale-[0.97]"
                 style={`--genre-name: genre-${genre.genre}`}
               >
                 <div class="text-3xl font-bold tabular-nums text-primary/70 group-hover:text-primary">
@@ -135,13 +135,16 @@ export const GenresDirectory: FC = async () => {
                 <a
                   href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
                   data-genre={genre.genre.toLowerCase()}
-                  class="group flex items-center gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/60"
+                  class="group flex min-h-[44px] items-center gap-3 border-b border-border px-4 py-3 transition-[background-color,color] duration-150 hover:bg-muted/60 active:scale-[0.98]"
                   style={`--genre-name: genre-${genre.genre}`}
                 >
-                  <span class="w-7 shrink-0 text-center text-lg leading-none" aria-hidden="true">
+                  <span
+                    class="flex w-7 shrink-0 items-center justify-center text-lg leading-none"
+                    aria-hidden="true"
+                  >
                     {getEmoji(genre.genre)}
                   </span>
-                  <span class="genre-name flex-1 text-sm font-medium text-foreground group-hover:text-primary">
+                  <span class="genre-name flex-1 text-sm font-medium text-foreground transition-colors duration-150 group-hover:text-primary">
                     {genre.genre}
                   </span>
                   <span class="text-muted-foreground shrink-0 text-xs tabular-nums">

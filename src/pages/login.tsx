@@ -11,7 +11,7 @@ export const Login: FC<{
       href="/"
       data-tooltip="Back to home"
       data-tooltip-place="bottom-right"
-      class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex items-center justify-center rounded-md p-2 lg:top-6 lg:left-6"
+      class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex min-h-10 min-w-10 items-center justify-center rounded-md p-2 transition-colors duration-150 lg:top-6 lg:left-6"
     >
       <span class="sr-only">Back to home</span>
       <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -24,7 +24,7 @@ export const Login: FC<{
     </a>
     <button
       type="button"
-      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 rounded-md p-2 lg:top-6 lg:right-6"
+      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 min-h-10 min-w-10 rounded-md p-2 transition-colors duration-150 lg:top-6 lg:right-6"
       aria-label="Toggle dark mode"
       id="theme-toggle"
     >
@@ -82,7 +82,7 @@ export const Login: FC<{
         alt="BookHive"
         class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
       />
-      <div class="card w-full overflow-visible pt-52">
+      <div class="card w-full overflow-visible border-0 pt-52 shadow-md">
         <header class="flex flex-col items-center gap-4">
           <h2 class="text-foreground text-center text-xl font-semibold tracking-tight">
             Buzz in to your account

@@ -209,7 +209,7 @@ const ListCard: FC<ListProps> = ({ book, class: className, children }) => {
 
         <a
           href={book.hiveId ? `/books/${book.hiveId}` : undefined}
-          class="block overflow-hidden rounded-lg transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+          class="block overflow-hidden rounded-lg transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
         >
           <div class="aspect-[2/3] w-full">
             <CoverImage book={book} class="h-full w-full object-cover" />

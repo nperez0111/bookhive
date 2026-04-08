@@ -91,7 +91,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
             {sorts.map((s) => (
               <a
                 href={`/authors/${encodeURIComponent(author)}?sort=${s.key}&page=1`}
-                class={`btn btn-sm ${sortBy === s.key ? "btn-primary" : "btn-ghost"}`}
+                class={`btn btn-sm min-h-10 ${sortBy === s.key ? "btn-primary" : "btn-ghost"}`}
               >
                 {s.label}
               </a>
@@ -103,7 +103,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
           NO_BOOKS_FOUND(author)
         ) : (
           <>
-            <p class="text-muted-foreground text-sm">
+            <p class="text-muted-foreground tabular-nums text-sm">
               Showing {start}-{end} of {totalBooks} books
             </p>
 
@@ -122,13 +122,16 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
                 {currentPage > 1 ? (
                   <a
                     href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${currentPage - 1}`}
-                    class="btn btn-sm btn-ghost"
+                    class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Previous</span>
                     <ChevronLeft />
                   </a>
                 ) : (
-                  <span class="btn btn-sm btn-ghost opacity-50" aria-disabled="true">
+                  <span
+                    class="btn btn-sm btn-ghost min-w-10 min-h-10 opacity-50"
+                    aria-disabled="true"
+                  >
                     <span class="sr-only">Previous</span>
                     <ChevronLeft />
                   </span>
@@ -150,7 +153,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
                   return (
                     <a
                       href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${pageNum}`}
-                      class={`btn btn-sm ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
+                      class={`btn btn-sm min-w-10 min-h-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                       aria-current={isCurrentPage ? "page" : undefined}
                     >
                       {pageNum}
@@ -161,13 +164,16 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
                 {currentPage < totalPages ? (
                   <a
                     href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${currentPage + 1}`}
-                    class="btn btn-sm btn-ghost"
+                    class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Next</span>
                     <ChevronRight />
                   </a>
                 ) : (
-                  <span class="btn btn-sm btn-ghost opacity-50" aria-disabled="true">
+                  <span
+                    class="btn btn-sm btn-ghost min-w-10 min-h-10 opacity-50"
+                    aria-disabled="true"
+                  >
                     <span class="sr-only">Next</span>
                     <ChevronRight />
                   </span>

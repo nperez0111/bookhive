@@ -54,7 +54,7 @@ export const ReadingStatsPage: FC<{
               <a
                 href={`/profile/${handle}/stats`}
                 class={
-                  "rounded px-2 py-1 text-sm " +
+                  "rounded-md px-3 py-2 text-sm min-h-[40px] min-w-[40px] inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                   (year === new Date().getFullYear()
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted")
@@ -70,7 +70,7 @@ export const ReadingStatsPage: FC<{
                   key={y}
                   href={`/profile/${handle}/stats/${y}`}
                   class={
-                    "rounded px-2 py-1 text-sm " +
+                    "rounded-md px-3 py-2 text-sm min-h-[40px] min-w-[40px] inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                     (y === year
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted")
@@ -104,12 +104,14 @@ export const ReadingStatsPage: FC<{
           <div class="card overflow-hidden bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
             <div class="card-body">
               <div class="mb-6 flex flex-wrap items-baseline gap-2">
-                <span class="text-4xl font-bold text-foreground md:text-5xl">{year}</span>
+                <span class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                  {year}
+                </span>
                 <span class="text-muted-foreground text-xl">Year in Books</span>
               </div>
               <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
                 <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground md:text-5xl">
+                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
                     {stats.booksCount}
                   </div>
                   <div class="text-muted-foreground text-sm">
@@ -117,19 +119,19 @@ export const ReadingStatsPage: FC<{
                   </div>
                 </div>
                 <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground md:text-5xl">
+                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
                     {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Pages read</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground md:text-5xl">
+                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
                     {stats.averageRating != null ? stats.averageRating.toFixed(1) : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Avg rating</div>
                 </div>
                 <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground md:text-5xl">
+                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
                     {stats.averagePageCount != null ? stats.averagePageCount.toLocaleString() : "—"}
                   </div>
                   <div class="text-muted-foreground text-sm">Avg length (pgs)</div>
@@ -198,7 +200,7 @@ export const ReadingStatsPage: FC<{
                           style={`width: ${(stats.ratingDistribution[star] / maxRatingCount) * 100}%`}
                         />
                       </div>
-                      <span class="text-muted-foreground w-8 text-sm">
+                      <span class="text-muted-foreground w-8 text-sm tabular-nums">
                         {stats.ratingDistribution[star]}
                       </span>
                     </div>
@@ -225,7 +227,7 @@ export const ReadingStatsPage: FC<{
                           style={`width: ${(g.count / totalBooksForGenre) * 100}%`}
                         />
                       </div>
-                      <span class="text-muted-foreground text-sm">{g.count}</span>
+                      <span class="text-muted-foreground text-sm tabular-nums">{g.count}</span>
                     </div>
                   ))}
                 </div>
@@ -302,7 +304,7 @@ function BookHighlight({ book }: { book: Book }) {
         <img
           src={book.cover ?? book.thumbnail ?? ""}
           alt=""
-          class="h-16 w-11 shrink-0 rounded object-cover"
+          class="book-cover h-16 w-11 shrink-0 rounded object-cover"
         />
       ) : (
         <FallbackCover className="h-16 w-11 shrink-0" />
@@ -310,7 +312,7 @@ function BookHighlight({ book }: { book: Book }) {
       <div class="min-w-0 flex-1">
         <p class="font-medium text-foreground line-clamp-2">{book.title}</p>
         <p class="text-muted-foreground truncate text-sm">{book.authors}</p>
-        {pages != null && <p class="text-muted-foreground text-xs">{pages} pages</p>}
+        {pages != null && <p class="text-muted-foreground text-xs tabular-nums">{pages} pages</p>}
       </div>
     </a>
   );

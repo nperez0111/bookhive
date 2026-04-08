@@ -10,7 +10,7 @@ export const Navbar: FC<{
       <div class="flex h-16 items-center gap-3 px-4 lg:px-6">
         {/* Mobile hamburger - hidden when sidebar visible (md+) */}
         <button
-          class="sidebar-toggle shrink-0 md:hidden"
+          class="sidebar-toggle flex size-10 shrink-0 items-center justify-center rounded-md transition-[transform,background-color] duration-150 active:scale-[0.96] md:hidden"
           aria-label="Toggle menu"
           id="sidebar-toggle"
         >
@@ -69,7 +69,7 @@ export const Navbar: FC<{
           {/* Dark mode toggle */}
           <button
             type="button"
-            class="theme-toggle flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            class="theme-toggle flex size-10 items-center justify-center rounded-md text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]"
             aria-label="Toggle dark mode"
             id="theme-toggle"
           >
@@ -105,13 +105,18 @@ export const Navbar: FC<{
           {profile ? (
             <div class="avatar-dropdown relative">
               <button
-                class="avatar bg-secondary flex size-8 items-center justify-center rounded-full"
+                class="avatar bg-secondary flex size-10 items-center justify-center rounded-full transition-[transform] duration-150 active:scale-[0.96]"
                 id="user-menu-button"
                 aria-expanded="false"
                 aria-haspopup="true"
               >
                 {profile?.avatar ? (
-                  <img class="size-8 rounded-full" src={profile.avatar} loading="lazy" alt="" />
+                  <img
+                    class="size-10 rounded-full outline outline-1 outline-black/10 dark:outline-white/10"
+                    src={profile.avatar}
+                    loading="lazy"
+                    alt=""
+                  />
                 ) : (
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -133,7 +138,7 @@ export const Navbar: FC<{
 
               <div
                 id="user-menu"
-                class="dropdown-menu bg-card ring-border absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-md shadow-lg ring-1"
+                class="dropdown-menu bg-card absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl p-1 shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)]"
                 role="menu"
                 aria-orientation="vertical"
                 aria-labelledby="user-menu-button"
@@ -142,7 +147,7 @@ export const Navbar: FC<{
               >
                 <a
                   href={`/profile/${profile.handle}`}
-                  class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
+                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                   role="menuitem"
                   tabindex={-1}
                 >
@@ -150,7 +155,7 @@ export const Navbar: FC<{
                 </a>
                 <a
                   href="/refresh-books"
-                  class="text-card-foreground hover:bg-muted block px-4 py-2 text-sm"
+                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                   role="menuitem"
                   tabindex={-1}
                 >
@@ -159,7 +164,7 @@ export const Navbar: FC<{
                 <form action="/logout" method="post">
                   <button
                     type="submit"
-                    class="text-card-foreground hover:bg-muted block w-full cursor-pointer px-4 py-2 text-left text-sm"
+                    class="text-card-foreground hover:bg-muted block w-full min-h-[40px] cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-[background-color] duration-150"
                     role="menuitem"
                     tabindex={-1}
                   >

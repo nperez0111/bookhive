@@ -45,7 +45,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
   return (
     <div class="space-y-6">
       <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-        <a href="/" class="hover:text-foreground transition-colors">
+        <a href="/" class="hover:text-foreground transition-[color] duration-150">
           Home
         </a>
         <span aria-hidden="true">›</span>
@@ -57,7 +57,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
           {query ? <>Results for "{query}"</> : "Search"}
         </h1>
         {totalBooks > 0 && (
-          <p class="text-muted-foreground mt-2 text-sm">
+          <p class="text-muted-foreground mt-2 text-sm tabular-nums">
             Showing {start}–{end} of {totalBooks} books
           </p>
         )}
@@ -70,7 +70,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
           name="q"
           value={query}
           placeholder="Search books..."
-          class="flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          class="flex-1 rounded-md bg-card px-3 py-2 text-sm text-foreground shadow-sm ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           autofocus={!query}
         />
         <button type="submit" class="btn btn-primary btn-sm">
@@ -114,13 +114,16 @@ export const SearchResults: FC<SearchResultsProps> = ({
               {currentPage > 1 ? (
                 <a
                   href={`/search?q=${encodeURIComponent(query)}&page=${currentPage - 1}`}
-                  class="btn btn-sm btn-ghost"
+                  class="btn btn-sm btn-ghost min-h-10 min-w-10"
                 >
                   <span class="sr-only">Previous</span>
                   <ChevronLeft />
                 </a>
               ) : (
-                <span class="btn btn-sm btn-ghost opacity-50" aria-disabled="true">
+                <span
+                  class="btn btn-sm btn-ghost min-h-10 min-w-10 opacity-50"
+                  aria-disabled="true"
+                >
                   <span class="sr-only">Previous</span>
                   <ChevronLeft />
                 </span>
@@ -141,7 +144,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
                 return (
                   <a
                     href={`/search?q=${encodeURIComponent(query)}&page=${pageNum}`}
-                    class={`btn btn-sm ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
+                    class={`btn btn-sm min-h-10 min-w-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                     aria-current={isCurrentPage ? "page" : undefined}
                   >
                     {pageNum}
@@ -152,13 +155,16 @@ export const SearchResults: FC<SearchResultsProps> = ({
               {currentPage < totalPages ? (
                 <a
                   href={`/search?q=${encodeURIComponent(query)}&page=${currentPage + 1}`}
-                  class="btn btn-sm btn-ghost"
+                  class="btn btn-sm btn-ghost min-h-10 min-w-10"
                 >
                   <span class="sr-only">Next</span>
                   <ChevronRight />
                 </a>
               ) : (
-                <span class="btn btn-sm btn-ghost opacity-50" aria-disabled="true">
+                <span
+                  class="btn btn-sm btn-ghost min-h-10 min-w-10 opacity-50"
+                  aria-disabled="true"
+                >
                   <span class="sr-only">Next</span>
                   <ChevronRight />
                 </span>

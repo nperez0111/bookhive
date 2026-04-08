@@ -1,11 +1,12 @@
 import { type FC } from "hono/jsx";
+import { env } from "../env";
 
 function AppStoreBadge() {
   return (
     <a
       href="https://apps.apple.com/us/app/bookhive-a-better-goodreads/id6749799032"
       aria-label="Download on the App Store"
-      class="inline-flex items-center gap-3"
+      class="inline-flex min-h-10 items-center gap-3 transition-transform duration-150 ease-out active:scale-[0.96]"
       rel="noopener noreferrer"
     >
       <img
@@ -24,11 +25,11 @@ function Hero() {
     <section class="relative grid place-items-center px-4 pt-12 pb-8 md:pt-12 md:pb-20 lg:grid-cols-2 lg:px-8">
       <div class="relative z-10 order-2 mt-8 flex w-full justify-center lg:order-1 lg:mt-0">
         {/* Phone screenshot */}
-        <div class="relative aspect-[9/19] w-[80%] max-w-[260px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[300px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[420px]">
+        <div class="relative aspect-[9/19] w-[80%] max-w-[260px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[300px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[420px]">
           <img
             src="/screenshots/home-screen.png"
             alt="BookHive iOS — home screen"
-            class="absolute inset-0 h-full w-full object-contain p-2"
+            class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
             loading="lazy"
             decoding="async"
           />
@@ -45,7 +46,7 @@ function Hero() {
         </p>
         <div class="mt-6 flex flex-col gap-3 sm:flex-row">
           <AppStoreBadge />
-          <a href="/" class="btn btn-ghost">
+          <a href={env.PUBLIC_URL || "/"} class="btn btn-ghost">
             Continue on the web
           </a>
         </div>
@@ -219,11 +220,11 @@ function Screenshots() {
           </p>
         </div>
         <div class="order-2 flex justify-center lg:order-2">
-          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
+          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
             <img
               src="/screenshots/book-info.png"
               alt="BookHive iOS — book details screen"
-              class="absolute inset-0 h-full w-full object-contain p-2"
+              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
               loading="lazy"
               decoding="async"
             />
@@ -234,11 +235,11 @@ function Screenshots() {
       {/* Row 2 */}
       <div class="grid items-center gap-8 sm:gap-10 lg:grid-cols-2">
         <div class="order-2 flex justify-center lg:order-1">
-          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] border border-black/10 bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
+          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
             <img
               src="/screenshots/comment.png"
               alt="BookHive iOS — comments and reviews"
-              class="absolute inset-0 h-full w-full object-contain p-2"
+              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
               loading="lazy"
               decoding="async"
             />

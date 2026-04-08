@@ -97,7 +97,7 @@ function Comment({
             <span>{timeAgo}</span>
             <button
               type="button"
-              class="inline-flex items-center gap-1 text-[0.7rem] font-medium text-muted-foreground hover:text-foreground"
+              class="inline-flex min-h-[40px] items-center gap-1 rounded-md px-2 text-[0.7rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
               data-copy-path={reviewLinkPath}
             >
               Copy link
@@ -107,13 +107,15 @@ function Comment({
           {comment.stars != null && (
             <div class="mb-2 flex items-center gap-2">
               <StarDisplay rating={comment.stars / 2} size="sm" />
-              <span class="text-muted-foreground text-sm">{comment.stars / 2}/5</span>
+              <span class="tabular-nums text-muted-foreground text-sm">{comment.stars / 2}/5</span>
             </div>
           )}
 
           <input type="checkbox" id={`comments-toggle-${commentIdSafe}`} class="peer hidden" />
           <div class="peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0">
-            <p class="whitespace-pre-wrap text-foreground">{parseHtmlToText(comment.comment)}</p>
+            <p class="whitespace-pre-wrap text-pretty text-foreground">
+              {parseHtmlToText(comment.comment)}
+            </p>
           </div>
 
           <CardActions class="relative mt-3 flex-wrap">
@@ -134,7 +136,7 @@ function Comment({
               htmlFor={`comments-toggle-${commentIdSafe}`}
               class="btn btn-ghost btn-sm cursor-pointer"
             >
-              {subComments.length} replies
+              <span class="tabular-nums">{subComments.length}</span> replies
               <svg
                 class="ml-1 h-4 w-4"
                 fill="currentColor"
@@ -170,10 +172,10 @@ function Comment({
                 </button>
                 <dialog
                   id={`delete-dialog-${commentIdSafe}`}
-                  class="rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
+                  class="rounded-xl bg-card p-6 text-card-foreground shadow-xl backdrop:bg-black/50"
                 >
                   <h3 class="mb-2 text-lg font-semibold">Delete review?</h3>
-                  <p class="text-muted-foreground mb-4">This cannot be undone.</p>
+                  <p class="text-muted-foreground text-pretty mb-4">This cannot be undone.</p>
                   <div class="flex justify-end gap-2">
                     <button
                       type="button"
@@ -193,14 +195,14 @@ function Comment({
               </>
             )}
 
-            <div class="invisible mt-4 h-0 w-full opacity-0 transition-all duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
+            <div class="invisible mt-4 h-0 w-full opacity-0 transition-[opacity,visibility,height] duration-200 peer-checked:visible peer-checked:h-auto peer-checked:opacity-100">
               <CommentForm parentUri={comment.uri} parentCid={comment.cid} bookId={bookId} />
             </div>
           </CardActions>
 
           <div
             id={`comments-${commentIdSafe}`}
-            class="visible mt-4 h-auto pl-0 opacity-100 transition-all duration-200 peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0"
+            class="visible mt-4 h-auto pl-0 opacity-100 transition-[opacity,visibility,height] duration-200 peer-checked:invisible peer-checked:mb-0 peer-checked:h-0 peer-checked:opacity-0"
           >
             {subComments.length > 0 && (
               <div class="mt-4 space-y-4 border-l-2 border-border pl-4">

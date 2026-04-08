@@ -96,22 +96,25 @@ export const Home: FC = async () => {
       <div class="card">
         <div class="card-header flex items-center justify-between">
           <h2 class="card-title">Quick Stats</h2>
-          <a href={`/profile/${profile.handle}/stats`} class="text-primary text-sm hover:underline">
+          <a
+            href={`/profile/${profile.handle}/stats`}
+            class="text-primary min-h-[40px] inline-flex items-center text-sm hover:underline active:scale-[0.96] transition-[transform] duration-150"
+          >
             See full stats →
           </a>
         </div>
         <div class="card-body">
           <div class="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div class="text-foreground text-2xl font-bold">{stats.totalRead}</div>
+              <div class="text-foreground text-2xl font-bold tabular-nums">{stats.totalRead}</div>
               <div class="text-muted-foreground text-xs">Total Read</div>
             </div>
             <div>
-              <div class="text-foreground text-2xl font-bold">{stats.thisMonth}</div>
+              <div class="text-foreground text-2xl font-bold tabular-nums">{stats.thisMonth}</div>
               <div class="text-muted-foreground text-xs">This Month</div>
             </div>
             <div>
-              <div class="text-foreground text-2xl font-bold">{stats.thisYear}</div>
+              <div class="text-foreground text-2xl font-bold tabular-nums">{stats.thisYear}</div>
               <div class="text-muted-foreground text-xs">This Year</div>
             </div>
           </div>
@@ -128,7 +131,10 @@ export const Home: FC = async () => {
             <div class="card-body text-center">
               <p class="text-muted-foreground">
                 You're not reading anything right now.{" "}
-                <a href="/explore" class="text-primary hover:underline">
+                <a
+                  href="/explore"
+                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                >
                   Find your next book
                 </a>
               </p>
@@ -147,11 +153,17 @@ export const Home: FC = async () => {
             <div class="card-body text-center">
               <p class="text-muted-foreground">
                 Your reading list is empty.{" "}
-                <a href="/explore" class="text-primary hover:underline">
+                <a
+                  href="/explore"
+                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                >
                   Explore books
                 </a>{" "}
                 or{" "}
-                <a href="/import" class="text-primary hover:underline">
+                <a
+                  href="/import"
+                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                >
                   import your library
                 </a>
               </p>

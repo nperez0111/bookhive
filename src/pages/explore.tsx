@@ -63,7 +63,10 @@ export const Explore: FC = async () => {
     <div class="bg-background -mx-4 -my-4 min-h-full px-4 py-6 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-8">
       <div class="mx-auto max-w-5xl space-y-10">
         <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-          <a href="/" class="hover:text-foreground transition-colors">
+          <a
+            href="/"
+            class="min-h-[40px] inline-flex items-center hover:text-foreground transition-colors"
+          >
             Home
           </a>
           <span aria-hidden="true">›</span>
@@ -85,7 +88,7 @@ export const Explore: FC = async () => {
             </h2>
             <a
               href="/explore/genres"
-              class="text-primary hover:text-primary/80 text-sm transition-colors"
+              class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all genres →
             </a>
@@ -94,7 +97,7 @@ export const Explore: FC = async () => {
             {genres.map((genre) => (
               <a
                 href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
-                class="card group relative overflow-hidden p-4 text-center transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                class="card group relative overflow-hidden p-4 text-center transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
                 style={`--genre-name: genre-${genre.genre}`}
               >
                 <span
@@ -124,7 +127,7 @@ export const Explore: FC = async () => {
             </h2>
             <a
               href="/explore/authors"
-              class="text-primary hover:text-primary/80 text-sm transition-colors"
+              class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all authors →
             </a>
@@ -133,13 +136,13 @@ export const Explore: FC = async () => {
             {topAuthors.map((author) => (
               <a
                 href={`/authors/${encodeURIComponent(author.author)}`}
-                class="card group flex items-center gap-3 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                class="card group flex items-center gap-3 p-4 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
               >
                 {author.thumbnail ? (
                   <img
                     src={author.thumbnail}
                     alt=""
-                    class="h-16 w-12 shrink-0 rounded object-cover shadow-sm"
+                    class="h-16 w-12 shrink-0 rounded object-cover shadow-sm outline outline-1 outline-black/10 -outline-offset-1 dark:outline-white/10"
                     loading="lazy"
                   />
                 ) : (
@@ -153,13 +156,13 @@ export const Explore: FC = async () => {
                   <p class="truncate text-sm font-semibold leading-tight text-foreground group-hover:text-primary">
                     {author.author}
                   </p>
-                  <p class="text-muted-foreground mt-1 text-xs">
+                  <p class="text-muted-foreground mt-1 text-xs tabular-nums">
                     {formatCount(author.bookCount)} books
                   </p>
                   {author.avgRating && (
                     <div class="mt-0.5 flex items-center gap-1">
                       <StarDisplay rating={author.avgRating} size="sm" class="flex" />
-                      <span class="text-muted-foreground text-xs">
+                      <span class="text-muted-foreground text-xs tabular-nums">
                         {author.avgRating.toFixed(1)}
                       </span>
                     </div>

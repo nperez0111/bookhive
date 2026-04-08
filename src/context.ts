@@ -376,7 +376,7 @@ export function createContextMiddleware(deps: AppDeps) {
           startTime(c, "get_profile_session");
           const client = await sessionLazy.value;
           endTime(c, "get_profile_session");
-          if (!client) return null;
+          if (!client) throw new Error("session_unavailable");
           startTime(c, "get_profile_network");
           try {
             const res = await client.get("app.bsky.actor.getProfile", {

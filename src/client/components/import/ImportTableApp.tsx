@@ -381,7 +381,7 @@ const ProgressCard: FC<{ progress: ProgressState; onImportMore: () => void }> = 
           <div className="mt-3 space-y-2">
             <div className="progress">
               <div
-                className="progress-bar transition-all duration-300"
+                className="progress-bar transition-[width] duration-300"
                 style={{ width: `${pct}%` }}
               />
             </div>
