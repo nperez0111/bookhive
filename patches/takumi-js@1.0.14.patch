@@ -1,0 +1,26 @@
+diff --git a/dist/render-01YbRqd2.mjs b/dist/render-01YbRqd2.mjs
+index 03b09ad56933881f3bc2db7fac886216a792f27d..56c5b575ca9f03f51c8b53bec8c5402e0384437a 100644
+--- a/dist/render-01YbRqd2.mjs
++++ b/dist/render-01YbRqd2.mjs
+@@ -77,7 +77,7 @@ function shouldSkipCoreImport() {
+ 	return false;
+ }
+ function isNodeEnvironment() {
+-	return typeof process !== "undefined" && typeof process.versions === "object" && process.versions !== null && typeof process.versions.node === "string";
++	return typeof process !== "undefined" && typeof process.versions === "object" && process.versions !== null && typeof process.versions.node === "string" && typeof process.versions.bun !== "string" && typeof process.versions.deno !== "string";
+ }
+ //#endregion
+ //#region src/render.ts
+diff --git a/dist/render-GE_5ugLi.cjs b/dist/render-GE_5ugLi.cjs
+index a328ef6b5eab73ce1b157f9878040dd02a4c220c..1df6deacf1edc01abdd01502173bf45835771baa 100644
+--- a/dist/render-GE_5ugLi.cjs
++++ b/dist/render-GE_5ugLi.cjs
+@@ -78,7 +78,7 @@ function shouldSkipCoreImport() {
+ 	return false;
+ }
+ function isNodeEnvironment() {
+-	return typeof process !== "undefined" && typeof process.versions === "object" && process.versions !== null && typeof process.versions.node === "string";
++	return typeof process !== "undefined" && typeof process.versions === "object" && process.versions !== null && typeof process.versions.node === "string" && typeof process.versions.bun !== "string" && typeof process.versions.deno !== "string";
+ }
+ //#endregion
+ //#region src/render.ts
