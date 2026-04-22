@@ -589,6 +589,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         profileIdRows.map((r) => [r.hiveId, toBookIdentifiersOutput(r)]),
       );
 
+      const genresByHiveId = await loadGenresMapForHiveBooks(ctx.db, profileHiveIds as HiveId[]);
+
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
           new Set(books.map((c) => c.userDid).concat(friendsBuzzes.map((r) => r.userDid))),
@@ -642,6 +644,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
           identifiers: identifiersByHiveId.get(b.hiveId),
+          genres: genresByHiveId.get(b.hiveId as HiveId),
         })),
         books: parsedBooks.map((b) => ({
           userDid: b.userDid,
@@ -662,6 +665,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
           identifiers: identifiersByHiveId.get(b.hiveId),
+          genres: genresByHiveId.get(b.hiveId as HiveId),
         })),
         activity: books
           .reduce(
