@@ -150,21 +150,18 @@ function FilteredBooksContent({ status }: { status: string }) {
       .map(([genre, count]) => ({ genre, count }));
   }, [statusBooks]);
 
-  useEffect(() => {
-    if (selectedGenre && !availableGenres.some((g) => g.genre === selectedGenre)) {
-      setSelectedGenre(null);
-    }
-  }, [availableGenres, selectedGenre]);
+  const activeGenre =
+    selectedGenre && availableGenres.some((g) => g.genre === selectedGenre) ? selectedGenre : null;
 
   const filteredBooks = useMemo(() => {
-    const genreFiltered = selectedGenre
+    const genreFiltered = activeGenre
       ? statusBooks.filter((book) => {
           const genres = (book as any).genres as string[] | undefined;
-          return genres?.includes(selectedGenre);
+          return genres?.includes(activeGenre);
         })
       : statusBooks;
     return sortBooks(genreFiltered, sortBy, sortOrder, config.status);
-  }, [statusBooks, selectedGenre, sortBy, sortOrder, config.status]);
+  }, [statusBooks, activeGenre, sortBy, sortOrder, config.status]);
 
   // Calculate responsive number of columns
   useEffect(() => {
@@ -349,20 +346,20 @@ function FilteredBooksContent({ status }: { status: string }) {
               style={[
                 styles.sortButton,
                 {
-                  backgroundColor: !selectedGenre ? colors.primary : colors.buttonBackground,
-                  borderColor: !selectedGenre ? colors.primary : colors.buttonBorder,
+                  backgroundColor: !activeGenre ? colors.primary : colors.buttonBackground,
+                  borderColor: !activeGenre ? colors.primary : colors.buttonBorder,
                 },
               ]}
             >
               <Ionicons
                 name="pricetags-outline"
                 size={16}
-                color={!selectedGenre ? colors.background : colors.primary}
+                color={!activeGenre ? colors.background : colors.primary}
               />
               <ThemedText
                 style={[
                   styles.sortButtonText,
-                  { color: !selectedGenre ? colors.background : colors.primaryText },
+                  { color: !activeGenre ? colors.background : colors.primaryText },
                 ]}
                 type="label"
               >
@@ -370,7 +367,7 @@ function FilteredBooksContent({ status }: { status: string }) {
               </ThemedText>
             </Pressable>
             {availableGenres.map(({ genre, count }) => {
-              const isActive = selectedGenre === genre;
+              const isActive = activeGenre === genre;
               return (
                 <Pressable
                   key={genre}
@@ -431,7 +428,7 @@ function FilteredBooksContent({ status }: { status: string }) {
               No matches
             </ThemedText>
             <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
-              No books in {selectedGenre ? `"${selectedGenre}"` : "this filter"}. Try another genre.
+              No books in {activeGenre ? `"${activeGenre}"` : "this filter"}. Try another genre.
             </ThemedText>
           </ThemedView>
         </View>
