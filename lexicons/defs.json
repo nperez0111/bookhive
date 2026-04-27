@@ -232,6 +232,11 @@
           "description": "External identifiers for the book",
           "type": "ref",
           "ref": "buzz.bookhive.defs#bookIdentifiers"
+        },
+        "genres": {
+          "type": "array",
+          "description": "Book genres",
+          "items": { "type": "string" }
         }
       }
     },

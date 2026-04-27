@@ -123,19 +123,45 @@ function FilteredBooksContent({ status }: { status: string }) {
   const [numColumns, setNumColumns] = useState(2);
   const [sortBy, setSortBy] = useState<SortBy>("dateAdded");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
 
   const profile = useProfile();
 
   const config = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
 
-  const filteredBooks = useMemo(() => {
+  const statusBooks = useMemo(() => {
     if (!profile.data) return [];
-    const filtered =
-      config.status === "owned"
-        ? profile.data.books.filter((book: any) => book.owned)
-        : profile.data.books.filter((book) => book.status === config.status);
-    return sortBooks(filtered, sortBy, sortOrder, config.status);
-  }, [profile.data, config.status, sortBy, sortOrder]);
+    return config.status === "owned"
+      ? profile.data.books.filter((book: any) => book.owned)
+      : profile.data.books.filter((book) => book.status === config.status);
+  }, [profile.data, config.status]);
+
+  const availableGenres = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const book of statusBooks) {
+      const genres = (book as any).genres as string[] | undefined;
+      if (!genres) continue;
+      for (const genre of genres) {
+        counts.set(genre, (counts.get(genre) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([genre, count]) => ({ genre, count }));
+  }, [statusBooks]);
+
+  const activeGenre =
+    selectedGenre && availableGenres.some((g) => g.genre === selectedGenre) ? selectedGenre : null;
+
+  const filteredBooks = useMemo(() => {
+    const genreFiltered = activeGenre
+      ? statusBooks.filter((book) => {
+          const genres = (book as any).genres as string[] | undefined;
+          return genres?.includes(activeGenre);
+        })
+      : statusBooks;
+    return sortBooks(genreFiltered, sortBy, sortOrder, config.status);
+  }, [statusBooks, activeGenre, sortBy, sortOrder, config.status]);
 
   // Calculate responsive number of columns
   useEffect(() => {
@@ -196,7 +222,7 @@ function FilteredBooksContent({ status }: { status: string }) {
     );
   }
 
-  if (filteredBooks.length === 0) {
+  if (statusBooks.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
         <BackNavigationHeader title={config.title} />
@@ -308,11 +334,105 @@ function FilteredBooksContent({ status }: { status: string }) {
         </ScrollView>
       </View>
 
+      {availableGenres.length > 0 && (
+        <View style={styles.genreContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sortButtonsContainer}
+          >
+            <Pressable
+              onPress={() => setSelectedGenre(null)}
+              style={[
+                styles.sortButton,
+                {
+                  backgroundColor: !activeGenre ? colors.primary : colors.buttonBackground,
+                  borderColor: !activeGenre ? colors.primary : colors.buttonBorder,
+                },
+              ]}
+            >
+              <Ionicons
+                name="pricetags-outline"
+                size={16}
+                color={!activeGenre ? colors.background : colors.primary}
+              />
+              <ThemedText
+                style={[
+                  styles.sortButtonText,
+                  { color: !activeGenre ? colors.background : colors.primaryText },
+                ]}
+                type="label"
+              >
+                All genres
+              </ThemedText>
+            </Pressable>
+            {availableGenres.map(({ genre, count }) => {
+              const isActive = activeGenre === genre;
+              return (
+                <Pressable
+                  key={genre}
+                  onPress={() => setSelectedGenre(isActive ? null : genre)}
+                  style={[
+                    styles.sortButton,
+                    {
+                      backgroundColor: isActive ? colors.primary : colors.buttonBackground,
+                      borderColor: isActive ? colors.primary : colors.buttonBorder,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.sortButtonText,
+                      { color: isActive ? colors.background : colors.primaryText },
+                    ]}
+                    type="label"
+                  >
+                    {genre}
+                  </ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.genreCount,
+                      {
+                        color: isActive ? colors.background : colors.secondaryText,
+                      },
+                    ]}
+                    type="caption"
+                  >
+                    {count}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       <View style={styles.header}>
         <ThemedText style={[styles.bookCount, { color: colors.secondaryText }]} type="body">
           {filteredBooks.length} {filteredBooks.length === 1 ? "book" : "books"}
         </ThemedText>
       </View>
+
+      {filteredBooks.length === 0 && (
+        <View style={styles.emptyContainer}>
+          <ThemedView
+            variant="card"
+            style={[styles.emptyState, { borderColor: colors.cardBorder }]}
+          >
+            <View
+              style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}
+            >
+              <Ionicons name="filter-outline" size={48} color={colors.tertiaryText} />
+            </View>
+            <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
+              No matches
+            </ThemedText>
+            <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
+              No books in {activeGenre ? `"${activeGenre}"` : "this filter"}. Try another genre.
+            </ThemedText>
+          </ThemedView>
+        </View>
+      )}
 
       <FlatList
         data={filteredBooks}
@@ -396,6 +516,14 @@ const styles = StyleSheet.create({
   sortContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  genreContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  genreCount: {
+    marginLeft: 4,
+    fontSize: 12,
   },
   sortButtonsContainer: {
     gap: 8,
