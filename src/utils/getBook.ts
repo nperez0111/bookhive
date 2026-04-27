@@ -15,8 +15,10 @@ import { hydrateUserBook, serializeUserBook } from "./bookProgress";
 import { ensureBookCataloged } from "./ensureBookCataloged";
 
 /**
- * Normalize a date string to ISO format at midnight UTC
- * Handles YYYY-MM-DD format and ISO strings, always returns UTC midnight
+ * Normalize a date string to a full ISO datetime.
+ * - YYYY-MM-DD inputs (from <input type="date">) are combined with the current
+ *   UTC time-of-day, so the timestamp records *when* the user logged the date.
+ * - Full ISO datetimes are preserved as-is.
  */
 function normalizeDate(dateString: string | undefined): string | undefined {
   if (!dateString || dateString === "") {
@@ -25,27 +27,26 @@ function normalizeDate(dateString: string | undefined): string | undefined {
 
   try {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      return new Date(dateString + "T00:00:00.000Z").toISOString();
+      const [year, month, day] = dateString.split("-").map(Number) as [number, number, number];
+      const now = new Date();
+      return new Date(
+        Date.UTC(
+          year,
+          month - 1,
+          day,
+          now.getUTCHours(),
+          now.getUTCMinutes(),
+          now.getUTCSeconds(),
+          now.getUTCMilliseconds(),
+        ),
+      ).toISOString();
     }
 
     const date = parseISO(dateString);
-    if (!isValid(date)) {
-      // If parseISO fails, try creating a new Date
-      const fallbackDate = new Date(dateString);
-      if (!isValid(fallbackDate)) {
-        return undefined;
-      }
+    if (isValid(date)) return date.toISOString();
 
-      const year = fallbackDate.getUTCFullYear();
-      const month = fallbackDate.getUTCMonth();
-      const day = fallbackDate.getUTCDate();
-      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
-    }
-
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth();
-    const day = date.getUTCDate();
-    return new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
+    const fallback = new Date(dateString);
+    return isValid(fallback) ? fallback.toISOString() : undefined;
   } catch {
     return undefined;
   }
@@ -83,20 +84,16 @@ function inferBookStatusAndDates(updates: {
   }
 
   // Auto-set dates based on status if not already provided.
-  // Use UTC "today" so the date doesn't depend on server timezone (startOfDay uses server local TZ).
+  // Use the current full timestamp so we record when the action happened,
+  // matching the behavior of createdAt.
   if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
-    const now = new Date();
-    autoStartedAt = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
-    ).toISOString();
+    autoStartedAt = new Date().toISOString();
   } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
-    const now = new Date();
-    autoFinishedAt = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
-    ).toISOString();
+    autoFinishedAt = new Date().toISOString();
   }
 
-  // Normalize dates to ISO format at start of day
+  // Normalize any user-provided dates (YYYY-MM-DD gets combined with current
+  // time of day; full ISO datetimes pass through).
   autoStartedAt = normalizeDate(autoStartedAt);
   autoFinishedAt = normalizeDate(autoFinishedAt);
 
@@ -285,10 +282,19 @@ export async function updateBookRecord({
         : originalBook?.finishedAt,
     review: updates.review || originalBook?.review,
     stars: updates.stars || originalBook?.stars,
-    // Clear bookProgress when marking as finished
+    // When marking as finished, preserve progress but set to 100%
     bookProgress:
       finalStatus === BOOK_STATUS.FINISHED
-        ? undefined
+        ? (() => {
+            const prev = updates.bookProgress ?? originalBook?.bookProgress;
+            if (!prev) return undefined;
+            return {
+              ...prev,
+              percent: 100,
+              currentPage: prev.totalPages ?? prev.currentPage,
+              updatedAt: new Date().toISOString(),
+            };
+          })()
         : updates.bookProgress !== undefined
           ? updates.bookProgress
           : originalBook?.bookProgress,
@@ -469,10 +475,19 @@ export async function updateBookRecords({
           : originalBook?.finishedAt,
       review: update.review || originalBook?.review,
       stars: update.stars || originalBook?.stars,
-      // Clear bookProgress when marking as finished
+      // When marking as finished, preserve progress but set to 100%
       bookProgress:
         finalStatus === BOOK_STATUS.FINISHED
-          ? undefined
+          ? (() => {
+              const prev = update.bookProgress ?? originalBook?.bookProgress;
+              if (!prev) return undefined;
+              return {
+                ...prev,
+                percent: 100,
+                currentPage: prev.totalPages ?? prev.currentPage,
+                updatedAt: new Date().toISOString(),
+              };
+            })()
           : update.bookProgress !== undefined
             ? update.bookProgress
             : originalBook?.bookProgress,

@@ -816,8 +816,35 @@ export const BookInfo: FC<{
                   </div>
                 </div>
 
-                {/* Reading Progress (only when not finished) */}
-                {usersBook?.status !== BOOK_STATUS.FINISHED && (
+                {/* Reading Progress — completed summary for finished books, editable for others */}
+                {usersBook?.status === BOOK_STATUS.FINISHED ? (
+                  (() => {
+                    const progress = usersBook.bookProgress;
+                    const pages = progress?.totalPages ?? (meta?.numPages ? meta.numPages : null);
+                    const chapters = progress?.totalChapters;
+                    return (
+                      <div>
+                        <label class="mb-2 block text-sm font-semibold text-foreground">
+                          Reading Progress
+                        </label>
+                        <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            class="h-full rounded-full bg-green-500 transition-[width] duration-300"
+                            style="width: 100%"
+                          />
+                        </div>
+                        <p class="text-sm text-muted-foreground">
+                          <span class="font-medium text-green-600 dark:text-green-400">
+                            Finished!
+                          </span>
+                          {pages && <span class="ml-1">{pages} pages read</span>}
+                          {pages && chapters && <span> · </span>}
+                          {chapters && <span>{chapters} chapters</span>}
+                        </p>
+                      </div>
+                    );
+                  })()
+                ) : (
                   <div>
                     <label class="mb-2 block text-sm font-semibold text-foreground">
                       Reading Progress

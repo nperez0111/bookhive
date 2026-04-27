@@ -14,6 +14,31 @@ import { BOOK_STATUS } from "../constants";
 import type { BookProgress, HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
 
+/**
+ * Convert a date-input value to a full ISO datetime. YYYY-MM-DD inputs are
+ * combined with the current UTC time-of-day so the timestamp captures when
+ * the user logged the date (matching createdAt behavior).
+ */
+function dateInputToISO(val: string): string {
+  if (!val || val === "") return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    const [year, month, day] = val.split("-").map(Number) as [number, number, number];
+    const now = new Date();
+    return new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds(),
+        now.getUTCMilliseconds(),
+      ),
+    ).toISOString();
+  }
+  return val;
+}
+
 const updateBookSchema = z.object({
   hiveId: z.string(),
   status: z.optional(z.string()),
@@ -23,25 +48,13 @@ const updateBookSchema = z.object({
   startedAt: z.optional(
     z
       .string()
-      .transform((val) => {
-        if (!val || val === "") return "";
-        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-          return new Date(val + "T00:00:00.000Z").toISOString();
-        }
-        return val;
-      })
+      .transform(dateInputToISO)
       .pipe(z.string().datetime().or(z.literal(""))),
   ),
   finishedAt: z.optional(
     z
       .string()
-      .transform((val) => {
-        if (!val || val === "") return "";
-        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-          return new Date(val + "T00:00:00.000Z").toISOString();
-        }
-        return val;
-      })
+      .transform(dateInputToISO)
       .pipe(z.string().datetime().or(z.literal(""))),
   ),
   bookProgress: z

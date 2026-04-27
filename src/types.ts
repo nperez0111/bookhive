@@ -262,7 +262,10 @@ type Simplify<T> = {
   [K in keyof T]: T[K];
 };
 
-type HiveFields = Pick<HiveBook, "cover" | "thumbnail" | "description" | "rating" | "ratingsCount">;
+type HiveFields = Pick<
+  HiveBook,
+  "cover" | "thumbnail" | "description" | "rating" | "ratingsCount" | "meta"
+>;
 
 /**
  * This is the result of a user's actual PDS data which may or may not include Hive data
