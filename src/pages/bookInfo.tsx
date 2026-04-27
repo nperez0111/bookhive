@@ -822,7 +822,6 @@ export const BookInfo: FC<{
                     const progress = usersBook.bookProgress;
                     const pages = progress?.totalPages ?? (meta?.numPages ? meta.numPages : null);
                     const chapters = progress?.totalChapters;
-                    if (!pages && !chapters) return null;
                     return (
                       <div>
                         <label class="mb-2 block text-sm font-semibold text-foreground">
