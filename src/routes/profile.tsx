@@ -11,7 +11,6 @@ import { sql } from "kysely";
 import type { AppEnv } from "../context";
 import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
-import { Layout } from "../pages/layout";
 import { ProfilePage } from "../pages/profile";
 import { ReadingStatsPage } from "../pages/readingStats";
 import { getProfile, getProfiles } from "../utils/getProfile";
@@ -101,13 +100,11 @@ const app = new Hono<AppEnv>()
     if (Number.isNaN(year) || year < 2000 || year > 2100) {
       c.status(400);
       return c.render(
-        <Layout>
-          <ErrorPage
-            message="Invalid year"
-            description="Please choose a valid year for your reading stats."
-            statusCode={400}
-          />
-        </Layout>,
+        <ErrorPage
+          message="Invalid year"
+          description="Please choose a valid year for your reading stats."
+          statusCode={400}
+        />,
         { title: "Invalid year" },
       );
     }
@@ -119,13 +116,11 @@ const app = new Hono<AppEnv>()
     if (!did) {
       c.status(404);
       return c.render(
-        <Layout>
-          <ErrorPage
-            message="Profile not found"
-            description="This profile does not exist or has no books on BookHive."
-            statusCode={404}
-          />
-        </Layout>,
+        <ErrorPage
+          message="Profile not found"
+          description="This profile does not exist or has no books on BookHive."
+          statusCode={404}
+        />,
         { title: "Profile Not Found" },
       );
     }
@@ -156,13 +151,11 @@ const app = new Hono<AppEnv>()
     if (!isBuzzer) {
       c.status(404);
       return c.render(
-        <Layout>
-          <ErrorPage
-            message="No books yet"
-            description="This user has no books on BookHive yet."
-            statusCode={404}
-          />
-        </Layout>,
+        <ErrorPage
+          message="No books yet"
+          description="This user has no books on BookHive yet."
+          statusCode={404}
+        />,
         { title: "Reading stats" },
       );
     }
@@ -234,20 +227,18 @@ const app = new Hono<AppEnv>()
     availableYears = [...yearSet].sort((a, b) => b - a);
 
     return c.render(
-      <Layout>
-        <ReadingStatsPage
-          handle={handle}
-          did={did}
-          year={year}
-          stats={stats}
-          profile={profile}
-          isOwnProfile={isOwnProfile}
-          availableYears={availableYears}
-          books={parsedBooks}
-          allTimeStats={allTimeStats}
-          showYearInBooks={showYearInBooks}
-        />
-      </Layout>,
+      <ReadingStatsPage
+        handle={handle}
+        did={did}
+        year={year}
+        stats={stats}
+        profile={profile}
+        isOwnProfile={isOwnProfile}
+        availableYears={availableYears}
+        books={parsedBooks}
+        allTimeStats={allTimeStats}
+        showYearInBooks={showYearInBooks}
+      />,
       {
         title: `BookHive | @${handle}'s ${year} in Books`,
         description: `@${handle}'s reading stats for ${year} — ${stats.booksCount} books read on BookHive`,
