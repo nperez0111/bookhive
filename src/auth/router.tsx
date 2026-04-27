@@ -21,6 +21,7 @@ import {
   createEmptyProfile,
   uploadBlob,
 } from "../pds/client";
+import { generateInitialsAvatar } from "../utils/generateInitialsAvatar";
 
 // Helper function to get consistent session configuration
 export function getSessionConfig(): SessionOptions {
@@ -99,7 +100,7 @@ export function loginRouter(
           const redirectTo = new URL(redirectUri);
           if (redirectTo.protocol !== "exp:" && redirectTo.protocol !== "bookhive:") {
             return c.html(
-              <Layout>
+              <Layout assetUrls={c.get("assetUrls")}>
                 <Error
                   message="Invalid redirect_uri"
                   description="Redirect uri must be an exp or bookhive url"
@@ -137,7 +138,7 @@ export function loginRouter(
         error: errMsg,
       });
       return c.html(
-        <Layout>
+        <Layout assetUrls={c.get("assetUrls")}>
           <Login
             error={`Login failed: ${errMsg}`}
             signupUrl={isPdsEnabled() ? "/pds/signup" : "https://bsky.app"}
@@ -175,7 +176,7 @@ export function loginRouter(
     let { handle, redirect_uri: redirectUri } = c.req.query();
     if (typeof handle !== "string" || !isValidHandle(handle)) {
       return c.html(
-        <Layout>
+        <Layout assetUrls={c.get("assetUrls")}>
           <Login error={"Handle '" + handle + "' is invalid"} />
         </Layout>,
         400,
@@ -200,7 +201,7 @@ export function loginRouter(
       });
 
       return c.html(
-        <Layout>
+        <Layout assetUrls={c.get("assetUrls")}>
           <Error message={errMsg} description="Oauth authorization failed" statusCode={400} />
         </Layout>,
         400,
@@ -310,12 +311,15 @@ export function loginRouter(
           inviteCode,
         });
 
-        // 3. Upload avatar blob if provided
-        const avatarBlob = avatar
-          ? await uploadBlob(account.accessJwt, avatar, avatar.type || "image/jpeg")
-          : undefined;
+        // 3. Upload avatar blob — use uploaded image, or auto-generate initials avatar
+        const avatarFile: Blob = avatar ?? (await generateInitialsAvatar(handle));
+        const avatarBlob = await uploadBlob(
+          account.accessJwt,
+          avatarFile,
+          avatarFile.type || "image/png",
+        );
 
-        // 4. Create profile (with optional avatar)
+        // 4. Create profile with avatar
         await createEmptyProfile(account.accessJwt, account.did, avatarBlob);
 
         // 5. Kick off OAuth flow — user signs in with their new handle/password
@@ -348,7 +352,7 @@ export function loginRouter(
     let { handle } = await c.req.parseBody();
     if (typeof handle !== "string" || !isValidHandle(handle)) {
       return c.html(
-        <Layout>
+        <Layout assetUrls={c.get("assetUrls")}>
           <Login
             handle={typeof handle === "string" ? handle : undefined}
             error={
@@ -376,7 +380,7 @@ export function loginRouter(
         error: errMsg,
       });
       return c.html(
-        <Layout>
+        <Layout assetUrls={c.get("assetUrls")}>
           <Error message={errMsg} description="OAuth authorization failed" statusCode={400} />
         </Layout>,
         400,
@@ -424,7 +428,14 @@ export function loginRouter(
           inviteCode,
         });
 
-        await createEmptyProfile(account.accessJwt, account.did);
+        const generatedAvatar = await generateInitialsAvatar(handle);
+        const avatarBlob = await uploadBlob(
+          account.accessJwt,
+          generatedAvatar,
+          generatedAvatar.type || "image/png",
+        );
+
+        await createEmptyProfile(account.accessJwt, account.did, avatarBlob);
 
         return c.json({ success: true, handle: fullHandle });
       } catch (err: unknown) {
