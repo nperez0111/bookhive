@@ -1,4 +1,3 @@
-import { sql } from "kysely";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 
@@ -8,7 +7,7 @@ export async function loadGenresForHiveBook(db: Database, hiveId: HiveId): Promi
     .selectFrom("hive_book_genre")
     .select("genre")
     .where("hiveId", "=", hiveId)
-    .orderBy(sql`rowid`)
+    .orderBy("id", "asc")
     .execute();
   return rows.map((r) => r.genre);
 }
@@ -24,7 +23,7 @@ export async function loadGenresMapForHiveBooks(
     .select(["hiveId", "genre"])
     .where("hiveId", "in", hiveIds)
     .orderBy("hiveId")
-    .orderBy(sql`rowid`)
+    .orderBy("id", "asc")
     .execute();
   for (const { hiveId, genre } of rows) {
     const list = map.get(hiveId);

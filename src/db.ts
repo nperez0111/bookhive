@@ -1,13 +1,12 @@
-import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import {
   Kysely,
   Migrator,
-  SqliteDialect,
+  PostgresDialect,
   sql,
   type Migration,
   type MigrationProvider,
 } from "kysely";
-import { Database as DatabaseSync } from "bun:sqlite";
+import pg from "pg";
 import type {
   BookIdentifiersRow,
   BookListRow,
@@ -19,7 +18,6 @@ import type {
   UserBookRow,
   UserFollow,
 } from "./types";
-import { deriveBookIdentifiers } from "./utils/bookIdentifiers.js";
 
 // Types
 export type DatabaseSchema = {
@@ -57,7 +55,7 @@ export const BookFields = [
   "hive_book.rawTitle",
 ] as const;
 
-// Migrations
+// Migrations — consolidated for PostgreSQL (fresh schema, no incremental SQLite history)
 
 const migrations: Record<string, Migration> = {};
 
@@ -67,8 +65,9 @@ const migrationProvider: MigrationProvider = {
   },
 };
 
-migrations["001"] = {
+migrations["pg-001"] = {
   async up(db: Kysely<unknown>) {
+    // -- user_book --
     await db.schema
       .createTable("user_book")
       .addColumn("uri", "text", (col) => col.primaryKey())
@@ -82,14 +81,35 @@ migrations["001"] = {
       .addColumn("status", "text")
       .addColumn("startedAt", "text")
       .addColumn("finishedAt", "text")
-      .addColumn("stars", "int8")
+      .addColumn("stars", "integer")
       .addColumn("review", "text")
+      .addColumn("bookProgress", "text")
+      .addColumn("owned", "integer", (col) => col.notNull().defaultTo(0))
       .execute();
+
+    await db.schema
+      .createIndex("idx_user_book_created_at")
+      .on("user_book")
+      .column("createdAt")
+      .execute();
+    await db.schema
+      .createIndex("idx_user_book_user_did")
+      .on("user_book")
+      .column("userDid")
+      .execute();
+    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
+    await db.schema
+      .createIndex("idx_user_book_user_created")
+      .on("user_book")
+      .columns(["userDid", "createdAt"])
+      .execute();
+
+    // -- hive_book --
     await db.schema
       .createTable("hive_book")
       .addColumn("id", "text", (col) => col.primaryKey())
       .addColumn("title", "text", (col) => col.notNull())
-      .addColumn("authors", "text", (col) => col.notNull()) // JSON array
+      .addColumn("authors", "text", (col) => col.notNull())
       .addColumn("source", "text", (col) => col.notNull())
       .addColumn("sourceUrl", "text")
       .addColumn("sourceId", "text")
@@ -100,15 +120,22 @@ migrations["001"] = {
       .addColumn("ratingsCount", "integer")
       .addColumn("createdAt", "text", (col) => col.notNull())
       .addColumn("updatedAt", "text", (col) => col.notNull())
+      .addColumn("rawTitle", "text")
+      .addColumn("series", "text")
+      .addColumn("meta", "text")
+      .addColumn("enrichedAt", "text")
+      .addColumn("identifiers", "text")
+      .addColumn("hiveBookAtUri", "text")
+      .addColumn("hiveBookCatalogUpdatedAt", "text")
       .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("user_book").execute();
-    await db.schema.dropTable("hive_book").execute();
-  },
-};
-migrations["002"] = {
-  async up(db: Kysely<unknown>) {
+
+    await sql`CREATE INDEX idx_hive_book_ratings_thumbnail
+      ON hive_book("ratingsCount" DESC, authors, thumbnail)
+      WHERE thumbnail IS NOT NULL AND thumbnail != ''`.execute(db);
+    await sql`CREATE INDEX idx_hive_book_author_ratings
+      ON hive_book(authors, "ratingsCount", rating)`.execute(db);
+
+    // -- buzz --
     await db.schema
       .createTable("buzz")
       .addColumn("uri", "text", (col) => col.primaryKey())
@@ -123,23 +150,11 @@ migrations["002"] = {
       .addColumn("parentUri", "text", (col) => col.notNull())
       .addColumn("parentCid", "text", (col) => col.notNull())
       .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("buzz").execute();
-  },
-};
 
-migrations["003"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("rawTitle", "text").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").dropColumn("rawTitle").execute();
-  },
-};
+    await sql`CREATE INDEX idx_buzz_hive_id ON buzz("hiveId", "createdAt")`.execute(db);
+    await sql`CREATE INDEX idx_buzz_parent_uri ON buzz("parentUri")`.execute(db);
 
-migrations["004"] = {
-  async up(db: Kysely<unknown>) {
+    // -- user_follows --
     await db.schema
       .createTable("user_follows")
       .addColumn("userDid", "text", (col) => col.notNull())
@@ -156,72 +171,18 @@ migrations["004"] = {
       .columns(["userDid", "followsDid"])
       .unique()
       .execute();
-
-    await db.schema
-      .createIndex("idx_user_follows_user")
-      .on("user_follows")
-      .column("userDid")
-      .execute();
-
     await db.schema
       .createIndex("idx_user_follows_synced")
       .on("user_follows")
       .columns(["userDid", "syncedAt"])
       .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("user_follows").execute();
-  },
-};
-
-migrations["005"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
-
-    await db.schema.alterTable("hive_book").addColumn("series", "text").execute();
-
-    await db.schema.alterTable("hive_book").addColumn("meta", "text").execute();
-
-    await db.schema.alterTable("hive_book").addColumn("enrichedAt", "text").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").dropColumn("genres").execute();
-
-    await db.schema.alterTable("hive_book").dropColumn("series").execute();
-
-    await db.schema.alterTable("hive_book").dropColumn("meta").execute();
-
-    await db.schema.alterTable("hive_book").dropColumn("enrichedAt").execute();
-  },
-};
-
-migrations["006"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("user_book").addColumn("bookProgress", "text").execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.alterTable("user_book").dropColumn("bookProgress").execute();
-  },
-};
-
-migrations["008"] = {
-  async up(db: Kysely<unknown>) {
-    // Speeds up "latest buzzes" and any query ordering by user_book.createdAt
     await db.schema
-      .createIndex("idx_user_book_created_at")
-      .on("user_book")
-      .column("createdAt")
+      .createIndex("idx_user_follows_active")
+      .on("user_follows")
+      .columns(["userDid", "isActive", "followsDid"])
       .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropIndex("idx_user_book_created_at").on("user_book").execute();
-  },
-};
 
-migrations["007"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("identifiers", "text").execute();
-
+    // -- book_id_map --
     await db.schema
       .createTable("book_id_map")
       .addColumn("hiveId", "text", (col) => col.primaryKey())
@@ -232,143 +193,30 @@ migrations["007"] = {
       .execute();
 
     await db.schema.createIndex("idx_book_id_map_isbn").on("book_id_map").column("isbn").execute();
-
     await db.schema
       .createIndex("idx_book_id_map_isbn13")
       .on("book_id_map")
       .column("isbn13")
       .execute();
-
     await db.schema
       .createIndex("idx_book_id_map_goodreads_id")
       .on("book_id_map")
       .column("goodreadsId")
       .execute();
 
-    await sql`
-      INSERT INTO book_id_map (hiveId, isbn, isbn13, goodreadsId, updatedAt)
-      SELECT
-        id,
-        NULLIF(REPLACE(REPLACE(UPPER(CAST(json_extract(meta, '$.isbn') AS TEXT)), '-', ''), ' ', ''), ''),
-        NULLIF(REPLACE(REPLACE(CAST(json_extract(meta, '$.isbn13') AS TEXT), '-', ''), ' ', ''), ''),
-        CASE
-          WHEN source = 'Goodreads' THEN NULLIF(
-            CASE
-              WHEN instr(COALESCE(sourceId, ''), '.') > 0 THEN substr(sourceId, 1, instr(sourceId, '.') - 1)
-              ELSE sourceId
-            END,
-            ''
-          )
-          ELSE NULL
-        END,
-        updatedAt
-      FROM hive_book
-    `.execute(db);
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("book_id_map").execute();
-    await db.schema.alterTable("hive_book").dropColumn("identifiers").execute();
-  },
-};
-
-migrations["009"] = {
-  async up(db: Kysely<unknown>) {
-    // Denormalized genre list so /genres can avoid full scan + json_each on hive_book
+    // -- hive_book_genre (with serial id to replace SQLite rowid) --
     await db.schema
       .createTable("hive_book_genre")
+      .addColumn("id", "serial", (col) => col.primaryKey())
       .addColumn("hiveId", "text", (col) => col.notNull())
       .addColumn("genre", "text", (col) => col.notNull())
       .execute();
 
-    await db.schema
-      .createIndex("idx_hive_book_genre_genre")
-      .on("hive_book_genre")
-      .column("genre")
-      .execute();
-
-    await db.schema
-      .createIndex("idx_hive_book_genre_hive_id")
-      .on("hive_book_genre")
-      .column("hiveId")
-      .execute();
-
-    await sql`
-      INSERT INTO hive_book_genre (hiveId, genre)
-      SELECT hive_book.id, json_each.value
-      FROM hive_book, json_each(hive_book.genres)
-      WHERE hive_book.genres IS NOT NULL
-    `.execute(db);
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("hive_book_genre").execute();
-  },
-};
-
-migrations["010"] = {
-  async up(db: Kysely<unknown>) {
-    const MIGRATION_010_BATCH_SIZE = 500;
-    // Backfill book_id_map.goodreadsId from hive_book (source/sourceId/sourceUrl)
-    // so goodreadsId matches the canonical id from hive_book.
-    // Batched reads (LIMIT/OFFSET) + one UPDATE per batch (CASE) to avoid loading
-    // the full table and per-row round-trips.
-    const updatedAt = new Date().toISOString();
-    let offset = 0;
-    let batch: {
-      id: string;
-      source: string | null;
-      sourceId: string | null;
-      sourceUrl: string | null;
-      meta: string | null;
-    }[];
-    do {
-      batch = await db
-        // @ts-ignore
-        .selectFrom("hive_book")
-        .select(["id", "source", "sourceId", "sourceUrl", "meta"])
-        .orderBy("id")
-        .limit(MIGRATION_010_BATCH_SIZE)
-        .offset(offset)
-        .execute();
-      if (batch.length === 0) break;
-      const updates = batch.map((row) => ({
-        hiveId: row.id as HiveId,
-        goodreadsId: deriveBookIdentifiers(row as Parameters<typeof deriveBookIdentifiers>[0])
-          .goodreadsId as string | null,
-      }));
-      const hiveIds = updates.map((u) => u.hiveId) as HiveId[];
-      const caseFragments = updates.map((u) => sql`WHEN ${u.hiveId} THEN ${u.goodreadsId}`);
-      await db
-        // @ts-ignore - migration uses unknown schema; set uses raw CASE, where uses hiveIds
-        .updateTable("book_id_map")
-        .set({
-          goodreadsId: sql`CASE hiveId ${sql.join(caseFragments, sql` `)} END`,
-          updatedAt: sql`${updatedAt}`,
-        })
-        // @ts-ignore - Kysely<unknown> rejects hiveId[] in where
-        .where("hiveId", "in", hiveIds)
-        .execute();
-      offset += batch.length;
-    } while (batch.length === MIGRATION_010_BATCH_SIZE);
-  },
-  async down(_db: Kysely<unknown>) {
-    // No reversible fix; goodreadsId was wrong before.
-  },
-};
-
-migrations["011"] = {
-  async up(db: Kysely<unknown>) {
-    await db.schema.alterTable("hive_book").addColumn("hiveBookAtUri", "text").execute();
-    await db.schema.alterTable("hive_book").addColumn("hiveBookCatalogUpdatedAt", "text").execute();
-    await db.schema.alterTable("hive_book").dropColumn("genres").execute();
-
-    await db.schema
-      .alterTable("user_book")
-      .addColumn("owned", "integer", (col) => col.notNull().defaultTo(0))
-      .execute();
-    await sql`UPDATE user_book SET owned = 1, status = NULL WHERE status = 'buzz.bookhive.defs#owned'`.execute(
+    await sql`CREATE UNIQUE INDEX idx_hive_book_genre_pk ON hive_book_genre("hiveId", genre)`.execute(
       db,
     );
 
+    // -- book_list --
     await db.schema
       .createTable("book_list")
       .addColumn("uri", "text", (col) => col.primaryKey())
@@ -382,6 +230,9 @@ migrations["011"] = {
       .addColumn("indexedAt", "text", (col) => col.notNull())
       .execute();
 
+    await db.schema.createIndex("idx_book_list_user").on("book_list").column("userDid").execute();
+
+    // -- book_list_item --
     await db.schema
       .createTable("book_list_item")
       .addColumn("uri", "text", (col) => col.primaryKey())
@@ -398,41 +249,7 @@ migrations["011"] = {
       .addColumn("embeddedCoverUrl", "text")
       .addColumn("identifiers", "text")
       .execute();
-  },
-  async down(db: Kysely<unknown>) {
-    await db.schema.dropTable("book_list_item").execute();
-    await db.schema.dropTable("book_list").execute();
-    await db.schema.alterTable("user_book").dropColumn("owned").execute();
-    await db.schema.alterTable("hive_book").addColumn("genres", "text").execute();
-    await db.schema.alterTable("hive_book").dropColumn("hiveBookCatalogUpdatedAt").execute();
-    await db.schema.alterTable("hive_book").dropColumn("hiveBookAtUri").execute();
-  },
-};
 
-migrations["012"] = {
-  async up(db: Kysely<unknown>) {
-    // hive_book covering indexes
-    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_ratings_thumbnail
-      ON hive_book(ratingsCount DESC, authors, thumbnail)
-      WHERE thumbnail IS NOT NULL AND thumbnail != ''`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_ratings
-      ON hive_book(authors, ratingsCount, rating)`.execute(db);
-
-    // user_book query indexes
-    await db.schema
-      .createIndex("idx_user_book_user_did")
-      .on("user_book")
-      .column("userDid")
-      .execute();
-    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
-    await db.schema
-      .createIndex("idx_user_book_user_created")
-      .on("user_book")
-      .columns(["userDid", "createdAt"])
-      .execute();
-
-    // book_list indexes
-    await db.schema.createIndex("idx_book_list_user").on("book_list").column("userDid").execute();
     await db.schema
       .createIndex("idx_book_list_item_list")
       .on("book_list_item")
@@ -443,92 +260,40 @@ migrations["012"] = {
       .on("book_list_item")
       .column("hiveId")
       .execute();
-
-    // hive_book_genre: replace two single-column indexes with composite unique
-    await sql`
-      DELETE FROM hive_book_genre
-      WHERE rowid NOT IN (
-        SELECT MIN(rowid) FROM hive_book_genre GROUP BY hiveId, genre
-      )
-    `.execute(db);
-    await db.schema.dropIndex("idx_hive_book_genre_genre").ifExists().execute();
-    await db.schema.dropIndex("idx_hive_book_genre_hive_id").ifExists().execute();
-    await sql`CREATE UNIQUE INDEX idx_hive_book_genre_pk ON hive_book_genre(hiveId, genre)`.execute(
-      db,
-    );
-
-    // buzz indexes
-    await sql`CREATE INDEX IF NOT EXISTS idx_buzz_hive_id ON buzz(hiveId, createdAt)`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_buzz_parent_uri ON buzz(parentUri)`.execute(db);
-
-    // Drop redundant single-column index: covered by idx_user_follows_primary (userDid, followsDid)
-    await db.schema.dropIndex("idx_user_follows_user").ifExists().execute();
-
-    // Covering index for friends feed subquery: WHERE userDid = ? AND isActive = 1 SELECT followsDid
-    await db.schema
-      .createIndex("idx_user_follows_active")
-      .on("user_follows")
-      .columns(["userDid", "isActive", "followsDid"])
-      .execute();
   },
   async down(db: Kysely<unknown>) {
-    await db.schema.dropIndex("idx_user_follows_active").ifExists().execute();
-    await db.schema
-      .createIndex("idx_user_follows_user")
-      .on("user_follows")
-      .column("userDid")
-      .execute();
-    await sql`DROP INDEX IF EXISTS idx_buzz_parent_uri`.execute(db);
-    await sql`DROP INDEX IF EXISTS idx_buzz_hive_id`.execute(db);
-    await sql`DROP INDEX IF EXISTS idx_hive_book_genre_pk`.execute(db);
-    await db.schema
-      .createIndex("idx_hive_book_genre_genre")
-      .on("hive_book_genre")
-      .column("genre")
-      .execute();
-    await db.schema
-      .createIndex("idx_hive_book_genre_hive_id")
-      .on("hive_book_genre")
-      .column("hiveId")
-      .execute();
-    await db.schema.dropIndex("idx_book_list_item_hive").ifExists().execute();
-    await db.schema.dropIndex("idx_book_list_item_list").ifExists().execute();
-    await db.schema.dropIndex("idx_book_list_user").ifExists().execute();
-    await db.schema.dropIndex("idx_user_book_user_created").ifExists().execute();
-    await db.schema.dropIndex("idx_user_book_hive_id").ifExists().execute();
-    await db.schema.dropIndex("idx_user_book_user_did").ifExists().execute();
-    await sql`DROP INDEX IF EXISTS idx_hive_book_author_ratings`.execute(db);
-    await sql`DROP INDEX IF EXISTS idx_hive_book_ratings_thumbnail`.execute(db);
+    await db.schema.dropTable("book_list_item").ifExists().execute();
+    await db.schema.dropTable("book_list").ifExists().execute();
+    await db.schema.dropTable("hive_book_genre").ifExists().execute();
+    await db.schema.dropTable("book_id_map").ifExists().execute();
+    await db.schema.dropTable("user_follows").ifExists().execute();
+    await db.schema.dropTable("buzz").ifExists().execute();
+    await db.schema.dropTable("hive_book").ifExists().execute();
+    await db.schema.dropTable("user_book").ifExists().execute();
   },
 };
 
 // APIs
 
-export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
-  const sqlite = new DatabaseSync(location);
-  sqlite.exec("PRAGMA busy_timeout = 5000");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
-  sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
-  sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  sqlite.exec("PRAGMA mmap_size = 1073741824"); // 1 GB — keep full DB memory-mapped
+export const createDb = (connectionString: string): { db: Database; pool: pg.Pool } => {
+  const pool = new pg.Pool({
+    connectionString,
+    min: 2,
+    max: 10,
+  });
 
   const db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({
-      database: wrapBunSqliteForKysely(sqlite),
+    dialect: new PostgresDialect({
+      pool,
     }),
   });
 
-  return { db, sqlite };
+  return { db, pool };
 };
 
-export const migrateToLatest = async (db: Database, sqlite?: DatabaseSync) => {
-  // Temporarily disable fsyncs during migrations for speed. Safe because if we crash
-  // mid-migration, Kysely won't record it as complete and it re-runs on next startup.
-  if (sqlite) sqlite.exec("PRAGMA synchronous = OFF");
+export const migrateToLatest = async (db: Database) => {
   const migrator = new Migrator({ db, provider: migrationProvider });
   const { error, results } = await migrator.migrateToLatest();
-  if (sqlite) sqlite.exec("PRAGMA synchronous = NORMAL");
   if (error) throw error;
   return results ?? [];
 };

@@ -39,6 +39,7 @@ index.html
 # Database
 *.sqlite*
 *.db
+db/password.txt
 
 # Environment
 .env

@@ -14,10 +14,9 @@ export const env = cleanEnv(process.env, {
     devDefault: `http://127.0.0.1:${process.env["PORT"] ?? 8080}`,
     desc: "Public origin for OAuth callbacks (RFC 8252 requires loopback IP not localhost). In dev, auto-derives from PORT when not explicitly set.",
   }),
-  DB_PATH: str({ devDefault: ":memory:", desc: "Path to the SQLite database" }),
-  KV_DB_PATH: str({
-    devDefault: ":memory:",
-    desc: "Path to the KV SQLite database",
+  DATABASE_URL: str({
+    devDefault: "postgres://bookhive:bookhive@localhost:5432/bookhive",
+    desc: "PostgreSQL connection URL",
   }),
   EXPORT_SHARED_SECRET: str({
     default: "",
@@ -25,7 +24,7 @@ export const env = cleanEnv(process.env, {
   }),
   DB_EXPORT_DIR: str({
     default: "",
-    desc: "Directory to write temporary export artifacts. Defaults to the directory containing DB_PATH.",
+    desc: "Directory to write temporary export artifacts.",
   }),
   LOG_LEVEL: str({ default: "info", desc: "Log level for the app" }),
   COOKIE_SECRET: str({ devDefault: "00000000000000000000000000000000" }),

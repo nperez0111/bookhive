@@ -373,7 +373,7 @@ const app = new Hono<AppEnv>()
     );
     endTime(c, "followCounts");
 
-    startTime(c, "followingFollowers");
+    startTime(c, "followingFollowersDb");
     const [followingRows, followersRows] = await Promise.all([
       c
         .get("ctx")
@@ -396,13 +396,15 @@ const app = new Hono<AppEnv>()
         .limit(50)
         .execute(),
     ]);
+    endTime(c, "followingFollowersDb");
     const followingDids = followingRows.map((r) => r.followsDid);
     const followersDids = followersRows.map((r) => r.userDid);
+    startTime(c, "followingFollowersProfiles");
     const [followingProfiles, followersProfiles] = await Promise.all([
       followingDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followingDids }) : [],
       followersDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followersDids }) : [],
     ]);
-    endTime(c, "followingFollowers");
+    endTime(c, "followingFollowersProfiles");
 
     startTime(c, "userLists");
     const userLists = await getUserLists({ db: c.get("ctx").db, userDid: did });

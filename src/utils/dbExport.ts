@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { Database as DatabaseSync } from "bun:sqlite";
 import { Readable } from "node:stream";
 
 type ExportResult = { archivePath: string; filename: string; tmpDir: string };
@@ -12,8 +11,6 @@ type ExportManifest = {
   createdAt: string;
   version: string;
   files: Array<{ name: string; md5: string; size: number }>;
-  excludedKvTables: string[];
-  schema?: { tables: string[]; views: string[] };
 };
 
 function toError(err: unknown): Error {
@@ -42,128 +39,35 @@ export function isAuthorizedExportRequest(opts: {
   return timingSafeEqualString(match[1]!, sharedSecret);
 }
 
-async function sqliteBackup({ sourcePath, destPath }: { sourcePath: string; destPath: string }) {
-  const db = new DatabaseSync(sourcePath);
-  try {
-    db.exec("PRAGMA busy_timeout = 5000");
-    // VACUUM INTO copies the database to a new file (SQLite 3.27+)
-    const escaped = path.resolve(destPath).replace(/'/g, "''");
-    db.exec(`VACUUM INTO '${escaped}'`);
-  } finally {
-    db.close();
-  }
-}
-
-function shouldExcludeTable(name: string): boolean {
-  return name === "auth_sessions" || name === "auth_state" || name.startsWith("auth_");
-}
-
-async function createSanitizedKvCopy({
-  sourcePath,
+/** Run pg_dump and write the output to a file. */
+async function pgDumpBackup({
+  databaseUrl,
   destPath,
+  excludeTables,
 }: {
-  sourcePath: string;
+  databaseUrl: string;
   destPath: string;
-}) {
-  const src = new DatabaseSync(sourcePath, { readonly: true });
-  const dest = new DatabaseSync(destPath);
-
-  try {
-    src.exec("PRAGMA busy_timeout = 10000");
-    dest.exec("PRAGMA busy_timeout = 5000");
-
-    const objects = src
-      .prepare(
-        `
-        SELECT type, name, tbl_name as tblName, sql
-        FROM sqlite_master
-        WHERE sql IS NOT NULL
-        ORDER BY
-          CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 WHEN 'view' THEN 3 ELSE 4 END,
-          name
-      `,
-      )
-      .all() as Array<{
-      type: string;
-      name: string;
-      tblName: string;
-      sql: string;
-    }>;
-
-    const tablesToCopy: Array<{
-      name: string;
-      colList: string;
-      colNames: string[];
-      quotedTable: string;
-    }> = [];
-    const tableSql: string[] = [];
-    const otherSql: string[] = [];
-
-    for (const obj of objects) {
-      const name = obj.name;
-      const tbl = obj.tblName;
-      if (obj.type === "table") {
-        if (name.startsWith("sqlite_")) continue;
-        if (shouldExcludeTable(name)) continue;
-        tableSql.push(obj.sql);
-        const quotedTable = `"${name.replace(/"/g, '""')}"`;
-        const cols = src.prepare(`PRAGMA table_info(${quotedTable})`).all() as Array<{
-          name: string;
-        }>;
-        if (cols.length === 0) {
-          throw new Error(`Failed to retrieve column info for table: ${name}`);
-        }
-        tablesToCopy.push({
-          name,
-          colList: cols.map((c) => `"${c.name}"`).join(", "),
-          colNames: cols.map((c) => c.name),
-          quotedTable,
-        });
-        continue;
-      }
-      if (tbl && shouldExcludeTable(tbl)) continue;
-      otherSql.push(obj.sql);
-    }
-
-    dest.exec("BEGIN IMMEDIATE");
-    try {
-      for (const sql of tableSql) {
-        dest.exec(sql);
-      }
-
-      // Copy data by reading from src and inserting into dest (no ATTACH —
-      // the app may have the source DB open, which would lock it)
-      for (const { name, colList, colNames, quotedTable } of tablesToCopy) {
-        const rows = src.prepare(`SELECT ${colList} FROM ${quotedTable}`).all() as Record<
-          string,
-          unknown
-        >[];
-        if (rows.length === 0) continue;
-        const placeholders = colNames.map(() => "?").join(", ");
-        const safeName = `"${name.replace(/"/g, '""')}"`;
-        const insert = dest.prepare(
-          `INSERT INTO main.${safeName} (${colList}) VALUES (${placeholders})`,
-        );
-        for (const row of rows) {
-          insert.run(...colNames.map((col) => row[col] as string | number | bigint | null));
-        }
-      }
-
-      for (const sql of otherSql) {
-        dest.exec(sql);
-      }
-
-      dest.exec("COMMIT");
-    } catch (e) {
-      dest.exec("ROLLBACK");
-      throw new Error(`Failed to create sanitized KV copy: ${toError(e).message}`);
-    }
-
-    dest.exec("VACUUM");
-  } finally {
-    src.close();
-    dest.close();
+  excludeTables?: string[];
+}): Promise<void> {
+  const args = ["--format=custom", "--file", destPath];
+  for (const table of excludeTables ?? []) {
+    args.push("--exclude-table", table);
   }
+  args.push(databaseUrl);
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn("pg_dump", args, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const stderr: string[] = [];
+    proc.stderr.on("data", (d) => stderr.push(d.toString()));
+    proc.on("error", reject);
+    proc.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`pg_dump exited ${code}: ${stderr.join("").trim() || "no stderr"}`)),
+    );
+  });
 }
 
 function createTgz(cwd: string, outputFile: string, files: string[]): Promise<void> {
@@ -224,12 +128,10 @@ type PrepareResult = {
 };
 
 export async function prepareSanitizedExportFiles(opts: {
-  dbPath: string;
-  kvPath?: string;
+  databaseUrl: string;
   exportDir: string;
-  includeKv: boolean;
 }): Promise<PrepareResult> {
-  const { dbPath, kvPath, exportDir, includeKv } = opts;
+  const { databaseUrl, exportDir } = opts;
 
   await cleanupStaleExports(exportDir);
 
@@ -249,59 +151,26 @@ export async function prepareSanitizedExportFiles(opts: {
   const filename = `bookhive-export-${stamp}-${runId.slice(0, 8)}.tgz`;
 
   try {
-    const dbOut = path.join(tmpDir, "db.sqlite");
+    const dbOut = path.join(tmpDir, "db.dump");
     try {
-      await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
+      await pgDumpBackup({
+        databaseUrl,
+        destPath: dbOut,
+        excludeTables: ["kv_auth_sessions", "kv_auth_state"],
+      });
     } catch (err) {
-      throw new Error(`Failed to backup main database from ${dbPath}: ${toError(err).message}`);
+      throw new Error(`Failed to backup database: ${toError(err).message}`);
     }
 
     const includedFiles: ExportManifest["files"] = [];
-    const tables: string[] = [];
-    const views: string[] = [];
 
     const dbStats = await getFileStats(dbOut);
-    includedFiles.push({ name: "db.sqlite", md5: dbStats.md5, size: dbStats.size });
-
-    try {
-      const db = new DatabaseSync(dbOut, { readonly: true });
-      try {
-        const schemaObjects = db
-          .prepare(
-            `SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name`,
-          )
-          .all() as Array<{ type: string; name: string }>;
-        for (const obj of schemaObjects) {
-          (obj.type === "table" ? tables : views).push(obj.name);
-        }
-      } finally {
-        db.close();
-      }
-    } catch (err) {
-      throw new Error(
-        `Failed to extract schema information from main database: ${toError(err).message}`,
-      );
-    }
-
-    if (includeKv && kvPath) {
-      const kvOut = path.join(tmpDir, "kv.sqlite");
-      try {
-        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut });
-      } catch (err) {
-        throw new Error(
-          `Failed to create sanitized KV copy from ${kvPath}: ${toError(err).message}`,
-        );
-      }
-      const kvStats = await getFileStats(kvOut);
-      includedFiles.push({ name: "kv.sqlite", md5: kvStats.md5, size: kvStats.size });
-    }
+    includedFiles.push({ name: "db.dump", md5: dbStats.md5, size: dbStats.size });
 
     const manifest: ExportManifest = {
       createdAt: now.toISOString(),
-      version: "1.0",
+      version: "2.0",
       files: includedFiles,
-      excludedKvTables: ["auth_sessions", "auth_state"],
-      schema: { tables, views },
     };
 
     const manifestPath = path.join(tmpDir, "manifest.json");
@@ -322,12 +191,10 @@ export async function prepareSanitizedExportFiles(opts: {
 }
 
 export async function createSanitizedExportArchive(opts: {
-  dbPath: string;
-  kvPath?: string;
+  databaseUrl: string;
   exportDir: string;
-  includeKv: boolean;
 }): Promise<ExportResult> {
-  const { dbPath, kvPath, exportDir, includeKv } = opts;
+  const { databaseUrl, exportDir } = opts;
 
   await cleanupStaleExports(exportDir);
 
@@ -348,77 +215,26 @@ export async function createSanitizedExportArchive(opts: {
   const archivePath = path.join(exportDir, filename);
 
   try {
-    // Backup main database
-    const dbOut = path.join(tmpDir, "db.sqlite");
+    const dbOut = path.join(tmpDir, "db.dump");
     try {
-      await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
+      await pgDumpBackup({
+        databaseUrl,
+        destPath: dbOut,
+        excludeTables: ["kv_auth_sessions", "kv_auth_state"],
+      });
     } catch (err) {
-      throw new Error(`Failed to backup main database from ${dbPath}: ${toError(err).message}`);
+      throw new Error(`Failed to backup database: ${toError(err).message}`);
     }
 
     const includedFiles: ExportManifest["files"] = [];
-    const tables: string[] = [];
-    const views: string[] = [];
 
-    // Add db.sqlite file info
     const dbStats = await getFileStats(dbOut);
-    includedFiles.push({
-      name: "db.sqlite",
-      md5: dbStats.md5,
-      size: dbStats.size,
-    });
+    includedFiles.push({ name: "db.dump", md5: dbStats.md5, size: dbStats.size });
 
-    // Extract schema info from main database
-    try {
-      const db = new DatabaseSync(dbOut, { readonly: true });
-      try {
-        const schemaObjects = db
-          .prepare(
-            `SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name`,
-          )
-          .all() as Array<{ type: string; name: string }>;
-
-        for (const obj of schemaObjects) {
-          (obj.type === "table" ? tables : views).push(obj.name);
-        }
-      } finally {
-        db.close();
-      }
-    } catch (err) {
-      throw new Error(
-        `Failed to extract schema information from main database: ${toError(err).message}`,
-      );
-    }
-
-    // Handle KV database
-    if (includeKv && kvPath) {
-      const kvOut = path.join(tmpDir, "kv.sqlite");
-      try {
-        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut });
-      } catch (err) {
-        throw new Error(
-          `Failed to create sanitized KV copy from ${kvPath}: ${toError(err).message}`,
-        );
-      }
-
-      const kvStats = await getFileStats(kvOut);
-      includedFiles.push({
-        name: "kv.sqlite",
-        md5: kvStats.md5,
-        size: kvStats.size,
-      });
-    }
-
-    // Create and add manifest
     const manifest: ExportManifest = {
       createdAt: now.toISOString(),
-      version: "1.0",
+      version: "2.0",
       files: includedFiles,
-      excludedKvTables: ["auth_sessions", "auth_state"],
-      schema: {
-        tables,
-        views,
-      },
     };
 
     const manifestPath = path.join(tmpDir, "manifest.json");
@@ -429,13 +245,8 @@ export async function createSanitizedExportArchive(opts: {
     }
 
     const manifestStats = await getFileStats(manifestPath);
-    includedFiles.push({
-      name: "manifest.json",
-      md5: manifestStats.md5,
-      size: manifestStats.size,
-    });
+    includedFiles.push({ name: "manifest.json", md5: manifestStats.md5, size: manifestStats.size });
 
-    // Create archive
     try {
       await createTgz(
         tmpDir,
@@ -448,7 +259,6 @@ export async function createSanitizedExportArchive(opts: {
 
     return { archivePath, filename, tmpDir };
   } catch (err) {
-    // Clean up on error
     await cleanupExportPaths({ archivePath, tmpDir });
     throw err;
   }
