@@ -285,10 +285,19 @@ export async function updateBookRecord({
         : originalBook?.finishedAt,
     review: updates.review || originalBook?.review,
     stars: updates.stars || originalBook?.stars,
-    // Clear bookProgress when marking as finished
+    // When marking as finished, preserve progress but set to 100%
     bookProgress:
       finalStatus === BOOK_STATUS.FINISHED
-        ? undefined
+        ? (() => {
+            const prev = updates.bookProgress ?? originalBook?.bookProgress;
+            if (!prev) return undefined;
+            return {
+              ...prev,
+              percent: 100,
+              currentPage: prev.totalPages ?? prev.currentPage,
+              updatedAt: new Date().toISOString(),
+            };
+          })()
         : updates.bookProgress !== undefined
           ? updates.bookProgress
           : originalBook?.bookProgress,
@@ -469,10 +478,19 @@ export async function updateBookRecords({
           : originalBook?.finishedAt,
       review: update.review || originalBook?.review,
       stars: update.stars || originalBook?.stars,
-      // Clear bookProgress when marking as finished
+      // When marking as finished, preserve progress but set to 100%
       bookProgress:
         finalStatus === BOOK_STATUS.FINISHED
-          ? undefined
+          ? (() => {
+              const prev = update.bookProgress ?? originalBook?.bookProgress;
+              if (!prev) return undefined;
+              return {
+                ...prev,
+                percent: 100,
+                currentPage: prev.totalPages ?? prev.currentPage,
+                updatedAt: new Date().toISOString(),
+              };
+            })()
           : update.bookProgress !== undefined
             ? update.bookProgress
             : originalBook?.bookProgress,

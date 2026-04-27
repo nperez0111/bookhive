@@ -26,6 +26,13 @@ export type ReadingStats = {
 function getPageCount(book: Book): number | null {
   const fromProgress = book.bookProgress?.totalPages;
   if (fromProgress != null && fromProgress > 0) return fromProgress;
+  // Fall back to hive_book metadata (enriched from Goodreads/Google Books)
+  if (book.meta) {
+    try {
+      const m = JSON.parse(book.meta);
+      if (m.numPages != null && m.numPages > 0) return m.numPages;
+    } catch {}
+  }
   return null;
 }
 

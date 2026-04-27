@@ -60,8 +60,15 @@ export const ProfilePage: FC<{
   const monthsActive = 12; // could derive from first book date
   const booksPerMonth = totalRead > 0 ? (totalRead / monthsActive).toFixed(1) : "0";
   const pagesRead = books.reduce((sum, b) => {
-    const p = b.bookProgress;
-    return sum + (p?.totalPages ?? 0);
+    const fromProgress = b.bookProgress?.totalPages;
+    if (fromProgress != null && fromProgress > 0) return sum + fromProgress;
+    if (b.meta) {
+      try {
+        const m = JSON.parse(b.meta);
+        if (m.numPages != null && m.numPages > 0) return sum + m.numPages;
+      } catch {}
+    }
+    return sum;
   }, 0);
   const totalBooksForGenre = genreStats.reduce((s, g) => s + g.count, 0);
 

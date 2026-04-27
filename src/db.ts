@@ -55,6 +55,7 @@ export const BookFields = [
   "hive_book.rating",
   "hive_book.ratingsCount",
   "hive_book.rawTitle",
+  "hive_book.meta",
 ] as const;
 
 // Migrations
