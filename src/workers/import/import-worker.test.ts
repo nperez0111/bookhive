@@ -61,8 +61,7 @@ describe("import worker boundary", () => {
         },
       },
       csvData: new TextEncoder().encode("empty").buffer as ArrayBuffer,
-      dbPath: ":memory:",
-      kvPath: ":memory:",
+      databaseUrl: process.env["TEST_DATABASE_URL"] || "postgres://localhost:5432/bookhive_test",
     };
 
     const messagesPromise = collectWorkerMessages(worker);
@@ -95,8 +94,7 @@ describe("import worker boundary", () => {
         },
       },
       csvData: new ArrayBuffer(0),
-      dbPath: ":memory:",
-      kvPath: ":memory:",
+      databaseUrl: process.env["TEST_DATABASE_URL"] || "postgres://localhost:5432/bookhive_test",
     };
 
     const messagesPromise = collectWorkerMessages(worker);

@@ -441,7 +441,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const peerBooks = await ctx.db
         .selectFrom("user_book")
         .selectAll()
-        .where("hiveId", "==", book.id)
+        .where("hiveId", "=", book.id)
         .orderBy("indexedAt", "desc")
         .limit(100)
         .execute();

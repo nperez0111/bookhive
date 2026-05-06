@@ -1,8 +1,6 @@
 import { describe, it, expect, mock } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect } from "kysely";
-import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
-import { migrateToLatest, type DatabaseSchema } from "../../db";
+import { createDb, migrateToLatest } from "../../db";
+import type { Database } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
@@ -26,34 +24,52 @@ const { processGoodreadsImport, processStorygraphImport } = await import("./logi
 
 // --- Test helpers ---
 
-/** Create a real in-memory SQLite DB using the canonical migrations. */
+const TEST_DATABASE_URL =
+  process.env["TEST_DATABASE_URL"] || "postgres://localhost:5432/bookhive_test";
+
+/** Create a test PostgreSQL DB using the canonical migrations. */
 async function createTestDb() {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  const db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({
-      database: wrapBunSqliteForKysely(sqlite),
-    }),
-  });
+  const { db, pool } = createDb(TEST_DATABASE_URL);
 
-  await migrateToLatest(db, sqlite);
+  await migrateToLatest(db);
 
-  return { db, sqlite };
+  // Clean tables for test isolation
+  await db.deleteFrom("book_list_item").execute();
+  await db.deleteFrom("book_list").execute();
+  await db.deleteFrom("hive_book_genre").execute();
+  await db.deleteFrom("book_id_map").execute();
+  await db.deleteFrom("buzz").execute();
+  await db.deleteFrom("user_book").execute();
+  await db.deleteFrom("user_follows").execute();
+  await db.deleteFrom("hive_book").execute();
+
+  return { db, pool };
 }
 
 /** Seed a hive_book row so the import can match against it. */
-function seedHiveBook(
-  sqlite: DatabaseSync,
+async function seedHiveBook(
+  db: Database,
   id: string,
   rawTitle: string,
   authors: string,
   cover: string | null = null,
 ) {
-  const stmt = sqlite.prepare(
-    `INSERT INTO hive_book (id, title, rawTitle, authors, cover, thumbnail, source, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, '', 'goodreads', datetime('now'), datetime('now'))`,
-  );
-  stmt.run(id, rawTitle, rawTitle, authors, cover);
+  const now = new Date().toISOString();
+  await db
+    .insertInto("hive_book")
+    .values({
+      id: id as any,
+      title: rawTitle,
+      rawTitle,
+      authors,
+      cover,
+      thumbnail: "",
+      source: "goodreads",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflict((oc) => oc.column("id").doNothing())
+    .execute();
 }
 
 const GOODREADS_CSV = `Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,Average Rating,Publisher,Binding,Number of Pages,Year Published,Original Publication Year,Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,My Review,Spoiler,Private Notes,Read Count,Owned Copies
@@ -98,7 +114,7 @@ function createMockAgent(): SessionClient {
   } as SessionClient & { _calls: typeof calls };
 }
 
-function createMockCtx(db: Kysely<DatabaseSchema>): ImportContext {
+function createMockCtx(db: Database): ImportContext {
   const events: Record<string, unknown>[] = [];
 
   // Minimal KV that returns empty for everything (search cache misses are fine)
@@ -140,9 +156,9 @@ function createMockCtx(db: Kysely<DatabaseSchema>): ImportContext {
 
 describe("processGoodreadsImport", () => {
   it("emits import-start, book-load, book-upload, and import-complete SSE events for matched books", async () => {
-    const { db, sqlite } = await createTestDb();
-    seedHiveBook(
-      sqlite,
+    const { db, pool } = await createTestDb();
+    await seedHiveBook(
+      db,
       "bk_omw",
       "Old Man's War",
       "John Scalzi",
@@ -161,6 +177,8 @@ describe("processGoodreadsImport", () => {
         sseEvents.push(JSON.parse(data));
       },
     });
+
+    await pool.end();
 
     const eventTypes = sseEvents.map((e) => e.event);
 
@@ -184,7 +202,7 @@ describe("processGoodreadsImport", () => {
   });
 
   it("reports all books as failed when none match in the database", async () => {
-    const { db } = await createTestDb(); // empty DB — no hive_book rows
+    const { db, pool } = await createTestDb(); // empty DB — no hive_book rows
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
     const sseEvents: any[] = [];
@@ -198,13 +216,15 @@ describe("processGoodreadsImport", () => {
       },
     });
 
+    await pool.end();
+
     const complete = sseEvents.find((e) => e.event === "import-complete");
     expect(complete.failedBooks).toHaveLength(2);
     expect(complete.stageProgress.current).toBe(0);
   });
 
   it("handles empty CSV gracefully", async () => {
-    const { db } = await createTestDb();
+    const { db, pool } = await createTestDb();
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
     const sseEvents: any[] = [];
@@ -219,6 +239,8 @@ describe("processGoodreadsImport", () => {
       },
     });
 
+    await pool.end();
+
     const complete = sseEvents.find((e) => e.event === "import-complete");
     expect(complete).toBeDefined();
     expect(complete.stageProgress.current).toBe(0);
@@ -228,9 +250,9 @@ describe("processGoodreadsImport", () => {
 
 describe("processStorygraphImport", () => {
   it("emits correct SSE lifecycle events for StoryGraph CSV", async () => {
-    const { db, sqlite } = await createTestDb();
-    seedHiveBook(
-      sqlite,
+    const { db, pool } = await createTestDb();
+    await seedHiveBook(
+      db,
       "bk_omw",
       "Old Man's War",
       "John Scalzi",
@@ -249,6 +271,8 @@ describe("processStorygraphImport", () => {
         sseEvents.push(JSON.parse(data));
       },
     });
+
+    await pool.end();
 
     const eventTypes = sseEvents.map((e) => e.event);
     expect(eventTypes).toContain("import-start");

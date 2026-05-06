@@ -13,7 +13,7 @@ import {
   type SessionClient,
 } from "../../auth/client";
 import { createDb } from "../../db";
-import sqliteKv, { createSharedKvDb } from "../../sqlite-kv";
+import pgKv from "../../pg-kv";
 import { createServiceAccountAgent } from "../../utils/catalogBookService";
 import { env } from "../../env";
 import type { ImportContext } from "./types";
@@ -51,37 +51,34 @@ function createNoopStateStore(): StateStore {
 
 export async function createWorkerContext({
   storedSession,
-  dbPath,
-  kvPath,
+  databaseUrl,
 }: {
   storedSession: StoredSession;
-  dbPath: string;
-  kvPath: string;
+  databaseUrl: string;
 }): Promise<{ ctx: ImportContext; agent: SessionClient }> {
-  // Own DB connection (WAL + busy_timeout — safe for concurrent access)
-  const { db } = createDb(dbPath);
+  // Own DB connection pool (workers can't share pools across threads)
+  const { db, pool } = createDb(databaseUrl);
 
   // Own KV storage with same mount structure as main server
-  const kvDb = createSharedKvDb(kvPath);
   const kv = createStorage({
-    driver: sqliteKv({ table: "kv", db: kvDb }),
+    driver: pgKv({ table: "kv", pool }),
   });
   kv.mount("search:", lruCacheDriver({ max: 1000 }));
-  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
-  kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
-  kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
+  kv.mount("profile:", pgKv({ table: "kv_profile", pool }));
+  kv.mount("identity:", pgKv({ table: "kv_identity", pool }));
+  kv.mount("follows_sync:", pgKv({ table: "kv_follows_sync", pool }));
   kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
 
   // Auth session store with pre-populated session — no KV needed for auth
   const did = storedSession.tokenSet.sub;
   const sessionStore = createInMemorySessionStore(did, storedSession);
   // KV still needed for auth_session/auth_state mounts so createOAuthClient works,
-  // but the in-memory session store means restore() never hits SQLite for auth.
+  // but the in-memory session store means restore() never hits PostgreSQL for auth.
   const authKv = createStorage({
-    driver: sqliteKv({ table: "kv", db: kvDb }),
+    driver: pgKv({ table: "kv", pool }),
   });
-  authKv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: kvDb }));
-  authKv.mount("auth_state:", sqliteKv({ table: "auth_state", db: kvDb }));
+  authKv.mount("auth_session:", pgKv({ table: "kv_auth_sessions", pool }));
+  authKv.mount("auth_state:", pgKv({ table: "kv_auth_state", pool }));
 
   const oauthClient = await createOAuthClient(authKv, {
     sessions: sessionStore,

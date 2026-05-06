@@ -16,8 +16,8 @@ RUN bun run build
 FROM base AS final
 ARG BUILD_SHA
 ENV BUILD_SHA=${BUILD_SHA} NODE_ENV=production PORT=8080
-# Own the workdir and /data as root before switching user (cheap — directories are empty)
-RUN mkdir -p /data && chown bun:bun /data /usr/src/app && chmod 755 /data
+# Own the workdir as root before switching user
+RUN chown bun:bun /usr/src/app
 USER bun
 # Nitro bundles all JS and traces native deps (sharp) into .output/server/node_modules — no bun install needed
 COPY --chown=bun:bun --from=build /usr/src/app/.output ./.output

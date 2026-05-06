@@ -27,14 +27,14 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
     db
       .selectFrom("user_book")
       .selectAll()
-      .where("hiveId", "==", book.id)
+      .where("hiveId", "=", book.id)
       .orderBy("indexedAt", "desc")
       .limit(101)
       .execute(),
     db
       .selectFrom("user_book")
       .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("hiveId", "==", book.id)
+      .where("hiveId", "=", book.id)
       .$if(did !== null, (qb) => qb.where("userDid", "!=", did!))
       .executeTakeFirstOrThrow(),
   ]);
@@ -163,8 +163,8 @@ export const BookInfo: FC<{
           .get("ctx")
           .db.selectFrom("user_book")
           .selectAll()
-          .where("userDid", "==", did)
-          .where("hiveId", "==", book.id)
+          .where("userDid", "=", did)
+          .where("hiveId", "=", book.id)
           .executeTakeFirst()
       : Promise.resolve(undefined),
     // db_reviews_of_this_book
@@ -207,7 +207,7 @@ export const BookInfo: FC<{
             "book_list.userDid",
             "book_list_item.uri as itemUri",
           ])
-          .where("book_list_item.hiveId", "==", book.id)
+          .where("book_list_item.hiveId", "=", book.id)
           .execute()
       : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
     // userHandle

@@ -24,10 +24,7 @@ function formatCount(count: number): string {
   return `${Math.floor(count / 100) * 100}+`;
 }
 
-const AUTHOR_EXPR = `CASE WHEN instr(authors, char(9)) > 0
-       THEN trim(substr(authors, 1, instr(authors, char(9)) - 1))
-       ELSE trim(authors)
-  END`;
+const AUTHOR_EXPR = `trim(split_part(authors, chr(9), 1))`;
 
 const FEATURED_COUNT = 8;
 
