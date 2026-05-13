@@ -13,7 +13,9 @@ export const ProfileHeader: FC<{
   isFollowing?: boolean;
   canFollow?: boolean;
   isOwnProfile?: boolean;
-}> = ({ handle, did, profile, books, isFollowing, canFollow, isOwnProfile }) => {
+  followingCount?: number;
+  followersCount?: number;
+}> = ({ handle, did, profile, books, isFollowing, canFollow, isOwnProfile, followingCount = 0, followersCount = 0 }) => {
   const booksRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const reviewCount = books.filter((b) => b.review?.trim()).length;
   const joinDate =
@@ -57,6 +59,16 @@ export const ProfileHeader: FC<{
             <span class="badge">
               <span class="tabular-nums">{reviewCount}</span> reviews
             </span>
+            {followingCount > 0 && (
+              <a href="#social" class="badge hover:bg-muted transition-colors duration-150">
+                <span class="tabular-nums">{followingCount}</span> following
+              </a>
+            )}
+            {followersCount > 0 && (
+              <a href="#social" class="badge hover:bg-muted transition-colors duration-150">
+                <span class="tabular-nums">{followersCount}</span> {followersCount === 1 ? "follower" : "followers"}
+              </a>
+            )}
           </div>
         </div>
         <div class="flex flex-shrink-0 gap-2">

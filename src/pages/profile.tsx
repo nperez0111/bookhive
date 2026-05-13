@@ -82,6 +82,8 @@ export const ProfilePage: FC<{
         isOwnProfile={isOwnProfile}
         profile={profile}
         books={books}
+        followingCount={followingCount}
+        followersCount={followersCount}
       />
 
       {isBuzzer ? (
@@ -226,66 +228,66 @@ export const ProfilePage: FC<{
             </section>
           )}
 
-          {/* Following / Followers tabs */}
+          {/* Social — Following & Followers */}
           {(followingCount > 0 || followersCount > 0) && (
-            <div class="tabs mt-4">
-              <input
-                type="radio"
-                name="social-tabs"
-                id="tab-following"
-                checked
-                class="peer sr-only"
-              />
-              <label for="tab-following" class="tab-label">
-                Following ({followingCount})
-              </label>
-
-              <input type="radio" name="social-tabs" id="tab-followers" class="peer sr-only" />
-              <label for="tab-followers" class="tab-label">
-                Followers ({followersCount})
-              </label>
-
-              <div class="tab-content">
-                <div class="tab-panel" data-tab="following">
-                  <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {followingProfiles.map((user) => (
-                      <a
-                        key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
-                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-                      >
-                        <UserBlock
-                          handle={user.handle ?? user.did}
-                          avatar={user.avatar ?? null}
-                          displayName={null}
-                          size="sm"
-                          noLink
-                        />
-                      </a>
-                    ))}
+            <section id="social" class="scroll-mt-6">
+              <div class="grid gap-6 md:grid-cols-2">
+                {followingCount > 0 && (
+                  <div>
+                    <h3 class="text-foreground mb-3 text-sm font-semibold">
+                      Following
+                      <span class="text-muted-foreground ml-1 tabular-nums font-normal">
+                        {followingCount}
+                      </span>
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
+                      {followingProfiles.map((user) => (
+                        <a
+                          key={user.did}
+                          href={`/profile/${user.handle ?? user.did}`}
+                          class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
+                        >
+                          <UserBlock
+                            handle={user.handle ?? user.did}
+                            avatar={user.avatar ?? null}
+                            displayName={null}
+                            size="sm"
+                            noLink
+                          />
+                        </a>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div class="tab-panel" data-tab="followers">
-                  <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {followersProfiles.map((user) => (
-                      <a
-                        key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
-                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-                      >
-                        <UserBlock
-                          handle={user.handle ?? user.did}
-                          avatar={user.avatar ?? null}
-                          displayName={null}
-                          size="sm"
-                          noLink
-                        />
-                      </a>
-                    ))}
+                )}
+                {followersCount > 0 && (
+                  <div>
+                    <h3 class="text-foreground mb-3 text-sm font-semibold">
+                      Followers
+                      <span class="text-muted-foreground ml-1 tabular-nums font-normal">
+                        {followersCount}
+                      </span>
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
+                      {followersProfiles.map((user) => (
+                        <a
+                          key={user.did}
+                          href={`/profile/${user.handle ?? user.did}`}
+                          class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
+                        >
+                          <UserBlock
+                            handle={user.handle ?? user.did}
+                            avatar={user.avatar ?? null}
+                            displayName={null}
+                            size="sm"
+                            noLink
+                          />
+                        </a>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
+            </section>
           )}
         </>
       ) : (

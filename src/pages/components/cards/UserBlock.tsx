@@ -42,7 +42,7 @@ export const UserBlock: FC<{
           {avatarEl}
         </a>
       )}
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         {noLink ? (
           handleEl
         ) : (
