@@ -290,11 +290,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     }, 100);
   };
 
-  const handleViewOnGoodreads = () => {
-    if (bookQuery.data?.book.sourceUrl) {
-      Linking.openURL(bookQuery.data.book.sourceUrl);
-    }
-  };
+
 
   const handleShare = () => {
     const shareUrl = `${getBaseUrl()}/books/${hiveId}`;
@@ -518,33 +514,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                 ]}
               >
                 Share
-              </ThemedText>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.actionButton,
-                {
-                  backgroundColor:
-                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
-                  borderColor:
-                    colorScheme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
-                },
-              ]}
-              onPress={handleViewOnGoodreads}
-            >
-              <Ionicons
-                name="share-outline"
-                size={20}
-                color={colorScheme === "dark" ? "white" : colors.text}
-              />
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                Goodreads
               </ThemedText>
             </Pressable>
 

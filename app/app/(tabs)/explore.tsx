@@ -54,26 +54,29 @@ export default function ExploreScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
-      <GradientView variant="warm" style={[styles.header, { paddingTop: top + 12 }]}>
-        <ThemedText
-          style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
-          type="title"
-        >
-          Explore
-        </ThemedText>
-        <ThemedText
-          style={[styles.headerSubtitle, { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" }]}
-          type="body"
-        >
-          Discover by genre or author
-        </ThemedText>
-      </GradientView>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 20 + bottom }]}
         showsVerticalScrollIndicator={false}
       >
+        <GradientView variant="warm" style={[styles.header, { paddingTop: top + 12 }]}>
+          <ThemedText
+            style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
+            type="title"
+          >
+            Explore
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.headerSubtitle,
+              { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
+            ]}
+            type="body"
+          >
+            Discover by genre or author
+          </ThemedText>
+        </GradientView>
+
         {/* Top Genres */}
         <View style={styles.section}>
           <SectionHeader icon={"bookmark" as any} title="Top Genres" style={{ marginBottom: 16 }} />
@@ -185,8 +188,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   header: {
-    flex: 0,
-    paddingBottom: 20,
+    paddingBottom: 32,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
