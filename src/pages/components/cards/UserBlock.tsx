@@ -27,12 +27,12 @@ export const UserBlock: FC<{
 
   const handleEl = (
     <>
-      <span class="text-foreground font-semibold truncate block">@{handle}</span>
-      {showName && <div class="text-muted-foreground text-xs truncate">{displayName}</div>}
+      <span class="text-foreground font-semibold whitespace-nowrap">@{handle}</span>
+      {showName && <div class="text-muted-foreground text-xs whitespace-nowrap">{displayName}</div>}
     </>
   );
 
-  const baseClass = "flex shrink-0 w-fit max-w-[140px] items-start gap-2";
+  const baseClass = "flex min-w-0 items-start gap-2";
   return (
     <div class={className ? `${baseClass} ${className}` : baseClass}>
       {noLink ? (

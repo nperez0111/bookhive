@@ -230,8 +230,7 @@ export const ProfilePage: FC<{
 
           {/* Social — Following & Followers */}
           {(followingCount > 0 || followersCount > 0) && (
-            <section id="social" class="scroll-mt-6">
-              <div class="grid gap-6 md:grid-cols-2">
+            <section id="social" class="scroll-mt-6 space-y-6">
                 {followingCount > 0 && (
                   <div>
                     <h3 class="text-foreground mb-3 text-sm font-semibold">
@@ -240,7 +239,7 @@ export const ProfilePage: FC<{
                         {followingCount}
                       </span>
                     </h3>
-                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
+                    <div class="flex flex-wrap gap-2">
                       {followingProfiles.map((user) => (
                         <a
                           key={user.did}
@@ -267,7 +266,7 @@ export const ProfilePage: FC<{
                         {followersCount}
                       </span>
                     </h3>
-                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
+                    <div class="flex flex-wrap gap-2">
                       {followersProfiles.map((user) => (
                         <a
                           key={user.did}
@@ -286,7 +285,6 @@ export const ProfilePage: FC<{
                     </div>
                   </div>
                 )}
-              </div>
             </section>
           )}
         </>
