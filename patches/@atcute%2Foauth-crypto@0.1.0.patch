@@ -1,0 +1,13 @@
+diff --git a/dist/client-assertion/create-client-assertion.js b/dist/client-assertion/create-client-assertion.js
+index b7fd791427c139695b06f0c9f4c53066ed17b816..31c965d9da3edd2ce69e618d6978fe8acafff761 100644
+--- a/dist/client-assertion/create-client-assertion.js
++++ b/dist/client-assertion/create-client-assertion.js
+@@ -11,7 +11,7 @@ export const createClientAssertion = async (options) => {
+     const { client_id, aud, jkt, key } = options;
+     const { kid, alg } = key;
+     const { cryptoKey } = await getCachedKeyMaterial(key);
+-    const now = Math.floor(Date.now() / 1000);
++    const now = Math.floor(Date.now() / 1000) - 10;
+     const cnf = jkt ? { jkt } : undefined;
+     return signJwt({
+         header: {
