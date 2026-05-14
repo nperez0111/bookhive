@@ -11,6 +11,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as Updates from "expo-updates";
 import { useEffect, StrictMode, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,11 +19,50 @@ import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
 import { ThemeProvider } from "@/context/theme";
-import { View, Platform } from "react-native";
+import { View, Platform, AppState } from "react-native";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 import { Colors } from "@/constants/Colors";
+
+/**
+ * Checks for OTA updates and applies them silently.
+ * On non-development builds, checks on mount and when the app
+ * returns to foreground after being backgrounded for a while.
+ */
+function useOTAUpdates() {
+  useEffect(() => {
+    if (__DEV__) return;
+
+    async function checkAndApplyUpdate() {
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          const result = await Updates.fetchUpdateAsync();
+          if (result.isNew) {
+            // Reload the app to apply the update
+            await Updates.reloadAsync();
+          }
+        }
+      } catch (e) {
+        // Silently fail — update check is best-effort
+        console.log("OTA update check failed:", e);
+      }
+    }
+
+    // Check on initial mount
+    checkAndApplyUpdate();
+
+    // Also check when app returns from background
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        checkAndApplyUpdate();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+}
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -58,6 +98,7 @@ const asyncStoragePersister = createAsyncStoragePersister({
 });
 
 export default function RootLayout() {
+  useOTAUpdates();
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),

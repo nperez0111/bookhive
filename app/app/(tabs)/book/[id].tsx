@@ -71,22 +71,11 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       return;
     }
     const storedProgress = bookData.bookProgress ?? null;
-    const meta =
-      bookData.book?.meta &&
-      (() => {
-        try {
-          return JSON.parse(bookData.book.meta as any);
-        } catch {
-          return null;
-        }
-      })();
 
     setCurrentPageInput(storedProgress?.currentPage?.toString() ?? "");
     setCurrentChapterInput(storedProgress?.currentChapter?.toString() ?? "");
     setTotalChaptersInput(storedProgress?.totalChapters?.toString() ?? "");
-    setTotalPagesInput(
-      storedProgress?.totalPages?.toString() ?? (meta?.numPages ? String(meta.numPages) : ""),
-    );
+    setTotalPagesInput(storedProgress?.totalPages?.toString() ?? "");
 
     const autoPercent = calculatePercentFromProgressValues({
       currentPage: storedProgress?.currentPage,
@@ -328,18 +317,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     }
   }, [bookQuery.data?.book.genres]);
 
-  const seriesInfo = useMemo(() => {
-    const bookSeries = bookQuery.data?.book.series;
-    if (!bookSeries) return null;
-    try {
-      const parsed = JSON.parse(bookSeries as any);
-      if (typeof parsed === "string") return parsed;
-      if (parsed?.name) return `${parsed.name}${parsed.position ? ` #${parsed.position}` : ""}`;
-      return null;
-    } catch {
-      return typeof bookSeries === "string" ? bookSeries : null;
-    }
-  }, [bookQuery.data?.book.series]);
+
 
   if (bookQuery.isLoading) {
     return (
@@ -449,11 +427,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             </View>
 
             <View style={styles.bookInfo}>
-              {seriesInfo && (
-                <ThemedText style={[styles.seriesLabel, { color: colors.primary }]}>
-                  {seriesInfo}
-                </ThemedText>
-              )}
               <ThemedText
                 style={[styles.title, { color: colorScheme === "dark" ? "white" : colors.text }]}
               >
@@ -754,7 +727,9 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             style={[
               styles.progressCard,
               {
-                backgroundColor: colorScheme === "dark" ? "#111" : "#fffdf5",
+                backgroundColor: colors.cardBackground,
+                borderColor: colors.cardBorder,
+                shadowColor: colors.shadowLight,
               },
             ]}
             entering={FadeInDown.delay(130).duration(220)}
@@ -1061,10 +1036,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
   },
-  seriesLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
   title: {
     fontSize: 20,
     fontWeight: "bold",
@@ -1215,11 +1186,14 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   progressCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(156, 163, 175, 0.3)",
-    padding: 16,
+    padding: 24,
     marginBottom: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   progressHeader: {
     flexDirection: "row",

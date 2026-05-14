@@ -6,8 +6,10 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-import { StyleSheet, Image, TouchableOpacity, ScrollView, View, Pressable } from "react-native";
+import { StyleSheet, Image, TouchableOpacity, ScrollView, View, Pressable, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Updates from "expo-updates";
+import { useState, useCallback } from "react";
 import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -26,6 +28,38 @@ export default function ProfileScreen() {
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const checkForUpdate = useCallback(async () => {
+    if (__DEV__) {
+      Alert.alert("Development Mode", "OTA updates are not available in development builds.");
+      return;
+    }
+    setIsCheckingUpdate(true);
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        const result = await Updates.fetchUpdateAsync();
+        if (result.isNew) {
+          Alert.alert(
+            "Update Available",
+            "A new version has been downloaded. Restart now to apply it?",
+            [
+              { text: "Later", style: "cancel" },
+              { text: "Restart", onPress: () => Updates.reloadAsync() },
+            ]
+          );
+        }
+      } else {
+        Alert.alert("Up to Date", "You're running the latest version.");
+      }
+    } catch (e) {
+      Alert.alert("Update Check Failed", "Could not check for updates. Please try again later.");
+      console.log("Manual update check failed:", e);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, []);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -154,6 +188,11 @@ export default function ProfileScreen() {
                 onPress={() =>
                   authState?.did && router.push(`/profile/${authState.did}/stats` as any)
                 }
+              />
+              <ListItem
+                icon="cloud-download"
+                title={isCheckingUpdate ? "Checking..." : "Check for Updates"}
+                onPress={checkForUpdate}
               />
               {/* <ListItem
                 icon="document-text"
