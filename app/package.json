@@ -13,7 +13,7 @@
     "update:staging": "pnpx eas-cli update --branch staging",
     "update:production": "pnpx eas-cli update --branch production",
     "update:development": "pnpx eas-cli update --branch development",
-    "ios:build": "bun run bump && pnpx eas-cli build --platform ios",
+    "ios:build": "bun run bump && EAS_BUILD_NO_EXPO_GO_WARNING=true pnpx eas-cli build --platform ios",
     "ios:submit": "pnpx eas-cli submit --platform ios",
     "bump": "bun run scripts/bump-version.ts"
   },
