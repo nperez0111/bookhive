@@ -1,5 +1,11 @@
 import type { OgCard, OgRenderRequest, OgRenderResponse } from "./types";
 
+// Side-effect import so Nitro's externals plugin sees @takumi-rs/core in the
+// bundle graph and traces its native NAPI-RS bindings (e.g. core-linux-arm64-musl)
+// into .output/server/node_modules/ via nf3's optionalDependencies pass.
+// The actual rendering happens in the worker thread — this import is a no-op.
+import "@takumi-rs/core";
+
 let worker: Worker | null = null;
 const pending = new Map<
   string,
