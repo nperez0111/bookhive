@@ -57,7 +57,13 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
   app.use("*", opentelemetryMiddleware());
 
-  app.get("/healthcheck", (c) => c.text(serverStartTime));
+  app.get("/healthcheck", (c) =>
+    c.json({
+      status: "ok",
+      sha: process.env.BUILD_SHA ?? "dev",
+      startedAt: serverStartTime,
+    }),
+  );
 
   const { printMetrics, registerMetrics } = prometheus();
   app.use("*", registerMetrics);
