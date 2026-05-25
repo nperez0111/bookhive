@@ -43,7 +43,6 @@ export const Home: FC = async () => {
       .where("user_book.userDid", "=", profile.did)
       .where("user_book.status", "=", BOOK_STATUS.READING)
       .orderBy("user_book.indexedAt", "desc")
-      .limit(20)
       .execute(),
 
     ctx.db
@@ -53,7 +52,6 @@ export const Home: FC = async () => {
       .where("user_book.userDid", "=", profile.did)
       .where("user_book.status", "=", BOOK_STATUS.WANTTOREAD)
       .orderBy("user_book.createdAt", "desc")
-      .limit(20)
       .execute(),
 
     ctx.db
