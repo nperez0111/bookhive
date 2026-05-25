@@ -17,7 +17,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
     { href: "/feed", label: "Activity Feed", icon: "activity", authRequired: true },
     {
       href: user ? `/profile/${user.handle}` : "/profile",
-      label: "My Books",
+      label: "My Profile",
       icon: "book",
       authRequired: true,
     },
