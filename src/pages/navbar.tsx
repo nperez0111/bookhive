@@ -71,6 +71,7 @@ export const Navbar: FC<{
             type="button"
             class="theme-toggle flex size-10 items-center justify-center rounded-md text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]"
             aria-label="Toggle dark mode"
+            title="Toggle dark mode"
             id="theme-toggle"
           >
             <svg
@@ -160,6 +161,14 @@ export const Navbar: FC<{
                   tabindex={-1}
                 >
                   Refresh Books
+                </a>
+                <a
+                  href="/settings"
+                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
+                  role="menuitem"
+                  tabindex={-1}
+                >
+                  Settings
                 </a>
                 <form action="/logout" method="post">
                   <button

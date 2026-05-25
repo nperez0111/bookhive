@@ -30,6 +30,10 @@
           "id": {
             "type": "string",
             "description": "The ID of the book within the hive."
+          },
+          "language": {
+            "type": "string",
+            "description": "Filter results to books in this language (e.g. 'English', 'Spanish')."
           }
         }
       },

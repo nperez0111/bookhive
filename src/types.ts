@@ -173,6 +173,11 @@ export type HiveBook = {
    */
   identifiers: string | null;
   /**
+   * Human-readable language name (e.g. "English", "Spanish").
+   * Extracted from meta JSON during enrichment.
+   */
+  language: string | null;
+  /**
    * AT-URI of the corresponding catalogBook record in @bookhive.buzz
    */
   hiveBookAtUri: string | null;

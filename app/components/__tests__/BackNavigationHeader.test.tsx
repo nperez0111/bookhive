@@ -18,14 +18,16 @@ describe("BackNavigationHeader", () => {
   it("renders with a title", () => {
     const tree = renderer.create(<BackNavigationHeader title="Test Title" />);
     const root = tree.root;
-    const titleText = root.findAllByType(Text).find((node) =>
-      node.children.includes("Test Title"),
-    );
+    const titleText = root.findAllByType(Text).find((node) => node.children.includes("Test Title"));
     expect(titleText).toBeTruthy();
   });
 
   it("renders with right element", () => {
-    const rightElement = <View testID="right-element"><Text>Right</Text></View>;
+    const rightElement = (
+      <View testID="right-element">
+        <Text>Right</Text>
+      </View>
+    );
     const tree = renderer.create(<BackNavigationHeader rightElement={rightElement} />);
     const root = tree.root;
     const element = root.findByProps({ testID: "right-element" });

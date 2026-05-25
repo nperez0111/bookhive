@@ -123,12 +123,14 @@ export async function enrichBookWithDetailedData(
     };
 
     const serializedMeta = JSON.stringify(meta);
+    const language = meta.language || null;
     // Update the book record with enriched data
     await ctx.db
       .updateTable("hive_book")
       .set({
         series,
         meta: serializedMeta,
+        language,
         identifiers: JSON.stringify(updatedIdentifiers),
         description: detailedData.book.description || book.description, // Use better description if available
         rating: Math.round(detailedData.work.averageRating * 1000), // Convert to our rating format

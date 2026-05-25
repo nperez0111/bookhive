@@ -9,14 +9,19 @@ import type { AppEnv, Session } from "../context";
 import { Error as ErrorPage } from "../pages/error";
 import { SettingsPage } from "../pages/settings";
 import { deleteAccountData } from "../utils/deleteAccount";
+import { getAvailableLanguages } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) return c.redirect("/login");
-    const profile = await c.get("ctx").getProfile();
+    const { db, kv } = c.get("ctx");
+    const [profile, languages] = await Promise.all([
+      c.get("ctx").getProfile(),
+      getAvailableLanguages(db, kv),
+    ]);
     const handle = profile?.handle ?? agent.did;
-    return c.render(<SettingsPage handle={handle} />, { title: "Settings" });
+    return c.render(<SettingsPage handle={handle} languages={languages} />, { title: "Settings" });
   })
   .post(
     "/delete-account",

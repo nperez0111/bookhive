@@ -36,11 +36,15 @@ const FEATURED_COUNT = 8;
  * Uses two queries to avoid a slow correlated subquery:
  *   1. Aggregation (GROUP BY first author, no thumbnail)
  *   2. Single scan of top books by ratingsCount to resolve thumbnails in JS
+ *
+ * @param language - optional language filter; when set, only books in that language are counted
  */
 export async function getTopAuthors(
   db: Kysely<DatabaseSchema>,
   limit: number,
+  language?: string,
 ): Promise<AuthorWithStats[]> {
+  const langCondition = language ? sql`WHERE language = ${language}` : sql``;
   const statsResult = await sql<AuthorStats>`
     SELECT
       ${sql.raw(AUTHOR_EXPR)} as author,
@@ -48,6 +52,7 @@ export async function getTopAuthors(
       ROUND(AVG(CASE WHEN rating IS NOT NULL AND rating > 0 THEN rating END) / 1000.0, 1) as avgRating,
       COUNT(*) as bookCount
     FROM hive_book
+    ${langCondition}
     GROUP BY 1
     HAVING bookCount >= 2 AND totalRatings > 0
     ORDER BY totalRatings DESC
@@ -59,10 +64,13 @@ export async function getTopAuthors(
 
   // Resolve thumbnails with a single forward scan of the most-rated books.
   // All top-N authors' best books appear well within the first limit*150 rows.
+  const thumbLangCondition = language
+    ? sql`WHERE thumbnail IS NOT NULL AND thumbnail != '' AND language = ${language}`
+    : sql`WHERE thumbnail IS NOT NULL AND thumbnail != ''`;
   const thumbResult = await sql<{ author: string; thumbnail: string }>`
     SELECT ${sql.raw(AUTHOR_EXPR)} as author, thumbnail
     FROM hive_book
-    WHERE thumbnail IS NOT NULL AND thumbnail != ''
+    ${thumbLangCondition}
     ORDER BY ratingsCount DESC
     LIMIT ${limit * 150}
   `.execute(db);

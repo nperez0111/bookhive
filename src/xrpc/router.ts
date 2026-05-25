@@ -22,6 +22,7 @@ import {
   BuzzBookhiveAddToList,
   BuzzBookhiveRemoveFromList,
   BuzzBookhiveReorderList,
+  BuzzBookhiveGetLanguages,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -41,6 +42,7 @@ import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
 import { getTopAuthors } from "../pages/authorDirectory";
+import { getAvailableLanguages } from "../utils/getLanguages";
 import {
   computeReadingStats,
   filterFinishedBooksByYear,
@@ -109,7 +111,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveSearchBooks, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { q, genre, limit = 25, offset = 0, id } = params;
+      const { q, genre, limit = 25, offset = 0, id, language } = params;
 
       if (id) {
         const book = await ctx.db
@@ -148,6 +150,14 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
               eb("hive_book.rawTitle", "like", pattern),
               eb("hive_book.authors", "like", pattern),
             ]),
+          );
+        }
+
+        // Language is a soft preference: sort matching-language books first
+        if (language) {
+          genreQuery = genreQuery.orderBy(
+            sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`,
+            "asc",
           );
         }
 
@@ -198,14 +208,21 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         return json({ books: [] });
       }
 
-      const books = await ctx.db
-        .selectFrom("hive_book")
-        .selectAll()
-        .where("id", "in", allIds)
-        .limit(limit * off + limit)
-        .execute();
+      let booksQuery = ctx.db.selectFrom("hive_book").selectAll().where("id", "in", allIds);
 
-      books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
+      const books = await booksQuery.limit(limit * off + limit).execute();
+
+      // Language is a soft preference: sort matching-language books first, then by relevance
+      if (language) {
+        books.sort((a, b) => {
+          const aMatch = a.language === language ? 0 : 1;
+          const bMatch = b.language === language ? 0 : 1;
+          if (aMatch !== bMatch) return aMatch - bMatch;
+          return allIds.indexOf(a.id) - allIds.indexOf(b.id);
+        });
+      } else {
+        books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
+      }
 
       const slice = books.slice(off, off + limit);
       const genreMap = await loadGenresMapForHiveBooks(
@@ -710,19 +727,36 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  router.addQuery(BuzzBookhiveGetExplore, {
+  router.addQuery(BuzzBookhiveGetLanguages, {
     async handler() {
       const ctx = getCtx();
+      const languages = await getAvailableLanguages(ctx.db, ctx.kv);
+      return json({ languages });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetExplore, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const language = params.language || undefined;
+
+      let genreQuery = ctx.db
+        .selectFrom("hive_book_genre")
+        .select(["genre", sql<number>`COUNT(*)`.as("count")]);
+
+      if (language) {
+        genreQuery = genreQuery
+          .innerJoin("hive_book", "hive_book_genre.hiveId", "hive_book.id")
+          .where("hive_book.language", "=", language) as any;
+      }
 
       const [genreRows, topAuthors] = await Promise.all([
-        ctx.db
-          .selectFrom("hive_book_genre")
-          .select(["genre", sql<number>`COUNT(*)`.as("count")])
+        genreQuery
           .groupBy("genre")
           .orderBy(sql`COUNT(*)`, "desc")
           .limit(6)
           .execute(),
-        getTopAuthors(ctx.db, 8),
+        getTopAuthors(ctx.db, 8, language),
       ]);
 
       return json({
@@ -814,7 +848,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveGetAuthorBooks, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { author, page = 1, limit = 50, sort = "popularity" } = params;
+      const { author, page = 1, limit = 50, sort = "popularity", language } = params;
 
       const pageSize = Math.min(100, limit);
       const offset = (Math.max(1, page) - 1) * pageSize;
@@ -831,16 +865,27 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         OR authors LIKE ${last}
       )`;
 
+      let countQuery = ctx.db
+        .selectFrom("hive_book")
+        .select(sql<number>`COUNT(*)`.as("count"))
+        .where(authorCondition as any);
+
+      let dataQuery = ctx.db
+        .selectFrom("hive_book")
+        .selectAll()
+        .where(authorCondition as any);
+
+      // Language is a soft preference: sort matching-language books first, don't filter
+      if (language) {
+        dataQuery = dataQuery.orderBy(
+          sql`CASE WHEN language = ${language} THEN 0 ELSE 1 END`,
+          "asc",
+        );
+      }
+
       const [totalCountResult, books] = await Promise.all([
-        ctx.db
-          .selectFrom("hive_book")
-          .select(sql<number>`COUNT(*)`.as("count"))
-          .where(authorCondition as any)
-          .executeTakeFirst(),
-        ctx.db
-          .selectFrom("hive_book")
-          .selectAll()
-          .where(authorCondition as any)
+        countQuery.executeTakeFirst(),
+        dataQuery
           .orderBy(sort === "reviews" ? "rating" : "ratingsCount", "desc")
           .orderBy(sort === "reviews" ? "ratingsCount" : "rating", "desc")
           .limit(pageSize)

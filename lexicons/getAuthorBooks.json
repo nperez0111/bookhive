@@ -28,6 +28,10 @@
             "type": "string",
             "knownValues": ["popularity", "reviews"],
             "description": "Sort order. Defaults to popularity."
+          },
+          "language": {
+            "type": "string",
+            "description": "Filter results to books in this language (e.g. 'English', 'Spanish')."
           }
         }
       },

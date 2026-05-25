@@ -30,7 +30,12 @@
       "description": "Get featured genres and top authors for the explore hub.",
       "parameters": {
         "type": "params",
-        "properties": {}
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "Filter genres and authors to books in this language (e.g. 'English', 'Spanish')."
+          }
+        }
       },
       "output": {
         "encoding": "application/json",

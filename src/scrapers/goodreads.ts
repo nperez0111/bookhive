@@ -110,6 +110,7 @@ class Goodreads {
         hiveId,
         ...(goodreadsId && { goodreadsId }),
       }),
+      language: null,
       hiveBookAtUri: null,
       hiveBookCatalogUpdatedAt: null,
     };

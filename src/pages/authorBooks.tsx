@@ -6,6 +6,8 @@ import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
 import { buildAuthorLikePatterns } from "../utils/authorMatching";
+import { buildUrl } from "./utils/buildUrl";
+import { LanguageSelect } from "./components/LanguageSelect";
 
 type SortOption = "popularity" | "reviews";
 
@@ -17,6 +19,8 @@ interface AuthorBooksProps {
   totalBooks: number;
   sortBy: SortOption;
   pageSize: number;
+  lang?: string;
+  languages: string[];
 }
 
 const sorts = [
@@ -61,9 +65,12 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
   totalBooks,
   sortBy,
   pageSize,
+  lang,
+  languages,
 }) => {
   const start = totalBooks === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalBooks);
+  const basePath = `/authors/${encodeURIComponent(author)}`;
 
   return (
     <div class="space-y-6">
@@ -72,11 +79,14 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
           Home
         </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore" class="hover:text-foreground transition-colors">
+        <a href={buildUrl("/explore", { lang })} class="hover:text-foreground transition-colors">
           Explore
         </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore/authors" class="hover:text-foreground transition-colors">
+        <a
+          href={buildUrl("/explore/authors", { lang })}
+          class="hover:text-foreground transition-colors"
+        >
           Authors
         </a>
         <span aria-hidden="true">›</span>
@@ -84,13 +94,21 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
       </nav>
 
       <div class="flex flex-col gap-4">
-        <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">{author}</h1>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">{author}</h1>
+          <LanguageSelect
+            languages={languages}
+            currentLang={lang}
+            baseUrl={basePath}
+            extraParams={{ sort: sortBy }}
+          />
+        </div>
 
         {books.length > 0 && (
           <div class="mb-4 flex flex-wrap items-center gap-2">
             {sorts.map((s) => (
               <a
-                href={`/authors/${encodeURIComponent(author)}?sort=${s.key}&page=1`}
+                href={buildUrl(basePath, { sort: s.key, page: 1, lang })}
                 class={`btn btn-sm min-h-10 ${sortBy === s.key ? "btn-primary" : "btn-ghost"}`}
               >
                 {s.label}
@@ -121,7 +139,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
               <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
                 {currentPage > 1 ? (
                   <a
-                    href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${currentPage - 1}`}
+                    href={buildUrl(basePath, { sort: sortBy, page: currentPage - 1, lang })}
                     class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Previous</span>
@@ -152,7 +170,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
 
                   return (
                     <a
-                      href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${pageNum}`}
+                      href={buildUrl(basePath, { sort: sortBy, page: pageNum, lang })}
                       class={`btn btn-sm min-w-10 min-h-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                       aria-current={isCurrentPage ? "page" : undefined}
                     >
@@ -163,7 +181,7 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
 
                 {currentPage < totalPages ? (
                   <a
-                    href={`/authors/${encodeURIComponent(author)}?sort=${sortBy}&page=${currentPage + 1}`}
+                    href={buildUrl(basePath, { sort: sortBy, page: currentPage + 1, lang })}
                     class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Next</span>
@@ -194,6 +212,7 @@ export async function getBooksByAuthor(
   pageSize: number = 100,
   sortBy: SortOption = "popularity",
   c: Context,
+  language?: string,
 ): Promise<{
   books: HiveBook[];
   totalBooks: number;
@@ -221,6 +240,11 @@ export async function getBooksByAuthor(
     .selectAll()
     .where(authorCondition as any);
 
+  // Language is a soft preference: sort matching-language books first, don't filter
+  if (language) {
+    dataQuery = dataQuery.orderBy(sql`CASE WHEN language = ${language} THEN 0 ELSE 1 END`, "asc");
+  }
+
   switch (sortBy) {
     case "popularity":
       dataQuery = dataQuery.orderBy("ratingsCount", "desc").orderBy("rating", "desc");
@@ -230,16 +254,16 @@ export async function getBooksByAuthor(
       break;
   }
 
+  let countQuery = ctx.db
+    .selectFrom("hive_book")
+    .select(sql<number>`COUNT(*)`.as("count"))
+    .where(authorCondition as any);
+
   const [totalCountResult, books] = await Promise.all([
-    ctx.db
-      .selectFrom("hive_book")
-      .select(sql<number>`COUNT(*)`.as("count"))
-      .where(authorCondition as any)
-      .executeTakeFirst()
-      .then((r) => {
-        endTime(c, "author-books-count-query");
-        return r;
-      }),
+    countQuery.executeTakeFirst().then((r) => {
+      endTime(c, "author-books-count-query");
+      return r;
+    }),
     dataQuery
       .limit(pageSize)
       .offset(offset)

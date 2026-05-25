@@ -10,6 +10,7 @@ export * as BuzzBookhiveGetBook from "./types/buzz/bookhive/getBook.js";
 export * as BuzzBookhiveGetBookIdentifiers from "./types/buzz/bookhive/getBookIdentifiers.js";
 export * as BuzzBookhiveGetExplore from "./types/buzz/bookhive/getExplore.js";
 export * as BuzzBookhiveGetFeed from "./types/buzz/bookhive/getFeed.js";
+export * as BuzzBookhiveGetLanguages from "./types/buzz/bookhive/getLanguages.js";
 export * as BuzzBookhiveGetList from "./types/buzz/bookhive/getList.js";
 export * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
 export * as BuzzBookhiveGetReadingStats from "./types/buzz/bookhive/getReadingStats.js";

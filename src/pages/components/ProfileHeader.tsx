@@ -15,7 +15,17 @@ export const ProfileHeader: FC<{
   isOwnProfile?: boolean;
   followingCount?: number;
   followersCount?: number;
-}> = ({ handle, did, profile, books, isFollowing, canFollow, isOwnProfile, followingCount = 0, followersCount = 0 }) => {
+}> = ({
+  handle,
+  did,
+  profile,
+  books,
+  isFollowing,
+  canFollow,
+  isOwnProfile,
+  followingCount = 0,
+  followersCount = 0,
+}) => {
   const booksRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const reviewCount = books.filter((b) => b.review?.trim()).length;
   const joinDate =
@@ -66,12 +76,13 @@ export const ProfileHeader: FC<{
             )}
             {followersCount > 0 && (
               <a href="#social" class="badge hover:bg-muted transition-colors duration-150">
-                <span class="tabular-nums">{followersCount}</span> {followersCount === 1 ? "follower" : "followers"}
+                <span class="tabular-nums">{followersCount}</span>{" "}
+                {followersCount === 1 ? "follower" : "followers"}
               </a>
             )}
           </div>
         </div>
-        <div class="flex flex-shrink-0 gap-2">
+        <div class="flex flex-shrink-0 items-stretch gap-2">
           {/* Share dropdown */}
           <div class="relative">
             <button
@@ -198,7 +209,7 @@ export const ProfileHeader: FC<{
             />
           </div>
           {isOwnProfile ? (
-            <a href="/settings" class="btn btn-ghost">
+            <a href="/settings" class="btn btn-ghost min-h-[40px] items-center flex">
               Settings
             </a>
           ) : (

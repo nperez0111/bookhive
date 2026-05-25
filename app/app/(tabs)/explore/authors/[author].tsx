@@ -12,6 +12,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
+import { useLanguage } from "@/context/language";
 import { useAuthorBooks } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
@@ -22,10 +23,15 @@ export default function AuthorBooksScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
+  const { preferredLanguage } = useLanguage();
 
   const { top } = useSafeAreaInsets();
   const decodedAuthor = decodeURIComponent(author ?? "");
-  const { data, isLoading, error, refetch } = useAuthorBooks(decodedAuthor, page);
+  const { data, isLoading, error, refetch } = useAuthorBooks(
+    decodedAuthor,
+    page,
+    preferredLanguage,
+  );
 
   const books = data?.books ?? [];
   const hasMore = page < (data?.totalPages ?? 1);

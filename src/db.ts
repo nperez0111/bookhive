@@ -503,6 +503,35 @@ migrations["012"] = {
   },
 };
 
+migrations["013"] = {
+  async up(db: Kysely<unknown>) {
+    // Add top-level language column extracted from meta JSON
+    await db.schema.alterTable("hive_book").addColumn("language", "text").execute();
+
+    // Backfill from meta JSON where language is present and non-empty
+    await sql`
+      UPDATE hive_book
+      SET language = json_extract(meta, '$.language')
+      WHERE meta IS NOT NULL
+        AND json_extract(meta, '$.language') IS NOT NULL
+        AND json_extract(meta, '$.language') != ''
+    `.execute(db);
+
+    // Index for language filtering
+    await sql`CREATE INDEX idx_hive_book_language ON hive_book(language)`.execute(db);
+
+    // Composite index for language + popularity ordering
+    await sql`CREATE INDEX idx_hive_book_language_ratings ON hive_book(language, ratingsCount DESC, rating DESC)`.execute(
+      db,
+    );
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_hive_book_language_ratings`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_hive_book_language`.execute(db);
+    await db.schema.alterTable("hive_book").dropColumn("language").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

@@ -1,6 +1,9 @@
 import { type FC } from "hono/jsx";
 import type { HiveBook } from "../types";
 import { BookCard, normalizeBookData } from "./components/BookCard";
+import { buildUrl } from "./utils/buildUrl";
+import { LanguageSelect } from "./components/LanguageSelect";
+import { Script } from "./utils/script";
 
 interface SearchResultsProps {
   query: string;
@@ -9,6 +12,8 @@ interface SearchResultsProps {
   totalPages: number;
   totalBooks: number;
   pageSize: number;
+  lang?: string;
+  languages: string[];
 }
 
 const ChevronLeft = () => (
@@ -38,6 +43,8 @@ export const SearchResults: FC<SearchResultsProps> = ({
   totalPages,
   totalBooks,
   pageSize,
+  lang,
+  languages,
 }) => {
   const start = totalBooks === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalBooks);
@@ -52,15 +59,23 @@ export const SearchResults: FC<SearchResultsProps> = ({
         <span class="text-foreground font-medium">Search</span>
       </nav>
 
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
-          {query ? <>Results for "{query}"</> : "Search"}
-        </h1>
-        {totalBooks > 0 && (
-          <p class="text-muted-foreground mt-2 text-sm tabular-nums">
-            Showing {start}–{end} of {totalBooks} books
-          </p>
-        )}
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
+            {query ? <>Results for "{query}"</> : "Search"}
+          </h1>
+          {totalBooks > 0 && (
+            <p class="text-muted-foreground mt-2 text-sm tabular-nums">
+              Showing {start}–{end} of {totalBooks} books
+            </p>
+          )}
+        </div>
+        <LanguageSelect
+          languages={languages}
+          currentLang={lang}
+          baseUrl="/search"
+          extraParams={{ q: query || undefined }}
+        />
       </div>
 
       {/* Search form for refining query */}
@@ -73,10 +88,22 @@ export const SearchResults: FC<SearchResultsProps> = ({
           class="flex-1 rounded-md bg-card px-3 py-2 text-sm text-foreground shadow-sm ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           autofocus={!query}
         />
+        <input type="hidden" name="lang" id="search-lang-input" value={lang || ""} />
         <button type="submit" class="btn btn-primary btn-sm">
           Search
         </button>
       </form>
+      <Script
+        script={(document) => {
+          const langInput = document.getElementById("search-lang-input") as HTMLInputElement;
+          if (!langInput) return;
+          // Sync with localStorage preference if not already set by server
+          if (!langInput.value) {
+            const stored = localStorage.getItem("preferred_language");
+            if (stored) langInput.value = stored;
+          }
+        }}
+      />
 
       {!query && (
         <div class="card">
@@ -113,7 +140,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
             <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
               {currentPage > 1 ? (
                 <a
-                  href={`/search?q=${encodeURIComponent(query)}&page=${currentPage - 1}`}
+                  href={buildUrl("/search", { q: query, page: currentPage - 1, lang })}
                   class="btn btn-sm btn-ghost min-h-10 min-w-10"
                 >
                   <span class="sr-only">Previous</span>
@@ -143,7 +170,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
                 const isCurrentPage = pageNum === currentPage;
                 return (
                   <a
-                    href={`/search?q=${encodeURIComponent(query)}&page=${pageNum}`}
+                    href={buildUrl("/search", { q: query, page: pageNum, lang })}
                     class={`btn btn-sm min-h-10 min-w-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                     aria-current={isCurrentPage ? "page" : undefined}
                   >
@@ -154,7 +181,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
 
               {currentPage < totalPages ? (
                 <a
-                  href={`/search?q=${encodeURIComponent(query)}&page=${currentPage + 1}`}
+                  href={buildUrl("/search", { q: query, page: currentPage + 1, lang })}
                   class="btn btn-sm btn-ghost min-h-10 min-w-10"
                 >
                   <span class="sr-only">Next</span>

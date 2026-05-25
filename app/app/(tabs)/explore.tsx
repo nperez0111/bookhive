@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FadeInImage } from "@/components/FadeInImage";
 import { GradientView } from "@/components/GradientView";
+import { LanguageFilter } from "@/components/LanguageFilter";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
+import { useLanguage } from "@/context/language";
 import { useExplore } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
@@ -28,7 +30,8 @@ export default function ExploreScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const { top } = useSafeAreaInsets();
-  const explore = useExplore();
+  const { preferredLanguage } = useLanguage();
+  const explore = useExplore(preferredLanguage);
 
   if (explore.isLoading) {
     return (
@@ -76,6 +79,9 @@ export default function ExploreScreen() {
             Discover by genre or author
           </ThemedText>
         </GradientView>
+
+        {/* Language Filter */}
+        <LanguageFilter style={{ marginTop: 4, marginBottom: 8, marginHorizontal: -20 }} />
 
         {/* Top Genres */}
         <View style={styles.section}>

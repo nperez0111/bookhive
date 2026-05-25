@@ -125,7 +125,9 @@ export const SearchPalette: FC<{
         if (books[selectedIndex]) {
           window.location.href = `/books/${books[selectedIndex].id}`;
         } else if (debouncedQuery.length > 2) {
-          window.location.href = `/search?q=${encodeURIComponent(debouncedQuery)}`;
+          const lang = localStorage.getItem("preferred_language") || "";
+          const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : "";
+          window.location.href = `/search?q=${encodeURIComponent(debouncedQuery)}${langParam}`;
         }
         break;
       case "Escape":
@@ -360,7 +362,11 @@ export const SearchPalette: FC<{
                 <kbd class="font-sans">esc</kbd> close
               </span>
               <a
-                href={`/search?q=${encodeURIComponent(debouncedQuery)}`}
+                href={(() => {
+                  const lang = localStorage.getItem("preferred_language") || "";
+                  const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : "";
+                  return `/search?q=${encodeURIComponent(debouncedQuery)}${langParam}`;
+                })()}
                 class="ml-auto text-primary hover:underline"
                 onClick={close}
               >

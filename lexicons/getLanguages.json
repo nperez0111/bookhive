@@ -1,0 +1,28 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getLanguages",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get the list of available book languages.",
+      "parameters": {
+        "type": "params",
+        "properties": {}
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["languages"],
+          "properties": {
+            "languages": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Alphabetically sorted list of available languages with at least 5 books."
+            }
+          }
+        }
+      }
+    }
+  }
+}

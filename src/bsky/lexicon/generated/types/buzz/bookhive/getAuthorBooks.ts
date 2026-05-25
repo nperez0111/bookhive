@@ -10,6 +10,10 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getAuthorBooks", {
      */
     author: /*#__PURE__*/ v.string(),
     /**
+     * Filter results to books in this language (e.g. 'English', 'Spanish').
+     */
+    language: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+    /**
      * @minimum 1
      * @maximum 100
      * @default 50

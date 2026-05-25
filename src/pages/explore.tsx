@@ -7,6 +7,8 @@ import { getEmoji } from "./genreEmoji";
 import { getTopAuthors, type AuthorWithStats } from "./authorDirectory";
 import { StarDisplay } from "./components/cards/StarDisplay";
 import { readThroughCache } from "../utils/readThroughCache";
+import { LanguageSelect } from "./components/LanguageSelect";
+import { buildUrl } from "./utils/buildUrl";
 
 function formatCount(count: number): string {
   if (count < 10) return `${count}`;
@@ -22,25 +24,38 @@ interface GenreCount {
 
 const CACHE_TTL = 3_600_000; // 1 hour
 
-export const Explore: FC = async () => {
+interface ExploreProps {
+  lang?: string;
+  languages: string[];
+}
+
+export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
   const c = useRequestContext();
   const { db, kv } = c.get("ctx");
 
   startTime(c, "explore-genres");
   startTime(c, "explore-authors");
 
+  const langCacheKey = lang || "all";
+
   const [genres, topAuthors] = await Promise.all([
     readThroughCache<GenreCount[]>(
       kv as Storage<GenreCount[]>,
-      "explore:genres",
-      () =>
-        db
+      `explore:genres:${langCacheKey}`,
+      () => {
+        let query = db
           .selectFrom("hive_book_genre")
-          .select(["genre", sql<number>`COUNT(*)`.as("count")])
-          .groupBy("genre")
+          .innerJoin("hive_book", "hive_book.id", "hive_book_genre.hiveId")
+          .select(["hive_book_genre.genre", sql<number>`COUNT(*)`.as("count")]);
+        if (lang) {
+          query = query.where("hive_book.language", "=", lang);
+        }
+        return query
+          .groupBy("hive_book_genre.genre")
           .orderBy(sql`COUNT(*)`, "desc")
           .limit(6)
-          .execute(),
+          .execute();
+      },
       [],
       { ttl: CACHE_TTL },
     ).then((r) => {
@@ -49,8 +64,8 @@ export const Explore: FC = async () => {
     }),
     readThroughCache<AuthorWithStats[]>(
       kv as Storage<AuthorWithStats[]>,
-      "authors:featured",
-      () => getTopAuthors(db, 8),
+      `authors:featured:${langCacheKey}`,
+      () => getTopAuthors(db, 8, lang),
       [],
       { ttl: CACHE_TTL },
     ).then((r) => {
@@ -73,11 +88,19 @@ export const Explore: FC = async () => {
           <span class="text-foreground font-medium">Explore</span>
         </nav>
 
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">Explore</h1>
-          <p class="text-muted-foreground mt-2 text-base">
-            Discover your next read by genre or author.
-          </p>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">Explore</h1>
+            <p class="text-muted-foreground mt-2 text-base">
+              Discover your next read by genre or author.
+            </p>
+          </div>
+          <LanguageSelect
+            languages={languages}
+            currentLang={lang}
+            baseUrl="/explore"
+            paramName="lang"
+          />
         </div>
 
         {/* Top Genres */}
@@ -87,7 +110,7 @@ export const Explore: FC = async () => {
               Top Genres
             </h2>
             <a
-              href="/explore/genres"
+              href={buildUrl("/explore/genres", { lang })}
               class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all genres →
@@ -96,7 +119,7 @@ export const Explore: FC = async () => {
           <div class="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {genres.map((genre) => (
               <a
-                href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
+                href={buildUrl(`/explore/genres/${encodeURIComponent(genre.genre)}`, { lang })}
                 class="card group relative overflow-hidden p-4 text-center transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
                 style={`--genre-name: genre-${genre.genre}`}
               >
@@ -126,7 +149,7 @@ export const Explore: FC = async () => {
               Top Authors
             </h2>
             <a
-              href="/explore/authors"
+              href={buildUrl("/explore/authors", { lang })}
               class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all authors →
@@ -135,7 +158,7 @@ export const Explore: FC = async () => {
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {topAuthors.map((author) => (
               <a
-                href={`/authors/${encodeURIComponent(author.author)}`}
+                href={buildUrl(`/authors/${encodeURIComponent(author.author)}`, { lang })}
                 class="card group flex items-center gap-3 p-4 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
               >
                 {author.thumbnail ? (

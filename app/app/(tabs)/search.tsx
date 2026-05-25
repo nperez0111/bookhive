@@ -19,6 +19,7 @@ import { useProfile, useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
+import { useLanguage } from "@/context/language";
 import { router } from "expo-router";
 import { useState, useRef } from "react";
 import { getBaseUrl } from "@/context/auth";
@@ -39,7 +40,8 @@ export default function SearchScreen() {
   const bottom = useBottomTabOverflow();
 
   const profile = useProfile();
-  const { data: searchResults, isLoading, error } = useSearchBooks(query);
+  const { preferredLanguage } = useLanguage();
+  const { data: searchResults, isLoading, error } = useSearchBooks(query, preferredLanguage);
 
   // Animation values for collapsible header
   const scrollY = useRef(new Animated.Value(0)).current;

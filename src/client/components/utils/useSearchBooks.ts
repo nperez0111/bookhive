@@ -37,9 +37,16 @@ export function useSearchBooks(
       userStatuses: prev.userStatuses,
     }));
 
-    fetch(`/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=${limit}`, {
-      signal: ac.signal,
-    })
+    // Read language preference from localStorage
+    const preferredLang = localStorage.getItem("preferred_language") || "";
+    const langParam = preferredLang ? `&language=${encodeURIComponent(preferredLang)}` : "";
+
+    fetch(
+      `/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(query)}&limit=${limit}${langParam}`,
+      {
+        signal: ac.signal,
+      },
+    )
       .then((res) => {
         if (!res.ok) throw new Error("Search failed");
         return res.json();

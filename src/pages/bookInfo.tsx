@@ -217,18 +217,20 @@ export const BookInfo: FC<{
           .resolver.resolveDidToHandle(did)
           .catch(() => did)
       : Promise.resolve(null),
-    // db_other_books_by_author
+    // db_other_books_by_author — prefer books in the same language as the current book
     firstAuthor
-      ? c
-          .get("ctx")
-          .db.selectFrom("hive_book")
-          .selectAll()
-          .where("id", "!=", book.id)
-          .where(authorCondition as any)
-          .orderBy("ratingsCount", "desc")
-          .orderBy("rating", "desc")
-          .limit(6)
-          .execute()
+      ? (() => {
+          let q = c
+            .get("ctx")
+            .db.selectFrom("hive_book")
+            .selectAll()
+            .where("id", "!=", book.id)
+            .where(authorCondition as any);
+          if (book.language) {
+            q = q.orderBy(sql`CASE WHEN language = ${book.language} THEN 0 ELSE 1 END`, "asc");
+          }
+          return q.orderBy("ratingsCount", "desc").orderBy("rating", "desc").limit(6).execute();
+        })()
       : Promise.resolve([] as HiveBook[]),
     loadGenresForHiveBook(c.get("ctx").db, book.id),
   ]);
@@ -865,7 +867,7 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
+                        class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="0"
                       />
                       <span class="text-muted-foreground">/</span>
@@ -878,7 +880,7 @@ export const BookInfo: FC<{
                           (meta?.numPages ? meta.numPages : "")
                         }
                         min={1}
-                        class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
+                        class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
                         placeholder="Total"
                       />
                     </div>
@@ -897,7 +899,7 @@ export const BookInfo: FC<{
                             name="currentChapter"
                             value={usersBook?.bookProgress?.currentChapter ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
+                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="0"
                           />
                           <span class="text-muted-foreground">/</span>
@@ -907,7 +909,7 @@ export const BookInfo: FC<{
                             name="totalChapters"
                             value={usersBook?.bookProgress?.totalChapters ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
+                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Total"
                           />
                         </div>
@@ -920,7 +922,7 @@ export const BookInfo: FC<{
                             value={usersBook?.bookProgress?.percent ?? ""}
                             min={0}
                             max={100}
-                            class="w-20 rounded-md border border-border bg-amber-50 px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none dark:bg-amber-950/30 dark:text-amber-50"
+                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
                             placeholder="Auto"
                           />
                           <span class="text-xs text-muted-foreground">

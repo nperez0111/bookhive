@@ -6,6 +6,7 @@ import type { OgCard, OgRenderRequest, OgRenderResponse } from "./types";
 // optionalDependencies pass. The actual rendering happens in the worker thread.
 // Dynamic import: Vite dev can't resolve this under Bun's .bun/ layout
 // (nitrojs/nitro#4140), but Rolldown still traces the specifier at build time.
+// @ts-expect-error — module only exists in production; traced by Rolldown for NAPI bindings
 if (!import.meta.dev) void import("@takumi-rs/core");
 
 let worker: Worker | null = null;

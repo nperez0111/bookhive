@@ -28,7 +28,12 @@ const _genreItemSchema = /*#__PURE__*/ v.object({
   genre: /*#__PURE__*/ v.string(),
 });
 const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getExplore", {
-  params: /*#__PURE__*/ v.object({}),
+  params: /*#__PURE__*/ v.object({
+    /**
+     * Filter genres and authors to books in this language (e.g. 'English', 'Spanish').
+     */
+    language: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+  }),
   output: {
     type: "lex",
     schema: /*#__PURE__*/ v.object({

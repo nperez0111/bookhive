@@ -13,15 +13,18 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { authFetch, getBaseUrl } from "@/context/auth";
+import { useLanguage } from "@/context/language";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
 const PAGE_SIZE = 50;
 
-function useGenreBooks(genre: string, offset: number) {
+function useGenreBooks(genre: string, offset: number, language?: string | null) {
   return useQuery({
-    queryKey: ["genreBooks", genre, offset] as const,
-    queryFn: async ({ queryKey: [, g, o] }) => {
+    queryKey: ["genreBooks", genre, offset, language ?? ""] as const,
+    queryFn: async ({ queryKey: [, g, o, lang] }) => {
+      let url = `/xrpc/buzz.bookhive.searchBooks?genre=${encodeURIComponent(String(g))}&limit=${PAGE_SIZE}&offset=${o}`;
+      if (lang) url += `&language=${encodeURIComponent(String(lang))}`;
       return await authFetch<{
         books: {
           id: string;
@@ -32,9 +35,7 @@ function useGenreBooks(genre: string, offset: number) {
           rating?: number;
         }[];
         offset: number;
-      }>(
-        `/xrpc/buzz.bookhive.searchBooks?genre=${encodeURIComponent(String(g))}&limit=${PAGE_SIZE}&offset=${o}`,
-      );
+      }>(url);
     },
     enabled: Boolean(genre),
     staleTime: 10 * 60 * 1000,
@@ -47,10 +48,15 @@ export default function GenreBooksScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
+  const { preferredLanguage } = useLanguage();
 
   const { top } = useSafeAreaInsets();
   const decodedGenre = decodeURIComponent(genre ?? "");
-  const { data, isLoading, error, refetch } = useGenreBooks(decodedGenre, offset);
+  const { data, isLoading, error, refetch } = useGenreBooks(
+    decodedGenre,
+    offset,
+    preferredLanguage,
+  );
 
   const books = data?.books ?? [];
   const hasMore = books.length === PAGE_SIZE;

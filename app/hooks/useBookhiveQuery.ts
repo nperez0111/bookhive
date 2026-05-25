@@ -39,15 +39,29 @@ const enhancedAuthFetch = async <T>(url: string, options?: any): Promise<T> => {
 
 type SearchBooksResponse = { books: HiveBook[]; offset?: number };
 
-export const useSearchBooks = (query: string) => {
+export const useLanguages = () => {
+  return useQuery({
+    queryKey: ["languages"] as const,
+    queryFn: async () => {
+      const result = await enhancedAuthFetch<{ languages: string[] }>(
+        `/xrpc/buzz.bookhive.getLanguages`,
+      );
+      return result?.languages ?? [];
+    },
+    staleTime: 24 * 60 * 60 * 1000, // 1 day
+    gcTime: 48 * 60 * 60 * 1000, // 2 days
+  });
+};
+
+export const useSearchBooks = (query: string, language?: string | null) => {
   const debouncedQuery = useDebounce(query, 300);
 
   return useQuery({
-    queryKey: ["searchBooks", query] as const,
-    queryFn: async ({ queryKey: [, q] }) => {
-      const result = await enhancedAuthFetch<{ books: HiveBook[] }>(
-        `/xrpc/buzz.bookhive.searchBooks?q=${q}`,
-      );
+    queryKey: ["searchBooks", query, language ?? ""] as const,
+    queryFn: async ({ queryKey: [, q, lang] }) => {
+      let url = `/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(String(q))}`;
+      if (lang) url += `&language=${encodeURIComponent(lang)}`;
+      const result = await enhancedAuthFetch<{ books: HiveBook[] }>(url);
       return result?.books ?? [];
     },
     enabled: Boolean(debouncedQuery),
@@ -260,10 +274,12 @@ export const useDeleteBook = () => {
   });
 };
 
-export const useExplore = () => {
+export const useExplore = (language?: string | null) => {
   return useQuery({
-    queryKey: ["explore"] as const,
-    queryFn: async () => {
+    queryKey: ["explore", language ?? ""] as const,
+    queryFn: async ({ queryKey: [, lang] }) => {
+      let url = `/xrpc/buzz.bookhive.getExplore`;
+      if (lang) url += `?language=${encodeURIComponent(lang)}`;
       return await enhancedAuthFetch<{
         genres: { genre: string; count: number }[];
         topAuthors: {
@@ -272,7 +288,7 @@ export const useExplore = () => {
           thumbnail?: string;
           avgRating?: number;
         }[];
-      }>(`/xrpc/buzz.bookhive.getExplore`);
+      }>(url);
     },
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -306,10 +322,12 @@ export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", page: n
   });
 };
 
-export const useAuthorBooks = (author: string, page: number = 1) => {
+export const useAuthorBooks = (author: string, page: number = 1, language?: string | null) => {
   return useQuery({
-    queryKey: ["authorBooks", author, page] as const,
-    queryFn: async ({ queryKey: [, a, p] }) => {
+    queryKey: ["authorBooks", author, page, language ?? ""] as const,
+    queryFn: async ({ queryKey: [, a, p, lang] }) => {
+      let url = `/xrpc/buzz.bookhive.getAuthorBooks?author=${encodeURIComponent(String(a))}&page=${p}`;
+      if (lang) url += `&language=${encodeURIComponent(String(lang))}`;
       return await enhancedAuthFetch<{
         author: string;
         books: {
@@ -324,7 +342,7 @@ export const useAuthorBooks = (author: string, page: number = 1) => {
         totalBooks: number;
         totalPages: number;
         page: number;
-      }>(`/xrpc/buzz.bookhive.getAuthorBooks?author=${encodeURIComponent(String(a))}&page=${p}`);
+      }>(url);
     },
     enabled: Boolean(author),
     staleTime: 10 * 60 * 1000,

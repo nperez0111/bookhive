@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import "react-native-reanimated";
 
 import { AuthProvider } from "@/context/auth";
+import { LanguageProvider } from "@/context/language";
 import { ThemeProvider } from "@/context/theme";
 import { View, Platform, AppState } from "react-native";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -128,49 +129,51 @@ export default function RootLayout() {
           }}
         >
           <AuthProvider setCacheBustKey={setCacheBusterKey}>
-            <ThemeProvider>
-              <NavigationThemeProvider
-                value={{
-                  ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
-                  colors: {
-                    ...(colorScheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
-                    primary: Colors[colorScheme ?? "light"].primary,
-                    background: Colors[colorScheme ?? "light"].background,
-                    text: Colors[colorScheme ?? "light"].text,
-                    card: Colors[colorScheme ?? "light"].surfacePrimary,
-                    border: Colors[colorScheme ?? "light"].cardBorder,
-                  },
-                }}
-              >
-                {/* iOS status bar background overlay */}
-                {Platform.OS === "ios" && (
-                  <View
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: top,
-                      backgroundColor: "#000",
-                      zIndex: 1,
-                    }}
-                  />
-                )}
-                <View
-                  style={{
-                    flex: 1,
-                    paddingTop: Platform.OS === "ios" ? top : 0,
+            <LanguageProvider>
+              <ThemeProvider>
+                <NavigationThemeProvider
+                  value={{
+                    ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
+                    colors: {
+                      ...(colorScheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
+                      primary: Colors[colorScheme ?? "light"].primary,
+                      background: Colors[colorScheme ?? "light"].background,
+                      text: Colors[colorScheme ?? "light"].text,
+                      card: Colors[colorScheme ?? "light"].surfacePrimary,
+                      border: Colors[colorScheme ?? "light"].cardBorder,
+                    },
                   }}
                 >
-                  <NetworkStatusIndicator />
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  </Stack>
-                </View>
-                <StatusBar style="light" backgroundColor="#000000" translucent={false} />
-              </NavigationThemeProvider>
-            </ThemeProvider>
+                  {/* iOS status bar background overlay */}
+                  {Platform.OS === "ios" && (
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: top,
+                        backgroundColor: "#000",
+                        zIndex: 1,
+                      }}
+                    />
+                  )}
+                  <View
+                    style={{
+                      flex: 1,
+                      paddingTop: Platform.OS === "ios" ? top : 0,
+                    }}
+                  >
+                    <NetworkStatusIndicator />
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    </Stack>
+                  </View>
+                  <StatusBar style="light" backgroundColor="#000000" translucent={false} />
+                </NavigationThemeProvider>
+              </ThemeProvider>
+            </LanguageProvider>
           </AuthProvider>
         </PersistQueryClientProvider>
       </NetworkErrorBoundary>

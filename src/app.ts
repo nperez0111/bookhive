@@ -60,7 +60,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   app.get("/healthcheck", (c) =>
     c.json({
       status: "ok",
-      sha: process.env.BUILD_SHA ?? "dev",
+      sha: process.env["BUILD_SHA"] ?? "dev",
       startedAt: serverStartTime,
     }),
   );

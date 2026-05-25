@@ -116,7 +116,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
         {/* Theme toggle — visible on mobile only (hidden on desktop where navbar has it) */}
         <button
           type="button"
-          class="theme-toggle md:hidden flex items-center gap-2"
+          class="theme-toggle flex items-center gap-2 md:!hidden"
           aria-label="Toggle dark mode"
         >
           <svg

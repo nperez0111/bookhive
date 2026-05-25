@@ -5,6 +5,8 @@ import { BookCard, normalizeBookData } from "./components/BookCard";
 import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
+import { LanguageSelect } from "./components/LanguageSelect";
+import { buildUrl } from "./utils/buildUrl";
 
 type SortOption = "popularity" | "relevance" | "reviews";
 
@@ -16,6 +18,8 @@ interface GenreBooksProps {
   totalBooks: number;
   sortBy: SortOption;
   pageSize: number;
+  lang?: string;
+  languages: string[];
 }
 
 const sorts = [
@@ -61,9 +65,12 @@ export const GenreBooks: FC<GenreBooksProps> = ({
   totalBooks,
   sortBy,
   pageSize,
+  lang,
+  languages,
 }) => {
   const start = totalBooks === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalBooks);
+  const basePath = `/explore/genres/${encodeURIComponent(genre)}`;
 
   return (
     <div class="space-y-6">
@@ -72,11 +79,14 @@ export const GenreBooks: FC<GenreBooksProps> = ({
           Home
         </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore" class="hover:text-foreground transition-colors">
+        <a href={buildUrl("/explore", { lang })} class="hover:text-foreground transition-colors">
           Explore
         </a>
         <span aria-hidden="true">›</span>
-        <a href="/explore/genres" class="hover:text-foreground transition-colors">
+        <a
+          href={buildUrl("/explore/genres", { lang })}
+          class="hover:text-foreground transition-colors"
+        >
           Genres
         </a>
         <span aria-hidden="true">›</span>
@@ -84,18 +94,26 @@ export const GenreBooks: FC<GenreBooksProps> = ({
       </nav>
 
       <div class="flex flex-col gap-4">
-        <h1
-          class="genre-name text-3xl font-bold tracking-tight text-foreground lg:text-4xl"
-          style={`--genre-name: genre-${genre}`}
-        >
-          {genre}
-        </h1>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <h1
+            class="genre-name text-3xl font-bold tracking-tight text-foreground lg:text-4xl"
+            style={`--genre-name: genre-${genre}`}
+          >
+            {genre}
+          </h1>
+          <LanguageSelect
+            languages={languages}
+            currentLang={lang}
+            baseUrl={basePath}
+            extraParams={{ sort: sortBy }}
+          />
+        </div>
 
         {books.length > 0 && (
           <div class="mb-4 flex flex-wrap items-center gap-2">
             {sorts.map((s) => (
               <a
-                href={`/explore/genres/${encodeURIComponent(genre)}?sort=${s.key}&page=1`}
+                href={buildUrl(basePath, { sort: s.key, page: "1", lang })}
                 class={`btn btn-sm min-h-10 ${sortBy === s.key ? "btn-primary" : "btn-ghost"}`}
               >
                 {s.label}
@@ -126,7 +144,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
               <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
                 {currentPage > 1 ? (
                   <a
-                    href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage - 1}`}
+                    href={buildUrl(basePath, { sort: sortBy, page: String(currentPage - 1), lang })}
                     class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Previous</span>
@@ -157,7 +175,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 
                   return (
                     <a
-                      href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${pageNum}`}
+                      href={buildUrl(basePath, { sort: sortBy, page: String(pageNum), lang })}
                       class={`btn btn-sm tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                       aria-current={isCurrentPage ? "page" : undefined}
                     >
@@ -168,7 +186,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
 
                 {currentPage < totalPages ? (
                   <a
-                    href={`/explore/genres/${encodeURIComponent(genre)}?sort=${sortBy}&page=${currentPage + 1}`}
+                    href={buildUrl(basePath, { sort: sortBy, page: String(currentPage + 1), lang })}
                     class="btn btn-sm btn-ghost min-w-10 min-h-10"
                   >
                     <span class="sr-only">Next</span>
@@ -199,6 +217,7 @@ export async function getBooksByGenre(
   pageSize: number = 20,
   sortBy: SortOption = "popularity",
   c: Context,
+  language?: string,
 ): Promise<{
   books: HiveBook[];
   totalBooks: number;
@@ -215,6 +234,14 @@ export async function getBooksByGenre(
     .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
     .selectAll("hive_book")
     .where("hive_book_genre.genre", "=", genre);
+
+  // Language is a soft preference: sort matching-language books first, don't filter
+  if (language) {
+    dataQuery = dataQuery.orderBy(
+      sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`,
+      "asc",
+    );
+  }
 
   switch (sortBy) {
     case "popularity":
@@ -236,16 +263,16 @@ export async function getBooksByGenre(
       break;
   }
 
+  const countQuery = ctx.db
+    .selectFrom("hive_book_genre")
+    .select(sql<number>`COUNT(*)`.as("count"))
+    .where("hive_book_genre.genre", "=", genre);
+
   const [totalCountResult, books] = await Promise.all([
-    ctx.db
-      .selectFrom("hive_book_genre")
-      .select(sql<number>`COUNT(DISTINCT hiveId)`.as("count"))
-      .where("genre", "=", genre)
-      .executeTakeFirst()
-      .then((r) => {
-        endTime(c, "genre-books-count-query");
-        return r;
-      }),
+    countQuery.executeTakeFirst().then((r) => {
+      endTime(c, "genre-books-count-query");
+      return r;
+    }),
     dataQuery
       .limit(pageSize)
       .offset(offset)

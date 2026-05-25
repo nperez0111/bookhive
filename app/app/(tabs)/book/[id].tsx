@@ -279,8 +279,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     }, 100);
   };
 
-
-
   const handleShare = () => {
     const shareUrl = `${getBaseUrl()}/books/${hiveId}`;
     const blueskyText = `Check out "${book.title}" by ${book.authors.split("\t").join(", ")} on BookHive!\n\n${shareUrl}`;
@@ -316,8 +314,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       return [];
     }
   }, [bookQuery.data?.book.genres]);
-
-
 
   if (bookQuery.isLoading) {
     return (

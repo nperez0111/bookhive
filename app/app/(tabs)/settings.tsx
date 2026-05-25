@@ -1,4 +1,5 @@
 import { useAuth } from "@/context/auth";
+import { useLanguage } from "@/context/language";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedCard } from "@/components/ThemedCard";
@@ -6,11 +7,19 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-import { StyleSheet, Image, TouchableOpacity, ScrollView, View, Pressable, Alert } from "react-native";
+import {
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  View,
+  Pressable,
+  Alert,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import { useState, useCallback } from "react";
-import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
+import { useProfile, useUserLists, useLanguages } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -29,6 +38,8 @@ export default function ProfileScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const { preferredLanguage, setPreferredLanguage } = useLanguage();
+  const { data: languages = [] } = useLanguages();
 
   const checkForUpdate = useCallback(async () => {
     if (__DEV__) {
@@ -47,7 +58,7 @@ export default function ProfileScreen() {
             [
               { text: "Later", style: "cancel" },
               { text: "Restart", onPress: () => Updates.reloadAsync() },
-            ]
+            ],
           );
         }
       } else {
@@ -182,6 +193,25 @@ export default function ProfileScreen() {
             />
             <View style={styles.settingsList}>
               <ThemeToggle style={styles.settingItem} />
+              <ListItem
+                icon="language"
+                title="Book Language"
+                subtitle={preferredLanguage || "All Languages"}
+                onPress={() => {
+                  const options = ["All Languages", ...languages];
+                  Alert.alert(
+                    "Preferred Language",
+                    "Filter books by language across search, explore, and browse pages.",
+                    [
+                      ...options.map((opt) => ({
+                        text: opt,
+                        onPress: () => setPreferredLanguage(opt === "All Languages" ? null : opt),
+                      })),
+                      { text: "Cancel", style: "cancel" as const },
+                    ],
+                  );
+                }}
+              />
               <ListItem
                 icon="bar-chart"
                 title="Reading Stats"

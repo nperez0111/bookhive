@@ -26,6 +26,7 @@ import { AuthorDirectory } from "../pages/authorDirectory";
 import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
 import { searchBooks, cacheControl } from "./lib";
+import { getAvailableLanguages } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
@@ -149,13 +150,18 @@ const app = new Hono<AppEnv>()
       z.object({
         q: z.string().optional().default(""),
         page: z.coerce.number().int().min(1).catch(1),
+        lang: z.string().optional().default(""),
       }),
     ),
     async (c) => {
-      const { q: query, page } = c.req.valid("query");
+      const { q: query, page, lang: langParam } = c.req.valid("query");
+      const lang = langParam || undefined;
       const pageSize = 100;
+      const ctx = c.get("ctx");
+      const { db, kv } = ctx;
 
       if (!query) {
+        const languages = await getAvailableLanguages(db, kv);
         return c.render(
           <SearchResults
             query=""
@@ -164,6 +170,8 @@ const app = new Hono<AppEnv>()
             totalPages={0}
             totalBooks={0}
             pageSize={pageSize}
+            lang={lang}
+            languages={languages}
           />,
           {
             title: "BookHive | Search",
@@ -172,25 +180,36 @@ const app = new Hono<AppEnv>()
         );
       }
 
-      const ctx = c.get("ctx");
-
       // Get search results (cached external + local backfill IDs)
       startTime(c, "search_parallel");
-      const searchIds = await searchBooks({ query, ctx });
+      const [searchIds, languages] = await Promise.all([
+        searchBooks({ query, ctx }),
+        getAvailableLanguages(db, kv),
+      ]);
       endTime(c, "search_parallel");
 
       // Fetch full rows by ID, preserving search relevance order
+      // Language is a soft preference: sort matching-language books first, don't filter
       startTime(c, "search_db_external");
+      let dbQuery = ctx.db.selectFrom("hive_book").selectAll();
+      if (searchIds.length) {
+        dbQuery = dbQuery.where("id", "in", searchIds);
+      }
       const allBooks = searchIds.length
-        ? await ctx.db
-            .selectFrom("hive_book")
-            .selectAll()
-            .where("id", "in", searchIds)
-            .execute()
-            .then((rows) => {
+        ? await dbQuery.execute().then((rows) => {
+            if (lang) {
+              // Sort: preferred language first, then by search relevance
+              rows.sort((a, b) => {
+                const aMatch = a.language === lang ? 0 : 1;
+                const bMatch = b.language === lang ? 0 : 1;
+                if (aMatch !== bMatch) return aMatch - bMatch;
+                return searchIds.indexOf(a.id) - searchIds.indexOf(b.id);
+              });
+            } else {
               rows.sort((a, b) => searchIds.indexOf(a.id) - searchIds.indexOf(b.id));
-              return rows;
-            })
+            }
+            return rows;
+          })
         : [];
       endTime(c, "search_db_external");
       const totalBooks = allBooks.length;
@@ -206,6 +225,8 @@ const app = new Hono<AppEnv>()
           totalPages={totalPages}
           totalBooks={totalBooks}
           pageSize={pageSize}
+          lang={lang}
+          languages={languages}
         />,
         {
           title: `BookHive | Search: ${query}`,
@@ -218,12 +239,15 @@ const app = new Hono<AppEnv>()
   .use("/explore", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
   .use("/explore/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
   .use("/authors/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
-  .get("/explore", (c) =>
-    c.render(<Explore />, {
+  .get("/explore", async (c) => {
+    const { db, kv } = c.get("ctx");
+    const lang = c.req.query("lang") || undefined;
+    const languages = await getAvailableLanguages(db, kv);
+    return c.render(<Explore lang={lang} languages={languages} />, {
       title: "BookHive | Explore",
       description: "Discover books by genre or author on BookHive",
-    }),
-  )
+    });
+  })
   // Explore sub-pages
   .get("/explore/genres", (c) =>
     c.render(<GenresDirectory />, {
@@ -235,10 +259,18 @@ const app = new Hono<AppEnv>()
     const genre = decodeURIComponent(c.req.param("genre"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const sortBy = (c.req.query("sort") as "popularity" | "relevance" | "reviews") || "popularity";
+    const lang = c.req.query("lang") || undefined;
     const pageSize = 100;
-    startTime(c, "genre_books");
-    const result = await getBooksByGenre(genre, c.get("ctx"), page, pageSize, sortBy, c);
-    endTime(c, "genre_books");
+    const { db, kv } = c.get("ctx");
+    const [result, languages] = await Promise.all([
+      (async () => {
+        startTime(c, "genre_books");
+        const r = await getBooksByGenre(genre, c.get("ctx"), page, pageSize, sortBy, c, lang);
+        endTime(c, "genre_books");
+        return r;
+      })(),
+      getAvailableLanguages(db, kv),
+    ]);
     return c.render(
       <GenreBooks
         genre={genre}
@@ -248,6 +280,8 @@ const app = new Hono<AppEnv>()
         totalBooks={result.totalBooks}
         sortBy={sortBy}
         pageSize={pageSize}
+        lang={lang}
+        languages={languages}
       />,
       {
         title: `BookHive | ${genre} Books`,
@@ -274,10 +308,18 @@ const app = new Hono<AppEnv>()
     const author = decodeURIComponent(c.req.param("author"));
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
     const sortBy = (c.req.query("sort") as "popularity" | "reviews") || "popularity";
+    const lang = c.req.query("lang") || undefined;
     const pageSize = 100;
-    startTime(c, "author_books");
-    const result = await getBooksByAuthor(author, c.get("ctx"), page, pageSize, sortBy, c);
-    endTime(c, "author_books");
+    const { db, kv } = c.get("ctx");
+    const [result, languages] = await Promise.all([
+      (async () => {
+        startTime(c, "author_books");
+        const r = await getBooksByAuthor(author, c.get("ctx"), page, pageSize, sortBy, c, lang);
+        endTime(c, "author_books");
+        return r;
+      })(),
+      getAvailableLanguages(db, kv),
+    ]);
     return c.render(
       <AuthorBooks
         author={author}
@@ -287,6 +329,8 @@ const app = new Hono<AppEnv>()
         totalBooks={result.totalBooks}
         sortBy={sortBy}
         pageSize={pageSize}
+        lang={lang}
+        languages={languages}
       />,
       {
         title: `BookHive | Books by ${author}`,

@@ -1,10 +1,57 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-export const SettingsPage: FC<{ handle: string }> = ({ handle }) => {
+export const SettingsPage: FC<{ handle: string; languages: string[] }> = ({
+  handle,
+  languages,
+}) => {
   return (
     <div class="mx-auto max-w-2xl space-y-8 px-4 py-8 lg:px-8">
       <h1 class="text-2xl font-bold text-foreground">Account Settings</h1>
+
+      <div class="card">
+        <div class="card-body">
+          <h2 class="text-lg font-semibold text-foreground">Preferences</h2>
+          <p class="text-muted-foreground mt-1 text-sm">
+            Set your preferred language for browsing books. When set, search results and exploration
+            pages will prioritize books in this language.
+          </p>
+
+          <div class="mt-4 max-w-xs">
+            <label class="text-sm font-medium text-foreground" for="language-select">
+              Preferred Language
+            </label>
+            <select
+              id="language-select"
+              class="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">All languages</option>
+              {languages.map((lang) => (
+                <option value={lang}>{lang}</option>
+              ))}
+            </select>
+            <p class="text-muted-foreground mt-1.5 text-xs">
+              This preference is stored locally in your browser.
+            </p>
+          </div>
+
+          <Script
+            script={(document) => {
+              const select = document.getElementById("language-select") as HTMLSelectElement;
+              const stored = localStorage.getItem("preferred_language") || "";
+              select.value = stored;
+              select.addEventListener("change", () => {
+                const val = select.value;
+                if (val) {
+                  localStorage.setItem("preferred_language", val);
+                } else {
+                  localStorage.removeItem("preferred_language");
+                }
+              });
+            }}
+          />
+        </div>
+      </div>
 
       <div class="card border-red-300 dark:border-red-800">
         <div class="card-body">

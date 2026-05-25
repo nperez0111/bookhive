@@ -231,60 +231,60 @@ export const ProfilePage: FC<{
           {/* Social — Following & Followers */}
           {(followingCount > 0 || followersCount > 0) && (
             <section id="social" class="scroll-mt-6 space-y-6">
-                {followingCount > 0 && (
-                  <div>
-                    <h3 class="text-foreground mb-3 text-sm font-semibold">
-                      Following
-                      <span class="text-muted-foreground ml-1 tabular-nums font-normal">
-                        {followingCount}
-                      </span>
-                    </h3>
-                    <div class="flex flex-wrap gap-2">
-                      {followingProfiles.map((user) => (
-                        <a
-                          key={user.did}
-                          href={`/profile/${user.handle ?? user.did}`}
-                          class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-                        >
-                          <UserBlock
-                            handle={user.handle ?? user.did}
-                            avatar={user.avatar ?? null}
-                            displayName={null}
-                            size="sm"
-                            noLink
-                          />
-                        </a>
-                      ))}
-                    </div>
+              {followingCount > 0 && (
+                <div>
+                  <h3 class="text-foreground mb-3 text-sm font-semibold">
+                    Following
+                    <span class="text-muted-foreground ml-1 tabular-nums font-normal">
+                      {followingCount}
+                    </span>
+                  </h3>
+                  <div class="flex flex-wrap gap-2">
+                    {followingProfiles.map((user) => (
+                      <a
+                        key={user.did}
+                        href={`/profile/${user.handle ?? user.did}`}
+                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
+                      >
+                        <UserBlock
+                          handle={user.handle ?? user.did}
+                          avatar={user.avatar ?? null}
+                          displayName={null}
+                          size="sm"
+                          noLink
+                        />
+                      </a>
+                    ))}
                   </div>
-                )}
-                {followersCount > 0 && (
-                  <div>
-                    <h3 class="text-foreground mb-3 text-sm font-semibold">
-                      Followers
-                      <span class="text-muted-foreground ml-1 tabular-nums font-normal">
-                        {followersCount}
-                      </span>
-                    </h3>
-                    <div class="flex flex-wrap gap-2">
-                      {followersProfiles.map((user) => (
-                        <a
-                          key={user.did}
-                          href={`/profile/${user.handle ?? user.did}`}
-                          class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-                        >
-                          <UserBlock
-                            handle={user.handle ?? user.did}
-                            avatar={user.avatar ?? null}
-                            displayName={null}
-                            size="sm"
-                            noLink
-                          />
-                        </a>
-                      ))}
-                    </div>
+                </div>
+              )}
+              {followersCount > 0 && (
+                <div>
+                  <h3 class="text-foreground mb-3 text-sm font-semibold">
+                    Followers
+                    <span class="text-muted-foreground ml-1 tabular-nums font-normal">
+                      {followersCount}
+                    </span>
+                  </h3>
+                  <div class="flex flex-wrap gap-2">
+                    {followersProfiles.map((user) => (
+                      <a
+                        key={user.did}
+                        href={`/profile/${user.handle ?? user.did}`}
+                        class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
+                      >
+                        <UserBlock
+                          handle={user.handle ?? user.did}
+                          avatar={user.avatar ?? null}
+                          displayName={null}
+                          size="sm"
+                          noLink
+                        />
+                      </a>
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
             </section>
           )}
         </>
