@@ -19,7 +19,7 @@ ENV BUILD_SHA=${BUILD_SHA} NODE_ENV=production PORT=8080
 # Own the workdir and /data as root before switching user (cheap — directories are empty)
 RUN mkdir -p /data && chown bun:bun /data /usr/src/app && chmod 755 /data
 USER bun
-# Nitro bundles all JS and traces native deps (sharp, @takumi-rs/core) into .output/server/node_modules — no bun install needed
+# Nitro bundles all JS and traces native deps (@takumi-rs/core) into .output/server/node_modules — no bun install needed
 COPY --chown=bun:bun --from=build /usr/src/app/.output ./.output
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
