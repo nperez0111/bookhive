@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import { render } from "takumi-js";
 
 const BOOK_PATHS = `<g transform="matrix(1,0,0,1,-582,0)">
   <g transform="matrix(1,0,0,0.930233,0,0)">
@@ -60,6 +60,10 @@ function buildAvatarSvg(initials: string): string {
 
 export async function generateInitialsAvatar(handle: string): Promise<Blob> {
   const svg = buildAvatarSvg(getInitials(handle));
-  const png = await sharp(Buffer.from(svg)).png().toBuffer();
-  return new Blob([new Uint8Array(png)], { type: "image/png" });
+  const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  const png = await render(
+    `<div style="display:flex;width:640px;height:640px"><img src="${svgDataUrl}" width="640" height="640" /></div>`,
+    { width: 640, height: 640, format: "png" as any },
+  );
+  return new Blob([png as BlobPart], { type: "image/png" });
 }

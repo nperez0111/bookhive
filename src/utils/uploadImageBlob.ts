@@ -1,7 +1,6 @@
 import type { SessionClient } from "../auth/client";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
 import type { BlobRef } from "../types";
-import sharp from "sharp";
 
 export type { BlobRef };
 
@@ -23,19 +22,20 @@ export async function uploadImageBlob(
 
     const end = imageProcessingDuration.startTimer(LABEL.op.resize);
     activeOperations.inc(LABEL.op.resize);
-    let encoded: Buffer;
+    let encoded: Uint8Array;
     try {
-      encoded = await sharp(Buffer.from(data))
-        .resize(maxWidth ? { width: maxWidth, withoutEnlargement: true } : undefined)
-        .jpeg()
-        .toBuffer();
+      let img = new Bun.Image(data);
+      if (maxWidth) {
+        img = img.resize(maxWidth, undefined, { withoutEnlargement: true });
+      }
+      encoded = await img.jpeg().bytes();
     } finally {
       end();
       activeOperations.dec(LABEL.op.resize);
     }
 
     const uploadResponse = await agent.post("com.atproto.repo.uploadBlob", {
-      input: new Blob([new Uint8Array(encoded)], { type: "image/jpeg" }),
+      input: new Blob([encoded as BlobPart], { type: "image/jpeg" }),
     });
     if (uploadResponse.ok) {
       return (uploadResponse.data as { blob?: BlobRef })?.blob;

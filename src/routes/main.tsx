@@ -2,12 +2,12 @@
  * Main app router: context, auth, layout, images, then domain routes.
  * Composes pages, profile, books, comments, api and xrpc.
  */
-import { createIPX, ipxFSStorage, ipxHttpStorage } from "ipx";
 import { jsxRenderer, useRequestContext } from "hono/jsx-renderer";
 import { methodOverride } from "hono/method-override";
 import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
 import { defineCachedFunction } from "ocache";
+import { resolve, join } from "node:path";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
 import { BookFields } from "../db";
@@ -55,15 +55,10 @@ declare module "hono" {
 
 const MAX_AGE = 60 * 60 * 24 * 30;
 
-const ipx = createIPX({
-  maxAge: MAX_AGE,
-  storage: ipxFSStorage({ dir: "./public" }),
-  httpStorage: ipxHttpStorage({
-    domains: ["i.gr-assets.com", "cdn.bsky.app"],
-    ignoreCacheControl: true,
-    maxAge: MAX_AGE,
-  }),
-});
+// --- Custom image proxy (replaces IPX) ---
+
+const ALLOWED_HOSTS = new Set(["i.gr-assets.com", "cdn.bsky.app"]);
+const PUBLIC_DIR = resolve("./public");
 
 const FORMAT_MIME: Record<string, string> = {
   jpeg: "image/jpeg",
@@ -76,12 +71,122 @@ const FORMAT_MIME: Record<string, string> = {
   tiff: "image/tiff",
 };
 
+/** Detect output format from raw image bytes (magic-byte sniffing). */
+function detectFormat(data: Uint8Array): string {
+  if (data[0] === 0xff && data[1] === 0xd8) return "jpeg";
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return "png";
+  if (
+    data[0] === 0x52 &&
+    data[1] === 0x49 &&
+    data[2] === 0x46 &&
+    data[3] === 0x46 &&
+    data[8] === 0x57 &&
+    data[9] === 0x45 &&
+    data[10] === 0x42 &&
+    data[11] === 0x50
+  )
+    return "webp";
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return "gif";
+  // AVIF / HEIF share the ftyp box — check for 'ftyp' at offset 4
+  if (data[4] === 0x66 && data[5] === 0x74 && data[6] === 0x79 && data[7] === 0x70) return "avif";
+  return "jpeg"; // fallback
+}
+
+/** Fetch image bytes from an allowed remote host or the local public dir. */
+async function fetchSource(id: string): Promise<Uint8Array> {
+  const hasProtocol = /^https?:\/\//i.test(id);
+
+  if (hasProtocol) {
+    const hostname = new URL(id).hostname;
+    if (!ALLOWED_HOSTS.has(hostname)) throw new Error(`Forbidden host: ${hostname}`);
+    const res = await fetch(id);
+    if (!res.ok) throw new Error(`Upstream ${res.status}: ${id}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  // Local file — resolve under PUBLIC_DIR with traversal guard
+  const filePath = join(PUBLIC_DIR, id.startsWith("/") ? id.slice(1) : id);
+  if (!filePath.startsWith(PUBLIC_DIR + "/") && filePath !== PUBLIC_DIR) {
+    throw new Error("Forbidden path");
+  }
+  return new Uint8Array(await Bun.file(filePath).arrayBuffer());
+}
+
+/** Apply Bun.Image transforms based on parsed modifier map. */
+async function applyModifiers(
+  source: Uint8Array,
+  modifiers: Record<string, string>,
+): Promise<{ data: Uint8Array; format: string }> {
+  const hasModifiers = Object.keys(modifiers).length > 0;
+
+  // Detect source format for passthrough / SVG short-circuit
+  const srcFormat = detectFormat(source);
+
+  // SVGs are returned as-is (Bun.Image does not support SVG input)
+  if (srcFormat === "svg" || (!hasModifiers && source[0] === 0x3c)) {
+    return { data: source, format: "svg" };
+  }
+
+  if (!hasModifiers) {
+    return { data: source, format: srcFormat };
+  }
+
+  let img = new Bun.Image(source);
+
+  // Width-only resize (most common: w_440, w_320, etc.)
+  const width = modifiers["w"] || modifiers["width"];
+  const height = modifiers["h"] || modifiers["height"];
+  const resize = modifiers["s"] || modifiers["resize"];
+
+  if (resize) {
+    // Format: "WxH" e.g. s_300x500
+    const [rw, rh] = resize.split("x").map(Number);
+    if (rw && rh) {
+      // Bun.Image doesn't support fit:"cover", use fit:"inside" as best approximation
+      // for book covers (similar aspect ratios) this produces nearly identical results
+      img = img.resize(rw, rh, { fit: "inside", withoutEnlargement: true });
+    } else if (rw) {
+      img = img.resize(rw, undefined, { withoutEnlargement: true });
+    }
+  } else if (width) {
+    img = img.resize(Number(width), undefined, { withoutEnlargement: true });
+  } else if (height) {
+    // Height-only: use a large width to let height be the constraint
+    img = img.resize(99999, Number(height), { fit: "inside", withoutEnlargement: true });
+  }
+
+  // Output format: explicit modifier, else preserve source format
+  const explicitFormat = modifiers["f"] || modifiers["format"];
+  const outFormat = explicitFormat === "jpg" ? "jpeg" : explicitFormat || srcFormat;
+
+  let data: Uint8Array;
+  const quality = modifiers["q"] || modifiers["quality"];
+  const q = quality ? Number(quality) : undefined;
+
+  switch (outFormat) {
+    case "png":
+      data = await img.png().bytes();
+      break;
+    case "webp":
+      data = await img.webp(q ? { quality: q } : undefined).bytes();
+      break;
+    case "avif":
+      data = await img.avif(q ? { quality: q } : undefined).bytes();
+      break;
+    default:
+      data = await img.jpeg(q ? { quality: q } : undefined).bytes();
+      break;
+  }
+
+  return { data, format: outFormat };
+}
+
 const processImage = defineCachedFunction(
   async (id: string, modifiers: Record<string, string>) => {
-    const result = await ipx(id, modifiers).process();
-    const data = result.data as Buffer;
+    const source = await fetchSource(id);
+    const { data, format } = await applyModifiers(source, modifiers);
     const etag = `"${new Bun.CryptoHasher("sha256").update(data).digest("hex")}"`;
-    return { data, format: result.format ?? "", etag };
+    return { data, format, etag };
   },
   { maxAge: 5 * 60, getKey: (id, modifiers) => `${JSON.stringify(modifiers)}:${id}` },
 );
@@ -328,10 +433,10 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.use("/images/*", async (c) => {
     // Use pathname only so behavior is identical behind proxies
     const pathname = new URL(c.req.url).pathname;
-    const ipxPath = pathname.replace(/^\/images/, "") || "/";
+    const imagePath = pathname.replace(/^\/images/, "") || "/";
 
-    // Parse IPX URL: /modifiersString/image-id
-    const [modifiersString = "_", ...idSegments] = ipxPath.slice(1).split("/");
+    // Parse image URL: /modifiersString/image-id
+    const [modifiersString = "_", ...idSegments] = imagePath.slice(1).split("/");
     // Joining preserves double-slash in https:// URLs (["https:", "", "host"] => "https://host")
     const id = decodeURIComponent(idSegments.join("/"));
 
