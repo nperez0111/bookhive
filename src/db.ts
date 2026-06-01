@@ -1,12 +1,6 @@
 import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
-import {
-  Kysely,
-  Migrator,
-  SqliteDialect,
-  sql,
-  type Migration,
-  type MigrationProvider,
-} from "kysely";
+import { Kysely, SqliteDialect, sql } from "kysely";
+import { Migrator, type Migration, type MigrationProvider } from "kysely/migration";
 import { Database as DatabaseSync } from "bun:sqlite";
 import type {
   BookIdentifiersRow,

@@ -1,4 +1,4 @@
-import { iterateAtpRepo } from "@atcute/car";
+import { fromUint8Array } from "@atcute/repo";
 import * as TID from "@atcute/tid";
 
 import type { SessionClient } from "../auth/client";
@@ -624,7 +624,7 @@ export async function getUserRepoRecords({
   const books = new Map<string, BookRecord.Record>();
   const buzzes = new Map<string, BuzzRecord.Record>();
 
-  for (const { collection, rkey: key, record: value } of iterateAtpRepo(data)) {
+  for (const { collection, rkey: key, record: value } of fromUint8Array(data)) {
     switch (collection) {
       case ids.BuzzBookhiveBook: {
         // https://github.com/bluesky-social/atproto/issues/3866 to get the validation to pass

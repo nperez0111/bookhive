@@ -27,7 +27,7 @@ export type CreateAppOptions = {
 export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
 
-  app.use(timing());
+  app.use(timing({ autoEnd: false }));
 
   if (env.isDevelopment) {
     app.use(prettyJSON());

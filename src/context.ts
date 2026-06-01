@@ -121,7 +121,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
   if (migrationResults.length > 0) {
     logger.info(
-      { migrations: migrationResults.map((r) => r.migrationName) },
+      { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
       "migrations applied, deferring VACUUM to background",
     );
     // Run VACUUM in the background — it reclaims space but shouldn't block server startup.

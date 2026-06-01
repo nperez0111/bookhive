@@ -55,7 +55,12 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        * @accept image/png, image/jpeg
        * @maxSize 1000000
        */
-      cover: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
+      cover: /*#__PURE__*/ v.optional(
+        /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.blob(), [
+          /*#__PURE__*/ v.blobSize(1000000),
+          /*#__PURE__*/ v.blobAccept(["image/png", "image/jpeg"]),
+        ]),
+      ),
       createdAt: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.datetimeString()),
       /**
        * The date the user finished reading the book

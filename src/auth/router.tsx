@@ -281,7 +281,7 @@ export function loginRouter(
     "/pds/signup",
     zValidator("form", signupSchema, (result, c) => {
       if (!result.success) {
-        const error = result.error.errors[0]?.message ?? "Invalid input.";
+        const error = result.error.issues[0]?.message ?? "Invalid input.";
         return c.html(
           <Layout assetUrls={c.get("assetUrls")}>
             <Signup error={error} />
@@ -405,7 +405,7 @@ export function loginRouter(
     "/mobile/signup",
     zValidator("json", mobileSignupSchema, (result, c) => {
       if (!result.success) {
-        const error = result.error.errors[0]?.message ?? "Invalid input.";
+        const error = result.error.issues[0]?.message ?? "Invalid input.";
         return c.json({ success: false, error }, 400);
       }
       return undefined;

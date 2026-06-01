@@ -1,4 +1,5 @@
-import { Client, CredentialManager } from "@atcute/client";
+import { Client } from "@atcute/client";
+import { PasswordSession } from "@atcute/password-session";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { Logger } from "pino";
 import type { SessionClient } from "../auth/client";
@@ -16,15 +17,15 @@ export async function createServiceAccountAgent(
   if (!handle || !appPassword) return null;
   try {
     const actor = await createActorResolver().resolve(handle as ActorIdentifier);
-    const manager = new CredentialManager({ service: actor.pds });
-    await manager.login({ identifier: handle, password: appPassword });
-    const client = new Client({ handler: manager });
+    const session = await PasswordSession.login({
+      service: actor.pds,
+      identifier: handle,
+      password: appPassword,
+    });
+    const client = new Client({ handler: session });
     return {
       get did() {
-        if (!manager.session?.did) {
-          throw new Error("[catalogBookService] No active session on service account agent");
-        }
-        return manager.session.did;
+        return session.did;
       },
       get: client.get.bind(client) as SessionClient["get"],
       post: client.post.bind(client) as SessionClient["post"],

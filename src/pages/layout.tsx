@@ -54,14 +54,11 @@ export const Layout: FC<
         <script>
           (function () {
             const stored = localStorage.getItem("theme");
-            const prefersDark = window.matchMedia(
-              "(prefers-color-scheme: dark)",
-            ).matches;
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
             const dark = stored === "dark" || (!stored && prefersDark);
             document.documentElement.classList.toggle("dark", dark);
             const meta = document.querySelector('meta[name="theme-color"]');
-            if (meta)
-              meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
+            if (meta) meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
           })();
         </script>
         ${cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
@@ -78,12 +75,7 @@ export const Layout: FC<
           }`)}
         </style>
         ${!isDevVite && jsUrls.map((src) => html`<link rel="modulepreload" href="${src}" />`)}
-        ${
-          !isDevVite &&
-          html`
-            <link rel="modulepreload" href="/js/actor-typeahead.js" />
-          `
-        }
+        ${!isDevVite && html` <link rel="modulepreload" href="/js/actor-typeahead.js" /> `}
         ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
         <script type="module" src="/js/actor-typeahead.js"></script>
         <meta property="og:url" content="${url}" />
@@ -100,23 +92,9 @@ export const Layout: FC<
         <meta name="twitter:title" content="${title}" />
         <meta name="twitter:description" content="${description}" />
         <meta name="twitter:image" content="${image}" />
-        <link
-          rel="apple-touch-icon"
-          sizes="180x180"
-          href="/apple-touch-icon.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="32x32"
-          href="/favicon-32x32.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="16x16"
-          href="/favicon-16x16.png"
-        />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
         <link rel="manifest" href="/site.webmanifest" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="${description}" />
@@ -125,10 +103,7 @@ export const Layout: FC<
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="canonical" href="${url}" />
         <title>${title}</title>
         <script type="application/ld+json">

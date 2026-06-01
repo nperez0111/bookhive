@@ -24,7 +24,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @accept image/png, image/jpeg
      * @maxSize 2000000
      */
-    coverBlob: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
+    coverBlob: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.blob(), [
+        /*#__PURE__*/ v.blobSize(2000000),
+        /*#__PURE__*/ v.blobAccept(["image/png", "image/jpeg"]),
+      ]),
+    ),
     createdAt: /*#__PURE__*/ v.datetimeString(),
     /**
      * Book description/summary
@@ -84,7 +89,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @accept image/png, image/jpeg
      * @maxSize 1000000
      */
-    thumbnailBlob: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
+    thumbnailBlob: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.blob(), [
+        /*#__PURE__*/ v.blobSize(1000000),
+        /*#__PURE__*/ v.blobAccept(["image/png", "image/jpeg"]),
+      ]),
+    ),
     /**
      * The title of the book
      * @minLength 1

@@ -111,7 +111,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveSearchBooks, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { q, genre, limit = 25, offset = 0, id, language } = params;
+      const { q, genre, limit, offset = 0, id, language } = params;
 
       if (id) {
         const book = await ctx.db
@@ -260,7 +260,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveListGenres, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { limit = 50, offset = 0, minBooks = 0 } = params;
+      const { limit, offset = 0, minBooks } = params;
 
       let query = ctx.db
         .selectFrom("hive_book_genre")
@@ -296,7 +296,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 400,
           error: "InvalidRequest",
-          description: "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
+          message: "Invalid identifier. Provide hiveId, isbn, isbn13, or goodreadsId.",
         });
       }
 
@@ -329,7 +329,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 404,
           error: "NotFound",
-          description: "Book not found",
+          message: "Book not found",
         });
       }
 
@@ -350,7 +350,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           throw new XRPCError({
             status: 404,
             error: "NotFound",
-            description: "Book not found",
+            message: "Book not found",
           });
         }
         const response: GetBookIdentifiersOutputSchema = {
@@ -388,7 +388,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 400,
           error: "InvalidRequest",
-          description: "Book not found",
+          message: "Book not found",
         });
       }
 
@@ -403,7 +403,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 404,
           error: "NotFound",
-          description: "Book not found",
+          message: "Book not found",
         });
       }
 
@@ -548,7 +548,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       if (!did && !handle) {
         if (!agent) {
           throw new AuthRequiredError({
-            description: "No did or handle specified, and no session",
+            message: "No did or handle specified, and no session",
           });
         }
         did = agent.did;
@@ -562,7 +562,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 404,
           error: "NotFound",
-          description: "User not found",
+          message: "User not found",
         });
       }
 
@@ -784,7 +784,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       if ((tab === "friends" || tab === "tracking") && !agent) {
         throw new AuthRequiredError({
-          description: `The ${tab} feed requires authentication`,
+          message: `The ${tab} feed requires authentication`,
         });
       }
 
@@ -848,7 +848,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveGetAuthorBooks, {
     async handler({ params }) {
       const ctx = getCtx();
-      const { author, page = 1, limit = 50, sort = "popularity", language } = params;
+      const { author, page, limit, sort = "popularity", language } = params;
 
       const pageSize = Math.min(100, limit);
       const offset = (Math.max(1, page) - 1) * pageSize;
@@ -928,7 +928,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 404,
           error: "NotFound",
-          description: "User not found",
+          message: "User not found",
         });
       }
 
@@ -1030,7 +1030,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       const result = await createList({
         agent,
@@ -1049,7 +1049,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       const result = await updateList({
         agent,
@@ -1069,7 +1069,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       await deleteList({ agent, db: ctx.db, uri: input.uri });
 
@@ -1081,7 +1081,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       const result = await addBookToList({
         agent,
@@ -1100,7 +1100,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
 
@@ -1112,7 +1112,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     async handler({ input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ description: "Authentication required" });
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
 
       await reorderListItems({
         agent,
@@ -1165,7 +1165,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         throw new XRPCError({
           status: 404,
           error: "NotFound",
-          description: "List not found",
+          message: "List not found",
         });
       }
 

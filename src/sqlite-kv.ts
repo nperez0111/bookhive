@@ -40,7 +40,7 @@ export default defineDriver<
     db?: KvDb;
   },
   KvDb
->(({ location, table = "kv", db: sharedDb }) => {
+>(({ location, table, db: sharedDb }) => {
   // _db is a per-driver-instance singleton — must live outside any function body
   // so it is not re-initialized on every getDb() call.
   let _db: KvDb | null = sharedDb ?? null;

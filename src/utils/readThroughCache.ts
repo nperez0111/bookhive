@@ -64,7 +64,8 @@ export type ReadThroughCacheOptions = {
  * Read a value from the cache, or fetch it if it's not present.
  */
 export async function readThroughCache<T extends StorageValue>(
-  kv: Storage<NoInfer<T>>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kv: Storage<any>,
   key: string,
   fetch: (ctx: { key: string }) => Promise<T>,
   defaultValue?: T,

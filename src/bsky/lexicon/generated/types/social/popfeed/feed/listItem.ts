@@ -108,7 +108,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @accept image/*
      * @maxSize 4000000
      */
-    backdrop: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
+    backdrop: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.blob(), [
+        /*#__PURE__*/ v.blobSize(4000000),
+        /*#__PURE__*/ v.blobAccept(["image/*"]),
+      ]),
+    ),
     /**
      * Backdrop image URL for the creative work. Soon to be deprecated in favor of the 'backdrop' blob field
      */
@@ -203,7 +208,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * @accept image/*
      * @maxSize 2000000
      */
-    poster: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.blob()),
+    poster: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.blob(), [
+        /*#__PURE__*/ v.blobSize(2000000),
+        /*#__PURE__*/ v.blobAccept(["image/*"]),
+      ]),
+    ),
     /**
      * Poster or cover image URL for the creative work. Soon to be deprecated in favor of the 'poster' blob field
      */
