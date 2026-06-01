@@ -80,9 +80,7 @@ export const Layout: FC<
           }`)}
         </style>
         ${!isDevVite && jsUrls.map((src) => html`<link rel="modulepreload" href="${src}" />`)}
-        ${!isDevVite && html` <link rel="modulepreload" href="/js/actor-typeahead.js" /> `}
         ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
-        <script type="module" src="/js/actor-typeahead.js"></script>
         <meta property="og:url" content="${url}" />
         <meta property="og:type" content="${ogType}" />
         <meta property="og:title" content="${title}" />

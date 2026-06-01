@@ -226,6 +226,11 @@ const app = new Hono<AppEnv>()
     if (!yearSet.has(currentYear)) yearSet.add(currentYear);
     availableYears = [...yearSet].sort((a, b) => b - a);
 
+    // Page renders viewer-specific UI (isOwnProfile), so use `private` (browser
+    // cache only, never a shared/CDN cache). Historical years are effectively
+    // immutable; the current year revalidates after a short TTL.
+    c.header("Cache-Control", "private, max-age=600, stale-while-revalidate=600");
+
     return c.render(
       <ReadingStatsPage
         handle={handle}
@@ -418,6 +423,11 @@ const app = new Hono<AppEnv>()
       }));
     }
     endTime(c, "genreStats");
+
+    // Page renders viewer-specific UI (follow button / isOwnProfile), so use
+    // `private` (browser cache only, never shared/CDN). Short TTL with
+    // stale-while-revalidate avoids recomputing the ~7 queries on quick revisits.
+    c.header("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
 
     return c.render(
       <ProfilePage

@@ -58,18 +58,20 @@ function CommentForm({
 function Comment({
   comment,
   profiles,
-  comments,
+  childrenByParent,
   bookId,
   did,
 }: {
   comment: CommentShape;
   profiles: ProfileViewDetailed[];
-  comments: CommentShape[];
+  /** Replies pre-grouped by parentUri so each render is an O(1) Map lookup
+      instead of an O(n) scan of all comments (was O(n^2) overall). */
+  childrenByParent: Map<string, CommentShape[]>;
   bookId: HiveId;
   did?: string | null;
 }) {
   const profile = profiles.find((p) => p.did === comment.userDid);
-  const subComments = comments.filter((c) => c.parentUri === comment.uri);
+  const subComments = childrenByParent.get(comment.uri) ?? [];
   const rkey = comment.uri.split("/").pop() ?? "";
   const commentIdSafe = rkey.replace(/[^a-zA-Z0-9-]/g, "-");
   const reviewLinkPath = `/books/${bookId}?review-id=${encodeURIComponent(comment.uri)}`;
@@ -210,7 +212,7 @@ function Comment({
                   <Comment
                     comment={sub}
                     profiles={profiles}
-                    comments={comments}
+                    childrenByParent={childrenByParent}
                     bookId={bookId}
                     did={did}
                   />
@@ -281,6 +283,20 @@ export async function CommentsSection({
   });
   endTime(c, "fetch_profiles");
 
+  // Group all buzz replies by their parentUri once, so each Comment render is an
+  // O(1) Map lookup rather than scanning the full buzz list (previously O(n^2)
+  // over up to 1000 reviews x 3000 buzzes).
+  const childrenByParent = new Map<string, CommentShape[]>();
+  for (const comment of comments) {
+    if (!comment.parentUri) continue;
+    const existing = childrenByParent.get(comment.parentUri);
+    if (existing) {
+      existing.push(comment);
+    } else {
+      childrenByParent.set(comment.parentUri, [comment]);
+    }
+  }
+
   return (
     <div class="card">
       <div class="card-body">
@@ -297,7 +313,7 @@ export async function CommentsSection({
           <Comment
             comment={review}
             profiles={profiles}
-            comments={comments}
+            childrenByParent={childrenByParent}
             bookId={book.id}
             did={did}
           />

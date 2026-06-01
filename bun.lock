@@ -8,7 +8,6 @@
         "@atcute/password-session": "1.0.0",
         "@atcute/xrpc-server": "2.0.0",
         "@takumi-rs/image-response": "1.6.0",
-        "@tanstack/hotkeys": "0.8.0",
         "basecoat-css": "0.3.11",
         "nf3": "0.3.17",
         "ocache": "0.1.4",
@@ -1069,8 +1068,6 @@
 
     "@takumi-rs/wasm": ["@takumi-rs/wasm@1.6.0", "", { "dependencies": { "@takumi-rs/helpers": "1.6.0" } }, "sha512-3VFzUth3+vht8LtjdXRIdVB4vzTJHa0vEypjL149mbq+A7mXRHNCMqeQl4hqHK3lk2H2VElzmxilwzuwtGZf/g=="],
 
-    "@tanstack/hotkeys": ["@tanstack/hotkeys@0.8.0", "", { "dependencies": { "@tanstack/store": "^0.11.0" } }, "sha512-vqH7X9nb0MTJ/O08++dB5bP9jgj4+BIPOUu/U+6myG86lDsirZSVSobpq5UQpE7nBuk62i8eIYeOhd+OMl/UrA=="],
-
     "@tanstack/query-async-storage-persister": ["@tanstack/query-async-storage-persister@5.100.10", "", { "dependencies": { "@tanstack/query-core": "5.100.10", "@tanstack/query-persist-client-core": "5.100.10" } }, "sha512-NbxsCI9qyMbEooFnFsAR2dbVQ6cmxZpOWSjLFy62qfMkxXnNjkskqex7YgtzWSaD/ozOOLgrbDiyYWEPYKmMyQ=="],
 
     "@tanstack/query-core": ["@tanstack/query-core@5.100.10", "", {}, "sha512-8UR0yJR+GiQ40m3lPhUr0xbfAupe6GSQiksSBSa9SM2NjezFyxXCIA69/lz8cSoNKZLrw1/PktIyQBJcVeMi3w=="],
@@ -1080,8 +1077,6 @@
     "@tanstack/react-query": ["@tanstack/react-query@5.100.10", "", { "dependencies": { "@tanstack/query-core": "5.100.10" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-FLaZf2RCrA/Zgp4aiu5tG3TyasTRO7aZ99skxQpr3Hg/zXOhu6yq5FZCYQ/tRaJtM9ylnoK8tFK7PolXQadv6Q=="],
 
     "@tanstack/react-query-persist-client": ["@tanstack/react-query-persist-client@5.100.10", "", { "dependencies": { "@tanstack/query-persist-client-core": "5.100.10" }, "peerDependencies": { "@tanstack/react-query": "^5.100.10", "react": "^18 || ^19" } }, "sha512-EImacngLXYEtzlrIPf8IAqKN3foS7cmSj4GWqsHJvc7K+8fy2c3s7mdV8oTJeii/TvrzO4X9fcnXi6tUHMIOHA=="],
-
-    "@tanstack/store": ["@tanstack/store@0.11.0", "", {}, "sha512-WlzzCt3xi0G6pCAJu1U+2jiECwabETDpQDi3hfkFZvJii9AuZqEKbOiVarX1/bWhTNjU486yQtJCCasi/0q+Cw=="],
 
     "@tootallnate/once": ["@tootallnate/once@2.0.0", "", {}, "sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A=="],
 

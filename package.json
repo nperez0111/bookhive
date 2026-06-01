@@ -28,7 +28,6 @@
     "@atcute/password-session": "1.0.0",
     "@atcute/xrpc-server": "2.0.0",
     "@takumi-rs/image-response": "1.6.0",
-    "@tanstack/hotkeys": "0.8.0",
     "basecoat-css": "0.3.11",
     "nf3": "0.3.17",
     "ocache": "0.1.4",

@@ -1,3 +1,4 @@
+import { raw } from "hono/html";
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
@@ -180,5 +181,8 @@ export const Login: FC<{
         }
       }}
     />
+    {/* Actor-typeahead web component is only used on this login form, so it is
+        loaded here rather than globally in Layout. Self-registers on import. */}
+    {raw(`<script type="module" src="/js/actor-typeahead.js"></script>`)}
   </div>
 );

@@ -324,6 +324,9 @@ const app = new Hono<AppEnv>()
     },
   )
   .get("/:hiveId/comments", async (c) => {
+    // Public, viewer-independent page (CommentsSection is rendered without `did`
+    // here), and it reads up to ~1000 reviews + ~3000 buzzes + batched profiles.
+    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=120");
     startTime(c, "db_fetch_book");
     const book = await c
       .get("ctx")

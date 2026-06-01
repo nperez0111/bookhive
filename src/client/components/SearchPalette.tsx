@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
-import { getHotkeyManager } from "@tanstack/hotkeys";
 
 import { FINISHED, READING, WANTTOREAD } from "../../constants";
 import { ProgressBar } from "./ProgressBar";
@@ -44,11 +43,17 @@ export const SearchPalette: FC<{
     onRegisterOpen(open);
   }, []);
 
-  // CMD+K / Ctrl+K hotkey
+  // CMD+K / Ctrl+K toggles the palette once mounted. (Before mount, the client
+  // entry handles ⌘K to lazily load + open this component.)
   useEffect(() => {
-    const manager = getHotkeyManager();
-    const handle = manager.register("Mod+K", () => setIsOpen((v) => !v));
-    return () => handle.unregister();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setIsOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
   // Animate in: open → render → next frame set visible
