@@ -227,12 +227,34 @@ export const LibraryImport: FC = () => {
                       }
                     };
 
+                    // Parse a single SSE message block per the WHATWG spec,
+                    // extracting only the concatenated `data:` field lines.
+                    // Ignores `event:`/`id:`/`retry:` fields, comment lines
+                    // (starting with `:`), and keepalive blocks with empty
+                    // data. Normalizes CRLF/CR line endings.
+                    const parseSseMessage = (message: string): string => {
+                      const dataLines: string[] = [];
+                      for (const rawLine of message.split(/\r\n|\r|\n/)) {
+                        // Comment line ("field" is empty) — skip.
+                        if (rawLine.startsWith(":")) continue;
+                        const colon = rawLine.indexOf(":");
+                        const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
+                        if (field !== "data") continue;
+                        // Value is everything after the colon, with a single
+                        // leading space removed if present.
+                        let value = colon === -1 ? "" : rawLine.slice(colon + 1);
+                        if (value.startsWith(" ")) value = value.slice(1);
+                        dataLines.push(value);
+                      }
+                      return dataLines.join("\n").trim();
+                    };
+
                     let buffer = "";
                     while (true) {
                       const { value, done } = await reader.read();
                       if (done) {
                         if (buffer.trim()) {
-                          const data = buffer.replace(/^data: /, "").trim();
+                          const data = parseSseMessage(buffer);
                           if (data) {
                             try {
                               processEvent(JSON.parse(data));
@@ -248,7 +270,7 @@ export const LibraryImport: FC = () => {
                       buffer = messages.pop() || "";
                       for (const message of messages) {
                         if (!message.trim()) continue;
-                        const data = message.replace(/^data: /, "").trim();
+                        const data = parseSseMessage(message);
                         if (!data) continue;
                         try {
                           processEvent(JSON.parse(data));
