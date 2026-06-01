@@ -101,6 +101,41 @@ export default defineConfig({
       preset: "bun",
       serverEntry: "./server/server.ts",
       plugins: ["./server/plugins/otel-sdk.ts", "./server/plugins/request-tracing.ts"],
+      // The OG render worker loads @takumi-rs/core (native NAPI-RS bindings) at
+      // runtime in a worker thread, so it never appears in the Rolldown bundle
+      // graph. Explicitly trace it (full trace `*` to copy the platform-specific
+      // optional binding packages) into .output/server/node_modules/.
+      traceDeps: ["@takumi-rs/core*"],
+      // Longer cache lifetimes for static assets (fixes Lighthouse "cache lifetime" warnings).
+      // Vite emits content-hashed files under /assets/* → safe to cache immutably for 1 year.
+      // Files under public/ have stable names, so use a long TTL + stale-while-revalidate
+      // rather than immutable, so updates still propagate.
+      routeRules: {
+        "/assets/**": {
+          headers: { "Cache-Control": "public, max-age=31536000, immutable" },
+        },
+        "/js/**": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/screenshots/**": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/**/*.svg": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/**/*.png": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/**/*.jpg": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/**/*.ico": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+        "/**/*.webmanifest": {
+          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
+        },
+      },
     }),
   ],
   server: {

@@ -1,7 +1,7 @@
 import { join } from "path";
 import { env } from "../env";
 
-export type BundleAssetUrls = { css: string[]; js: string[] };
+export type BundleAssetUrls = { css: string[]; js: string[]; inlineCss?: string };
 
 export interface ViteManifestEntry {
   file: string;
@@ -117,4 +117,48 @@ export function getAssetUrlsFromManifest(manifest: ViteManifest | null): BundleA
   }
 
   return { css, js };
+}
+
+/** Cached inlined CSS content (production only). Keyed by the css file paths. */
+let cachedInlineCss: { key: string; value: string } | null = null;
+
+/**
+ * Read the built CSS files from disk and concatenate their contents so they can
+ * be inlined into the HTML `<head>` as a `<style>` tag. This removes the
+ * render-blocking `<link rel="stylesheet">` network request from the critical
+ * path (improves FCP/LCP). Result is cached for the process lifetime since the
+ * hashed filenames are immutable per build.
+ *
+ * Returns `undefined` in development (Vite injects CSS via HMR) or if reading fails.
+ */
+export async function getInlineCss(assetUrls: BundleAssetUrls): Promise<string | undefined> {
+  if (env.NODE_ENV !== "production") return undefined;
+  if (!assetUrls.css.length) return undefined;
+
+  const key = assetUrls.css.join("|");
+  if (cachedInlineCss?.key === key) return cachedInlineCss.value;
+
+  try {
+    const publicRoot = await resolveProductionPublicRoot();
+    const cwd = process.cwd();
+    const contents: string[] = [];
+    for (const href of assetUrls.css) {
+      // href is like "/assets/client-XXXX.css"; strip leading slash and join under public root.
+      const rel = href.replace(/^\//, "");
+      const absPath = join(cwd, publicRoot, rel);
+      const file = Bun.file(absPath);
+      if (await file.exists()) {
+        contents.push(await file.text());
+      } else {
+        // Missing file → bail out and fall back to <link> so styles are never lost.
+        return undefined;
+      }
+    }
+    const value = contents.join("\n");
+    cachedInlineCss = { key, value };
+    return value;
+  } catch (error) {
+    console.error("Failed to inline CSS:", error);
+    return undefined;
+  }
 }

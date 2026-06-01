@@ -7,7 +7,7 @@ import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
 import { endTime, startTime, timing } from "hono/timing";
 
-import { loadViteManifest, getAssetUrlsFromManifest } from "./utils/manifest";
+import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./utils/manifest";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { registry, startRuntimeMetricsCollection } from "./metrics";
@@ -39,7 +39,10 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     startTime(c, "vite_manifest");
     const manifest = await loadViteManifest();
     const assetUrls = getAssetUrlsFromManifest(manifest);
-    c.set("assetUrls", assetUrls);
+    // Inline built CSS into <head> to remove the render-blocking stylesheet
+    // request from the critical path (improves FCP/LCP). No-op in dev.
+    const inlineCss = await getInlineCss(assetUrls);
+    c.set("assetUrls", inlineCss ? { ...assetUrls, inlineCss } : assetUrls);
     endTime(c, "vite_manifest");
     await next();
   });

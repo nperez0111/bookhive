@@ -3,7 +3,7 @@ import { html, raw } from "hono/html";
 import { type FC, type PropsWithChildren } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 
-type BundleAssetUrls = { css: string[]; js: string[] } | null;
+type BundleAssetUrls = { css: string[]; js: string[]; inlineCss?: string } | null;
 
 export const Layout: FC<
   PropsWithChildren<{
@@ -40,6 +40,9 @@ export const Layout: FC<
   // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
+  // In production we inline the built CSS into <head> to avoid a render-blocking
+  // stylesheet request. When present, skip the <link> tags entirely.
+  const inlineCss = assetUrls?.inlineCss;
   // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
   const isDevVite = assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
 
@@ -48,8 +51,6 @@ export const Layout: FC<
       <head>
         ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
-        <link rel="preconnect" href="https://i.gr-assets.com" crossorigin />
-        <link rel="preconnect" href="https://cdn.bsky.app" crossorigin />
         <meta name="theme-color" content="#f9eabc" />
         <script>
           (function () {
@@ -61,7 +62,11 @@ export const Layout: FC<
             if (meta) meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
           })();
         </script>
-        ${cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
+        ${inlineCss
+          ? html`<style>
+              ${raw(inlineCss)}
+            </style>`
+          : cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
         <style>
           ${raw(`/* Actor Typeahead - uses theme tokens so it follows light/dark toggle */
           actor-typeahead {

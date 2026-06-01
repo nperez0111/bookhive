@@ -1,13 +1,9 @@
 import type { OgCard, OgRenderRequest, OgRenderResponse } from "./types";
 
-// Side-effect import so Nitro's Rolldown externals plugin sees @takumi-rs/core
-// in the bundle graph and traces its native NAPI-RS bindings (e.g.
-// core-linux-arm64-musl) into .output/server/node_modules/ via nf3's
-// optionalDependencies pass. The actual rendering happens in the worker thread.
-// Dynamic import: Vite dev can't resolve this under Bun's .bun/ layout
-// (nitrojs/nitro#4140), but Rolldown still traces the specifier at build time.
-// @ts-expect-error — module only exists in production; traced by Rolldown for NAPI bindings
-if (!import.meta.dev) void import("@takumi-rs/core");
+// @takumi-rs/core (native NAPI-RS bindings) is loaded at runtime inside the OG
+// render worker thread. It's pulled into .output/server/node_modules/ via
+// Nitro's `traceDeps: ["@takumi-rs/core*"]` config (see vite.config.ts), so it
+// does not need to appear in this module's bundle graph.
 
 let worker: Worker | null = null;
 const pending = new Map<
