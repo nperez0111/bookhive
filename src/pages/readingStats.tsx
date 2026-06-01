@@ -2,6 +2,7 @@ import { type FC } from "hono/jsx";
 import type { Book } from "../types";
 import type { ProfileViewDetailed } from "../types";
 import type { ReadingStats } from "../utils/readingStats";
+import { coverImageUrl } from "../utils/imageProxy";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { FallbackCover } from "./components/fallbackCover";
 import { format } from "date-fns";
@@ -302,7 +303,7 @@ function BookHighlight({ book }: { book: Book }) {
     >
       {book.cover || book.thumbnail ? (
         <img
-          src={book.cover ?? book.thumbnail ?? ""}
+          src={coverImageUrl(book.cover ?? book.thumbnail)}
           alt=""
           class="book-cover h-16 w-11 shrink-0 rounded object-cover"
         />

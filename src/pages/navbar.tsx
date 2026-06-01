@@ -1,6 +1,7 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "../types";
+import { avatarImageUrl } from "../utils/imageProxy";
 
 export const Navbar: FC<{
   profile?: ProfileViewDetailed | null;
@@ -114,7 +115,7 @@ export const Navbar: FC<{
                 {profile?.avatar ? (
                   <img
                     class="size-10 rounded-full outline outline-1 outline-black/10 dark:outline-white/10"
-                    src={profile.avatar}
+                    src={avatarImageUrl(profile.avatar, { size: 80 })}
                     loading="lazy"
                     alt=""
                   />

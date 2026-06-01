@@ -89,7 +89,7 @@ context → wide-event logging → error capture → asset URLs (Vite manifest) 
 - `/legal` → `src/pages/terms.tsx` — terms of service
 - `/pds` → `src/pages/pds.tsx` — PDS info (redirects to `/` if PDS disabled)
 - `/` → `src/pages/marketing.tsx` — marketing landing; redirects to `/app` for the iOS host/`?app`, to `/home` when logged in; trending books + recent activity, cached 1h via `readThroughCache`
-- `/images/*` → custom image proxy (Bun.Image; allowed hosts `i.gr-assets.com`, `cdn.bsky.app`; URL modifiers like `w_440`; cached via ocache; SVG fallback; ETag). **Replaced the old IPX proxy.**
+- `/images/*` → signing reverse-proxy to **imgproxy** (remote sources only; allowed hosts `i.gr-assets.com`, `cdn.bsky.app` via `src/utils/imageProxy.ts`; URL modifiers like `w_440` / `s_300x500,fit_cover` translated to imgproxy options and signed server-side with `IMGPROXY_KEY`/`IMGPROXY_SALT`; SVG fallback on forbidden/failed source; meant to be edge-cached by Cloudflare). If `IMGPROXY_URL` is unset, redirects to the source URL. Canonical URL helpers `coverImageUrl`/`avatarImageUrl` in `src/utils/imageProxy.ts` build these paths. **Replaced the Bun.Image proxy.**
 - `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx` — OAuth flows (`loginRouter`)
 
 ### `src/routes/pages.tsx` (mounted at `/`)

@@ -54,4 +54,16 @@ export const env = cleanEnv(process.env, {
     default: "",
     desc: "ES256 private JWK for confidential OAuth client (generate with `bun run scripts/generate-jwk.ts`). When empty, falls back to public client.",
   }),
+  IMGPROXY_URL: str({
+    default: "",
+    desc: "Internal base URL for the imgproxy service (e.g. http://imgproxy:8080). Empty disables proxying (the /images/* route falls back to redirecting to the source URL).",
+  }),
+  IMGPROXY_KEY: str({
+    default: "",
+    desc: "Hex-encoded imgproxy signing key (IMGPROXY_KEY). Empty uses unsafe URLs (dev only).",
+  }),
+  IMGPROXY_SALT: str({
+    default: "",
+    desc: "Hex-encoded imgproxy signing salt (IMGPROXY_SALT). Empty uses unsafe URLs (dev only).",
+  }),
 });

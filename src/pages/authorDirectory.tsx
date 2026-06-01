@@ -6,6 +6,7 @@ import type { Kysely } from "kysely";
 import type { Storage } from "unstorage";
 import type { DatabaseSchema } from "../db";
 import { readThroughCache } from "../utils/readThroughCache";
+import { coverImageUrl } from "../utils/imageProxy";
 
 export interface AuthorWithStats {
   author: string;
@@ -108,7 +109,7 @@ const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({ thumbna
   if (thumbnail) {
     return (
       <img
-        src={thumbnail}
+        src={coverImageUrl(thumbnail)}
         alt=""
         class="h-16 w-12 shrink-0 rounded object-cover shadow-sm"
         loading="lazy"

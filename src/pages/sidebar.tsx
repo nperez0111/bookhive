@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { avatarImageUrl } from "../utils/imageProxy";
 
 interface SidebarProps {
   currentPath: string;
@@ -72,7 +73,11 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
             <li>
               <a href={`/profile/${user.handle}`}>
                 <div class="avatar">
-                  <img src={user.avatar || "/default-avatar.png"} loading="lazy" alt="" />
+                  <img
+                    src={avatarImageUrl(user.avatar, { size: 80 }) || "/default-avatar.png"}
+                    loading="lazy"
+                    alt=""
+                  />
                 </div>
                 <span>@{user.handle}</span>
               </a>

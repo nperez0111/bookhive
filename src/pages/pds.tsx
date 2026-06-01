@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { ProfileViewDetailed } from "../types";
 import { env } from "../env";
+import { avatarImageUrl } from "../utils/imageProxy";
 
 export const PdsLanding: FC<{
   profiles: ProfileViewDetailed[];
@@ -57,7 +58,7 @@ export const PdsLanding: FC<{
                 <div class="card-body flex items-center gap-3">
                   {profile.avatar ? (
                     <img
-                      src={profile.avatar}
+                      src={avatarImageUrl(profile.avatar, { size: 96 })}
                       alt=""
                       loading="lazy"
                       class="h-12 w-12 shrink-0 rounded-full object-cover"

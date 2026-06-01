@@ -3,6 +3,7 @@ import type { Book, HiveBook } from "../../types";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { FallbackCover } from "./fallbackCover";
 import { StarDisplay } from "./cards/StarDisplay";
+import { coverImageUrl } from "../../utils/imageProxy";
 
 // --- Shared types ---
 
@@ -50,7 +51,7 @@ export const CoverImage: FC<{ book: BookCardData; class?: string }> = ({
   if (book.cover || book.thumbnail) {
     return (
       <img
-        src={book.cover || book.thumbnail || ""}
+        src={coverImageUrl(book.cover || book.thumbnail)}
         alt={book.title}
         class={`book-cover ${className ?? ""}`}
         style={book.hiveId ? `--book-cover-name: book-cover-${book.hiveId}` : undefined}

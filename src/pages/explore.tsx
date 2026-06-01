@@ -7,6 +7,7 @@ import { getEmoji } from "./genreEmoji";
 import { getTopAuthors, type AuthorWithStats } from "./authorDirectory";
 import { StarDisplay } from "./components/cards/StarDisplay";
 import { readThroughCache } from "../utils/readThroughCache";
+import { coverImageUrl } from "../utils/imageProxy";
 import { LanguageSelect } from "./components/LanguageSelect";
 import { buildUrl } from "./utils/buildUrl";
 
@@ -163,7 +164,7 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
               >
                 {author.thumbnail ? (
                   <img
-                    src={author.thumbnail}
+                    src={coverImageUrl(author.thumbnail)}
                     alt=""
                     class="h-16 w-12 shrink-0 rounded object-cover shadow-sm outline outline-1 outline-black/10 -outline-offset-1 dark:outline-white/10"
                     loading="lazy"

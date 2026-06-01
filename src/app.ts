@@ -43,6 +43,16 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     endTime(c, "vite_manifest");
     await next();
   });
+  // secureHeaders() sets `Cross-Origin-Resource-Policy: same-origin` *after*
+  // next() returns, which blocks the proxied images from loading cross-origin
+  // (the `/images/*` dev fallback redirects to the source CDN, and the imgproxy
+  // responses are loaded by `<img>` tags). This middleware is registered before
+  // secureHeaders (so it is the outer one) and overrides CORP after secureHeaders
+  // has finished, for image responses only.
+  app.use("/images/*", async (c, next) => {
+    await next();
+    c.header("Cross-Origin-Resource-Policy", "cross-origin");
+  });
   app.use(secureHeaders());
 
   // Wrap compress() to measure time spent in compression

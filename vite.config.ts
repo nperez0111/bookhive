@@ -61,8 +61,40 @@ function standaloneBundles(): Plugin {
   };
 }
 
+/**
+ * Dev-only: let `/images/*` reach the Nitro/Hono image proxy handler.
+ *
+ * Nitro's dev middleware (`nitroDevMiddlewarePre`) treats any request whose
+ * URL ends in an asset extension (.jpg, .png, ...) with a non-document
+ * `sec-fetch-dest` as a static asset and hands it to Vite's static
+ * middleware, which 404s because the file doesn't exist on disk. Our image
+ * proxy URLs embed the source URL (often ending in `.jpg`) in the path, so
+ * real cover requests were being stolen by Vite in dev. Production is
+ * unaffected (no Vite). By forcing `sec-fetch-dest: document` for `/images/`
+ * requests, Nitro routes them to the Hono catch-all handler instead.
+ *
+ * Must be `enforce: "pre"` and register its middleware directly in
+ * `configureServer` so it runs before Nitro's pre-middleware.
+ */
+function devImageProxyPassthrough(): Plugin {
+  return {
+    name: "dev-image-proxy-passthrough",
+    apply: "serve",
+    enforce: "pre",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url && req.url.startsWith("/images/")) {
+          req.headers["sec-fetch-dest"] = "document";
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
+    devImageProxyPassthrough(),
     tailwindcss(),
     standaloneBundles(),
     nitro({

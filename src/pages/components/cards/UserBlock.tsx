@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { avatarImageUrl } from "../../../utils/imageProxy";
 
 const sizeMap = {
   sm: { avatar: "h-8 w-8", showDisplayName: false },
@@ -20,7 +21,12 @@ export const UserBlock: FC<{
   const showName = showDisplayName && (displayName ?? null);
 
   const avatarEl = avatar ? (
-    <img src={avatar} alt="" loading="lazy" class={`${avatarClass} rounded-full object-cover`} />
+    <img
+      src={avatarImageUrl(avatar, { size: 160 })}
+      alt=""
+      loading="lazy"
+      class={`${avatarClass} rounded-full object-cover`}
+    />
   ) : (
     <div class={`bg-muted ${avatarClass} rounded-full`} />
   );

@@ -51,12 +51,30 @@ services:
     depends_on:
       - openobserve
       - server
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:latest
+    restart: unless-stopped
+    # Not exposed publicly — only reachable by the server service on the
+    # internal compose network. The server signs URLs and reverse-proxies to it.
+    environment:
+      IMGPROXY_KEY: "CHANGE_ME_imgproxy_key_hex"
+      IMGPROXY_SALT: "CHANGE_ME_imgproxy_salt_hex"
+      # Lock imgproxy to the same source hosts the server allowlists.
+      IMGPROXY_ALLOWED_SOURCES: "https://i.gr-assets.com/,https://cdn.bsky.app/"
+      IMGPROXY_MAX_SRC_RESOLUTION: "50"
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   server:
     restart: unless-stopped
     build:
       context: .
     depends_on:
       pds:
+        condition: service_healthy
+      imgproxy:
         condition: service_healthy
     environment:
       NODE_ENV: "production"
@@ -69,6 +87,9 @@ services:
       OPEN_OBSERVE_USER: "user@bookhive.buzz"
       OPEN_OBSERVE_PASSWORD: "password"
       OPEN_OBSERVE_URL: "http://localhost:5080"
+      IMGPROXY_URL: "http://imgproxy:8080"
+      IMGPROXY_KEY: "CHANGE_ME_imgproxy_key_hex"
+      IMGPROXY_SALT: "CHANGE_ME_imgproxy_salt_hex"
     ports:
       - 8080:8080
     volumes:
