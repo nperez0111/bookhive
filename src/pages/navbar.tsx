@@ -115,7 +115,7 @@ export const Navbar: FC<{
                 {profile?.avatar ? (
                   <img
                     class="size-10 rounded-full outline outline-1 outline-black/10 dark:outline-white/10"
-                    src={avatarImageUrl(profile.avatar, { size: 80 })}
+                    src={avatarImageUrl(profile.did, { size: 80 })}
                     loading="lazy"
                     alt=""
                   />

@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { ProfileViewDetailed } from "../types";
-import { avatarImageUrl, coverImageUrl } from "../utils/imageProxy";
+import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
 
 type RecentActivityItem = {
   userDid: string;
@@ -144,7 +144,7 @@ function RecentActivityCard({
                 <a href={`/profile/${handle}`} class="shrink-0">
                   {prof?.avatar ? (
                     <img
-                      src={avatarImageUrl(prof.avatar, { size: 72 })}
+                      src={avatarImageUrl(activity.userDid, { size: 72 })}
                       alt=""
                       loading="lazy"
                       class="h-9 w-9 rounded-full object-cover outline outline-1 outline-black/5 dark:outline-white/10"
@@ -437,7 +437,7 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
                   </span>
                   {book.thumbnail ? (
                     <img
-                      src={coverImageUrl(book.thumbnail)}
+                      src={coverImageUrl(book.id) ?? sourceCoverImageUrl(book.thumbnail)}
                       alt=""
                       class="h-12 w-8 shrink-0 rounded object-cover outline outline-1 outline-black/5 dark:outline-white/10"
                       loading="lazy"

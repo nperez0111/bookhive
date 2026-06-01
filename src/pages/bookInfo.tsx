@@ -12,7 +12,7 @@ import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { getUserLists } from "../utils/lists";
 import { getProfiles } from "../utils/getProfile";
-import { avatarImageUrl, coverImageUrl } from "../utils/imageProxy";
+import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
 import { CommentsSection } from "./comments";
 import { StarDisplay } from "./components/cards";
 import { BookTooltip, CoverImage, normalizeBookData } from "./components/BookCard";
@@ -90,7 +90,7 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
             >
               {avatar ? (
                 <img
-                  src={avatarImageUrl(avatar, { size: 64 })}
+                  src={avatarImageUrl(related.userDid, { size: 64 })}
                   alt=""
                   loading="lazy"
                   class="h-8 w-8 shrink-0 rounded-full object-cover outline outline-1 outline-black/10 dark:outline-white/10"
@@ -276,7 +276,9 @@ export const BookInfo: FC<{
                   <div class="absolute top-[1%] left-4 h-[96%] w-[90%] rounded-r-md border border-gray-400 bg-white shadow-[10px_40px_40px_-10px_rgba(0,0,0,0.12),inset_-2px_0_0_gray,inset_-3px_0_0_#dbdbdb,inset_-4px_0_0_white,inset_-5px_0_0_#dbdbdb,inset_-6px_0_0_white,inset_-7px_0_0_#dbdbdb,inset_-8px_0_0_white,inset_-9px_0_0_#dbdbdb]" />
                   <div class="relative -translate-x-[10px] scale-x-[0.94] -rotate-y-[15deg] transform cursor-pointer rounded-r-md leading-none shadow-[6px_6px_18px_-2px_rgba(0,0,0,0.2),24px_28px_40px_-6px_rgba(0,0,0,0.1)] transition-[transform,box-shadow] duration-300 ease-in-out perspective-[2000px] hover:translate-x-0 hover:scale-x-100 hover:rotate-y-0 hover:shadow-[6px_6px_12px_-1px_rgba(0,0,0,0.1),20px_14px_16px_-6px_rgba(0,0,0,0.1)]">
                     <img
-                      src={coverImageUrl(book.cover || book.thumbnail)}
+                      src={
+                        coverImageUrl(book.id) ?? sourceCoverImageUrl(book.cover || book.thumbnail)
+                      }
                       alt={`Cover of ${book.title}`}
                       class="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover outline outline-1 outline-black/5"
                       style={`--book-cover-name: book-cover-${book.id}`}

@@ -8,6 +8,9 @@ import {
   buildImgproxyUrl,
   coverImageUrl,
   avatarImageUrl,
+  sourceCoverImageUrl,
+  sourceAvatarImageUrl,
+  queryToModifiers,
 } from "./imageProxy";
 
 describe("parseImagePath", () => {
@@ -86,19 +89,21 @@ describe("parseModifiers", () => {
 });
 
 describe("modifiersToImgproxyOptions", () => {
-  it("returns empty string for no modifiers", () => {
-    expect(modifiersToImgproxyOptions({})).toBe("");
+  it("defaults to webp output even with no modifiers", () => {
+    expect(modifiersToImgproxyOptions({})).toBe("f:webp");
   });
 
-  it("maps width-only to a fit resize", () => {
-    expect(modifiersToImgproxyOptions({ w: "440" })).toBe("rs:fit:440:0:0");
+  it("maps width-only to a fit resize and defaults to webp", () => {
+    expect(modifiersToImgproxyOptions({ w: "440" })).toBe("rs:fit:440:0:0/f:webp");
   });
 
-  it("maps size + fit_cover to a fill resize", () => {
-    expect(modifiersToImgproxyOptions({ s: "300x500", fit: "cover" })).toBe("rs:fill:300:500:0");
+  it("maps size + fit_cover to a fill resize and defaults to webp", () => {
+    expect(modifiersToImgproxyOptions({ s: "300x500", fit: "cover" })).toBe(
+      "rs:fill:300:500:0/f:webp",
+    );
   });
 
-  it("translates extend, background, quality and format", () => {
+  it("translates extend, background, quality and an explicit format", () => {
     expect(
       modifiersToImgproxyOptions({
         s: "300x500",
@@ -111,8 +116,13 @@ describe("modifiersToImgproxyOptions", () => {
     ).toBe("rs:fill:300:500:0/ex:1/bg:030712/q:80/f:jpeg");
   });
 
-  it("normalizes jpg to jpeg but leaves other formats", () => {
+  it("honors an explicit webp format", () => {
     expect(modifiersToImgproxyOptions({ f: "webp" })).toBe("f:webp");
+  });
+
+  it("lets an explicit format override the webp default", () => {
+    expect(modifiersToImgproxyOptions({ f: "png" })).toBe("f:png");
+    expect(modifiersToImgproxyOptions({ format: "jpg" })).toBe("f:jpeg");
   });
 });
 
@@ -180,15 +190,16 @@ describe("buildImgproxyUrl", () => {
     expect(url.endsWith(`/${b64}`)).toBe(true);
   });
 
-  it("omits the options segment when there are no modifiers", () => {
+  it("includes the default webp format option when no modifiers are given", () => {
     const url = buildImgproxyUrl("https://cdn.bsky.app/x", {}, config);
     const b64 = Buffer.from("https://cdn.bsky.app/x")
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=+$/, "");
-    // base / signature / b64  -> exactly 4 segments after the scheme
-    expect(url).toBe(`http://imgproxy:8080/${signImgproxyPath(`/${b64}`, config)}/${b64}`);
+    const path = `/f:webp/${b64}`;
+    // base / signature / f:webp / b64
+    expect(url).toBe(`http://imgproxy:8080/${signImgproxyPath(path, config)}${path}`);
   });
 
   it("strips a trailing slash from the base url", () => {
@@ -218,16 +229,65 @@ describe("buildImgproxyUrl", () => {
   });
 });
 
-describe("coverImageUrl", () => {
-  it("returns a canonical /images path", () => {
-    expect(coverImageUrl("https://i.gr-assets.com/books/1.jpg", { width: 440 })).toBe(
+describe("coverImageUrl (ID-keyed)", () => {
+  it("returns a canonical /images/books/{hiveId} path", () => {
+    expect(coverImageUrl("abc123")).toBe("/images/books/abc123");
+  });
+
+  it("appends ?w= when a width is given", () => {
+    expect(coverImageUrl("abc123", { width: 440 })).toBe("/images/books/abc123?w=440");
+  });
+
+  it("url-encodes the hiveId", () => {
+    expect(coverImageUrl("a/b c")).toBe("/images/books/a%2Fb%20c");
+  });
+
+  it("prefixes the origin when provided", () => {
+    expect(coverImageUrl("abc123", { width: 260, origin: "https://bookhive.buzz" })).toBe(
+      "https://bookhive.buzz/images/books/abc123?w=260",
+    );
+  });
+
+  it("returns undefined for falsy ids", () => {
+    expect(coverImageUrl(null)).toBeUndefined();
+    expect(coverImageUrl(undefined)).toBeUndefined();
+    expect(coverImageUrl("")).toBeUndefined();
+  });
+});
+
+describe("avatarImageUrl (ID-keyed)", () => {
+  it("returns a canonical /images/avatars/{did} path", () => {
+    expect(avatarImageUrl("did:plc:abc")).toBe("/images/avatars/did%3Aplc%3Aabc");
+  });
+
+  it("appends ?s= when a size is given", () => {
+    expect(avatarImageUrl("did:plc:abc", { size: 120 })).toBe(
+      "/images/avatars/did%3Aplc%3Aabc?s=120",
+    );
+  });
+
+  it("prefixes the origin when provided", () => {
+    expect(avatarImageUrl("did:plc:abc", { size: 80, origin: "https://bookhive.buzz" })).toBe(
+      "https://bookhive.buzz/images/avatars/did%3Aplc%3Aabc?s=80",
+    );
+  });
+
+  it("returns undefined for falsy ids", () => {
+    expect(avatarImageUrl(null)).toBeUndefined();
+    expect(avatarImageUrl("")).toBeUndefined();
+  });
+});
+
+describe("sourceCoverImageUrl (source-embedded)", () => {
+  it("returns a /images/w_N/{source} path", () => {
+    expect(sourceCoverImageUrl("https://i.gr-assets.com/books/1.jpg", { width: 440 })).toBe(
       "/images/w_440/https://i.gr-assets.com/books/1.jpg",
     );
   });
 
   it("prefixes the origin when provided", () => {
     expect(
-      coverImageUrl("https://i.gr-assets.com/books/1.jpg", {
+      sourceCoverImageUrl("https://i.gr-assets.com/books/1.jpg", {
         width: 260,
         origin: "https://bookhive.buzz",
       }),
@@ -235,27 +295,38 @@ describe("coverImageUrl", () => {
   });
 
   it("returns undefined for falsy sources", () => {
-    expect(coverImageUrl(null)).toBeUndefined();
-    expect(coverImageUrl(undefined)).toBeUndefined();
-    expect(coverImageUrl("")).toBeUndefined();
+    expect(sourceCoverImageUrl(null)).toBeUndefined();
+    expect(sourceCoverImageUrl("")).toBeUndefined();
   });
 });
 
-describe("avatarImageUrl", () => {
+describe("sourceAvatarImageUrl (source-embedded)", () => {
   it("returns a square fit_cover /images path", () => {
-    expect(avatarImageUrl("https://cdn.bsky.app/img/avatar/plain/x", { size: 120 })).toBe(
+    expect(sourceAvatarImageUrl("https://cdn.bsky.app/img/avatar/plain/x", { size: 120 })).toBe(
       "/images/s_120x120,fit_cover/https://cdn.bsky.app/img/avatar/plain/x",
     );
   });
 
-  it("prefixes the origin when provided", () => {
-    expect(
-      avatarImageUrl("https://cdn.bsky.app/x", { size: 80, origin: "https://bookhive.buzz" }),
-    ).toBe("https://bookhive.buzz/images/s_80x80,fit_cover/https://cdn.bsky.app/x");
+  it("returns undefined for falsy sources", () => {
+    expect(sourceAvatarImageUrl(null)).toBeUndefined();
+    expect(sourceAvatarImageUrl("")).toBeUndefined();
+  });
+});
+
+describe("queryToModifiers", () => {
+  it("uses defaults when no sizing query is present", () => {
+    expect(queryToModifiers({}, { w: "440" })).toEqual({ w: "440" });
   });
 
-  it("returns undefined for falsy sources", () => {
-    expect(avatarImageUrl(null)).toBeUndefined();
-    expect(avatarImageUrl("")).toBeUndefined();
+  it("overrides defaults with query params", () => {
+    expect(queryToModifiers({ w: "200", q: "80", fit: "cover" }, { w: "440" })).toEqual({
+      w: "200",
+      q: "80",
+      fit: "cover",
+    });
+  });
+
+  it("supports s/h overrides", () => {
+    expect(queryToModifiers({ s: "300x500", h: "600" })).toEqual({ s: "300x500", h: "600" });
   });
 });

@@ -58,7 +58,7 @@ export const PdsLanding: FC<{
                 <div class="card-body flex items-center gap-3">
                   {profile.avatar ? (
                     <img
-                      src={avatarImageUrl(profile.avatar, { size: 96 })}
+                      src={avatarImageUrl(profile.did, { size: 96 })}
                       alt=""
                       loading="lazy"
                       class="h-12 w-12 shrink-0 rounded-full object-cover"

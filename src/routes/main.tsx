@@ -24,11 +24,12 @@ import { SimpleNavbar } from "../pages/simple-navbar";
 import { MarketingPage } from "../pages/marketing";
 import { env } from "../env";
 import {
-  buildImgproxyUrl,
-  isAllowedImageSource,
   parseImagePath,
   parseModifiers,
+  proxyImageResponse,
+  queryToModifiers,
 } from "../utils/imageProxy";
+import type { HiveId } from "../types";
 import { createXrpcRouter } from "../xrpc/router";
 import {
   searchBooks,
@@ -56,9 +57,6 @@ declare module "hono" {
     ): Response;
   }
 }
-
-// Public cache lifetime for proxied images (Cloudflare edge + browser).
-const IMAGE_MAX_AGE = 60 * 60 * 24 * 30;
 
 export function mainRouter(deps: AppDeps): HonoServer {
   const app = new Hono<AppEnv>();
@@ -299,93 +297,75 @@ export function mainRouter(deps: AppDeps): HonoServer {
     }),
   );
 
-  // Canonical, stable image endpoint. This is a thin signing reverse-proxy in
-  // front of imgproxy: it validates the source host, translates the IPX-style
-  // modifier string into imgproxy options, signs the URL server-side, fetches
-  // the processed image and streams it back. The `/images/{modifiers}/{source}`
-  // grammar is a stable public contract (web, OG, and iOS depend on it), so the
-  // imgproxy provider can be swapped out later without breaking any URLs.
+  // --- Canonical, stable image endpoints (signing reverse-proxy to imgproxy) ---
+  //
+  // Two URL shapes share the same proxy logic (`proxyImageResponse`):
+  //
+  //  1. ID-keyed (preferred): `/images/books/:hiveId?w=440` and
+  //     `/images/avatars/:did?s=120`. The source is resolved at request time
+  //     from our own data (hive_book / profile), so the URL is permanently
+  //     stable and never leaks the upstream provider — swap providers freely.
+  //  2. Source-embedded: `/images/{modifiers}/{source}` — stateless, used by OG
+  //     render + iOS. Still a stable public contract.
+  //
+  // These specific routes MUST be registered before the catch-all below so they
+  // aren't swallowed by `/images/*`.
+
+  // Canonical book cover: resolves hive_book's current cover/thumbnail.
+  app.get("/images/books/:hiveId", async (c) => {
+    const hiveId = c.req.param("hiveId") as HiveId;
+    const book = await c
+      .get("ctx")
+      .db.selectFrom("hive_book")
+      .select(["cover", "thumbnail"])
+      .where("id", "=", hiveId)
+      .limit(1)
+      .executeTakeFirst();
+    const source = book?.cover || book?.thumbnail || null;
+    // Default to a 440px-wide fit; ?w / ?h / ?s / ?q / ?fit override.
+    const modifiers = queryToModifiers(c.req.query(), { w: "440" });
+    return proxyImageResponse({
+      source,
+      modifiers,
+      kind: "book",
+      ifNoneMatch: c.req.header("If-None-Match"),
+      requestId: c.get("requestId"),
+      warn: (e) => c.get("appLogger").warn(e),
+    });
+  });
+
+  // Canonical avatar: resolves the profile's current avatar by DID.
+  app.get("/images/avatars/:did", async (c) => {
+    const did = c.req.param("did");
+    const profile = await getProfile({ ctx: c.get("ctx"), did }).catch(() => null);
+    const source = profile?.avatar ?? null;
+    // Default to a 120x120 cover crop; ?s / ?w / ?h / ?q / ?fit override.
+    const modifiers = queryToModifiers(c.req.query(), { s: "120x120", fit: "cover" });
+    return proxyImageResponse({
+      source,
+      modifiers,
+      kind: "avatar",
+      ifNoneMatch: c.req.header("If-None-Match"),
+      requestId: c.get("requestId"),
+      warn: (e) => c.get("appLogger").warn(e),
+    });
+  });
+
+  // Source-embedded form (OG + iOS): `/images/{modifiers}/{source}`.
   app.use("/images/*", async (c) => {
     // Use pathname only so behavior is identical behind proxies
     const pathname = new URL(c.req.url).pathname;
     const { modifiersString, id } = parseImagePath(pathname);
-
     const modifiers = parseModifiers(modifiersString);
-
-    const svgFallback = () => {
-      // Return an SVG fallback — user silhouette for avatars, book placeholder otherwise
-      const isAvatar = id.includes("/img/avatar/") || id.includes("avatar");
-      const fallbackSvg = isAvatar
-        ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-            <rect width="100" height="100" fill="#fef3c7"/>
-            <circle cx="50" cy="38" r="18" fill="#d97706"/>
-            <path d="M14 85c0-19.9 16.1-36 36-36s36 16.1 36 36" fill="#d97706"/>
-          </svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140" fill="none">
-            <rect width="100" height="140" rx="4" fill="#fef3c7"/>
-            <rect x="20" y="30" width="60" height="6" rx="3" fill="#d97706" opacity=".5"/>
-            <rect x="20" y="46" width="45" height="6" rx="3" fill="#d97706" opacity=".35"/>
-            <rect x="20" y="62" width="52" height="6" rx="3" fill="#d97706" opacity=".35"/>
-          </svg>`;
-      return new Response(fallbackSvg, {
-        headers: {
-          "Content-Type": "image/svg+xml",
-          "Cache-Control": "public, max-age=60",
-          "X-Request-Id": c.get("requestId"),
-        },
-      });
-    };
-
-    // Only remote sources on the allowlist are proxied. Local/static images are
-    // served directly (never routed through here).
-    if (!isAllowedImageSource(id)) {
-      c.get("appLogger").warn({ msg: "image_proxy_forbidden_source", image_id: id });
-      return svgFallback();
-    }
-
-    // When imgproxy isn't configured (e.g. local dev), fall back to redirecting
-    // to the source so images still render.
-    if (!env.IMGPROXY_URL) {
-      return c.redirect(id, 302);
-    }
-
-    try {
-      const imgproxyUrl = buildImgproxyUrl(id, modifiers);
-      const upstream = await fetch(imgproxyUrl, {
-        headers: c.req.header("If-None-Match")
-          ? { "If-None-Match": c.req.header("If-None-Match")! }
-          : undefined,
-      });
-
-      if (upstream.status === 304) {
-        return new Response(null, {
-          status: 304,
-          headers: {
-            ETag: upstream.headers.get("ETag") ?? "",
-            "X-Request-Id": c.get("requestId"),
-          },
-        });
-      }
-
-      if (!upstream.ok || !upstream.body) {
-        throw new Error(`imgproxy ${upstream.status}`);
-      }
-
-      const headers = new Headers();
-      headers.set("Content-Type", upstream.headers.get("Content-Type") ?? "image/jpeg");
-      headers.set("Cache-Control", `public, max-age=${IMAGE_MAX_AGE}`);
-      const etag = upstream.headers.get("ETag");
-      if (etag) headers.set("ETag", etag);
-      const contentLength = upstream.headers.get("Content-Length");
-      if (contentLength) headers.set("Content-Length", contentLength);
-      headers.set("X-Request-Id", c.get("requestId"));
-
-      return new Response(upstream.body, { headers });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      c.get("appLogger").warn({ msg: "image_proxy_error", image_id: id, error: message });
-      return svgFallback();
-    }
+    const kind = id.includes("/img/avatar/") || id.includes("avatar") ? "avatar" : "book";
+    return proxyImageResponse({
+      source: id,
+      modifiers,
+      kind,
+      ifNoneMatch: c.req.header("If-None-Match"),
+      requestId: c.get("requestId"),
+      warn: (e) => c.get("appLogger").warn(e),
+    });
   });
 
   app.use("/books/:hiveId", methodOverride({ app }));

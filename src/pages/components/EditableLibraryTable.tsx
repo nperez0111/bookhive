@@ -3,7 +3,7 @@ import type { Book } from "../../types";
 import { BOOK_STATUS } from "../../constants";
 import { Card, CardBody, CardActions } from "./cards";
 import { BookCard, normalizeBookData } from "./BookCard";
-import { coverImageUrl } from "../../utils/imageProxy";
+import { coverImageUrl, sourceCoverImageUrl } from "../../utils/imageProxy";
 
 const toDateValue = (date: string | null | undefined) =>
   date ? new Date(date).toISOString().slice(0, 10) : "";
@@ -205,7 +205,10 @@ export const EditableLibraryTable: FC<{
                   <div class="flex items-center space-x-3">
                     <div class="h-12 w-8 shrink-0 overflow-hidden rounded-md">
                       <img
-                        src={coverImageUrl(book.cover || book.thumbnail)}
+                        src={
+                          coverImageUrl(book.hiveId) ??
+                          sourceCoverImageUrl(book.cover || book.thumbnail)
+                        }
                         alt={`Cover of ${book.title}`}
                         loading="lazy"
                         class="book-cover h-full w-full object-cover"

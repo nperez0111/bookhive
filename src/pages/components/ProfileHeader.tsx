@@ -41,7 +41,7 @@ export const ProfileHeader: FC<{
       <div class="card-body flex flex-col items-start gap-4 md:flex-row md:items-start">
         {profile?.avatar && (
           <img
-            src={avatarImageUrl(profile.avatar, { size: 160 })}
+            src={avatarImageUrl(did, { size: 160 })}
             alt=""
             loading="lazy"
             class="h-20 w-20 flex-shrink-0 rounded-full object-cover outline outline-1 outline-black/10 dark:outline-white/10"

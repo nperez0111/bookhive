@@ -74,7 +74,10 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
               <a href={`/profile/${user.handle}`}>
                 <div class="avatar">
                   <img
-                    src={avatarImageUrl(user.avatar, { size: 80 }) || "/default-avatar.png"}
+                    src={
+                      (user.avatar && avatarImageUrl(user.did, { size: 80 })) ||
+                      "/default-avatar.png"
+                    }
                     loading="lazy"
                     alt=""
                   />
