@@ -160,6 +160,21 @@ const _reviewSchema = /*#__PURE__*/ v.object({
    */
   stars: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
 });
+const _secondaryAuthorSchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#secondaryAuthor")),
+  /**
+   * Name of the contributor
+   * @maxLength 256
+   */
+  name: /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 256)]),
+  /**
+   * Role of the contributor (e.g. 'Editor', 'Illustrator', 'Translator')
+   * @maxLength 128
+   */
+  role: /*#__PURE__*/ v.optional(
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 128)]),
+  ),
+});
 const _userBookSchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#userBook")),
   /**
@@ -280,6 +295,7 @@ type finished$schematype = typeof _finishedSchema;
 type profile$schematype = typeof _profileSchema;
 type reading$schematype = typeof _readingSchema;
 type review$schematype = typeof _reviewSchema;
+type secondaryAuthor$schematype = typeof _secondaryAuthorSchema;
 type userBook$schematype = typeof _userBookSchema;
 type wantToRead$schematype = typeof _wantToReadSchema;
 
@@ -292,6 +308,7 @@ export interface finishedSchema extends finished$schematype {}
 export interface profileSchema extends profile$schematype {}
 export interface readingSchema extends reading$schematype {}
 export interface reviewSchema extends review$schematype {}
+export interface secondaryAuthorSchema extends secondaryAuthor$schematype {}
 export interface userBookSchema extends userBook$schematype {}
 export interface wantToReadSchema extends wantToRead$schematype {}
 
@@ -304,6 +321,7 @@ export const finishedSchema = _finishedSchema as finishedSchema;
 export const profileSchema = _profileSchema as profileSchema;
 export const readingSchema = _readingSchema as readingSchema;
 export const reviewSchema = _reviewSchema as reviewSchema;
+export const secondaryAuthorSchema = _secondaryAuthorSchema as secondaryAuthorSchema;
 export const userBookSchema = _userBookSchema as userBookSchema;
 export const wantToReadSchema = _wantToReadSchema as wantToReadSchema;
 
@@ -316,5 +334,6 @@ export type Finished = v.InferInput<typeof finishedSchema>;
 export interface Profile extends v.InferInput<typeof profileSchema> {}
 export type Reading = v.InferInput<typeof readingSchema>;
 export interface Review extends v.InferInput<typeof reviewSchema> {}
+export interface SecondaryAuthor extends v.InferInput<typeof secondaryAuthorSchema> {}
 export interface UserBook extends v.InferInput<typeof userBookSchema> {}
 export type WantToRead = v.InferInput<typeof wantToReadSchema>;

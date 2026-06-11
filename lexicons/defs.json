@@ -278,6 +278,23 @@
         }
       }
     },
+    "secondaryAuthor": {
+      "type": "object",
+      "description": "A secondary contributor to a book",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the contributor",
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "description": "Role of the contributor (e.g. 'Editor', 'Illustrator', 'Translator')",
+          "maxLength": 128
+        }
+      }
+    },
     "bookIdentifiers": {
       "type": "object",
       "description": "External identifiers for a book",

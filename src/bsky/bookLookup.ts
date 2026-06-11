@@ -22,6 +22,12 @@ export type HiveBookOutput = {
   sourceUrl?: string;
   identifiers?: BookIdentifiers;
   genres?: string[];
+  language?: string;
+  numPages?: number;
+  publicationYear?: number;
+  publisher?: string;
+  authorBio?: string;
+  secondaryAuthors?: Array<{ name: string; role?: string }>;
 };
 
 /**
@@ -33,6 +39,8 @@ export function toHiveBookOutput(
   identifiers: BookIdentifiers,
   genres?: string[],
 ): HiveBookOutput {
+  const meta = book.meta ? safeJsonParse<BookMeta>(book.meta) : null;
+
   return {
     $type: "buzz.bookhive.hiveBook",
     id: book.id,
@@ -50,7 +58,33 @@ export function toHiveBookOutput(
     sourceUrl: book.sourceUrl ?? undefined,
     identifiers,
     ...(genres && genres.length > 0 ? { genres } : {}),
+    language: book.language ?? undefined,
+    numPages: meta?.numPages && meta.numPages > 0 ? meta.numPages : undefined,
+    publicationYear:
+      meta?.publicationYear && meta.publicationYear > 0 ? meta.publicationYear : undefined,
+    publisher: meta?.publisher || undefined,
+    authorBio: meta?.authorBio || undefined,
+    secondaryAuthors:
+      meta?.secondaryAuthors && meta.secondaryAuthors.length > 0
+        ? meta.secondaryAuthors
+        : undefined,
   };
+}
+
+interface BookMeta {
+  publisher?: string;
+  publicationYear?: number;
+  numPages?: number;
+  authorBio?: string;
+  secondaryAuthors?: Array<{ name: string; role?: string }>;
+}
+
+function safeJsonParse<T>(json: string): T | null {
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
 }
 
 /**

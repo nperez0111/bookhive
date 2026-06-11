@@ -176,6 +176,30 @@ const admin = new Hono<AppEnv>()
       return c.json({ message: "Internal server error" }, 500);
     }
   })
+  .post("/invalidate-catalog", async (c) => {
+    const ctx = c.get("ctx");
+    const authorization = c.req.header("authorization");
+    if (
+      !env.EXPORT_SHARED_SECRET ||
+      !isAuthorizedExportRequest({
+        authorizationHeader: authorization,
+        sharedSecret: env.EXPORT_SHARED_SECRET,
+      })
+    ) {
+      return c.json({ message: "Not Found" }, 404);
+    }
+
+    const result = await ctx.db
+      .updateTable("hive_book")
+      .set({ hiveBookCatalogUpdatedAt: null })
+      .where("enrichedAt", "is not", null)
+      .where("hiveBookAtUri", "is not", null)
+      .executeTakeFirst();
+
+    const count = Number(result.numUpdatedRows);
+    ctx.addWideEventContext({ invalidate_catalog: "completed", count });
+    return c.json({ message: "Catalog records invalidated", count });
+  })
   .post("/refresh-user-books", async (c) => {
     const ctx = c.get("ctx");
     const authorization = c.req.header("authorization");
