@@ -105,13 +105,19 @@ describe("importBook utilities", () => {
       );
     });
 
-    it("returns finished when dateRead is set even if shelf is currently-reading", () => {
+    it("returns reading when exclusiveShelf is currently-reading even if dateRead is set", () => {
       expect(
         mapGoodreadsStatus({
           dateRead: new Date("2024-01-15"),
           exclusiveShelf: "currently-reading",
         }),
-      ).toBe("buzz.bookhive.defs#finished");
+      ).toBe("buzz.bookhive.defs#reading");
+    });
+
+    it("returns wantToRead when exclusiveShelf is to-read even if dateRead is set", () => {
+      expect(
+        mapGoodreadsStatus({ dateRead: new Date("2024-01-15"), exclusiveShelf: "to-read" }),
+      ).toBe("buzz.bookhive.defs#wantToRead");
     });
 
     it("returns reading when exclusiveShelf is currently-reading and no dateRead", () => {
@@ -325,6 +331,7 @@ describe("importBook utilities", () => {
     it("builds a full record for a read book", () => {
       const book = makeGoodreadsBook({
         dateRead: new Date("2024-06-15"),
+        exclusiveShelf: "read",
         myRating: 4,
         myReview: "Loved it",
         ownedCopies: 1,

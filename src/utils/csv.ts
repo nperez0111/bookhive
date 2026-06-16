@@ -190,36 +190,39 @@ export function getStorygraphCsvParser() {
 }
 
 export function getGoodreadsCsvParser() {
+  const columns = [
+    "bookId",
+    "title",
+    "author",
+    "authorLastFirst",
+    "additionalAuthors",
+    "isbn",
+    "isbn13",
+    "myRating",
+    "averageRating",
+    "publisher",
+    "binding",
+    "numberOfPages",
+    "yearPublished",
+    "originalPublicationYear",
+    "dateRead",
+    "dateAdded",
+    "bookshelves",
+    "bookshelvesWithPositions",
+    "exclusiveShelf",
+    "myReview",
+    "spoiler",
+    "privateNotes",
+    "readCount",
+    "ownedCopies",
+  ];
+  const columnsWithoutAverageRating = columns.filter((column) => column !== "averageRating");
+
   const parser = parse({
     skip_empty_lines: true,
     trim: true,
-    from: 2,
-    columns: [
-      "bookId",
-      "title",
-      "author",
-      "authorLastFirst",
-      "additionalAuthors",
-      "isbn",
-      "isbn13",
-      "myRating",
-      "averageRating",
-      "publisher",
-      "binding",
-      "numberOfPages",
-      "yearPublished",
-      "originalPublicationYear",
-      "dateRead",
-      "dateAdded",
-      "bookshelves",
-      "bookshelvesWithPositions",
-      "exclusiveShelf",
-      "myReview",
-      "spoiler",
-      "privateNotes",
-      "readCount",
-      "ownedCopies",
-    ],
+    columns: (headers: string[]) =>
+      headers.includes("Average Rating") ? columns : columnsWithoutAverageRating,
     cast: (value: string, { column }): any => {
       // First handle the quoted values
       if (value.startsWith('="') && value.endsWith('"')) {
@@ -268,6 +271,7 @@ export function getGoodreadsCsvParser() {
         while ((record = parser.read() as GoodreadsBook)) {
           // Validate the record before enqueueing
           if (record && record.title && record.author) {
+            record.averageRating ??= 0;
             controller.enqueue(record);
           } else {
             console.warn("Skipping invalid Goodreads record:", record);
@@ -287,6 +291,7 @@ export function getGoodreadsCsvParser() {
         while ((record = parser.read() as GoodreadsBook)) {
           // Validate the record before enqueueing
           if (record && record.title && record.author) {
+            record.averageRating ??= 0;
             controller.enqueue(record);
           } else {
             console.warn("Skipping invalid Goodreads record during flush:", record);

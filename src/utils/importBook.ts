@@ -9,9 +9,16 @@ export function normalizeStr(s: string): string {
 export function mapGoodreadsStatus(
   book: Pick<GoodreadsBook, "dateRead" | "exclusiveShelf">,
 ): string {
-  if (book.dateRead) return "buzz.bookhive.defs#finished";
-  if (book.exclusiveShelf === "currently-reading") return "buzz.bookhive.defs#reading";
-  return "buzz.bookhive.defs#wantToRead";
+  switch (book.exclusiveShelf?.toLowerCase()) {
+    case "read":
+      return "buzz.bookhive.defs#finished";
+    case "currently-reading":
+      return "buzz.bookhive.defs#reading";
+    case "to-read":
+      return "buzz.bookhive.defs#wantToRead";
+    default:
+      return book.dateRead ? "buzz.bookhive.defs#finished" : "buzz.bookhive.defs#wantToRead";
+  }
 }
 
 export function mapStorygraphStatus(book: Pick<StorygraphBook, "readStatus">): string {
