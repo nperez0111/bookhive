@@ -386,6 +386,34 @@ describe("importBook utilities", () => {
       });
       expect(result.coverImage).toBeUndefined();
     });
+
+    it("does not set finishedAt when status is reading even if dateRead exists", () => {
+      const book = makeGoodreadsBook({
+        exclusiveShelf: "currently-reading",
+        dateRead: new Date("2024-06-15"),
+      });
+      const result = buildGoodreadsBookRecord({
+        book,
+        hiveBook,
+        existingHiveIds: new Set(),
+      });
+      expect(result.status).toBe("buzz.bookhive.defs#reading");
+      expect(result.finishedAt).toBeUndefined();
+    });
+
+    it("does not set finishedAt when status is wantToRead even if dateRead exists", () => {
+      const book = makeGoodreadsBook({
+        exclusiveShelf: "to-read",
+        dateRead: new Date("2024-06-15"),
+      });
+      const result = buildGoodreadsBookRecord({
+        book,
+        hiveBook,
+        existingHiveIds: new Set(),
+      });
+      expect(result.status).toBe("buzz.bookhive.defs#wantToRead");
+      expect(result.finishedAt).toBeUndefined();
+    });
   });
 
   describe("buildStorygraphBookRecord", () => {
@@ -446,6 +474,20 @@ describe("importBook utilities", () => {
         existingHiveIds: new Set(),
       });
       expect(result.stars).toBe(7);
+    });
+
+    it("does not set finishedAt when status is reading even if lastDateRead exists", () => {
+      const book = makeStorygraphBook({
+        readStatus: "currently-reading",
+        lastDateRead: new Date("2024-03-10"),
+      });
+      const result = buildStorygraphBookRecord({
+        book,
+        hiveBook,
+        existingHiveIds: new Set(),
+      });
+      expect(result.status).toBe("buzz.bookhive.defs#reading");
+      expect(result.finishedAt).toBeUndefined();
     });
   });
 
