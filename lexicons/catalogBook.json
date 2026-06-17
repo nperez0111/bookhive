@@ -96,6 +96,48 @@
             "description": "External identifiers for the book",
             "type": "ref",
             "ref": "buzz.bookhive.defs#bookIdentifiers"
+          },
+          "language": {
+            "type": "string",
+            "description": "Human-readable language name (e.g. English)",
+            "maxLength": 64
+          },
+          "numPages": {
+            "type": "integer",
+            "description": "Total page count",
+            "minimum": 1
+          },
+          "publicationYear": {
+            "type": "integer",
+            "description": "Year of publication",
+            "minimum": 1,
+            "maximum": 9999
+          },
+          "publisher": {
+            "type": "string",
+            "description": "Publisher name",
+            "maxLength": 256
+          },
+          "authorBio": {
+            "type": "string",
+            "description": "Primary author biography",
+            "maxLength": 10000
+          },
+          "secondaryAuthors": {
+            "type": "array",
+            "description": "Additional contributors",
+            "items": {
+              "type": "ref",
+              "ref": "buzz.bookhive.defs#secondaryAuthor"
+            }
+          },
+          "ratingsDistribution": {
+            "type": "array",
+            "description": "Distribution of ratings (1-star through 5-star counts)",
+            "items": {
+              "type": "integer"
+            },
+            "maxLength": 5
           }
         }
       }

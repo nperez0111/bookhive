@@ -8,6 +8,13 @@ const _mainSchema = /*#__PURE__*/ v.record(
   /*#__PURE__*/ v.object({
     $type: /*#__PURE__*/ v.literal("buzz.bookhive.hiveBook"),
     /**
+     * Primary author biography
+     * @maxLength 10000
+     */
+    authorBio: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 10000)]),
+    ),
+    /**
      * The authors of the book (tab separated)
      * @minLength 1
      * @maxLength 512
@@ -42,6 +49,35 @@ const _mainSchema = /*#__PURE__*/ v.record(
       return /*#__PURE__*/ v.optional(BuzzBookhiveDefs.bookIdentifiersSchema);
     },
     /**
+     * Human-readable language name (e.g. English)
+     * @maxLength 64
+     */
+    language: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 64)]),
+    ),
+    /**
+     * Total page count
+     * @minimum 1
+     */
+    numPages: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1)]),
+    ),
+    /**
+     * Year of publication
+     * @minimum 1
+     * @maximum 9999
+     */
+    publicationYear: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.integer(), [/*#__PURE__*/ v.integerRange(1, 9999)]),
+    ),
+    /**
+     * Publisher name
+     * @maxLength 256
+     */
+    publisher: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 256)]),
+    ),
+    /**
      * Average rating (0-1000)
      * @minimum 0
      * @maximum 1000
@@ -53,6 +89,14 @@ const _mainSchema = /*#__PURE__*/ v.record(
      * Number of ratings
      */
     ratingsCount: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+    /**
+     * Additional contributors
+     */
+    get secondaryAuthors() {
+      return /*#__PURE__*/ v.optional(
+        /*#__PURE__*/ v.array(BuzzBookhiveDefs.secondaryAuthorSchema),
+      );
+    },
     /**
      * The source service name (e.g. Goodreads)
      */
