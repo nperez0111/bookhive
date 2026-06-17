@@ -79,7 +79,7 @@
     "tailwindcss-animated": "2.1.0",
     "typescript": "6.0.3",
     "unstorage": "1.17.5",
-    "vite": "8.0.14",
+    "vite": "8.0.16",
     "zod": "4.4.3"
   },
   "engines": {
