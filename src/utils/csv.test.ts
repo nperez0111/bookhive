@@ -106,6 +106,54 @@ describe("CSV Parsers", () => {
         privateNotes: "Private note",
       });
     });
+
+    it("should parse Goodreads exports when Average Rating column is absent", async () => {
+      const csvData = `Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,Publisher,Binding,Number of Pages,Year Published,Original Publication Year,Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,My Review,Spoiler,Private Notes,Read Count,Owned Copies
+456,Future Reading,Example Author,"Author, Example",Second Author,"=""0123456789""","=""9780123456789""",0,Test Publisher,Hardcover,250,2024,2024,,2026/06/07,to-read,to-read (#158),to-read,,,,0,0`;
+
+      const parser = getGoodreadsCsvParser();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(csvData));
+          controller.close();
+        },
+      });
+
+      const books = [];
+      const reader = stream.pipeThrough(parser).getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        books.push(value);
+      }
+
+      expect(books).toHaveLength(1);
+      expect(books[0]).toMatchObject({
+        bookId: "456",
+        title: "Future Reading",
+        author: "Example Author",
+        authorLastFirst: "Author, Example",
+        additionalAuthors: ["Second Author"],
+        isbn: "0123456789",
+        isbn13: "9780123456789",
+        myRating: 0,
+        averageRating: 0,
+        publisher: "Test Publisher",
+        binding: "Hardcover",
+        numberOfPages: 250,
+        yearPublished: 2024,
+        originalPublicationYear: 2024,
+        dateRead: null,
+        bookshelves: ["to-read"],
+        bookshelvesWithPositions: "to-read (#158)",
+        exclusiveShelf: "to-read",
+        readCount: 0,
+        ownedCopies: 0,
+      });
+      expect(books[0]!.dateAdded).toBeInstanceOf(Date);
+      expect(books[0]!.dateAdded?.getFullYear()).toBe(2026);
+    });
   });
 
   describe("StoryGraph CSV Parser", () => {
