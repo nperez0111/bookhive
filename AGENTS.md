@@ -363,25 +363,31 @@ Applied globally in `src/app.ts`: timing, context, wide-event logging, error cap
 
 ## Build & Dev
 
-| Command             | What                                                           |
-| ------------------- | -------------------------------------------------------------- |
-| `bun run dev`       | Dev server (`bunx --bun vite`)                                 |
-| `bun run build`     | Production build (`lexgen` + `vite build`) → `.output/server/` |
-| `bun run start`     | Run built server (`bun run .output/server/index.mjs`)          |
-| `bun test`          | Run tests (`bun test src`)                                     |
-| `bun run typecheck` | `oxlint --type-aware --type-check` + `oxfmt --write`           |
-| `bun run lint`      | Same as typecheck (oxlint/oxfmt, **not** tsc)                  |
-| `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons (`lex-cli`)    |
-| `bun run seed:db`   | Seed/initialize the DB (`src/initialize.ts`)                   |
+| Command             | What                                                         |
+| ------------------- | ------------------------------------------------------------ |
+| `bun run dev`       | Dev server (`vp dev`)                                        |
+| `bun run build`     | Production build (`lexgen` + `vp build`) → `.output/server/` |
+| `bun run start`     | Run built server (`bun run .output/server/index.mjs`)        |
+| `bun test`          | Run tests (`bun test src`)                                   |
+| `bun run typecheck` | `vp lint --type-aware --type-check` + `vp fmt --write`       |
+| `bun run lint`      | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)         |
+| `bun run format`    | `vp fmt`                                                     |
+| `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons (`lex-cli`)  |
+| `bun run seed:db`   | Seed/initialize the DB (`src/initialize.ts`)                 |
 
-Build pipeline: **Vite 8 + Nitro** (`nitro-nightly`, preset `bun`), Nitro server
-entry at `./server/server.ts` with otel/request-tracing plugins. Vite plugins:
-`tailwindcss()`, `standaloneBundles()`, `nitro()`. The client bundle entry is
-`src/client/index.tsx`; assets emitted to `assets/[name]-[hash]` with a build
-manifest (read via `src/utils/manifest.ts`). The `standaloneBundles()` plugin
-bundles 4 worker entry points with `Bun.build` into `.output/server/workers/`:
-`ingester-worker.js`, `open-observe-worker.js`, `og-render-worker.js`,
-`import-worker.js`. Path alias `@` → `./src`. Runtime requires `bun >= 1.3.14`.
+Build pipeline: **Vite+ (vite-plus)** wrapping Vite 8 + Rolldown + Nitro
+(`nitro-nightly`, preset `bun`), Nitro server entry at `./server/server.ts` with
+otel/request-tracing plugins. Vite plugins: `bunRuntimeExternal()`,
+`devImageProxyPassthrough()`, `tailwindcss()`, `standaloneBundles()`, `nitro()`.
+The client bundle entry is `src/client/index.tsx`; assets emitted to
+`assets/[name]-[hash]` with a build manifest (read via `src/utils/manifest.ts`).
+The `standaloneBundles()` plugin shells out to `bun build` for 4 worker entry
+points into `.output/server/workers/`: `ingester-worker.js`,
+`open-observe-worker.js`, `og-render-worker.js`, `import-worker.js`. Path alias
+`@` → `./src`. Runtime requires `bun >= 1.3.14`. TypeScript type checking via
+**tsgo** (TypeScript 6.x / Go-native compiler); linting via **oxlint** and
+formatting via **oxfmt**, both accessed through the `vp` CLI. Pre-commit hook
+(`.vite-hooks/pre-commit`) runs `vp staged` → `vp check --fix`.
 
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`
 (atproto client/oauth/jetstream/identity), `@takumi-rs/image-response` + React 19

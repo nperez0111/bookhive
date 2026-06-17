@@ -1,12 +1,19 @@
+import { execSync } from "child_process";
 import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin } from "vite-plus";
 import path from "path";
 
-/**
- * Build standalone Bun bundles that live outside the Nitro server bundle.
- * Used for worker threads and pino transports that need their own entry points.
- */
+// Bun runtime built-in must be external — Rolldown can't bundle it.
+function bunRuntimeExternal(): Plugin {
+  return {
+    name: "bun-runtime-external",
+    resolveId(source) {
+      if (source === "bun") return { id: "bun", external: true };
+    },
+  };
+}
+
 function standaloneBundles(): Plugin {
   const bundles = [
     {
@@ -38,23 +45,10 @@ function standaloneBundles(): Plugin {
   return {
     name: "standalone-bundles",
     apply: "build",
-    async closeBundle() {
+    closeBundle() {
       for (const bundle of bundles) {
-        const result = await Bun.build({
-          entrypoints: [bundle.entrypoint],
-          outdir: bundle.outdir,
-          naming: bundle.name,
-          target: "bun",
-          minify: { whitespace: true, identifiers: true, syntax: false },
-          sourcemap: "none",
-        });
-        if (!result.success) {
-          for (const msg of result.logs) console.error(msg);
-          throw new Error(`${bundle.label} build failed`);
-        }
-        for (const msg of result.logs) {
-          if (msg.level === "warning") console.warn(msg.message);
-        }
+        const cmd = `bun build ${bundle.entrypoint} --outdir ${bundle.outdir} --entry-naming ${bundle.name} --target bun --minify-whitespace --minify-identifiers`;
+        execSync(cmd, { stdio: "inherit" });
         console.log(`${bundle.label} written to ${bundle.outdir}/${bundle.name}`);
       }
     },
@@ -93,7 +87,19 @@ function devImageProxyPassthrough(): Plugin {
 }
 
 export default defineConfig({
+  staged: {
+    "*": "vp check --fix",
+  },
+  lint: {
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+  },
+  fmt: {
+    ignorePatterns: [],
+  },
   plugins: [
+    bunRuntimeExternal(),
     devImageProxyPassthrough(),
     tailwindcss(),
     standaloneBundles(),
