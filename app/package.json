@@ -58,7 +58,7 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@babel/core": "7.29.0",
+    "@babel/core": "7.29.6",
     "@types/jest": "29.5.14",
     "@types/react": "19.2.14",
     "@types/react-test-renderer": "19.1.0",
