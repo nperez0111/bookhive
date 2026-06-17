@@ -95,13 +95,17 @@ export function buildGoodreadsBookRecord(params: {
   existingHiveIds: Set<string>;
 }) {
   const { book, hiveBook, existingHiveIds } = params;
+  const status = mapGoodreadsStatus(book);
   return {
     authors: book.author,
     title: hiveBook.title,
-    status: mapGoodreadsStatus(book),
+    status,
     hiveId: hiveBook.id,
     coverImage: hiveBook.cover ?? undefined,
-    finishedAt: book.dateRead?.toISOString() ?? undefined,
+    finishedAt:
+      status === "buzz.bookhive.defs#finished"
+        ? (book.dateRead?.toISOString() ?? undefined)
+        : undefined,
     stars: normalizeGoodreadsRating(book.myRating),
     review: book.myReview || undefined,
     owned: book.ownedCopies > 0 ? true : undefined,
@@ -115,13 +119,17 @@ export function buildStorygraphBookRecord(params: {
   existingHiveIds: Set<string>;
 }) {
   const { book, hiveBook, existingHiveIds } = params;
+  const status = mapStorygraphStatus(book);
   return {
     authors: book.authors,
     title: hiveBook.title,
-    status: mapStorygraphStatus(book),
+    status,
     hiveId: hiveBook.id,
     coverImage: hiveBook.cover ?? undefined,
-    finishedAt: book.lastDateRead?.toISOString() ?? undefined,
+    finishedAt:
+      status === "buzz.bookhive.defs#finished"
+        ? (book.lastDateRead?.toISOString() ?? undefined)
+        : undefined,
     stars: normalizeStorygraphRating(book.starRating),
     review: book.review || undefined,
     owned: book.owned ? true : undefined,

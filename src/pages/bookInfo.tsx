@@ -8,6 +8,7 @@ import { buildCrossPostText } from "../bsky/crossPost";
 import { env } from "../env";
 import type { HiveBook } from "../types";
 import { buildAuthorLikePatterns } from "../utils/authorMatching";
+import { normalizeBookMeta } from "../utils/bookMeta";
 import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { getUserLists } from "../utils/lists";
@@ -237,7 +238,7 @@ export const BookInfo: FC<{
   ]);
   endTime(c, "db_parallel_queries");
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
-  const meta = book.meta ? JSON.parse(book.meta) : null;
+  const meta = normalizeBookMeta(book.meta);
   const seriesData = book.series ? JSON.parse(book.series) : null;
   const bookUrl = `${env.PUBLIC_URL}/books/${book.id}`;
 
@@ -259,7 +260,7 @@ export const BookInfo: FC<{
 
   // Publication details
   const pubDetails: string[] = [];
-  if (meta?.publicationYear && meta.publicationYear > 0) pubDetails.push(meta.publicationYear);
+  if (meta.publicationYear) pubDetails.push(String(meta.publicationYear));
   if (meta?.publisher) pubDetails.push(meta.publisher);
   if (meta?.language) pubDetails.push(meta.language);
 
@@ -1084,7 +1085,9 @@ export const BookInfo: FC<{
       )}
 
       {/* ===== SECTION 4: About the Author ===== */}
-      {(meta?.authorBio || otherBooksByAuthor.length > 0 || meta?.secondaryAuthors?.length > 0) && (
+      {(meta.authorBio ||
+        otherBooksByAuthor.length > 0 ||
+        (meta.secondaryAuthors && meta.secondaryAuthors.length > 0)) && (
         <div class="card">
           <div class="card-body">
             <h2 class="mb-3 text-lg font-semibold text-foreground">
@@ -1139,21 +1142,26 @@ export const BookInfo: FC<{
                   />
                 </>
               )}
-              {meta?.secondaryAuthors?.length > 0 && (
-                <div>
-                  <h4 class="mb-1 text-sm font-semibold text-muted-foreground">
-                    Additional Authors
-                  </h4>
-                  <p class="text-sm text-muted-foreground">
-                    {meta.secondaryAuthors.map((author: any, index: number) => (
-                      <span key={index}>
-                        {author.name}
-                        {index < meta.secondaryAuthors.length - 1 && ", "}
-                      </span>
-                    ))}
-                  </p>
-                </div>
-              )}
+              {meta.secondaryAuthors &&
+                meta.secondaryAuthors.length > 0 &&
+                (() => {
+                  const authors = meta.secondaryAuthors!;
+                  return (
+                    <div>
+                      <h4 class="mb-1 text-sm font-semibold text-muted-foreground">
+                        Additional Authors
+                      </h4>
+                      <p class="text-sm text-muted-foreground">
+                        {authors.map((author, index) => (
+                          <span key={index}>
+                            {author.name}
+                            {index < authors.length - 1 && ", "}
+                          </span>
+                        ))}
+                      </p>
+                    </div>
+                  );
+                })()}
               {otherBooksByAuthor.length > 0 && (
                 <div class="mt-6">
                   <h4 class="mb-2 text-sm font-semibold text-foreground">Also by this author</h4>

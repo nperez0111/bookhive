@@ -8,6 +8,7 @@ import { createActorResolver } from "../bsky/id-resolver";
 import { ids } from "../bsky/lexicon/ids";
 import type { BlobRef, HiveBook, HiveId } from "../types";
 import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "./hiveBookGenres.js";
+import { normalizeBookMeta } from "./bookMeta";
 import { uploadImageBlob } from "./uploadImageBlob";
 
 export async function createServiceAccountAgent(
@@ -46,15 +47,6 @@ interface CatalogBlobs {
   coverBlob?: BlobRef;
 }
 
-interface CatalogBookMeta {
-  publisher?: string;
-  publicationYear?: number;
-  numPages?: number;
-  authorBio?: string;
-  secondaryAuthors?: Array<{ name: string; role?: string }>;
-  ratingsDistribution?: number[];
-}
-
 function safeJsonParse<T>(json: string, fallback: T, context: string): T {
   try {
     return JSON.parse(json) as T;
@@ -65,9 +57,7 @@ function safeJsonParse<T>(json: string, fallback: T, context: string): T {
 }
 
 function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs, catalogGenres?: string[]) {
-  const meta = book.meta
-    ? safeJsonParse<CatalogBookMeta>(book.meta, {} as CatalogBookMeta, `book ${book.id} meta`)
-    : null;
+  const meta = normalizeBookMeta(book.meta);
 
   return {
     $type: ids.BuzzBookhiveCatalogBook,
@@ -102,18 +92,12 @@ function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs, catalogGenr
         }
       : {}),
     ...(book.language ? { language: book.language } : {}),
-    ...(meta?.numPages && meta.numPages > 0 ? { numPages: meta.numPages } : {}),
-    ...(meta?.publicationYear && meta.publicationYear > 0
-      ? { publicationYear: meta.publicationYear }
-      : {}),
-    ...(meta?.publisher ? { publisher: meta.publisher } : {}),
-    ...(meta?.authorBio ? { authorBio: meta.authorBio } : {}),
-    ...(meta?.secondaryAuthors && meta.secondaryAuthors.length > 0
-      ? { secondaryAuthors: meta.secondaryAuthors }
-      : {}),
-    ...(meta?.ratingsDistribution && meta.ratingsDistribution.length > 0
-      ? { ratingsDistribution: meta.ratingsDistribution }
-      : {}),
+    ...(meta.numPages ? { numPages: meta.numPages } : {}),
+    ...(meta.publicationYear ? { publicationYear: meta.publicationYear } : {}),
+    ...(meta.publisher ? { publisher: meta.publisher } : {}),
+    ...(meta.authorBio ? { authorBio: meta.authorBio } : {}),
+    ...(meta.secondaryAuthors ? { secondaryAuthors: meta.secondaryAuthors } : {}),
+    ...(meta.ratingsDistribution ? { ratingsDistribution: meta.ratingsDistribution } : {}),
   };
 }
 

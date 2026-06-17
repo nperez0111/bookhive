@@ -1,6 +1,7 @@
 import type { Database } from "../db";
 import type { BookIdentifiers, HiveId } from "../types";
 import type { HiveBook } from "../types";
+import { normalizeBookMeta } from "../utils/bookMeta";
 
 type DbCtx = { db: Database };
 
@@ -39,7 +40,7 @@ export function toHiveBookOutput(
   identifiers: BookIdentifiers,
   genres?: string[],
 ): HiveBookOutput {
-  const meta = book.meta ? safeJsonParse<BookMeta>(book.meta) : null;
+  const meta = normalizeBookMeta(book.meta);
 
   return {
     $type: "buzz.bookhive.hiveBook",
@@ -59,32 +60,12 @@ export function toHiveBookOutput(
     identifiers,
     ...(genres && genres.length > 0 ? { genres } : {}),
     language: book.language ?? undefined,
-    numPages: meta?.numPages && meta.numPages > 0 ? meta.numPages : undefined,
-    publicationYear:
-      meta?.publicationYear && meta.publicationYear > 0 ? meta.publicationYear : undefined,
-    publisher: meta?.publisher || undefined,
-    authorBio: meta?.authorBio || undefined,
-    secondaryAuthors:
-      meta?.secondaryAuthors && meta.secondaryAuthors.length > 0
-        ? meta.secondaryAuthors
-        : undefined,
+    numPages: meta.numPages,
+    publicationYear: meta.publicationYear,
+    publisher: meta.publisher,
+    authorBio: meta.authorBio,
+    secondaryAuthors: meta.secondaryAuthors,
   };
-}
-
-interface BookMeta {
-  publisher?: string;
-  publicationYear?: number;
-  numPages?: number;
-  authorBio?: string;
-  secondaryAuthors?: Array<{ name: string; role?: string }>;
-}
-
-function safeJsonParse<T>(json: string): T | null {
-  try {
-    return JSON.parse(json) as T;
-  } catch {
-    return null;
-  }
 }
 
 /**
