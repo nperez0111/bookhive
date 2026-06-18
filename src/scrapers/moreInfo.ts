@@ -1,3 +1,6 @@
+import { fetchGoodreadsViaWaf } from "./waf/solver";
+import { NEXT_DATA_MARKER } from "./waf/pageMarker";
+
 // TypeScript interfaces for Goodreads data structure
 interface ParsedGoodreadsData {
   book: {
@@ -39,7 +42,7 @@ interface ParsedGoodreadsData {
   };
 }
 
-const startString = `__NEXT_DATA__" type="application/json">`;
+const startString = NEXT_DATA_MARKER;
 
 function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
   try {
@@ -131,39 +134,29 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
   }
 }
 
+function extractNextData(html: string): ParsedGoodreadsData | null {
+  const startIdx = html.indexOf(startString);
+  if (startIdx === -1) return null;
+  const nextData = html.slice(startIdx + startString.length);
+  const endIdx = nextData.indexOf("</script>");
+  if (endIdx === -1) return null;
+  const json = JSON.parse(nextData.slice(0, endIdx));
+  return parseGoodreadsData(json);
+}
+
 async function getBookDetailedInfo(
   sourceUrl: string,
   addWideEventContext?: (context: Record<string, unknown>) => void,
 ): Promise<ParsedGoodreadsData | null> {
   const addCtx = addWideEventContext ?? (() => {});
   try {
-    const response = await fetch(sourceUrl, {
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        "User-Agent": "BookHive/1.0 (+https://bookhive.buzz)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-    addCtx({ scrape_status: response.status, scrape_url: sourceUrl });
-    if (!response.ok) {
-      addCtx({ scrape_failure: "non_ok_status" });
-      return null;
-    }
-    const data = await response.text();
-    const startIdx = data.indexOf(startString);
-    if (startIdx === -1) {
-      addCtx({ scrape_failure: "next_data_not_found" });
-      return null;
-    }
-    const nextData = data.slice(startIdx + startString.length);
-    const endIdx = nextData.indexOf("</script>");
-    if (endIdx === -1) {
-      addCtx({ scrape_failure: "next_data_end_not_found" });
-      return null;
-    }
-    const json = JSON.parse(nextData.slice(0, endIdx));
-    return parseGoodreadsData(json);
+    // The WAF solver worker fetches the page (solving the AWS WAF challenge
+    // off-thread if it's active) and hands back the page HTML.
+    const html = await fetchGoodreadsViaWaf(sourceUrl, addCtx);
+    if (!html) return null;
+    const result = extractNextData(html);
+    if (!result) addCtx({ scrape_failure: "next_data_parse_failed" });
+    return result;
   } catch (error) {
     addCtx({
       scrape_failure: "exception",
@@ -174,4 +167,4 @@ async function getBookDetailedInfo(
   }
 }
 
-export { getBookDetailedInfo, type ParsedGoodreadsData };
+export { getBookDetailedInfo, extractNextData, parseGoodreadsData, type ParsedGoodreadsData };
