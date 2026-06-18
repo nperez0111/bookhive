@@ -70,6 +70,13 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
   app.use("*", opentelemetryMiddleware());
 
+  app.use("*", async (c, next) => {
+    await next();
+    if (!c.res.headers.has("Cache-Control")) {
+      c.header("Cache-Control", "private, no-store");
+    }
+  });
+
   app.get("/healthcheck", (c) =>
     c.json({
       status: "ok",

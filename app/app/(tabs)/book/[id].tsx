@@ -44,7 +44,6 @@ import { calculatePercentFromProgressValues } from "@/utils/calculatePercentFrom
 function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: string }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
-  const textColor = useThemeColor({}, "text");
   const backgroundColor = useThemeColor({}, "background");
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -134,11 +133,10 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const deleteBook = useDeleteBook();
 
   const handleOwnedToggle = async () => {
-    const currentOwned = bookData?.owned ?? 0;
     try {
       await updateBook.mutateAsync({
         hiveId: hiveId,
-        owned: currentOwned ? 0 : 1,
+        owned: bookData?.owned ? 0 : 1,
       });
     } catch {
       // silently fail
@@ -292,15 +290,15 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
         },
         (buttonIndex) => {
           if (buttonIndex === 1) {
-            Share.share({ url: shareUrl, title: book.title });
+            void Share.share({ url: shareUrl, title: book.title });
           } else if (buttonIndex === 2) {
-            Linking.openURL(blueskyUrl);
+            void Linking.openURL(blueskyUrl);
           }
         },
       );
     } else {
       // On Android, show native share directly (no ActionSheetIOS)
-      Share.share({ message: `${book.title}\n${shareUrl}`, title: book.title });
+      void Share.share({ message: `${book.title}\n${shareUrl}`, title: book.title });
     }
   };
 
@@ -335,7 +333,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     );
   }
 
-  const { book, reviews, comments: apiComments, ...userBook } = bookQuery.data!;
+  const { book, reviews: _reviews, comments: _apiComments, ...userBook } = bookQuery.data!;
   const activity = bookQuery.data?.activity ?? [];
   const rating = book.rating ? book.rating / 1000 : 0;
   const status = (userBook.status ?? selectedStatus) as BookStatus | null;

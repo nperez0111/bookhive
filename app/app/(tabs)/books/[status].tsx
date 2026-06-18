@@ -1,26 +1,20 @@
+import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
-import { BookGridItem } from "@/components/BookGridItem";
+import { FadeInImage } from "@/components/FadeInImage";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
-import { BOOK_STATUS, BOOK_STATUS_MAP } from "@/constants";
+import { BOOK_STATUS } from "@/constants";
+import { getBaseUrl } from "@/context/auth";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState, useEffect } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  View,
-  Dimensions,
-  Pressable,
-  ScrollView,
-} from "react-native";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { UserBook } from "../../../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 const STATUS_CONFIG = {
@@ -80,7 +74,6 @@ const sortBooks = (
         bValue = b.createdAt ? new Date(b.createdAt).getTime() : null;
         break;
       case "dateRead":
-        // For finished books, use finishedAt; for reading books, use startedAt
         if (bookStatus === BOOK_STATUS.FINISHED) {
           aValue = a.finishedAt ? new Date(a.finishedAt).getTime() : null;
           bValue = b.finishedAt ? new Date(b.finishedAt).getTime() : null;
@@ -99,12 +92,10 @@ const sortBooks = (
         break;
     }
 
-    // Handle null values - put them at the end
     if (aValue === null && bValue === null) return 0;
     if (aValue === null) return 1;
     if (bValue === null) return -1;
 
-    // Compare values
     let comparison = 0;
     if (aValue < bValue) comparison = -1;
     if (aValue > bValue) comparison = 1;
@@ -115,17 +106,16 @@ const sortBooks = (
   return sorted;
 };
 
-function FilteredBooksContent({ status }: { status: string }) {
+function FilteredBooksContent({ status, did }: { status: string; did?: string }) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
-  const [numColumns, setNumColumns] = useState(2);
   const [sortBy, setSortBy] = useState<SortBy>("dateAdded");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
 
-  const profile = useProfile();
+  const profile = useProfile(did);
 
   const config = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
 
@@ -162,28 +152,6 @@ function FilteredBooksContent({ status }: { status: string }) {
       : statusBooks;
     return sortBooks(genreFiltered, sortBy, sortOrder, config.status);
   }, [statusBooks, activeGenre, sortBy, sortOrder, config.status]);
-
-  // Calculate responsive number of columns
-  useEffect(() => {
-    const calculateColumns = () => {
-      const screenWidth = Dimensions.get("window").width;
-      const containerPadding = 32; // 16px padding on each side
-      const availableWidth = screenWidth - containerPadding;
-
-      // BookCard width is 180px, so calculate how many can fit
-      const bookCardWidth = 180;
-      const gap = 16; // Space between items
-      const maxColumns = Math.floor((availableWidth + gap) / (bookCardWidth + gap));
-      const columns = Math.max(2, Math.min(maxColumns, 4)); // Between 2-4 columns
-
-      setNumColumns(columns);
-    };
-
-    calculateColumns();
-
-    const subscription = Dimensions.addEventListener("change", calculateColumns);
-    return () => subscription?.remove();
-  }, []);
 
   if (profile.isLoading) {
     return (
@@ -254,16 +222,63 @@ function FilteredBooksContent({ status }: { status: string }) {
     );
   }
 
-  const renderBook = ({ item, index }: { item: UserBook; index: number }) => (
-    <BookGridItem book={item} status={status} numColumns={numColumns} />
+  const renderBook = ({ item: book, index }: { item: UserBook; index: number }) => (
+    <AnimatedListItem index={index}>
+      <Pressable
+        onPress={() => router.push(`/book/${book.hiveId}?status=${status}`)}
+        style={[
+          styles.bookItem,
+          {
+            backgroundColor: colors.cardBackground,
+            borderColor: colors.cardBorder,
+            shadowColor: colors.shadowLight,
+          },
+        ]}
+      >
+        <View style={styles.coverContainer}>
+          <FadeInImage
+            source={{
+              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
+            }}
+            style={styles.bookCover}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={styles.bookInfo}>
+          <ThemedText
+            style={[styles.bookTitle, { color: colors.primaryText }]}
+            numberOfLines={2}
+            type="label"
+          >
+            {book.title}
+          </ThemedText>
+          <ThemedText
+            style={[styles.bookAuthor, { color: colors.secondaryText }]}
+            numberOfLines={1}
+            type="caption"
+          >
+            {book.authors}
+          </ThemedText>
+          {book.stars != null && book.stars > 0 && (
+            <View style={styles.ratingContainer}>
+              <Ionicons name="star" size={14} color={colors.primary} />
+              <ThemedText
+                style={[styles.ratingText, { color: colors.secondaryText }]}
+                type="caption"
+              >
+                {book.stars / 10}
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      </Pressable>
+    </AnimatedListItem>
   );
 
   const handleSortChange = (newSortBy: SortBy) => {
     if (sortBy === newSortBy) {
-      // Toggle order if clicking the same sort option
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
-      // Set new sort and default to desc for dates, asc for text
       setSortBy(newSortBy);
       setSortOrder(newSortBy === "dateAdded" || newSortBy === "dateRead" ? "desc" : "asc");
     }
@@ -413,7 +428,7 @@ function FilteredBooksContent({ status }: { status: string }) {
         </ThemedText>
       </View>
 
-      {filteredBooks.length === 0 && (
+      {filteredBooks.length === 0 ? (
         <View style={styles.emptyContainer}>
           <ThemedView
             variant="card"
@@ -432,23 +447,21 @@ function FilteredBooksContent({ status }: { status: string }) {
             </ThemedText>
           </ThemedView>
         </View>
+      ) : (
+        <FlatList
+          data={filteredBooks}
+          renderItem={renderBook}
+          keyExtractor={(item) => item.hiveId}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
       )}
-
-      <FlatList
-        data={filteredBooks}
-        renderItem={renderBook}
-        keyExtractor={(item) => item.hiveId}
-        numColumns={numColumns}
-        contentContainerStyle={styles.gridContainer}
-        columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
-        showsVerticalScrollIndicator={false}
-      />
     </View>
   );
 }
 
 export default function FilteredBooks() {
-  const { status } = useLocalSearchParams<{ status: string }>();
+  const { status, did } = useLocalSearchParams<{ status: string; did?: string }>();
 
   if (!status) {
     return (
@@ -458,7 +471,7 @@ export default function FilteredBooks() {
     );
   }
 
-  return <FilteredBooksContent status={status} />;
+  return <FilteredBooksContent status={status} did={did} />;
 }
 
 const styles = StyleSheet.create({
@@ -552,11 +565,54 @@ const styles = StyleSheet.create({
   bookCount: {
     textAlign: "center",
   },
-  gridContainer: {
-    padding: 16,
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
-  row: {
-    justifyContent: "space-between",
-    marginBottom: 16,
+  bookItem: {
+    flexDirection: "row",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    minHeight: 100,
+  },
+  coverContainer: {
+    marginRight: 12,
+    justifyContent: "center",
+  },
+  bookCover: {
+    width: 65,
+    height: 95,
+    borderRadius: 10,
+  },
+  bookInfo: {
+    flex: 1,
+    justifyContent: "center",
+    paddingVertical: 2,
+  },
+  bookTitle: {
+    marginBottom: 4,
+    lineHeight: 18,
+    fontSize: 15,
+  },
+  bookAuthor: {
+    marginBottom: 6,
+    lineHeight: 16,
+    fontSize: 13,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  ratingText: {
+    lineHeight: 16,
+    fontSize: 12,
   },
 });

@@ -43,7 +43,7 @@ export default function ListDetailScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    listQuery.refetch().finally(() => setIsRefreshing(false));
+    void listQuery.refetch().finally(() => setIsRefreshing(false));
   }, [listQuery.refetch]);
 
   const isOwner = listQuery.data?.list.userDid === authState?.did;
@@ -55,7 +55,7 @@ export default function ListDetailScreen() {
         {
           text: "Remove",
           style: "destructive",
-          onPress: () => removeFromList.mutate({ itemUri }),
+          onPress: () => removeFromList.mutate({ itemUri, listUri: decodedUri }),
         },
       ]);
     },
@@ -180,7 +180,7 @@ export default function ListDetailScreen() {
               colors={[colors.primary]}
             />
           }
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <BookCard
               title={item.title ?? "Unknown Title"}
               authors={item.authors ?? "Unknown Author"}
