@@ -65,11 +65,11 @@ export default function ProfileScreen() {
   const profile = useProfile(did);
   const listsQuery = useUserLists(did);
   const userLists = listsQuery.data?.lists ?? [];
-  const [userReviewText, setUserReviewText] = useState("");
+  const [_userReviewText, _setUserReviewText] = useState("");
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    profile.refetch().finally(() => setIsRefreshing(false));
+    void profile.refetch().finally(() => setIsRefreshing(false));
   }, [profile.refetch]);
 
   if (profile.isLoading && !isRefreshing && !profile.data) {
@@ -319,7 +319,10 @@ export default function ProfileScreen() {
         {/* Currently Reading Section */}
         {readingBooks.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              onPress={() => router.push(`/books/reading?did=${did}` as any)}
+              style={styles.sectionHeader}
+            >
               <View style={styles.sectionHeaderContent}>
                 <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
                   <Ionicons name="book" size={20} color={colors.primary} />
@@ -331,13 +334,16 @@ export default function ProfileScreen() {
                   Currently Reading
                 </ThemedText>
               </View>
-              <ThemedText
-                style={[styles.resultCount, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                {readingBooks.length} books
-              </ThemedText>
-            </View>
+              <View style={styles.sectionHeaderRight}>
+                <ThemedText
+                  style={[styles.resultCount, { color: colors.secondaryText }]}
+                  type="caption"
+                >
+                  {readingBooks.length} books
+                </ThemedText>
+                <Ionicons name="chevron-forward" size={16} color={colors.secondaryText} />
+              </View>
+            </Pressable>
             <FlatList
               data={readingBooks}
               keyExtractor={(item) => item.hiveId}
@@ -352,7 +358,10 @@ export default function ProfileScreen() {
         {/* Want to Read Section */}
         {wantToReadBooks.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              onPress={() => router.push(`/books/wantToRead?did=${did}` as any)}
+              style={styles.sectionHeader}
+            >
               <View style={styles.sectionHeaderContent}>
                 <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
                   <Ionicons name="bookmark" size={20} color={colors.primary} />
@@ -364,13 +373,16 @@ export default function ProfileScreen() {
                   Want to Read
                 </ThemedText>
               </View>
-              <ThemedText
-                style={[styles.resultCount, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                {wantToReadBooks.length} books
-              </ThemedText>
-            </View>
+              <View style={styles.sectionHeaderRight}>
+                <ThemedText
+                  style={[styles.resultCount, { color: colors.secondaryText }]}
+                  type="caption"
+                >
+                  {wantToReadBooks.length} books
+                </ThemedText>
+                <Ionicons name="chevron-forward" size={16} color={colors.secondaryText} />
+              </View>
+            </Pressable>
             <FlatList
               data={wantToReadBooks}
               keyExtractor={(item) => item.hiveId}
@@ -385,7 +397,10 @@ export default function ProfileScreen() {
         {/* Read Books Section */}
         {readBooks.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Pressable
+              onPress={() => router.push(`/books/finished?did=${did}` as any)}
+              style={styles.sectionHeader}
+            >
               <View style={styles.sectionHeaderContent}>
                 <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
                   <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
@@ -397,13 +412,16 @@ export default function ProfileScreen() {
                   Read Books
                 </ThemedText>
               </View>
-              <ThemedText
-                style={[styles.resultCount, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                {readBooks.length} books
-              </ThemedText>
-            </View>
+              <View style={styles.sectionHeaderRight}>
+                <ThemedText
+                  style={[styles.resultCount, { color: colors.secondaryText }]}
+                  type="caption"
+                >
+                  {readBooks.length} books
+                </ThemedText>
+                <Ionicons name="chevron-forward" size={16} color={colors.secondaryText} />
+              </View>
+            </Pressable>
             <FlatList
               data={readBooks}
               keyExtractor={(item) => item.hiveId}
@@ -562,6 +580,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
+  },
+  sectionHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   resultCount: {
     textAlign: "right",

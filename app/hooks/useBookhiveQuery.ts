@@ -37,8 +37,6 @@ const enhancedAuthFetch = async <T>(url: string, options?: any): Promise<T> => {
   }
 };
 
-type SearchBooksResponse = { books: HiveBook[]; offset?: number };
-
 export const useLanguages = () => {
   return useQuery({
     queryKey: ["languages"] as const,
@@ -115,8 +113,7 @@ export const useProfile = (did?: string) => {
       const data = await enhancedAuthFetch<GetProfile.$output>(
         `/xrpc/buzz.bookhive.getProfile?did=${id || ""}`,
       );
-      // Invalidate all getBook queries when profile is fetched
-      client.invalidateQueries({ queryKey: ["getBook"] });
+      void client.invalidateQueries({ queryKey: ["getBook"] });
       return data;
     },
     retry: (failureCount, error: any) => {
@@ -143,8 +140,22 @@ export const useFollow = () => {
         body: { did },
       });
     },
-    onSuccess: (_, { did }) => {
-      queryClient.invalidateQueries({ queryKey: ["profile", did] });
+    onMutate: async ({ did }) => {
+      await queryClient.cancelQueries({ queryKey: ["profile", did] });
+      const previousProfile = queryClient.getQueryData(["profile", did]);
+      queryClient.setQueryData(["profile", did], (old: any) => {
+        if (!old) return old;
+        return { ...old, profile: { ...old.profile, isFollowing: true } };
+      });
+      return { previousProfile };
+    },
+    onError: (_err, { did }, context) => {
+      if (context?.previousProfile) {
+        queryClient.setQueryData(["profile", did], context.previousProfile);
+      }
+    },
+    onSettled: (_data, _error, { did }) => {
+      void queryClient.invalidateQueries({ queryKey: ["profile", did] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
@@ -161,16 +172,11 @@ export const useFollow = () => {
  */
 export const useUpdateBook = () => {
   const queryClient = useQueryClient();
+  type UpdateInput = {
+    hiveId: HiveId;
+  } & Omit<Partial<UserBook>, "hiveId" | "uri" | "cid" | "userDid" | "indexedAt" | "createdAt">;
   return useMutation({
-    mutationFn: async ({
-      hiveId,
-      ...rest
-    }: {
-      hiveId: HiveId;
-    } & Omit<
-      Partial<UserBook>,
-      "hiveId" | "uri" | "cid" | "userDid" | "indexedAt" | "createdAt"
-    >) => {
+    mutationFn: async ({ hiveId, ...rest }: UpdateInput) => {
       return await enhancedAuthFetch<{ success: boolean; message: string }>(`/api/update-book`, {
         method: "POST",
         body: {
@@ -179,23 +185,38 @@ export const useUpdateBook = () => {
         },
       });
     },
-    onSuccess: (_, { hiveId }) => {
-      // Invalidate the book query to refetch latest data
-      queryClient.invalidateQueries({
-        queryKey: ["getBook", hiveId],
+    onMutate: async ({ hiveId, ...updates }: UpdateInput) => {
+      await queryClient.cancelQueries({ queryKey: ["getBook", hiveId] });
+      const previousBook = queryClient.getQueryData(["getBook", hiveId]);
+      queryClient.setQueryData(["getBook", hiveId], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          ...("status" in updates && { status: updates.status }),
+          ...("owned" in updates && { owned: updates.owned ? true : undefined }),
+          ...("stars" in updates && { stars: updates.stars }),
+          ...("review" in updates && { review: updates.review }),
+          ...("bookProgress" in updates && { bookProgress: updates.bookProgress }),
+          ...("startedAt" in updates && { startedAt: updates.startedAt }),
+          ...("finishedAt" in updates && { finishedAt: updates.finishedAt }),
+        };
       });
-      queryClient.refetchQueries({
-        queryKey: ["profile"],
-      });
-      queryClient.refetchQueries({
-        queryKey: ["getBook", hiveId],
-      });
+      return { previousBook };
+    },
+    onError: (_err, { hiveId }, context) => {
+      if (context?.previousBook) {
+        queryClient.setQueryData(["getBook", hiveId], context.previousBook);
+      }
+    },
+    onSettled: (_data, _error, { hiveId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
         return false;
       }
-      return failureCount < 2; // Fewer retries for mutations
+      return failureCount < 2;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
@@ -229,11 +250,10 @@ export const useUpdateComment = () => {
       });
     },
     onSuccess: (_, { hiveId }) => {
-      // Invalidate the book query to refetch latest data
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["getBook", hiveId],
       });
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["profile"],
       });
     },
@@ -259,10 +279,32 @@ export const useDeleteBook = () => {
         headers: { Accept: "application/json" },
       });
     },
-    onSuccess: (_, { hiveId }) => {
-      // Invalidate and refetch book and profile data
-      queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    onMutate: async ({ hiveId }) => {
+      await queryClient.cancelQueries({ queryKey: ["getBook", hiveId] });
+      const previousBook = queryClient.getQueryData(["getBook", hiveId]);
+      queryClient.setQueryData(["getBook", hiveId], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          status: undefined,
+          stars: undefined,
+          review: undefined,
+          owned: undefined,
+          bookProgress: undefined,
+          startedAt: undefined,
+          finishedAt: undefined,
+        };
+      });
+      return { previousBook };
+    },
+    onError: (_err, { hiveId }, context) => {
+      if (context?.previousBook) {
+        queryClient.setQueryData(["getBook", hiveId], context.previousBook);
+      }
+    },
+    onSettled: (_data, _error, { hiveId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["getBook", hiveId] });
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) {
@@ -424,7 +466,7 @@ export const useCreateList = () => {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      void queryClient.invalidateQueries({ queryKey: ["userLists"] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) return false;
@@ -448,9 +490,52 @@ export const useUpdateList = () => {
         { method: "POST", body: input },
       );
     },
-    onSuccess: (_, { uri }) => {
-      queryClient.invalidateQueries({ queryKey: ["userLists"] });
-      queryClient.invalidateQueries({ queryKey: ["listDetails", uri] });
+    onMutate: async ({ uri, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["listDetails", uri] });
+      await queryClient.cancelQueries({ queryKey: ["userLists"] });
+      const previousDetails = queryClient.getQueryData(["listDetails", uri]);
+      const previousLists = queryClient.getQueryData(["userLists"]);
+      queryClient.setQueryData(["listDetails", uri], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          list: {
+            ...old.list,
+            ...("name" in updates && { name: updates.name }),
+            ...("description" in updates && { description: updates.description }),
+            ...("ordered" in updates && { ordered: updates.ordered }),
+          },
+        };
+      });
+      queryClient.setQueriesData({ queryKey: ["userLists"] }, (old: any) => {
+        if (!old?.lists) return old;
+        return {
+          ...old,
+          lists: old.lists.map((l: any) =>
+            l.uri === uri
+              ? {
+                  ...l,
+                  ...("name" in updates && { name: updates.name }),
+                  ...("description" in updates && { description: updates.description }),
+                  ...("ordered" in updates && { ordered: updates.ordered }),
+                }
+              : l,
+          ),
+        };
+      });
+      return { previousDetails, previousLists };
+    },
+    onError: (_err, { uri }, context) => {
+      if (context?.previousDetails) {
+        queryClient.setQueryData(["listDetails", uri], context.previousDetails);
+      }
+      if (context?.previousLists) {
+        queryClient.setQueriesData({ queryKey: ["userLists"] }, context.previousLists);
+      }
+    },
+    onSettled: (_data, _error, { uri }) => {
+      void queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      void queryClient.invalidateQueries({ queryKey: ["listDetails", uri] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) return false;
@@ -469,8 +554,23 @@ export const useDeleteList = () => {
         body: { uri },
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userLists"] });
+    onMutate: async ({ uri }) => {
+      await queryClient.cancelQueries({ queryKey: ["userLists"] });
+      const previousLists = queryClient.getQueryData(["userLists"]);
+      queryClient.setQueriesData({ queryKey: ["userLists"] }, (old: any) => {
+        if (!old?.lists) return old;
+        return { ...old, lists: old.lists.filter((l: any) => l.uri !== uri) };
+      });
+      return { previousLists };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousLists) {
+        queryClient.setQueriesData({ queryKey: ["userLists"] }, context.previousLists);
+      }
+    },
+    onSettled: (_data, _error, { uri }) => {
+      void queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      void queryClient.invalidateQueries({ queryKey: ["listDetails", uri] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) return false;
@@ -490,8 +590,8 @@ export const useAddToList = () => {
       });
     },
     onSuccess: (_, { listUri }) => {
-      queryClient.invalidateQueries({ queryKey: ["userLists"] });
-      queryClient.invalidateQueries({ queryKey: ["listDetails", listUri] });
+      void queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      void queryClient.invalidateQueries({ queryKey: ["listDetails", listUri] });
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) return false;
@@ -504,15 +604,38 @@ export const useAddToList = () => {
 export const useRemoveFromList = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ itemUri }: { itemUri: string }) => {
+    mutationFn: async ({ itemUri, listUri: _listUri }: { itemUri: string; listUri?: string }) => {
       return await enhancedAuthFetch<{ success: boolean }>(`/xrpc/buzz.bookhive.removeFromList`, {
         method: "POST",
         body: { itemUri },
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userLists"] });
-      queryClient.invalidateQueries({ queryKey: ["listDetails"] });
+    onMutate: async ({ itemUri, listUri }) => {
+      if (!listUri) return {};
+      await queryClient.cancelQueries({ queryKey: ["listDetails", listUri] });
+      const previousDetails = queryClient.getQueryData(["listDetails", listUri]);
+      queryClient.setQueryData(["listDetails", listUri], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.filter((i: any) => i.uri !== itemUri),
+          list: { ...old.list, itemCount: Math.max(0, (old.list.itemCount ?? 0) - 1) },
+        };
+      });
+      return { previousDetails, listUri };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousDetails && context?.listUri) {
+        queryClient.setQueryData(["listDetails", context.listUri], context.previousDetails);
+      }
+    },
+    onSettled: (_data, _error, { listUri }) => {
+      void queryClient.invalidateQueries({ queryKey: ["userLists"] });
+      if (listUri) {
+        void queryClient.invalidateQueries({ queryKey: ["listDetails", listUri] });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: ["listDetails"] });
+      }
     },
     retry: (failureCount, error: any) => {
       if (error.networkError && !error.networkError.retryable) return false;

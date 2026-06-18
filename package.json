@@ -8,8 +8,8 @@
   "module": "src/index.ts",
   "scripts": {
     "seed:db": "bun run src/initialize.ts",
-    "dev": "vp dev",
-    "build": "bun --bun run lexgen && vp build",
+    "dev": "bunx --bun vp dev",
+    "build": "bun --bun run lexgen && bunx --bun vp build",
     "preview": "bun run .output/server/index.mjs",
     "test": "bun test src",
     "test:run": "bun test src --no-watch",

@@ -1,9 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider as NavigationThemeProvider,
-} from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from "expo-router";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
@@ -52,12 +48,12 @@ function useOTAUpdates() {
     }
 
     // Check on initial mount
-    checkAndApplyUpdate();
+    void checkAndApplyUpdate();
 
     // Also check when app returns from background
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
-        checkAndApplyUpdate();
+        void checkAndApplyUpdate();
       }
     });
 
@@ -170,7 +166,7 @@ export default function RootLayout() {
                       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                     </Stack>
                   </View>
-                  <StatusBar style="light" backgroundColor="#000000" translucent={false} />
+                  <StatusBar style="light" />
                 </NavigationThemeProvider>
               </ThemeProvider>
             </LanguageProvider>

@@ -51,6 +51,5 @@ const styles = StyleSheet.create({
   },
   bookCard: {
     paddingBottom: 8,
-    alignItems: "center",
   },
 });

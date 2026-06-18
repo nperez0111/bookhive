@@ -9,7 +9,7 @@ function bunRuntimeExternal(): Plugin {
   return {
     name: "bun-runtime-external",
     resolveId(source) {
-      if (source === "bun") return { id: "bun", external: true };
+      if (source === "bun" || source.startsWith("bun:")) return { id: source, external: true };
     },
   };
 }
@@ -146,6 +146,7 @@ export default defineConfig({
   ],
   server: {
     host: "127.0.0.1",
+    port: 8080,
   },
   root: ".",
   publicDir: "public",
