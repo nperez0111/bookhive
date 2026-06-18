@@ -1,3 +1,5 @@
+import { getWafToken, invalidateWafToken, WAF_USER_AGENT } from "./waf/solver";
+
 // TypeScript interfaces for Goodreads data structure
 interface ParsedGoodreadsData {
   book: {
@@ -131,39 +133,85 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
   }
 }
 
+function extractNextData(html: string): ParsedGoodreadsData | null {
+  const startIdx = html.indexOf(startString);
+  if (startIdx === -1) return null;
+  const nextData = html.slice(startIdx + startString.length);
+  const endIdx = nextData.indexOf("</script>");
+  if (endIdx === -1) return null;
+  const json = JSON.parse(nextData.slice(0, endIdx));
+  return parseGoodreadsData(json);
+}
+
+async function fetchGoodreadsPage(
+  sourceUrl: string,
+  addCtx: (context: Record<string, unknown>) => void,
+): Promise<string | null> {
+  const doFetch = async (cookie?: string) => {
+    const headers: Record<string, string> = {
+      "User-Agent": WAF_USER_AGENT,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    };
+    if (cookie) headers["Cookie"] = `aws-waf-token=${cookie}`;
+    return fetch(sourceUrl, { signal: AbortSignal.timeout(15_000), headers });
+  };
+
+  // Fast path: try without token (WAF may not be active)
+  const firstResp = await doFetch();
+  addCtx({ scrape_status: firstResp.status, scrape_url: sourceUrl });
+
+  if (firstResp.ok || firstResp.status !== 202) {
+    const html = await firstResp.text();
+    if (html.includes(startString)) {
+      addCtx({ scrape_method: "plain_http" });
+      return html;
+    }
+  }
+
+  // WAF is active — get a token
+  addCtx({ scrape_method: "waf_solver" });
+  const token = await getWafToken(sourceUrl);
+  if (!token) {
+    addCtx({ scrape_failure: "waf_solve_failed" });
+    return null;
+  }
+
+  const tokenResp = await doFetch(token);
+  addCtx({ scrape_status_with_token: tokenResp.status });
+
+  const html = await tokenResp.text();
+  if (html.includes(startString)) return html;
+
+  // Token didn't work — invalidate and try solving fresh
+  invalidateWafToken();
+  addCtx({ scrape_failure: "token_rejected_retrying" });
+
+  const freshToken = await getWafToken(sourceUrl);
+  if (!freshToken) {
+    addCtx({ scrape_failure: "waf_solve_retry_failed" });
+    return null;
+  }
+
+  const retryResp = await doFetch(freshToken);
+  const retryHtml = await retryResp.text();
+  if (retryHtml.includes(startString)) return retryHtml;
+
+  addCtx({ scrape_failure: "waf_token_ineffective" });
+  return null;
+}
+
 async function getBookDetailedInfo(
   sourceUrl: string,
   addWideEventContext?: (context: Record<string, unknown>) => void,
 ): Promise<ParsedGoodreadsData | null> {
   const addCtx = addWideEventContext ?? (() => {});
   try {
-    const response = await fetch(sourceUrl, {
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        "User-Agent": "BookHive/1.0 (+https://bookhive.buzz)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-    addCtx({ scrape_status: response.status, scrape_url: sourceUrl });
-    if (!response.ok) {
-      addCtx({ scrape_failure: "non_ok_status" });
-      return null;
-    }
-    const data = await response.text();
-    const startIdx = data.indexOf(startString);
-    if (startIdx === -1) {
-      addCtx({ scrape_failure: "next_data_not_found" });
-      return null;
-    }
-    const nextData = data.slice(startIdx + startString.length);
-    const endIdx = nextData.indexOf("</script>");
-    if (endIdx === -1) {
-      addCtx({ scrape_failure: "next_data_end_not_found" });
-      return null;
-    }
-    const json = JSON.parse(nextData.slice(0, endIdx));
-    return parseGoodreadsData(json);
+    const html = await fetchGoodreadsPage(sourceUrl, addCtx);
+    if (!html) return null;
+    const result = extractNextData(html);
+    if (!result) addCtx({ scrape_failure: "next_data_parse_failed" });
+    return result;
   } catch (error) {
     addCtx({
       scrape_failure: "exception",
@@ -174,4 +222,4 @@ async function getBookDetailedInfo(
   }
 }
 
-export { getBookDetailedInfo, type ParsedGoodreadsData };
+export { getBookDetailedInfo, extractNextData, parseGoodreadsData, type ParsedGoodreadsData };
