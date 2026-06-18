@@ -1,6 +1,17 @@
-/// WAF config extraction — runs as a Bun Worker (postMessage) or CLI entry point (argv).
+/// WAF challenge.js deobfuscation.
+///
+/// Pure function — no worker/network. It evaluates the obfuscated string-array
+/// + decoder functions out of `challenge.js` via `new Function()` and brute-
+/// forces the decoded string table to recover the AES key, signal identifier,
+/// and signal version. Imported by `solver-worker.ts`; can also be run directly
+/// as a CLI for offline testing (see README).
 
-declare var self: Worker;
+export interface ExtractedConfig {
+  key: string | null;
+  identifier: string | null;
+  signalVersion: string | null;
+  decodedCount: number;
+}
 
 function extractFunctionAt(s: string, startPos: number): string | null {
   const braceStart = s.indexOf("{", startPos);
@@ -63,7 +74,7 @@ function findRotationIIFE(script: string, arrayFuncName: string): string[] | nul
   return null;
 }
 
-function doExtract(script: string) {
+export function doExtract(script: string): ExtractedConfig {
   const arrayNameMatch = script.match(
     /function\s+(a0_0x[0-9a-f]+)\s*\(\)\s*\{(?:var|let|const)\s+_0x[0-9a-f]+=\[/,
   );
@@ -132,19 +143,9 @@ function doExtract(script: string) {
   return { key, identifier, signalVersion, decodedCount: decoded.size };
 }
 
-// Worker mode: receive challenge script via postMessage
-if (typeof self !== "undefined" && typeof self.onmessage !== "undefined") {
-  self.onmessage = (event: MessageEvent<string>) => {
-    try {
-      self.postMessage(doExtract(event.data));
-    } catch (error) {
-      self.postMessage({ error: error instanceof Error ? error.message : String(error) });
-    }
-  };
-}
-
-// CLI mode: read challenge script from file path in argv
-if (process.argv[2]) {
+// CLI mode (offline testing): `bun run deobfuscate.ts <challenge.js path>`.
+// `import.meta.main` is false when this module is imported (e.g. by the worker).
+if (import.meta.main && process.argv[2]) {
   try {
     const script = await Bun.file(process.argv[2]).text();
     process.stdout.write(JSON.stringify(doExtract(script)));

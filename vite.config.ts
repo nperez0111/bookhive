@@ -33,6 +33,12 @@ function standaloneBundles(): Plugin {
       name: "import-worker.js",
       label: "Import worker",
     },
+    {
+      entrypoint: "./src/scrapers/waf/solver-worker.ts",
+      outdir: "./.output/server/workers",
+      name: "waf-solver-worker.js",
+      label: "WAF solver worker",
+    },
   ];
 
   return {
