@@ -2,7 +2,7 @@
   "expo": {
     "name": "bookhive",
     "slug": "bookhive",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bookhive",
@@ -16,7 +16,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiresFullScreen": true
       },
-      "buildNumber": "10200"
+      "buildNumber": "10201"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "buzz.bookhive.app",
-      "versionCode": 10200
+      "versionCode": 10201
     },
     "web": {
       "bundler": "metro",
