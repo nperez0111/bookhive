@@ -46,38 +46,32 @@ Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/i
 To install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
-Copy `.env.example` to `.env` and fill in the values.
+Copy `.env.template` to `.env` and fill in the values.
 
 To run:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Running Tests
 
 ```bash
 # Run all tests
-pnpm test
+bun run test
 
-# Run tests in watch mode
-pnpm test
-
-# Run tests once
-pnpm test:run
-
-# Run tests with UI
-pnpm test:ui
+# Run tests
+bun run test:run
 ```
 
 ## 🏗️ Architecture
 
 - **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
 - **Frontend**: Mostly static HTML, with some Hono JSX for dynamic content (Fast as possible)
-- **Database**: SQLite, with Kyesly as the ORM
+- **Database**: SQLite, with Kysely as the ORM
 
 ## 🗄️ Weekly database export (GitHub Actions artifact)
 
