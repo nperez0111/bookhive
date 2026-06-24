@@ -372,7 +372,7 @@ export function createContextMiddleware(deps: AppDeps) {
         deps.kv,
         "profile:" + did,
         async () => {
-          // Cache miss — need a full session to call the Bluesky API.
+          // Cache miss — need a full session to call the Bluesky AppView via PDS proxy.
           startTime(c, "get_profile_session");
           const client = await sessionLazy.value;
           endTime(c, "get_profile_session");
@@ -381,6 +381,7 @@ export function createContextMiddleware(deps: AppDeps) {
           try {
             const res = await client.get("app.bsky.actor.getProfile", {
               params: { actor: client.did as ActorIdentifier },
+              headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
             });
             if (!res.ok) return null;
             return res.data as ProfileViewDetailed | null;

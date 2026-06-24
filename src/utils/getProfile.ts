@@ -29,6 +29,7 @@ export async function getProfile({
         const res = sessionClient
           ? await sessionClient.get("app.bsky.actor.getProfile", {
               params: { actor: actorParam },
+              headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
             })
           : await client.get("app.bsky.actor.getProfile", {
               params: { actor: actorParam },
@@ -71,6 +72,7 @@ export async function getProfiles({
     const res = sessionClient
       ? await sessionClient.get("app.bsky.actor.getProfiles", {
           params: { actors: actorsParam },
+          headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
         })
       : await client.get("app.bsky.actor.getProfiles", {
           params: { actors: actorsParam },

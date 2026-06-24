@@ -111,6 +111,7 @@ async function fullFollowsSync(
           limit: 100,
           cursor,
         },
+        headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
       });
     } catch (error) {
       ctx.addWideEventContext({
@@ -196,6 +197,7 @@ async function incrementalFollowsSync(
         limit: 100,
         cursor,
       },
+      headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
     });
     if (!response.ok) break;
     type GetFollowsOut = {
