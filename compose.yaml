@@ -78,8 +78,9 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: "production"
-      # Worker processes sharing port 8080 via SO_REUSEPORT (server/cluster.ts)
-      WEB_CONCURRENCY: "4"
+      # Worker processes sharing port 8080 via SO_REUSEPORT (server/cluster.ts).
+      # One fewer than cpus so worker-0's migration/ingester startup has headroom.
+      WEB_CONCURRENCY: "3"
       COOKIE_SECRET: "secret_password_do_not_use_this_please"
       DB_PATH: "/data/db.sqlite"
       KV_DB_PATH: "/data/kv.sqlite"

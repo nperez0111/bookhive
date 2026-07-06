@@ -58,14 +58,18 @@ function hasSessionCookie(cookieHeader: string | undefined): boolean {
   return SESSION_COOKIE_RE.test(cookieHeader ?? "");
 }
 
-function serveCached(page: CachedPage): Response {
-  const body = Bun.gunzipSync(Buffer.from(page.bodyGzipB64, "base64"));
-  const headers: Record<string, string> = {
-    "content-type": page.contentType,
-    "x-page-cache": "hit",
-  };
-  if (page.cacheControl) headers["cache-control"] = page.cacheControl;
-  return new Response(body, { status: 200, headers });
+function serveCached(page: CachedPage): Response | null {
+  try {
+    const body = Bun.gunzipSync(Buffer.from(page.bodyGzipB64, "base64"));
+    const headers: Record<string, string> = {
+      "content-type": page.contentType,
+      "x-page-cache": "hit",
+    };
+    if (page.cacheControl) headers["cache-control"] = page.cacheControl;
+    return new Response(body, { status: 200, headers });
+  } catch {
+    return null;
+  }
 }
 
 /** Extract a storable page from the live response, or null if uncacheable. */
@@ -74,7 +78,7 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) return null;
   const body = await res.clone().text();
-  if (body.length > MAX_BODY_BYTES) return null;
+  if (Buffer.byteLength(body) > MAX_BODY_BYTES) return null;
   return {
     bodyGzipB64: Buffer.from(Bun.gzipSync(body)).toString("base64"),
     contentType,
@@ -113,20 +117,29 @@ export function anonPageCache(kv: Storage) {
     if (meta?.mtime && Date.now() - new Date(meta.mtime).getTime() < PAGE_CACHE_TTL_MS) {
       const page = await kv.getItem<CachedPage>(key);
       if (page?.bodyGzipB64) {
-        c.res = serveCached(page);
-        return;
+        const cached = serveCached(page);
+        if (cached) {
+          c.res = cached;
+          return;
+        }
       }
     }
 
     // Someone in this process is already rendering this URL — wait for them.
     const pending = inflight.get(key);
     if (pending) {
-      const page = await pending.catch(() => null);
-      if (page) {
-        c.res = serveCached(page);
-        return;
+      const result = await pending.catch(() => "error" as const);
+      if (result === "error") {
+        return c.text("Service temporarily unavailable", 503);
       }
-      return next(); // their response was uncacheable; render our own
+      if (result) {
+        const cached = serveCached(result);
+        if (cached) {
+          c.res = cached;
+          return;
+        }
+      }
+      return next();
     }
 
     const render = (async () => {

@@ -9,7 +9,7 @@ import { IconSymbol, IconSymbolName } from "./ui/IconSymbol";
 
 type AnimatedTabIconProps = {
   name: IconSymbolName;
-  color: string | import("react-native").ColorValue;
+  color: import("react-native").ColorValue;
   size?: number;
   focused: boolean;
 };

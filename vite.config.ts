@@ -92,6 +92,7 @@ function devImageProxyPassthrough(): Plugin {
   };
 }
 
+// eslint-disable-next-line -- vite-plus extends the config type beyond what defineConfig accepts
 export default defineConfig(({ command }): any => ({
   staged: {
     "*": "vp check --fix",

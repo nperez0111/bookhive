@@ -8,7 +8,8 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 
 export function useThemeColor(
   props: { light?: string; dark?: string },
-  colorName: keyof typeof Colors.light,
+  // eslint-disable-next-line no-duplicate-type-constituents -- intentional: ensures key exists in both themes
+  colorName: keyof typeof Colors.light & keyof typeof Colors.dark,
 ) {
   const theme = useColorScheme() ?? "light";
   const colorFromProps = props[theme];

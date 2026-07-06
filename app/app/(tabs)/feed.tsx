@@ -101,7 +101,7 @@ export default function FeedScreen() {
   }, [feed.data?.hasMore, feed.isFetching, activities]);
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedActivity; index: number }) => {
+    ({ item }: { item: FeedActivity }) => {
       const timeAgo = (() => {
         try {
           return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });

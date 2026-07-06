@@ -134,14 +134,11 @@ export async function createAppDeps(): Promise<AppDeps> {
     if (migrationResults.length > 0) {
       logger.info(
         { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
-        "migrations applied, deferring VACUUM to background",
+        "migrations applied, running VACUUM before siblings start",
       );
-      // Run VACUUM in the background — it reclaims space but shouldn't block server startup.
-      setTimeout(() => {
-        const vacuumStart = Date.now();
-        sqlite.exec("VACUUM");
-        logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
-      }, 5_000);
+      const vacuumStart = Date.now();
+      sqlite.exec("VACUUM");
+      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
     }
   }
 
@@ -174,7 +171,13 @@ export async function createAppDeps(): Promise<AppDeps> {
     setInterval(
       () => {
         const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
-        void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`.execute(kvDb).catch(() => {}); // table may not exist yet on a fresh KV file
+        void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
+          .execute(kvDb)
+          .catch((e: any) => {
+            // "no such table" is expected on a fresh KV file before the first cache write
+            if (String(e?.message).includes("no such table")) return;
+            logger.error({ err: e }, "page_cache cleanup failed");
+          });
       },
       15 * 60 * 1000,
     );

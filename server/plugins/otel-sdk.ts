@@ -32,7 +32,7 @@ export default definePlugin((nitroApp) => {
     sdk.start();
   }
 
-  nitroApp.hooks.hook("close", () => {
-    void sdk.shutdown();
+  nitroApp.hooks.hook("close", async () => {
+    await sdk.shutdown();
   });
 });
