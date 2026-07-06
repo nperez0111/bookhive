@@ -25,9 +25,9 @@ export default definePlugin((nitroApp) => {
   const spans = new WeakMap<object, { span: Span; start: number }>();
 
   nitroApp.hooks.hook("request", (event) => {
-    // Nitro's HTTPEvent types are incomplete; the underlying Fetch Request is
-    // available at runtime but not exposed in the type declarations.
-    const req = (event as unknown as { request: Request }).request;
+    // Nitro's HTTPEvent types are incomplete; h3 v2 exposes the Fetch Request
+    // as `req` at runtime but the type declarations omit it.
+    const req = (event as unknown as { req: Request }).req;
     const url = new URL(req.url);
 
     if (shouldSkip(url.pathname)) return;
