@@ -168,19 +168,19 @@ export async function createAppDeps(): Promise<AppDeps> {
     // Expire old cached pages so a bot sweep of the long tail can't grow the
     // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
     // overwrite instead of insert.
-    setInterval(
+    const pageCacheTimer = setInterval(
       () => {
         const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
         void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
           .execute(kvDb)
           .catch((e: any) => {
-            // "no such table" is expected on a fresh KV file before the first cache write
             if (String(e?.message).includes("no such table")) return;
             logger.error({ err: e }, "page_cache cleanup failed");
           });
       },
       15 * 60 * 1000,
     );
+    pageCacheTimer.unref();
   }
 
   const oauthClient = await createOAuthClient(kv);

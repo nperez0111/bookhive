@@ -48,11 +48,11 @@ export function GradientView({
 
   return (
     <LinearGradient
-      colors={getGradientColors() as any}
+      colors={getGradientColors() as unknown as readonly [string, string, ...string[]]}
       start={start}
       end={end}
       style={[styles.container, StyleSheet.flatten([{ borderRadius: 24 }, style])]}
-      {...(restProps as any)}
+      {...restProps}
     >
       {children}
     </LinearGradient>
