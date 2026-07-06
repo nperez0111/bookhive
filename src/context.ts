@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { endTime, startTime, type TimingVariables } from "hono/timing";
 import { getIronSession } from "iron-session";
+import { sql } from "kysely";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
@@ -29,6 +30,7 @@ import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
+import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
 import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
@@ -114,22 +116,30 @@ export async function createAppDeps(): Promise<AppDeps> {
     },
   });
 
+  // WORKER_INDEX is set by server/cluster.ts when running multiple processes.
+  // Absent (dev, tests, bare `bun run .output/server/index.mjs`) => primary, for
+  // back-compat. Only the primary runs migrations/VACUUM and the Jetstream
+  // ingester; the supervisor starts the primary alone and waits for its
+  // healthcheck before spawning siblings, so migrations are done before any
+  // non-primary worker opens the DB.
+  const isPrimaryWorker = !env.WORKER_INDEX || env.WORKER_INDEX === "0";
+  logger.info({ workerIndex: env.WORKER_INDEX || "solo" }, "worker starting");
+
   const { db, sqlite } = createDb(env.DB_PATH);
-  logger.info("starting DB migrations");
-  const migrationStart = Date.now();
-  const migrationResults = await migrateToLatest(db, sqlite);
-  logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
-  if (migrationResults.length > 0) {
-    logger.info(
-      { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
-      "migrations applied, deferring VACUUM to background",
-    );
-    // Run VACUUM in the background — it reclaims space but shouldn't block server startup.
-    setTimeout(() => {
+  if (isPrimaryWorker) {
+    logger.info("starting DB migrations");
+    const migrationStart = Date.now();
+    const migrationResults = await migrateToLatest(db, sqlite);
+    logger.info({ durationMs: Date.now() - migrationStart }, "db migrations completed");
+    if (migrationResults.length > 0) {
+      logger.info(
+        { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
+        "migrations applied, running VACUUM before siblings start",
+      );
       const vacuumStart = Date.now();
       sqlite.exec("VACUUM");
       logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
-    }, 5_000);
+    }
   }
 
   // Single shared connection for all KV tables on KV_DB_PATH.
@@ -149,7 +159,29 @@ export async function createAppDeps(): Promise<AppDeps> {
   const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
   kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
   kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
-  kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
+  // Shared (not in-memory) so the main process and the ingester/import
+  // workers see the same per-DID book locks.
+  kv.mount("book_lock:", sqliteKv({ table: "book_lock", db: kvDb }));
+  // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
+  kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
+  if (isPrimaryWorker) {
+    // Expire old cached pages so a bot sweep of the long tail can't grow the
+    // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
+    // overwrite instead of insert.
+    setInterval(
+      () => {
+        const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
+        void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
+          .execute(kvDb)
+          .catch((e: any) => {
+            // "no such table" is expected on a fresh KV file before the first cache write
+            if (String(e?.message).includes("no such table")) return;
+            logger.error({ err: e }, "page_cache cleanup failed");
+          });
+      },
+      15 * 60 * 1000,
+    );
+  }
 
   const oauthClient = await createOAuthClient(kv);
   const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
@@ -160,30 +192,40 @@ export async function createAppDeps(): Promise<AppDeps> {
       ? await createServiceAccountAgent(env.BOOKHIVE_SERVICE_HANDLE, env.BOOKHIVE_APP_PASSWORD)
       : null;
 
-  // When running the Nitro bundle (.output/server/index.mjs), load the pre-built worker.
-  // In dev, Bun runs the .ts source directly.
-  const isBundled = import.meta.url.includes(".output/");
-  const workerUrl = isBundled
-    ? new URL("./workers/ingester-worker.js", import.meta.url).href
-    : new URL("./workers/ingester-worker.ts", import.meta.url).href;
-  const ingesterWorker = new Worker(workerUrl);
-  ingesterWorker.onmessage = (event: MessageEvent) => {
-    if (event.data.type === "wideEvent") {
-      logger.info(event.data.payload);
-    } else if (event.data.type === "ready") {
-      logger.info("ingester worker ready");
-    }
-  };
-  ingesterWorker.onerror = (event) => {
-    logger.error({ error: event.message }, "ingester worker error");
-  };
-  const ingester: Ingester = {
-    start() {},
-    destroy() {
-      ingesterWorker.terminate();
-      return Promise.resolve();
-    },
-  };
+  // Only the primary worker runs the Jetstream ingester — N copies would mean
+  // N firehose subscriptions racing on the same DB rows and KV cursor.
+  let ingester: Ingester;
+  if (isPrimaryWorker) {
+    // When running the Nitro bundle (.output/server/index.mjs), load the pre-built worker.
+    // In dev, Bun runs the .ts source directly.
+    const isBundled = import.meta.url.includes(".output/");
+    const workerUrl = isBundled
+      ? new URL("./workers/ingester-worker.js", import.meta.url).href
+      : new URL("./workers/ingester-worker.ts", import.meta.url).href;
+    const ingesterWorker = new Worker(workerUrl);
+    ingesterWorker.onmessage = (event: MessageEvent) => {
+      if (event.data.type === "wideEvent") {
+        logger.info(event.data.payload);
+      } else if (event.data.type === "ready") {
+        logger.info("ingester worker ready");
+      }
+    };
+    ingesterWorker.onerror = (event) => {
+      logger.error({ error: event.message }, "ingester worker error");
+    };
+    ingester = {
+      start() {},
+      destroy() {
+        ingesterWorker.terminate();
+        return Promise.resolve();
+      },
+    };
+  } else {
+    ingester = {
+      start() {},
+      destroy: () => Promise.resolve(),
+    };
+  }
 
   return {
     db,

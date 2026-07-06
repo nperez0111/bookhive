@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { CreateListModal } from "@/components/CreateListModal";
@@ -38,7 +37,7 @@ export default function ListsScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    listsQuery.refetch().finally(() => setIsRefreshing(false));
+    void listsQuery.refetch().finally(() => setIsRefreshing(false));
   }, [listsQuery.refetch]);
 
   const handleDeleteList = useCallback(

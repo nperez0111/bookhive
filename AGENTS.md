@@ -52,7 +52,11 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 
 **Asset URLs**: In production, resolved from the Vite build manifest via `src/utils/manifest.ts` (`loadViteManifest`/`getAssetUrlsFromManifest`), exposed on the Hono context as `assetUrls`. The `/_bundle` HTML import route still exists for Bun dev.
 
-**Ingester runs as a worker thread**, not in-process. `createAppDeps` spawns `new Worker(ingester-worker)`; `ingester.destroy()` terminates it. Worker posts `wideEvent` messages back to the pino logger.
+**Ingester runs as a worker thread**, not in-process. `createAppDeps` spawns `new Worker(ingester-worker)`; `ingester.destroy()` terminates it. Worker posts `wideEvent` messages back to the pino logger. **Primary worker only** (see below).
+
+**Production is multi-process**: the Docker CMD is `server/cluster.ts`, a supervisor that spawns `WEB_CONCURRENCY` (default 4) copies of `.output/server/index.mjs`, all sharing port 8080 via SO_REUSEPORT (`reusePort: true` in the custom Nitro entry `server/entry.bun.mjs`). Worker 0 is the **primary** (`isPrimaryWorker` in `src/context.ts`, from `WORKER_INDEX`): only it runs DB migrations + VACUUM and the Jetstream ingester. The supervisor starts worker 0 alone, waits for `/healthcheck`, then spawns the rest — that ordering is the migration barrier. `WORKER_INDEX` unset (dev/tests/bare run) behaves as primary.
+
+**Anonymous page cache**: `src/middleware/anon-page-cache.ts` serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from the shared KV (`page:` mount, gzipped HTML, 1h TTL, query-param allowlist `page`/`sort`/`lang`/`review-id`; other params bypass). Prod-only. The primary worker sweeps expired `page_cache` rows every 15 min. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML on these routes (anon → `public, max-age=3600`; `sid` cookie → `private`) — it runs on the final response because Hono-set headers can be replaced by nitro's route-rule header middleware (the static-asset globs in `vite.config.ts` routeRules leak onto app routes).
 
 ## Entry Points
 
@@ -71,7 +75,8 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 pages, the image proxy, then mounts the feature route modules and the XRPC
 router. Middleware order in `createApp`: `timing` → `prettyJSON` (dev) →
 context → wide-event logging → error capture → asset URLs (Vite manifest) →
-`secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry.
+`secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → `etag` →
+anon page cache (prod, `/books/*`, `/explore*`, `/authors/*`).
 
 ### Mounted in `src/app.ts` (infra/admin, before `mainRouter`)
 
@@ -245,7 +250,7 @@ Client hooks/utils:
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–013) in one file. `createDb`
+SQLite via Kysely. Schema + all migrations (001–014) in one file. `createDb`
 sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.
@@ -377,7 +382,11 @@ Applied globally in `src/app.ts`: timing, context, wide-event logging, error cap
 
 Build pipeline: **Vite+ (vite-plus)** wrapping Vite 8 + Rolldown + Nitro
 (`nitro-nightly`, preset `bun`), Nitro server entry at `./server/server.ts` with
-otel/request-tracing plugins. Vite plugins: `bunRuntimeExternal()`,
+otel/request-tracing plugins. Production builds swap the preset's runtime entry
+for `./server/entry.bun.mjs` (adds `reusePort: true`; build-only via the
+function-form `defineConfig` — dev keeps the nitro-dev entry). The Docker CMD
+is `bun run cluster.ts` (copied from `server/cluster.ts`), not the raw
+`.output/server/index.mjs`. Vite plugins: `bunRuntimeExternal()`,
 `devImageProxyPassthrough()`, `tailwindcss()`, `standaloneBundles()`, `nitro()`.
 The client bundle entry is `src/client/index.tsx`; assets emitted to
 `assets/[name]-[hash]` with a build manifest (read via `src/utils/manifest.ts`).
@@ -400,16 +409,18 @@ Separate Expo/React Native workspace. Not relevant for web UI refactor.
 
 ## Workers, Logging & Observability
 
-| Path                                 | Purpose                                                                                   |
-| ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `src/workers/ingester-worker.ts`     | Wraps `src/bsky/ingester.ts`; runs Jetstream ingest off-thread                            |
-| `src/workers/og-render/`             | OG image render worker (React + `@takumi-rs/image-response`)                              |
-| `src/workers/open-observe-worker.ts` | pino transport → OpenObserve log shipping                                                 |
-| `src/workers/import/`                | CSV import processing worker (`index.ts`, `logic.ts`, tests)                              |
-| `src/logger/index.ts`                | pino logger (`getLogger`/`destroyLogger`); redacts cookies                                |
-| `src/metrics.ts`                     | prom-client metrics (image processing duration, active ops)                               |
-| `src/pds/client.ts`                  | Self-hosted PDS support                                                                   |
-| `./server/`                          | Nitro server entry + plugins (`otel-sdk.ts`, `request-tracing.ts`) — separate from `src/` |
+| Path                                 | Purpose                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `src/workers/ingester-worker.ts`     | Wraps `src/bsky/ingester.ts`; runs Jetstream ingest off-thread                                                     |
+| `src/workers/og-render/`             | OG image render worker (React + `@takumi-rs/image-response`)                                                       |
+| `src/workers/open-observe-worker.ts` | pino transport → OpenObserve log shipping                                                                          |
+| `src/workers/import/`                | CSV import processing worker (`index.ts`, `logic.ts`, tests)                                                       |
+| `src/logger/index.ts`                | pino logger (`getLogger`/`destroyLogger`); redacts cookies                                                         |
+| `src/metrics.ts`                     | prom-client metrics (image processing duration, active ops)                                                        |
+| `src/pds/client.ts`                  | Self-hosted PDS support                                                                                            |
+| `./server/`                          | Nitro server entry + plugins (`otel-sdk.ts`, `request-tracing.ts`, `html-cache-headers.ts`) — separate from `src/` |
+| `./server/entry.bun.mjs`             | Custom Nitro bun runtime entry (adds SO_REUSEPORT); prod builds only                                               |
+| `./server/cluster.ts`                | Multi-process supervisor (Docker CMD) — spawns `WEB_CONCURRENCY` workers                                           |
 
 Each worker is bundled standalone into `.output/server/workers/` (see Build &
 Dev). The ingester worker posts `wideEvent`/`ready` messages back to the main
@@ -426,10 +437,13 @@ DID), `getSessionAgent()` (OAuth `SessionClient`), `getProfile()`,
 Hono context vars (`c.get`): `ctx`, `assetUrls`, `requestId`, `wideEventBag`,
 `appLogger`, `requestError`.
 
-`createAppDeps()` builds the logger, DB (+migrate +background VACUUM), the shared
-KV (single SQLite connection, unstorage mounts: `search:`, `profile:`,
-`identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`),
-OAuth client, caching ID resolvers, and spawns the ingester worker. Sessions use
+`createAppDeps()` builds the logger, DB (+migrate +background VACUUM — primary
+worker only), the shared KV (single SQLite connection, unstorage mounts:
+`search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`,
+`auth_session:`, `auth_state:`, `book_lock:` (SQLite — shared across worker
+processes; readers treat rows >60s old as stale), `page:` (SQLite — anon page
+cache)), OAuth client, caching ID resolvers, and (primary only) spawns the
+ingester worker. Sessions use
 `iron-session` (180-day cookie) with an in-memory `SessionClient` cache and
 auto token refresh. `getProfile` is read-through cached (`profile:` + did, 24h
 revalidate / 30d TTL). `createContextMiddleware(deps)` wires per-request `ctx`

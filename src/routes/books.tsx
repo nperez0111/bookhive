@@ -256,16 +256,28 @@ const app = new Hono<AppEnv>()
           };
         }
 
-        const bookLock = await c.get("ctx").kv.get(bookLockKey);
-        if (bookLock) {
-          c.status(429);
-          return c.render(
-            <ErrorPage
-              message={`Book ${JSON.stringify(bookLock)} already being added`}
-              statusCode={429}
-            />,
-            { title: "Too Many Requests" },
-          );
+        // Check-then-set lock: the KV driver is SQLite-backed and shared
+        // across worker processes. Stale locks (>60s) from crashed requests
+        // are cleared before checking. The TOCTOU window is narrow and the
+        // worst case is a duplicate (idempotent) book update.
+        const bookLockMeta = await c.get("ctx").kv.getMeta(bookLockKey);
+        if (bookLockMeta?.mtime) {
+          const lockAge = Date.now() - new Date(bookLockMeta.mtime).getTime();
+          if (lockAge < 60_000) {
+            const existingLock = await c.get("ctx").kv.getItem(bookLockKey);
+            if (existingLock) {
+              c.status(429);
+              return c.render(
+                <ErrorPage
+                  message={`Book ${JSON.stringify(existingLock)} already being added`}
+                  statusCode={429}
+                />,
+                { title: "Too Many Requests" },
+              );
+            }
+          } else {
+            await c.get("ctx").kv.removeItem(bookLockKey);
+          }
         }
 
         try {

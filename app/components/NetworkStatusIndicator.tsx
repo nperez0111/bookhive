@@ -3,7 +3,6 @@ import { View, StyleSheet, Animated } from "react-native";
 import { ThemedText } from "./ThemedText";
 import { Ionicons } from "@expo/vector-icons";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useThemeColor } from "@/hooks/useThemeColor";
 import { useEffect, useRef } from "react";
 
 interface NetworkStatusIndicatorProps {
@@ -16,8 +15,6 @@ export const NetworkStatusIndicator: React.FC<NetworkStatusIndicatorProps> = ({
   position = "top",
 }) => {
   const { isConnected, isInternetReachable } = useNetworkStatus();
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
   const slideAnim = useRef(new Animated.Value(-50)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 

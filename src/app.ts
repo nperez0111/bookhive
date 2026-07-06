@@ -11,6 +11,7 @@ import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./util
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { registry, startRuntimeMetricsCollection } from "./metrics";
+import { anonPageCache } from "./middleware/anon-page-cache";
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
@@ -82,6 +83,9 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
       status: "ok",
       sha: process.env["BUILD_SHA"] ?? "dev",
       startedAt: serverStartTime,
+      // With SO_REUSEPORT, repeated curls land on different workers — handy
+      // for verifying all WEB_CONCURRENCY workers are serving.
+      workerIndex: env.WORKER_INDEX || "solo",
     }),
   );
 
@@ -105,6 +109,18 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
   // TODO enable etag for everything but import route
   app.use(etag());
+
+  // Serve anonymous traffic on bot-heavy public pages from the shared KV page
+  // cache (one render per URL per hour serves all workers). Prod-only so page
+  // edits show up immediately in dev and tests always exercise live renders.
+  if (env.isProd) {
+    const pageCache = anonPageCache(deps.kv);
+    // Note: in Hono, "/explore/*" also matches "/explore" itself.
+    app.use("/books/*", pageCache);
+    app.use("/explore/*", pageCache);
+    app.use("/authors/*", pageCache);
+  }
+
   app.route("/", mainRouter(deps));
 
   // Sitemap

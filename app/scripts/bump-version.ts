@@ -110,4 +110,4 @@ async function main() {
   console.log("  Done ✓\n");
 }
 
-main();
+void main();

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, ViewStyle, TextStyle } from "react-native";
+import { Pressable, ViewStyle, TextStyle } from "react-native";
 import { ThemedText } from "./ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";

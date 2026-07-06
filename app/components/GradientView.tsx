@@ -1,5 +1,5 @@
 import React from "react";
-import { View, ViewProps, StyleSheet } from "react-native";
+import { ViewProps, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -41,16 +41,18 @@ export function GradientView({
     }
   };
 
-  // Remove backgroundColor from otherProps to avoid conflicts
-  const { backgroundColor, ...restProps } = otherProps as any;
+  // Strip backgroundColor so it doesn't conflict with LinearGradient's colors prop
+  const { backgroundColor: _backgroundColor, ...restProps } = otherProps as ViewProps & {
+    backgroundColor?: string;
+  };
 
   return (
     <LinearGradient
-      colors={getGradientColors()}
+      colors={getGradientColors() as any}
       start={start}
       end={end}
       style={[styles.container, StyleSheet.flatten([{ borderRadius: 24 }, style])]}
-      {...restProps}
+      {...(restProps as any)}
     >
       {children}
     </LinearGradient>

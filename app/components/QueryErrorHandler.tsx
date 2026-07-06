@@ -14,7 +14,6 @@ interface QueryErrorHandlerProps {
   onGoBack?: () => void;
   showRetryButton?: boolean;
   showGoBackButton?: boolean;
-  fallbackMessage?: string;
 }
 
 export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
@@ -23,7 +22,6 @@ export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
   onGoBack,
   showRetryButton = true,
   showGoBackButton = true,
-  fallbackMessage,
 }) => {
   const { isConnected } = useNetworkStatus();
   const backgroundColor = useThemeColor({}, "background");

@@ -285,7 +285,6 @@ const _userBookSchema = /*#__PURE__*/ v.object({
   userHandle: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
 });
 const _wantToReadSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#wantToRead");
-
 type abandoned$schematype = typeof _abandonedSchema;
 type activity$schematype = typeof _activitySchema;
 type bookIdentifiers$schematype = typeof _bookIdentifiersSchema;
@@ -300,18 +299,28 @@ type userBook$schematype = typeof _userBookSchema;
 type wantToRead$schematype = typeof _wantToReadSchema;
 
 export interface abandonedSchema extends abandoned$schematype {}
-export interface activitySchema extends activity$schematype {}
-export interface bookIdentifiersSchema extends bookIdentifiers$schematype {}
-export interface bookProgressSchema extends bookProgress$schematype {}
-export interface commentSchema extends comment$schematype {}
-export interface finishedSchema extends finished$schematype {}
-export interface profileSchema extends profile$schematype {}
-export interface readingSchema extends reading$schematype {}
-export interface reviewSchema extends review$schematype {}
-export interface secondaryAuthorSchema extends secondaryAuthor$schematype {}
-export interface userBookSchema extends userBook$schematype {}
-export interface wantToReadSchema extends wantToRead$schematype {}
 
+export interface activitySchema extends activity$schematype {}
+
+export interface bookIdentifiersSchema extends bookIdentifiers$schematype {}
+
+export interface bookProgressSchema extends bookProgress$schematype {}
+
+export interface commentSchema extends comment$schematype {}
+
+export interface finishedSchema extends finished$schematype {}
+
+export interface profileSchema extends profile$schematype {}
+
+export interface readingSchema extends reading$schematype {}
+
+export interface reviewSchema extends review$schematype {}
+
+export interface secondaryAuthorSchema extends secondaryAuthor$schematype {}
+
+export interface userBookSchema extends userBook$schematype {}
+
+export interface wantToReadSchema extends wantToRead$schematype {}
 export const abandonedSchema = _abandonedSchema as abandonedSchema;
 export const activitySchema = _activitySchema as activitySchema;
 export const bookIdentifiersSchema = _bookIdentifiersSchema as bookIdentifiersSchema;
@@ -324,16 +333,23 @@ export const reviewSchema = _reviewSchema as reviewSchema;
 export const secondaryAuthorSchema = _secondaryAuthorSchema as secondaryAuthorSchema;
 export const userBookSchema = _userBookSchema as userBookSchema;
 export const wantToReadSchema = _wantToReadSchema as wantToReadSchema;
-
 export type Abandoned = v.InferInput<typeof abandonedSchema>;
+
 export interface Activity extends v.InferInput<typeof activitySchema> {}
+
 export interface BookIdentifiers extends v.InferInput<typeof bookIdentifiersSchema> {}
+
 export interface BookProgress extends v.InferInput<typeof bookProgressSchema> {}
+
 export interface Comment extends v.InferInput<typeof commentSchema> {}
 export type Finished = v.InferInput<typeof finishedSchema>;
+
 export interface Profile extends v.InferInput<typeof profileSchema> {}
 export type Reading = v.InferInput<typeof readingSchema>;
+
 export interface Review extends v.InferInput<typeof reviewSchema> {}
+
 export interface SecondaryAuthor extends v.InferInput<typeof secondaryAuthorSchema> {}
+
 export interface UserBook extends v.InferInput<typeof userBookSchema> {}
 export type WantToRead = v.InferInput<typeof wantToReadSchema>;

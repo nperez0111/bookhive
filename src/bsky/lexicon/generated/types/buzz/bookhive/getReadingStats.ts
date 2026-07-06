@@ -119,7 +119,6 @@ const _readingStatsSchema = /*#__PURE__*/ v.object({
     return /*#__PURE__*/ v.array(genreStatSchema);
   },
 });
-
 type bookSummary$schematype = typeof _bookSummarySchema;
 type genreStat$schematype = typeof _genreStatSchema;
 type main$schematype = typeof _mainSchema;
@@ -127,11 +126,14 @@ type ratingDistribution$schematype = typeof _ratingDistributionSchema;
 type readingStats$schematype = typeof _readingStatsSchema;
 
 export interface bookSummarySchema extends bookSummary$schematype {}
-export interface genreStatSchema extends genreStat$schematype {}
-export interface mainSchema extends main$schematype {}
-export interface ratingDistributionSchema extends ratingDistribution$schematype {}
-export interface readingStatsSchema extends readingStats$schematype {}
 
+export interface genreStatSchema extends genreStat$schematype {}
+
+export interface mainSchema extends main$schematype {}
+
+export interface ratingDistributionSchema extends ratingDistribution$schematype {}
+
+export interface readingStatsSchema extends readingStats$schematype {}
 export const bookSummarySchema = _bookSummarySchema as bookSummarySchema;
 export const genreStatSchema = _genreStatSchema as genreStatSchema;
 export const mainSchema = _mainSchema as mainSchema;
@@ -139,13 +141,16 @@ export const ratingDistributionSchema = _ratingDistributionSchema as ratingDistr
 export const readingStatsSchema = _readingStatsSchema as readingStatsSchema;
 
 export interface BookSummary extends v.InferInput<typeof bookSummarySchema> {}
+
 export interface GenreStat extends v.InferInput<typeof genreStatSchema> {}
+
 export interface RatingDistribution extends v.InferInput<typeof ratingDistributionSchema> {}
+
 export interface ReadingStats extends v.InferInput<typeof readingStatsSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
-export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 
+export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCQueries {
     "buzz.bookhive.getReadingStats": mainSchema;

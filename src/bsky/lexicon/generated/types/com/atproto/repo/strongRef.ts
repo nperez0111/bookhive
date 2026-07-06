@@ -6,11 +6,9 @@ const _mainSchema = /*#__PURE__*/ v.object({
   cid: /*#__PURE__*/ v.cidString(),
   uri: /*#__PURE__*/ v.resourceUriString(),
 });
-
 type main$schematype = typeof _mainSchema;
 
 export interface mainSchema extends main$schematype {}
-
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface Main extends v.InferInput<typeof mainSchema> {}

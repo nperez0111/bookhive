@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Image, ImageProps } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 

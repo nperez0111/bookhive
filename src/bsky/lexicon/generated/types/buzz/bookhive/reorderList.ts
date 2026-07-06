@@ -19,16 +19,14 @@ const _mainSchema = /*#__PURE__*/ v.procedure("buzz.bookhive.reorderList", {
   },
   output: null,
 });
-
 type main$schematype = typeof _mainSchema;
 
 export interface mainSchema extends main$schematype {}
-
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface $params {}
-export interface $input extends v.InferXRPCBodyInput<mainSchema["input"]> {}
 
+export interface $input extends v.InferXRPCBodyInput<mainSchema["input"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCProcedures {
     "buzz.bookhive.reorderList": mainSchema;

@@ -15,7 +15,7 @@ token/config that worked.
 
 1. **Fetch + discover** — The worker fetches the target URL (sending the cached
    `aws-waf-token` cookie if it has one). If the response is the real page, it's
-   returned immediately. Otherwise the 202 body *is* the challenge page; it
+   returned immediately. Otherwise the 202 body _is_ the challenge page; it
    contains `window.gokuProps` (encrypted session params) and a `<script>` tag
    pointing to `challenge.js` on `*.token.awswaf.com`. No second fetch is needed
    to discover the challenge.
@@ -65,13 +65,13 @@ call; the worker returns updated values to fold back in.
 
 ## Files
 
-| File                | Purpose                                                       |
-| ------------------- | ------------------------------------------------------------- |
-| `solver.ts`         | Main-thread client: `fetchGoodreadsViaWaf()`, token/config cache |
-| `solver-worker.ts`  | Bun Worker: page fetch + full WAF solve (crypto, PoW, signals)   |
-| `deobfuscate.ts`    | Deobfuscates challenge.js (imported by worker; CLI for testing)  |
-| `messages.ts`       | Worker ⇄ client message contract                                |
-| `pageMarker.ts`     | `__NEXT_DATA__` marker shared with `moreInfo.ts`                 |
+| File               | Purpose                                                          |
+| ------------------ | ---------------------------------------------------------------- |
+| `solver.ts`        | Main-thread client: `fetchGoodreadsViaWaf()`, token/config cache |
+| `solver-worker.ts` | Bun Worker: page fetch + full WAF solve (crypto, PoW, signals)   |
+| `deobfuscate.ts`   | Deobfuscates challenge.js (imported by worker; CLI for testing)  |
+| `messages.ts`      | Worker ⇄ client message contract                                 |
+| `pageMarker.ts`    | `__NEXT_DATA__` marker shared with `moreInfo.ts`                 |
 
 The worker is bundled to `.output/server/workers/waf-solver-worker.js` by
 `standaloneBundles()` in `vite.config.ts`. `solver.ts` loads that `.js` in the

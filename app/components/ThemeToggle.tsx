@@ -10,7 +10,7 @@ interface ThemeToggleProps {
 }
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({ style }) => {
-  const { theme, themeMode, setThemeMode, isDark } = useTheme();
+  const { theme, setThemeMode, isDark } = useTheme();
   const colors = Colors[theme];
 
   const handleToggle = () => {

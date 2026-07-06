@@ -70,7 +70,8 @@ export async function createWorkerContext({
   kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
   kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
   kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
-  kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
+  // Shared with the HTTP worker processes so locks are visible across the fleet.
+  kv.mount("book_lock:", sqliteKv({ table: "book_lock", db: kvDb }));
 
   // Auth session store with pre-populated session — no KV needed for auth
   const did = storedSession.tokenSet.sub;

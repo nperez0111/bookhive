@@ -1,5 +1,4 @@
 import { openBrowserAsync } from "expo-web-browser";
-import { type ComponentProps } from "react";
 import { Platform, Pressable } from "react-native";
 import { ThemedText } from "./ThemedText";
 

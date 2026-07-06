@@ -47,25 +47,26 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getList", {
     }),
   },
 });
-
 type listItemView$schematype = typeof _listItemViewSchema;
 type listView$schematype = typeof _listViewSchema;
 type main$schematype = typeof _mainSchema;
 
 export interface listItemViewSchema extends listItemView$schematype {}
-export interface listViewSchema extends listView$schematype {}
-export interface mainSchema extends main$schematype {}
 
+export interface listViewSchema extends listView$schematype {}
+
+export interface mainSchema extends main$schematype {}
 export const listItemViewSchema = _listItemViewSchema as listItemViewSchema;
 export const listViewSchema = _listViewSchema as listViewSchema;
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface ListItemView extends v.InferInput<typeof listItemViewSchema> {}
+
 export interface ListView extends v.InferInput<typeof listViewSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
-export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 
+export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCQueries {
     "buzz.bookhive.getList": mainSchema;

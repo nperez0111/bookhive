@@ -109,9 +109,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   const router = new XRPCRouter();
 
   router.addQuery(BuzzBookhiveSearchBooks, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { q, genre, limit, offset = 0, id, language } = params;
+      const params = _params as BuzzBookhiveSearchBooks.$params;
+      const { q, genre, limit = 25, offset = 0, id, language } = params;
 
       if (id) {
         const book = await ctx.db
@@ -258,9 +259,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveListGenres, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { limit, offset = 0, minBooks } = params;
+      const { limit = 50, offset = 0, minBooks = 0 } = _params as BuzzBookhiveListGenres.$params;
 
       let query = ctx.db
         .selectFrom("hive_book_genre")
@@ -285,8 +286,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetBookIdentifiers, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
+      const params = _params as BuzzBookhiveGetBookIdentifiers.$params;
       const hiveId = normalizeHiveId(params.hiveId);
       const isbn10 = normalizeIsbn(params.isbn10);
       const isbn13 = normalizeIsbn13(params.isbn13);
@@ -367,10 +369,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetBook, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      const { id, isbn10, isbn13, goodreadsId } = params;
+      const { id, isbn10, isbn13, goodreadsId } = _params as BuzzBookhiveGetBook.$params;
       let hiveId = id as HiveId | undefined;
 
       if (!id) {
@@ -540,10 +542,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetProfile, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
-      let { did, handle } = params;
+      let { did, handle } = _params as BuzzBookhiveGetProfile.$params;
 
       if (!did && !handle) {
         if (!agent) {
@@ -736,9 +738,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetExplore, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const language = params.language || undefined;
+      const language = (_params as BuzzBookhiveGetExplore.$params).language || undefined;
 
       let genreQuery = ctx.db
         .selectFrom("hive_book_genre")
@@ -773,9 +775,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetFeed, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
+      const params = _params as BuzzBookhiveGetFeed.$params;
 
       const tab = (params.tab as "friends" | "all" | "tracking") || "friends";
       const page = Math.max(1, params.page ?? 1);
@@ -846,9 +849,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetAuthorBooks, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { author, page, limit, sort = "popularity", language } = params;
+      const {
+        author,
+        page = 1,
+        limit = 25,
+        sort = "popularity",
+        language,
+      } = _params as BuzzBookhiveGetAuthorBooks.$params;
 
       const pageSize = Math.min(100, limit);
       const offset = (Math.max(1, page) - 1) * pageSize;
@@ -911,9 +920,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetReadingStats, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { handle, year: yearParam } = params;
+      const { handle, year: yearParam } = _params as BuzzBookhiveGetReadingStats.$params;
       const year = yearParam ?? new Date().getFullYear();
 
       // Resolve handle → DID
@@ -1027,10 +1036,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── List CRUD ──
 
   router.addProcedure(BuzzBookhiveCreateList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveCreateList.$input;
 
       const result = await createList({
         agent,
@@ -1046,10 +1056,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveUpdateList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveUpdateList.$input;
 
       const result = await updateList({
         agent,
@@ -1066,10 +1077,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveDeleteList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveDeleteList.$input;
 
       await deleteList({ agent, db: ctx.db, uri: input.uri });
 
@@ -1078,10 +1090,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveAddToList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveAddToList.$input;
 
       const result = await addBookToList({
         agent,
@@ -1097,10 +1110,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveRemoveFromList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveRemoveFromList.$input;
 
       await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
 
@@ -1109,10 +1123,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveReorderList, {
-    async handler({ input }) {
+    async handler({ input: _input }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const input = _input as BuzzBookhiveReorderList.$input;
 
       await reorderListItems({
         agent,
@@ -1128,9 +1143,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── GetUserLists query ──
 
   router.addQuery(BuzzBookhiveGetUserLists, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { did } = params;
+      const { did } = _params as BuzzBookhiveGetUserLists.$params;
 
       const lists = await getUserLists({ db: ctx.db, userDid: did });
       const dids = [...new Set(lists.map((l) => l.userDid))];
@@ -1156,9 +1171,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── GetList query ──
 
   router.addQuery(BuzzBookhiveGetList, {
-    async handler({ params }) {
+    async handler({ params: _params }) {
       const ctx = getCtx();
-      const { uri } = params;
+      const { uri } = _params as BuzzBookhiveGetList.$params;
 
       const data = await getListWithItems({ db: ctx.db, listUri: uri });
       if (!data) {

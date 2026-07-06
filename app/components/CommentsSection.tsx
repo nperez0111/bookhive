@@ -99,7 +99,7 @@ const CommentItem: React.FC<{
         setReplyText("");
         setShowReplyForm(false);
       }
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to post reply");
     }
   };
@@ -127,7 +127,7 @@ const CommentItem: React.FC<{
         setIsEditing(false);
         setEditText("");
       }
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to edit comment");
     }
   };

@@ -95,7 +95,7 @@ const initialAuthPromise = (async () => {
         await AsyncStorage.setItem("authState", JSON.stringify(currentAuthState));
       }
     }
-  } catch (error) {
+  } catch {
     await AsyncStorage.removeItem("authState");
     currentAuthState = null;
   }
@@ -113,7 +113,7 @@ export function AuthProvider({
   // Perhaps it had not been loaded yet
   useEffect(() => {
     if (!authState) {
-      initialAuthPromise.then(() => {
+      void initialAuthPromise.then(() => {
         setAuthState(getAuthState());
         setCacheBustKey(getAuthState()?.did ?? "");
       });
