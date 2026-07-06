@@ -91,12 +91,13 @@ export function doExtract(script: string): ExtractedConfig {
   const decoderFuncCode = extractFunctionAt(script, script.indexOf(decoderNameMatch[0]));
   if (!decoderFuncCode) throw new Error("Failed to extract decoder function body");
 
-  const rotationMatch = findRotationIIFE(script, arrayNameMatch[1]);
+  const rotationMatch = findRotationIIFE(script, arrayNameMatch[1]!);
 
   let setupCode = arrayFuncCode + ";\n" + decoderFuncCode + ";\n";
   if (rotationMatch) setupCode += rotationMatch[0] + ";\n";
   setupCode += "return " + decoderNameMatch[1] + ";\n";
 
+  // oxlint-disable-next-line no-implied-eval -- intentional: evaluates deobfuscated code to extract config
   const decoder = new Function(setupCode)();
   if (typeof decoder !== "function") throw new Error("Decoder is not a function");
 
@@ -125,11 +126,34 @@ export function doExtract(script: string): ExtractedConfig {
   }
   if (presentIdx >= 0) {
     const skip = new Set([
-      "Present", "Browser", "String", "Count", "Milliseconds", "Object",
-      "Array", "Function", "Error", "Number", "Boolean", "RegExp", "Date",
-      "Symbol", "Promise", "Proxy", "Map", "Set", "Uint8Array", "ArrayBuffer",
-      "TypeError", "RangeError", "SyntaxError", "UNIVERSAL", "SEQUENCE",
-      "INTEGER", "OCTET", "BOOLEAN",
+      "Present",
+      "Browser",
+      "String",
+      "Count",
+      "Milliseconds",
+      "Object",
+      "Array",
+      "Function",
+      "Error",
+      "Number",
+      "Boolean",
+      "RegExp",
+      "Date",
+      "Symbol",
+      "Promise",
+      "Proxy",
+      "Map",
+      "Set",
+      "Uint8Array",
+      "ArrayBuffer",
+      "TypeError",
+      "RangeError",
+      "SyntaxError",
+      "UNIVERSAL",
+      "SEQUENCE",
+      "INTEGER",
+      "OCTET",
+      "BOOLEAN",
     ]);
     for (let offset = -20; offset <= 0; offset++) {
       const val = decoded.get(presentIdx + offset);

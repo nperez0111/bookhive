@@ -28,7 +28,7 @@ function crc32(str: string): number {
   const buf = new TextEncoder().encode(str);
   let crc = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
-    crc = (crc >>> 8) ^ crc32Table[(crc ^ buf[i]) & 0xff];
+    crc = (crc >>> 8) ^ crc32Table[(crc ^ buf[i]!) & 0xff]!;
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -79,8 +79,7 @@ const GPUS = [
   },
   {
     vendor: "Google Inc. (Intel)",
-    renderer:
-      "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    renderer: "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
   },
   {
     vendor: "Google Inc. (AMD)",
@@ -112,7 +111,7 @@ function parseUA(ua: string): { brand: string; platform: string; ver: string } {
     : ua.toLowerCase().includes("mac")
       ? "macOS"
       : "Linux";
-  const brand = BRANDS[parseInt(ver) % 4].replace(/\{v\}/g, ver);
+  const brand = BRANDS[parseInt(ver) % 4]!.replace(/\{v\}/g, ver);
   return { brand, platform, ver };
 }
 
@@ -159,7 +158,7 @@ function randInt(min: number, max: number): number {
 }
 
 function randChoice<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
 // ─── AES-256-GCM Encryption ────────────────────────────────────────────────
@@ -268,7 +267,7 @@ function deserializeConfig(c: SerializedConfig): CryptoConfig {
 
 function buildSignals(ua: string, sigVersion: string): Record<string, any> {
   const now = Date.now();
-  const screen = randChoice(SCREENS);
+  const [screenW = 1920, screenH = 1080] = randChoice(SCREENS);
   const gpu = randChoice(GPUS);
   const hardwareConcurrency = randChoice([4, 8, 12, 16]);
   const deviceMemory = randChoice([4, 8, 8, 16]);
@@ -297,18 +296,18 @@ function buildSignals(ua: string, sigVersion: string): Record<string, any> {
       webdriver: false,
     },
     screen: {
-      width: screen[0],
-      height: screen[1],
-      availWidth: screen[0],
-      availHeight: screen[1] - 40,
+      width: screenW,
+      height: screenH,
+      availWidth: screenW,
+      availHeight: screenH - 40,
       colorDepth: 24,
       pixelDepth: 24,
     },
     window: {
-      innerWidth: screen[0],
-      innerHeight: screen[1] - 117,
-      outerWidth: screen[0],
-      outerHeight: screen[1],
+      innerWidth: screenW,
+      innerHeight: screenH - 117,
+      outerWidth: screenW,
+      outerHeight: screenH,
       devicePixelRatio: dpr,
     },
     tz: { offset: -300, timezone: "America/New_York" },
@@ -318,8 +317,8 @@ function buildSignals(ua: string, sigVersion: string): Record<string, any> {
       vendor: gpu.vendor,
       renderer: gpu.renderer,
       extensions: randInt(30, 40),
-      viewportWidth: screen[0],
-      viewportHeight: screen[1] - 117,
+      viewportWidth: screenW,
+      viewportHeight: screenH - 117,
     },
     math: {
       acos: 1.4473588658278522,
@@ -342,7 +341,7 @@ function buildSignals(ua: string, sigVersion: string): Record<string, any> {
     fonts: {
       count: randChoice([42, 48, 55, 63]),
       hash: createHash("sha256")
-        .update(`fonts_${screen[0]}_${randInt(0, 9999)}`)
+        .update(`fonts_${screenW}_${randInt(0, 9999)}`)
         .digest("hex"),
     },
     plugins: {
@@ -446,8 +445,8 @@ function parseChallengePage(
   }
   const gokuMatch = html.match(RE_GOKU);
   return {
-    challengeBaseUrl: srcMatch[1],
-    goku: gokuMatch ? JSON.parse(gokuMatch[1]) : null,
+    challengeBaseUrl: srcMatch[1]!,
+    goku: gokuMatch ? JSON.parse(gokuMatch[1]!) : null,
   };
 }
 
@@ -478,7 +477,7 @@ async function solveRound(
 
   const signals = buildSignals(ua, config.signalVersion);
   const encoded = encodeSignals(signals);
-  const checksum = encoded.split("#")[0];
+  const checksum = encoded.split("#")[0]!;
   const encrypted = encryptSignals(encoded, config.key);
   const metrics = buildMetrics(hasToken);
 

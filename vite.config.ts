@@ -92,7 +92,7 @@ function devImageProxyPassthrough(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   staged: {
     "*": "vp check --fix",
   },
@@ -100,6 +100,7 @@ export default defineConfig({
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
     options: { typeAware: true, typeCheck: true },
+    ignorePatterns: ["src/scrapers/waf/__fixtures__/"],
   },
   fmt: {
     ignorePatterns: [],
@@ -111,8 +112,17 @@ export default defineConfig({
     standaloneBundles(),
     nitro({
       preset: "bun",
+      // Production-only runtime entry: a copy of the bun preset entry with
+      // SO_REUSEPORT enabled so server/cluster.ts workers share port 8080.
+      // Build-only — overriding in dev would replace the nitro-dev entry and
+      // break `vp dev`.
+      ...(command === "build" ? { entry: "./server/entry.bun.mjs" } : {}),
       serverEntry: "./server/server.ts",
-      plugins: ["./server/plugins/otel-sdk.ts", "./server/plugins/request-tracing.ts"],
+      plugins: [
+        "./server/plugins/otel-sdk.ts",
+        "./server/plugins/request-tracing.ts",
+        "./server/plugins/html-cache-headers.ts",
+      ],
       // The OG render worker loads @takumi-rs/core (native NAPI-RS bindings) at
       // runtime in a worker thread, so it never appears in the Rolldown bundle
       // graph. Explicitly trace it (full trace `*` to copy the platform-specific
@@ -177,4 +187,4 @@ export default defineConfig({
     },
     extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json"],
   },
-});
+}));
