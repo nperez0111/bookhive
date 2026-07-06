@@ -26,7 +26,8 @@ if (env.isProd) {
 kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
 kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
 kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
-kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
+// Shared with the HTTP worker processes so locks are visible across the fleet.
+kv.mount("book_lock:", sqliteKv({ table: "book_lock", db: kvDb }));
 
 const serviceAccountAgent =
   env.BOOKHIVE_SERVICE_HANDLE && env.BOOKHIVE_APP_PASSWORD

@@ -149,7 +149,9 @@ export async function createAppDeps(): Promise<AppDeps> {
   const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
   kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
   kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
-  kv.mount("book_lock:", lruCacheDriver({ max: 1000 }));
+  // Shared (not in-memory) so the main process and the ingester/import
+  // workers see the same per-DID book locks.
+  kv.mount("book_lock:", sqliteKv({ table: "book_lock", db: kvDb }));
 
   const oauthClient = await createOAuthClient(kv);
   const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());

@@ -257,7 +257,14 @@ const app = new Hono<AppEnv>()
         }
 
         const bookLock = await c.get("ctx").kv.get(bookLockKey);
-        if (bookLock) {
+        // The lock is now a durable KV row shared across worker processes; a
+        // hard crash between setItem and the finally-del would otherwise leave
+        // it stuck forever. Treat locks older than 60s as stale.
+        const bookLockMeta = bookLock ? await c.get("ctx").kv.getMeta(bookLockKey) : null;
+        const bookLockFresh =
+          bookLockMeta?.mtime != null &&
+          Date.now() - new Date(bookLockMeta.mtime).getTime() < 60_000;
+        if (bookLock && bookLockFresh) {
           c.status(429);
           return c.render(
             <ErrorPage
