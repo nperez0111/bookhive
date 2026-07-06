@@ -44,16 +44,14 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getProfile", {
     }),
   },
 });
-
 type main$schematype = typeof _mainSchema;
 
 export interface mainSchema extends main$schematype {}
-
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
-export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 
+export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCQueries {
     "buzz.bookhive.getProfile": mainSchema;

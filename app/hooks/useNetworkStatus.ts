@@ -33,7 +33,7 @@ export const useNetworkStatus = () => {
     });
 
     // Get initial state
-    NetInfo.fetch().then((state) => {
+    void NetInfo.fetch().then((state) => {
       setNetworkStatus({
         isConnected: state.isConnected ?? true,
         isInternetReachable: state.isInternetReachable,

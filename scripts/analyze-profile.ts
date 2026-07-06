@@ -5,6 +5,7 @@
  *
  * Usage: bun run scripts/analyze-profile.ts <path-to-cpuprofile>
  */
+export {};
 
 interface CallFrame {
   functionName: string;

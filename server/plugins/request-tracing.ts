@@ -25,7 +25,7 @@ export default definePlugin((nitroApp) => {
   const spans = new WeakMap<object, { span: Span; start: number }>();
 
   nitroApp.hooks.hook("request", (event) => {
-    const req = event.request;
+    const req = (event as any).request;
     const url = new URL(req.url);
 
     if (shouldSkip(url.pathname)) return;

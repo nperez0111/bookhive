@@ -51,7 +51,7 @@ export default function LoginScreen() {
         console.error("Failed to load stored handle:", error);
       }
     };
-    loadStoredHandle();
+    void loadStoredHandle();
   }, []);
 
   // Entrance animations

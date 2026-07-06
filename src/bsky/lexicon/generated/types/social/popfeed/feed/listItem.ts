@@ -254,27 +254,30 @@ const _watchedEpisodeSchema = /*#__PURE__*/ v.object({
   seasonNumber: /*#__PURE__*/ v.integer(),
   tmdbId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
 });
-
 type bookProgress$schematype = typeof _bookProgressSchema;
 type identifiers$schematype = typeof _identifiersSchema;
 type main$schematype = typeof _mainSchema;
 type watchedEpisode$schematype = typeof _watchedEpisodeSchema;
 
 export interface bookProgressSchema extends bookProgress$schematype {}
-export interface identifiersSchema extends identifiers$schematype {}
-export interface mainSchema extends main$schematype {}
-export interface watchedEpisodeSchema extends watchedEpisode$schematype {}
 
+export interface identifiersSchema extends identifiers$schematype {}
+
+export interface mainSchema extends main$schematype {}
+
+export interface watchedEpisodeSchema extends watchedEpisode$schematype {}
 export const bookProgressSchema = _bookProgressSchema as bookProgressSchema;
 export const identifiersSchema = _identifiersSchema as identifiersSchema;
 export const mainSchema = _mainSchema as mainSchema;
 export const watchedEpisodeSchema = _watchedEpisodeSchema as watchedEpisodeSchema;
 
 export interface BookProgress extends v.InferInput<typeof bookProgressSchema> {}
-export interface Identifiers extends v.InferInput<typeof identifiersSchema> {}
-export interface Main extends v.InferInput<typeof mainSchema> {}
-export interface WatchedEpisode extends v.InferInput<typeof watchedEpisodeSchema> {}
 
+export interface Identifiers extends v.InferInput<typeof identifiersSchema> {}
+
+export interface Main extends v.InferInput<typeof mainSchema> {}
+
+export interface WatchedEpisode extends v.InferInput<typeof watchedEpisodeSchema> {}
 declare module "@atcute/lexicons/ambient" {
   interface Records {
     "social.popfeed.feed.listItem": mainSchema;

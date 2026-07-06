@@ -1,11 +1,9 @@
 import React from "react";
-import { View, StyleSheet, Pressable, Platform } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { Colors } from "@/constants/Colors";
 import { ThemedText } from "./ThemedText";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type BackNavigationHeaderProps = {
   title?: string;
@@ -21,8 +19,6 @@ export function BackNavigationHeader({
   style,
 }: BackNavigationHeaderProps) {
   const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
-  const { top } = useSafeAreaInsets();
   const router = useRouter();
 
   const handleBackPress = () => {

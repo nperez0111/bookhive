@@ -61,21 +61,20 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getFeed", {
     }),
   },
 });
-
 type feedActivity$schematype = typeof _feedActivitySchema;
 type main$schematype = typeof _mainSchema;
 
 export interface feedActivitySchema extends feedActivity$schematype {}
-export interface mainSchema extends main$schematype {}
 
+export interface mainSchema extends main$schematype {}
 export const feedActivitySchema = _feedActivitySchema as feedActivitySchema;
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface FeedActivity extends v.InferInput<typeof feedActivitySchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
-export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 
+export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCQueries {
     "buzz.bookhive.getFeed": mainSchema;

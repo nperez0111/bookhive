@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
-import { useProfile, useSearchBooks } from "@/hooks/useBookhiveQuery";
+import { useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -24,29 +24,23 @@ import { router } from "expo-router";
 import { useState, useRef } from "react";
 import { getBaseUrl } from "@/context/auth";
 import type { HiveBook } from "../../../src/types";
-import { BOOK_STATUS } from "@/constants";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { FadeInImage } from "@/components/FadeInImage";
 import { SectionHeader } from "@/components/SectionHeader";
-import { Badge } from "@/components/Badge";
 
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
   const bottom = useBottomTabOverflow();
 
-  const profile = useProfile();
   const { preferredLanguage } = useLanguage();
   const { data: searchResults, isLoading, error } = useSearchBooks(query, preferredLanguage);
 
   // Animation values for collapsible header
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerHeight = 120; // Height of the full header
-  const collapsedHeaderHeight = 80; // Height when collapsed
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 80],
@@ -120,9 +114,6 @@ export default function SearchScreen() {
   );
 
   const hasSearchResults = query.length > 0 && searchResults && searchResults.length > 0;
-
-  const currentlyReadingBooks =
-    profile.data?.books.filter((book) => book.status === BOOK_STATUS.READING) || [];
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>

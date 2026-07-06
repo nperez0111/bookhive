@@ -7,15 +7,7 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-import {
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ScrollView,
-  View,
-  Pressable,
-  Alert,
-} from "react-native";
+import { StyleSheet, Image, ScrollView, View, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import { useState, useCallback } from "react";

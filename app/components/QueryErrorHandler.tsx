@@ -23,7 +23,7 @@ export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
   onGoBack,
   showRetryButton = true,
   showGoBackButton = true,
-  fallbackMessage,
+  fallbackMessage: _fallbackMessage,
 }) => {
   const { isConnected } = useNetworkStatus();
   const backgroundColor = useThemeColor({}, "background");

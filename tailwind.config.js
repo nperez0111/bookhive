@@ -1,8 +1,7 @@
 import tailwindAnimated from "tailwindcss-animated";
 import forms from "@tailwindcss/forms";
-import * as tailwindcss from "tailwindcss";
 
-/** @type {tailwindcss.Config} */
+/** @type {import("tailwindcss").Config} */
 export default {
   darkMode: "class",
   content: ["./src/**/*.{js,ts,jsx,tsx}"],

@@ -2,7 +2,7 @@ import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
-import { PanResponder, View, ViewStyle, Dimensions } from "react-native";
+import { PanResponder, View, ViewStyle } from "react-native";
 import { ThemedText } from "./ThemedText";
 
 interface StarRatingProps {

@@ -84,7 +84,7 @@ export default function FeedScreen() {
     setIsRefreshing(true);
     setPage(1);
     setAllActivities([]);
-    feed.refetch().finally(() => setIsRefreshing(false));
+    void feed.refetch().finally(() => setIsRefreshing(false));
   }, [feed.refetch]);
 
   const onTabChange = useCallback((tab: FeedTab) => {
@@ -101,7 +101,7 @@ export default function FeedScreen() {
   }, [feed.data?.hasMore, feed.isFetching, activities]);
 
   const renderItem = useCallback(
-    ({ item, index }: { item: FeedActivity; index: number }) => {
+    ({ item }: { item: FeedActivity; index: number }) => {
       const timeAgo = (() => {
         try {
           return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });

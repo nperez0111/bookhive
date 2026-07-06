@@ -92,7 +92,7 @@ function devImageProxyPassthrough(): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command }): any => ({
   staged: {
     "*": "vp check --fix",
   },

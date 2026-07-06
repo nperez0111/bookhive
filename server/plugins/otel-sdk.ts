@@ -33,6 +33,6 @@ export default definePlugin((nitroApp) => {
   }
 
   nitroApp.hooks.hook("close", () => {
-    sdk.shutdown();
+    void sdk.shutdown();
   });
 });

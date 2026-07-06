@@ -51,21 +51,20 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.listGenres", {
     }),
   },
 });
-
 type genreWithCount$schematype = typeof _genreWithCountSchema;
 type main$schematype = typeof _mainSchema;
 
 export interface genreWithCountSchema extends genreWithCount$schematype {}
-export interface mainSchema extends main$schematype {}
 
+export interface mainSchema extends main$schematype {}
 export const genreWithCountSchema = _genreWithCountSchema as genreWithCountSchema;
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface GenreWithCount extends v.InferInput<typeof genreWithCountSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
-export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 
+export interface $output extends v.InferXRPCBodyInput<mainSchema["output"]> {}
 declare module "@atcute/lexicons/ambient" {
   interface XRPCQueries {
     "buzz.bookhive.listGenres": mainSchema;

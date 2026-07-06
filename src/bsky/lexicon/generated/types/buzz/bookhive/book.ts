@@ -95,15 +95,12 @@ const _mainSchema = /*#__PURE__*/ v.record(
     ]),
   }),
 );
-
 type main$schematype = typeof _mainSchema;
 
 export interface mainSchema extends main$schematype {}
-
 export const mainSchema = _mainSchema as mainSchema;
 
 export interface Main extends v.InferInput<typeof mainSchema> {}
-
 declare module "@atcute/lexicons/ambient" {
   interface Records {
     "buzz.bookhive.book": mainSchema;

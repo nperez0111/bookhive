@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -32,7 +31,7 @@ import { UserBook } from "../../../src/bsky/lexicon/generated/types/buzz/bookhiv
 
 const MAX_BOOKS_PER_SECTION = 20;
 
-function BookGrid({ books, colors }: { books: UserBook[]; colors: any }) {
+function BookGrid({ books }: { books: UserBook[]; colors: any }) {
   return (
     <View style={styles.gridContainer}>
       {books.map((book, index) => (
@@ -274,7 +273,9 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() => setIsRefreshing(false));
+    void Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() =>
+      setIsRefreshing(false),
+    );
   }, [profile.refetch, listsQuery.refetch]);
 
   const stats = useMemo(() => {
