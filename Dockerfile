@@ -21,7 +21,10 @@ RUN mkdir -p /data && chown bun:bun /data /usr/src/app && chmod 755 /data
 USER bun
 # Nitro bundles all JS and traces native deps (@takumi-rs/core) into .output/server/node_modules — no bun install needed
 COPY --chown=bun:bun --from=build /usr/src/app/.output ./.output
+COPY --chown=bun:bun --from=build /usr/src/app/server/cluster.ts ./cluster.ts
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# start-period covers migrations on worker 0 plus the staggered sibling spawn
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:8080/healthcheck || exit 1
-CMD ["bun", "run", ".output/server/index.mjs"]
+# Supervisor spawns WEB_CONCURRENCY workers sharing port 8080 via SO_REUSEPORT
+CMD ["bun", "run", "cluster.ts"]

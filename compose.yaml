@@ -78,6 +78,8 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: "production"
+      # Worker processes sharing port 8080 via SO_REUSEPORT (server/cluster.ts)
+      WEB_CONCURRENCY: "4"
       COOKIE_SECRET: "secret_password_do_not_use_this_please"
       DB_PATH: "/data/db.sqlite"
       KV_DB_PATH: "/data/kv.sqlite"
@@ -94,6 +96,10 @@ services:
       - 8080:8080
     volumes:
       - data:/data
+    # Leave the other ~4 host CPUs for pds/imgproxy/openobserve and future services.
+    cpus: "4"
+    # ~1GB shared SQLite mmap page cache + ~300MB private per worker.
+    mem_limit: 3g
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
 # start the database before your application. The `db-data` volume persists the

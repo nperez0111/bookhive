@@ -1,4 +1,4 @@
-import { cleanEnv, port, str, testOnly } from "envalid";
+import { cleanEnv, num, port, str, testOnly } from "envalid";
 
 // Bun loads .env automatically; envalid reads process.env
 
@@ -18,6 +18,18 @@ export const env = cleanEnv(process.env, {
   KV_DB_PATH: str({
     devDefault: ":memory:",
     desc: "Path to the KV SQLite database",
+  }),
+  WORKER_INDEX: str({
+    default: "",
+    desc: "Set by server/cluster.ts (0..N-1) when running multiple worker processes. Worker 0 — or unset (dev, tests, bare run) — is the primary: it runs migrations/VACUUM and the Jetstream ingester.",
+  }),
+  DB_CACHE_KB: num({
+    default: 16384,
+    desc: "SQLite page cache per connection, in KB. Kept small because each worker process (and its ingester/import worker threads) gets its own; the shared mmap serves most reads.",
+  }),
+  DB_MMAP_SIZE: num({
+    default: 1073741824,
+    desc: "SQLite mmap_size in bytes. mmap'd pages are file-backed and shared across all processes, so this does not multiply with WEB_CONCURRENCY.",
   }),
   EXPORT_SHARED_SECRET: str({
     default: "",

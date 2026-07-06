@@ -2,6 +2,7 @@ import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
 import { Kysely, SqliteDialect, sql } from "kysely";
 import { Migrator, type Migration, type MigrationProvider } from "kysely/migration";
 import { Database as DatabaseSync } from "bun:sqlite";
+import { env } from "./env";
 import type {
   BookIdentifiersRow,
   BookListRow,
@@ -545,9 +546,11 @@ export const createDb = (location: string): { db: Database; sqlite: DatabaseSync
   sqlite.exec("PRAGMA busy_timeout = 5000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
-  sqlite.exec("PRAGMA cache_size = -65536"); // 64 MB page cache (default is ~2 MB)
+  // Private page cache is per connection and multiplies across worker
+  // processes — keep it small and let the (process-shared) mmap serve reads.
+  sqlite.exec(`PRAGMA cache_size = -${env.DB_CACHE_KB}`); // default 16 MB
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  sqlite.exec("PRAGMA mmap_size = 1073741824"); // 1 GB — keep full DB memory-mapped
+  sqlite.exec(`PRAGMA mmap_size = ${env.DB_MMAP_SIZE}`); // default 1 GB — keep full DB memory-mapped
 
   const db = new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({
