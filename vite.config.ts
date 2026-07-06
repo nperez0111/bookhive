@@ -103,7 +103,7 @@ export default defineConfig(({ command }) => ({
     ignorePatterns: ["src/scrapers/waf/__fixtures__/"],
   },
   fmt: {
-    ignorePatterns: [],
+    ignorePatterns: ["src/scrapers/waf/__fixtures__/"],
   },
   plugins: [
     bunRuntimeExternal(),
