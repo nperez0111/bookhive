@@ -251,10 +251,9 @@ export async function getBooksByGenre(
       break;
     case "relevance":
       // Lower rowid ≈ earlier in scraped genre list (syncHiveBookGenres insert order).
-      dataQuery = dataQuery.orderBy(
-        sql`(SELECT MIN(rowid) FROM hive_book_genre WHERE hiveId = hive_book.id AND genre = ${genre})`,
-        "asc",
-      );
+      // The UNIQUE (hiveId, genre) index guarantees exactly one joined row per book,
+      // so the joined row's rowid is the ordering key — no correlated subquery needed.
+      dataQuery = dataQuery.orderBy(sql`hive_book_genre.rowid`, "asc");
       break;
     case "reviews":
       dataQuery = dataQuery

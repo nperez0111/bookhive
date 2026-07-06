@@ -526,6 +526,18 @@ migrations["013"] = {
   },
 };
 
+migrations["014"] = {
+  async up(db: Kysely<unknown>) {
+    // Migration 012 replaced the single-column genre indexes with the UNIQUE
+    // (hiveId, genre) index, which cannot serve `WHERE genre = ?` — genre pages
+    // were full-scanning hive_book_genre. Restore a genre-leading index.
+    await sql`CREATE INDEX idx_hive_book_genre_genre ON hive_book_genre(genre, hiveId)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_hive_book_genre_genre`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

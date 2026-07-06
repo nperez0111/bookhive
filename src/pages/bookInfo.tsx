@@ -152,7 +152,7 @@ export const BookInfo: FC<{
   startTime(c, "db_parallel_queries");
   const [
     rawUserBook,
-    reviewsOfThisBook,
+    reviewCountResult,
     userLists,
     bookOnShelves,
     userHandle,
@@ -169,30 +169,15 @@ export const BookInfo: FC<{
           .where("hiveId", "==", book.id)
           .executeTakeFirst()
       : Promise.resolve(undefined),
-    // db_reviews_of_this_book
+    // db_reviews_of_this_book — only the count is rendered here; the reviews
+    // themselves are fetched and rendered by CommentsSection.
     c
       .get("ctx")
       .db.selectFrom("user_book")
-      .select([
-        "user_book.hiveId",
-        "user_book.createdAt",
-        "user_book.uri",
-        "user_book.cid",
-        "user_book.userDid",
-        "user_book.review",
-        "user_book.stars",
-        (eb) =>
-          eb
-            .selectFrom("buzz")
-            .select(sql<number>`count(*)`.as("commentCount"))
-            .where("buzz.parentUri", "=", eb.ref("user_book.uri"))
-            .as("commentCount"),
-      ])
+      .select(sql<number>`count(*)`.as("count"))
       .where("user_book.hiveId", "=", book.id)
       .where("user_book.review", "!=", "")
-      .orderBy("user_book.createdAt", "desc")
-      .limit(10_000)
-      .execute(),
+      .executeTakeFirst(),
     // db_user_lists
     did
       ? getUserLists({ db: c.get("ctx").db, userDid: did })
@@ -237,6 +222,7 @@ export const BookInfo: FC<{
     loadGenresForHiveBook(c.get("ctx").db, book.id),
   ]);
   endTime(c, "db_parallel_queries");
+  const reviewCount = reviewCountResult?.count ?? 0;
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
   const meta = normalizeBookMeta(book.meta);
   const seriesData = book.series ? JSON.parse(book.series) : null;
@@ -1374,13 +1360,11 @@ export const BookInfo: FC<{
         <CommentsSection book={book} did={did} reviewId={reviewId}>
           <h2 class="mb-5 text-2xl font-bold text-foreground">
             Reviews
-            {reviewsOfThisBook.length > 0 && (
-              <span
-                style={{ fontVariantNumeric: "tabular-nums" }}
-              >{` (${reviewsOfThisBook.length})`}</span>
+            {reviewCount > 0 && (
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{` (${reviewCount})`}</span>
             )}
           </h2>
-          {reviewsOfThisBook.length === 0 && (
+          {reviewCount === 0 && (
             <p class="mb-4 text-sm text-muted-foreground">
               No reviews yet.
               {did ? " Be the first to share your thoughts!" : " Log in to write a review."}
