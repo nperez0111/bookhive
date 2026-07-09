@@ -28,14 +28,14 @@
   "dependencies": {
     "@atcute/password-session": "1.0.1",
     "@atcute/xrpc-server": "2.0.1",
-    "@takumi-rs/image-response": "1.8.7",
+    "@takumi-rs/image-response": "2.0.2",
     "@voidzero-dev/vite-plus-core": "0.2.2",
     "basecoat-css": "0.3.11",
     "ocache": "0.1.5",
     "pino": "10.3.1",
     "react": "19.2.7",
     "srvx": "0.11.21",
-    "takumi-js": "1.8.7"
+    "takumi-js": "2.0.2"
   },
   "devDependencies": {
     "@atcute/atproto": "4.0.3",
