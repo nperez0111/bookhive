@@ -55,11 +55,14 @@ function normalizeDate(dateString: string | undefined): string | undefined {
 /**
  * Infers book status and auto-sets dates based on user input
  */
-function inferBookStatusAndDates(updates: {
-  status?: string;
-  startedAt?: string;
-  finishedAt?: string;
-}): {
+function inferBookStatusAndDates(
+  updates: {
+    status?: string;
+    startedAt?: string;
+    finishedAt?: string;
+  },
+  { skipAutoDate = false }: { skipAutoDate?: boolean } = {},
+): {
   status: string | undefined;
   startedAt: string | undefined;
   finishedAt: string | undefined;
@@ -86,10 +89,13 @@ function inferBookStatusAndDates(updates: {
   // Auto-set dates based on status if not already provided.
   // Use the current full timestamp so we record when the action happened,
   // matching the behavior of createdAt.
-  if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
-    autoStartedAt = new Date().toISOString();
-  } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
-    autoFinishedAt = new Date().toISOString();
+  // Imports pass skipAutoDate to avoid stamping today when the source has no date.
+  if (!skipAutoDate) {
+    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
+      autoStartedAt = new Date().toISOString();
+    } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
+      autoFinishedAt = new Date().toISOString();
+    }
   }
 
   // Normalize any user-provided dates (YYYY-MM-DD gets combined with current
@@ -194,11 +200,13 @@ export async function updateBookRecord({
   agent,
   hiveId,
   updates,
+  skipAutoDate = false,
 }: {
   ctx: BookUtilContext;
   agent: SessionClient;
   hiveId: HiveId;
   updates: Partial<BookRecord.Record> & { coverImage?: string };
+  skipAutoDate?: boolean;
 }): Promise<{ book: BookRecord.Record; userBook: UserBook }> {
   const userBook = await getUserBook({ ctx, agent, hiveId });
 
@@ -232,11 +240,14 @@ export async function updateBookRecord({
     status: autoStatus,
     startedAt: autoStartedAt,
     finishedAt: autoFinishedAt,
-  } = inferBookStatusAndDates({
-    status: updates.status,
-    startedAt: updates.startedAt,
-    finishedAt: updates.finishedAt,
-  });
+  } = inferBookStatusAndDates(
+    {
+      status: updates.status,
+      startedAt: updates.startedAt,
+      finishedAt: updates.finishedAt,
+    },
+    { skipAutoDate },
+  );
 
   if (autoStartedAt && autoFinishedAt) {
     const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
@@ -377,6 +388,7 @@ export async function updateBookRecords({
   updates,
   bookRecords = getUserRepoRecords({ ctx, agent }),
   overwrite = false,
+  skipAutoDate = false,
 }: {
   ctx: BookUtilContext;
   agent: SessionClient;
@@ -385,6 +397,7 @@ export async function updateBookRecords({
     books: Map<string, BookRecord.Record>;
   }>;
   overwrite?: boolean;
+  skipAutoDate?: boolean;
 }): Promise<void> {
   const updatesToApply: Array<{
     type: "create" | "update";
@@ -430,11 +443,14 @@ export async function updateBookRecords({
       status: autoStatus,
       startedAt: autoStartedAt,
       finishedAt: autoFinishedAt,
-    } = inferBookStatusAndDates({
-      status: update.status,
-      startedAt: update.startedAt,
-      finishedAt: update.finishedAt,
-    });
+    } = inferBookStatusAndDates(
+      {
+        status: update.status,
+        startedAt: update.startedAt,
+        finishedAt: update.finishedAt,
+      },
+      { skipAutoDate },
+    );
 
     if (autoStartedAt && autoFinishedAt) {
       const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
