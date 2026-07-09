@@ -414,6 +414,22 @@ describe("importBook utilities", () => {
       expect(result.status).toBe("buzz.bookhive.defs#wantToRead");
       expect(result.finishedAt).toBeUndefined();
     });
+
+    it("leaves finishedAt undefined for read books without dateRead (GH-175)", () => {
+      const book = makeGoodreadsBook({
+        exclusiveShelf: "read",
+        dateRead: null,
+        dateAdded: new Date("2012-05-27"),
+        readCount: 1,
+      });
+      const result = buildGoodreadsBookRecord({
+        book,
+        hiveBook,
+        existingHiveIds: new Set(),
+      });
+      expect(result.status).toBe("buzz.bookhive.defs#finished");
+      expect(result.finishedAt).toBeUndefined();
+    });
   });
 
   describe("buildStorygraphBookRecord", () => {
@@ -800,5 +816,171 @@ describe("Goodreads import integration", () => {
       title: "Rain of Shadows and Endings (Legacy, #1)",
       author: "Melissa K. Roehrich",
     });
+  });
+});
+
+/**
+ * Integration test: real Goodreads CSV from GH-175 — export WITHOUT "Average
+ * Rating" column, many "read" books with no Date Read.
+ *
+ * Covers the bug where importing such a CSV caused all read-but-undated books
+ * to get finishedAt = today, creating a massive spike in "books read."
+ * The fix: imports pass skipAutoDate so inferBookStatusAndDates won't auto-fill.
+ */
+describe("Goodreads import without Average Rating (GH-175)", () => {
+  const CSV = `Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,Publisher,Binding,Number of Pages,Year Published,Original Publication Year,Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,My Review,Spoiler,Private Notes,Read Count,Owned Copies
+22328,Neuromancer (Sprawl #1),William Gibson,"Gibson, William",,"=""""","=""""",5.0,Ace Books,Mass Market Paperback,271,1985,1984,,2012/05/27,,,read,,,,1,0
+594306,History of the 20th Century,Martin  Gilbert,"Gilbert, Martin",,"=""0006376649""","=""9780006376644""",0,Harper Collins Publishers,Paperback,790,2002,,,2012/12/19,hardcopy,hardcopy (#142),read,,,,1,1
+25817436,A People's History of the United States,Howard Zinn,"Zinn, Howard",,"=""0062397346""","=""9780062397348""",0,Harper Perennial Modern Classics,Paperback,688,2015,1980,2021/11/02,2020/04/04,,,read,,,,1,0
+2195490,Roast Chicken and Other Stories,Simon  Hopkinson,"Hopkinson, Simon","Lindsey Bareham, Flo Bayley","=""009187100X""","=""9780091871000""",0,Ebury Press,Paperback,224,1999,1994,,2012/12/21,to-read,to-read (#180),to-read,,,,0,0
+57423646,Immune: a Journey into the Mysterious System that Keeps You Alive,Philipp Dettmer,"Dettmer, Philipp",,"=""0593241312""","=""9780593241318""",0,Random House,Hardcover,341,2021,2021,,2021/12/19,currently-reading,currently-reading (#4),currently-reading,,,,1,0
+22734854,"1,227 QI Facts To Blow Your Socks Off",John Lloyd,"Lloyd, John",John Mitchinson,"=""0571297943""","=""9780571297948""",0,Faber & Faber,Paperback,304,2013,2012,2013/01/12,2012/12/16,kindle,kindle (#2),read,,,,1,1
+4332905,"The Seeds of Earth (Humanity's Fire, #1)",Michael Cobley,"Cobley, Michael",,"=""1841496324""","=""9781841496320""",3.0,Orbit,Paperback,400,2009,2009,2015/07/23,2015/07/30,,,read,"A good premise, and a readable and inventive first-book-in-the-series which sadly fails to reach a cliffhanger, let alone a conclusion. Worth the read, but you may wonder why you've suddenly run out of chapters. ",,,1,0`;
+
+  async function parseCsv() {
+    const { getGoodreadsCsvParser } = await import("./csv");
+    const parser = getGoodreadsCsvParser();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(CSV));
+        controller.close();
+      },
+    });
+    const books: import("./csv").GoodreadsBook[] = [];
+    const reader = stream.pipeThrough(parser).getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      books.push(value);
+    }
+    return books;
+  }
+
+  it("parses all rows from CSV without Average Rating column", async () => {
+    const books = await parseCsv();
+    expect(books).toHaveLength(7);
+    expect(books.every((b) => b.averageRating === 0)).toBe(true);
+  });
+
+  it("correctly maps column values without Average Rating", async () => {
+    const books = await parseCsv();
+
+    const neuromancer = books.find((b) => b.title.startsWith("Neuromancer"))!;
+    expect(neuromancer).toMatchObject({
+      bookId: "22328",
+      author: "William Gibson",
+      myRating: 5,
+      exclusiveShelf: "read",
+      readCount: 1,
+      dateRead: null,
+    });
+    expect(neuromancer.dateAdded).toBeInstanceOf(Date);
+    expect(neuromancer.dateAdded?.getFullYear()).toBe(2012);
+
+    const history = books.find((b) => b.title.startsWith("History"))!;
+    expect(history).toMatchObject({
+      exclusiveShelf: "read",
+      bookshelves: ["hardcopy"],
+      ownedCopies: 1,
+      dateRead: null,
+    });
+  });
+
+  it("handles ISBNs with Goodreads =\"...\" quoting", async () => {
+    const books = await parseCsv();
+    const zinn = books.find((b) => b.title.includes("People's History"))!;
+    expect(zinn.isbn).toBe("0062397346");
+    expect(zinn.isbn13).toBe("9780062397348");
+
+    const neuromancer = books.find((b) => b.title.startsWith("Neuromancer"))!;
+    expect(neuromancer.isbn).toBe("");
+    expect(neuromancer.isbn13).toBe("");
+  });
+
+  it("leaves finishedAt undefined for read books without dateRead", async () => {
+    const books = await parseCsv();
+    const hiveBook = { id: "bk_test", title: "Test", cover: null };
+
+    const neuromancer = books.find((b) => b.title.startsWith("Neuromancer"))!;
+    const result = buildGoodreadsBookRecord({
+      book: neuromancer,
+      hiveBook,
+      existingHiveIds: new Set(),
+    });
+    expect(result.status).toBe("buzz.bookhive.defs#finished");
+    expect(result.finishedAt).toBeUndefined();
+  });
+
+  it("uses actual dateRead when present, not dateAdded", async () => {
+    const books = await parseCsv();
+    const hiveBook = { id: "bk_test", title: "Test", cover: null };
+
+    const zinn = books.find((b) => b.title.includes("People's History"))!;
+    const result = buildGoodreadsBookRecord({
+      book: zinn,
+      hiveBook,
+      existingHiveIds: new Set(),
+    });
+    expect(result.status).toBe("buzz.bookhive.defs#finished");
+    expect(result.finishedAt).toBe(zinn.dateRead!.toISOString());
+    expect(new Date(result.finishedAt!).getFullYear()).toBe(2021);
+  });
+
+  it("does not set finishedAt for non-read books", async () => {
+    const books = await parseCsv();
+    const hiveBook = { id: "bk_test", title: "Test", cover: null };
+
+    const toRead = books.find((b) => b.exclusiveShelf === "to-read")!;
+    const result = buildGoodreadsBookRecord({
+      book: toRead,
+      hiveBook,
+      existingHiveIds: new Set(),
+    });
+    expect(result.status).toBe("buzz.bookhive.defs#wantToRead");
+    expect(result.finishedAt).toBeUndefined();
+
+    const reading = books.find((b) => b.exclusiveShelf === "currently-reading")!;
+    const readingResult = buildGoodreadsBookRecord({
+      book: reading,
+      hiveBook,
+      existingHiveIds: new Set(),
+    });
+    expect(readingResult.status).toBe("buzz.bookhive.defs#reading");
+    expect(readingResult.finishedAt).toBeUndefined();
+  });
+
+  it("never produces a finishedAt equal to today for read books (the GH-175 bug)", async () => {
+    const books = await parseCsv();
+    const hiveBook = { id: "bk_test", title: "Test", cover: null };
+    const today = new Date().toISOString().split("T")[0]!;
+
+    for (const book of books) {
+      const result = buildGoodreadsBookRecord({
+        book,
+        hiveBook,
+        existingHiveIds: new Set(),
+      });
+      if (result.finishedAt) {
+        const finishedDate = result.finishedAt.split("T")[0]!;
+        expect(finishedDate).not.toBe(today);
+      }
+    }
+  });
+
+  it("handles book with review and rating correctly", async () => {
+    const books = await parseCsv();
+    const hiveBook = { id: "bk_seeds", title: "The Seeds of Earth", cover: null };
+
+    const seeds = books.find((b) => b.title.includes("Seeds of Earth"))!;
+    const result = buildGoodreadsBookRecord({
+      book: seeds,
+      hiveBook,
+      existingHiveIds: new Set(),
+    });
+    expect(result.status).toBe("buzz.bookhive.defs#finished");
+    expect(result.stars).toBe(6);
+    expect(result.review).toBeDefined();
+    expect(result.finishedAt).toBe(seeds.dateRead!.toISOString());
+    expect(new Date(result.finishedAt!).getFullYear()).toBe(2015);
   });
 });

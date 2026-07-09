@@ -98,7 +98,7 @@ async function flushBatch({
   );
 
   try {
-    await updateBookRecords({ ctx, agent, updates: batch, bookRecords });
+    await updateBookRecords({ ctx, agent, updates: batch, bookRecords, skipAutoDate: true });
   } catch (error) {
     ctx.addWideEventContext({
       import_batch_update: "failed",
@@ -109,7 +109,7 @@ async function flushBatch({
     let individualFailures = 0;
     for (const [hiveId, bookUpdate] of batch.entries()) {
       try {
-        await updateBookRecord({ ctx, agent, hiveId, updates: bookUpdate });
+        await updateBookRecord({ ctx, agent, hiveId, updates: bookUpdate, skipAutoDate: true });
         individualSuccesses++;
       } catch (individualError) {
         individualFailures++;
