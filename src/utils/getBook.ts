@@ -235,19 +235,44 @@ export async function updateBookRecord({
     }
   }
 
+  // Re-Read: selecting "Reading" on an already-finished book means the user
+  // is starting another pass. Push the current started/finished dates into
+  // previousReads (keeping existing history), then reset: status=Reading,
+  // startedAt=now, finishedAt cleared.
+  const isReread =
+    updates.status === BOOK_STATUS.READING && originalBook?.status === BOOK_STATUS.FINISHED;
+  let rereadPreviousReads: NonNullable<BookRecord.Record["previousReads"]> | undefined;
+  if (isReread && originalBook?.finishedAt) {
+    rereadPreviousReads = [
+      {
+        startedAt: originalBook.startedAt,
+        finishedAt: originalBook.finishedAt,
+      },
+      ...(originalBook.previousReads ?? []),
+    ];
+  }
+
   // Infer status and auto-set dates based on user input
   const {
     status: autoStatus,
     startedAt: autoStartedAt,
     finishedAt: autoFinishedAt,
-  } = inferBookStatusAndDates(
-    {
-      status: updates.status,
-      startedAt: updates.startedAt,
-      finishedAt: updates.finishedAt,
-    },
-    { skipAutoDate },
-  );
+  } = isReread
+    ? {
+        // "" is the clearing sentinel so the record builder sets undefined
+        // instead of falling back to the original finishedAt.
+        status: BOOK_STATUS.READING,
+        startedAt: new Date().toISOString(),
+        finishedAt: "",
+      }
+    : inferBookStatusAndDates(
+        {
+          status: updates.status,
+          startedAt: updates.startedAt,
+          finishedAt: updates.finishedAt,
+        },
+        { skipAutoDate },
+      );
 
   if (autoStartedAt && autoFinishedAt) {
     const startedDateStr = autoStartedAt.split("T")[0]!; // Extract YYYY-MM-DD
@@ -313,6 +338,10 @@ export async function updateBookRecord({
     owned: updates.owned ?? originalBook?.owned ?? true,
     identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
     hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
+    // Preserve re-read history across partial updates (rating/review edits);
+    // on a re-read request, replace it with the rotated list so the old dates
+    // are archived in history and the book starts fresh.
+    previousReads: rereadPreviousReads ?? updates.previousReads ?? originalBook?.previousReads,
   };
 
   const book = BookRecord.validateRecord(bookData);
