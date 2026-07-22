@@ -886,7 +886,7 @@ describe("Goodreads import without Average Rating (GH-175)", () => {
     });
   });
 
-  it("handles ISBNs with Goodreads =\"...\" quoting", async () => {
+  it('handles ISBNs with Goodreads ="..." quoting', async () => {
     const books = await parseCsv();
     const zinn = books.find((b) => b.title.includes("People's History"))!;
     expect(zinn.isbn).toBe("0062397346");

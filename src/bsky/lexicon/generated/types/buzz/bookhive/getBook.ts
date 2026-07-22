@@ -71,6 +71,12 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        */
       owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
       /**
+       * History of prior reads of this book by the user (most recent first)
+       */
+      get previousReads() {
+        return /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(BuzzBookhiveDefs.previousReadSchema));
+      },
+      /**
        * The book's review
        * @maxGraphemes 15000
        */

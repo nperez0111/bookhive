@@ -372,6 +372,7 @@ export async function updateBookRecord({
     review: record.review || null,
     stars: record.stars || null,
     bookProgress: record.bookProgress ?? null,
+    previousReads: record.previousReads ?? null,
   };
 
   await updateUserBook({ ctx, userBook: nextUserBook });
@@ -511,6 +512,8 @@ export async function updateBookRecords({
       owned: update.owned ?? originalBook?.owned ?? true,
       identifiers,
       hiveBookUri: hiveBookUriMap.get(hiveId) ?? originalBook?.hiveBookUri,
+      // Preserve re-read history across partial updates (rating/review edits)
+      previousReads: update.previousReads ?? originalBook?.previousReads,
     });
 
     if (!book.success) {
@@ -537,6 +540,7 @@ export async function updateBookRecords({
         review: record.review || null,
         stars: record.stars || null,
         bookProgress: record.bookProgress ?? null,
+        previousReads: record.previousReads ?? null,
       },
       originalUpdate: update,
     });

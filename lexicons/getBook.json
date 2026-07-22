@@ -81,6 +81,11 @@
               "type": "ref",
               "ref": "buzz.bookhive.defs#bookProgress"
             },
+            "previousReads": {
+              "type": "array",
+              "description": "History of prior reads of this book by the user (most recent first)",
+              "items": { "type": "ref", "ref": "buzz.bookhive.defs#previousRead" }
+            },
             "book": {
               "description": "The hive book's info",
               "type": "ref",

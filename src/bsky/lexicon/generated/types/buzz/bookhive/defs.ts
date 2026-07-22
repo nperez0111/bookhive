@@ -117,6 +117,17 @@ const _commentSchema = /*#__PURE__*/ v.object({
   },
 });
 const _finishedSchema = /*#__PURE__*/ v.literal("buzz.bookhive.defs#finished");
+const _previousReadSchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#previousRead")),
+  /**
+   * When the user finished this prior read
+   */
+  finishedAt: /*#__PURE__*/ v.datetimeString(),
+  /**
+   * When the user started this prior read
+   */
+  startedAt: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.datetimeString()),
+});
 const _profileSchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#profile")),
   avatar: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
@@ -226,6 +237,17 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    */
   owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
   /**
+   * History of prior reads of this book by the user (most recent first)
+   * @maxLength 50
+   */
+  get previousReads() {
+    return /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.array(previousReadSchema), [
+        /*#__PURE__*/ v.arrayLength(0, 50),
+      ]),
+    );
+  },
+  /**
    * Average rating (0-1000)
    * @minimum 0
    * @maximum 1000
@@ -291,6 +313,7 @@ type bookIdentifiers$schematype = typeof _bookIdentifiersSchema;
 type bookProgress$schematype = typeof _bookProgressSchema;
 type comment$schematype = typeof _commentSchema;
 type finished$schematype = typeof _finishedSchema;
+type previousRead$schematype = typeof _previousReadSchema;
 type profile$schematype = typeof _profileSchema;
 type reading$schematype = typeof _readingSchema;
 type review$schematype = typeof _reviewSchema;
@@ -310,6 +333,8 @@ export interface commentSchema extends comment$schematype {}
 
 export interface finishedSchema extends finished$schematype {}
 
+export interface previousReadSchema extends previousRead$schematype {}
+
 export interface profileSchema extends profile$schematype {}
 
 export interface readingSchema extends reading$schematype {}
@@ -327,6 +352,7 @@ export const bookIdentifiersSchema = _bookIdentifiersSchema as bookIdentifiersSc
 export const bookProgressSchema = _bookProgressSchema as bookProgressSchema;
 export const commentSchema = _commentSchema as commentSchema;
 export const finishedSchema = _finishedSchema as finishedSchema;
+export const previousReadSchema = _previousReadSchema as previousReadSchema;
 export const profileSchema = _profileSchema as profileSchema;
 export const readingSchema = _readingSchema as readingSchema;
 export const reviewSchema = _reviewSchema as reviewSchema;
@@ -343,6 +369,8 @@ export interface BookProgress extends v.InferInput<typeof bookProgressSchema> {}
 
 export interface Comment extends v.InferInput<typeof commentSchema> {}
 export type Finished = v.InferInput<typeof finishedSchema>;
+
+export interface PreviousRead extends v.InferInput<typeof previousReadSchema> {}
 
 export interface Profile extends v.InferInput<typeof profileSchema> {}
 export type Reading = v.InferInput<typeof readingSchema>;

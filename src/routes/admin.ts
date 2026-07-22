@@ -288,6 +288,7 @@ const admin = new Hono<AppEnv>()
             review: book.review ?? null,
             stars: book.stars ?? null,
             bookProgress: book.bookProgress ?? null,
+            previousReads: book.previousReads ?? null,
           } satisfies UserBook);
         });
 
@@ -311,6 +312,7 @@ const admin = new Hono<AppEnv>()
                 review: c.ref("excluded.review"),
                 stars: c.ref("excluded.stars"),
                 bookProgress: c.ref("excluded.bookProgress"),
+                previousReads: c.ref("excluded.previousReads"),
               })),
             )
             .execute();

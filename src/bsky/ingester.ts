@@ -161,6 +161,7 @@ async function backfillUserRepo(
                   review: book.review ?? null,
                   stars: book.stars ?? null,
                   bookProgress: book.bookProgress ?? null,
+                  previousReads: book.previousReads ?? null,
                 } satisfies UserBook),
               );
             for (let i = 0; i < rowsToInsert.length; i += 100) {
@@ -433,6 +434,7 @@ export function createIngester(
                 review: book.review ?? null,
                 stars: book.stars ?? null,
                 bookProgress: book.bookProgress ?? null,
+                previousReads: book.previousReads ?? null,
               } satisfies UserBook),
             )
             .onConflict((oc) =>
@@ -451,6 +453,7 @@ export function createIngester(
                 userDid: c.ref("excluded.userDid"),
                 createdAt: c.ref("excluded.createdAt"),
                 bookProgress: c.ref("excluded.bookProgress"),
+                previousReads: c.ref("excluded.previousReads"),
               })),
             )
             .execute();
