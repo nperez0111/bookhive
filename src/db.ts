@@ -44,6 +44,7 @@ export const BookFields = [
   "user_book.uri",
   "user_book.userDid",
   "user_book.bookProgress",
+  "user_book.previousReads",
   "hive_book.cover",
   "hive_book.thumbnail",
   "hive_book.description",
@@ -536,6 +537,16 @@ migrations["014"] = {
   },
   async down(db: Kysely<unknown>) {
     await sql`DROP INDEX IF EXISTS idx_hive_book_genre_genre`.execute(db);
+  },
+};
+
+migrations["015"] = {
+  async up(db: Kysely<unknown>) {
+    // Re-read history (array of prior reads) stored as JSON, mirroring bookProgress.
+    await db.schema.alterTable("user_book").addColumn("previousReads", "text").execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("user_book").dropColumn("previousReads").execute();
   },
 };
 

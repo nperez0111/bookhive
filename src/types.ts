@@ -23,6 +23,11 @@ export type BookProgress = {
   updatedAt: string;
 };
 
+export type PreviousRead = {
+  startedAt?: string;
+  finishedAt: string;
+};
+
 export type BookIdentifiers = {
   hiveId?: string;
   isbn10?: string;
@@ -94,10 +99,15 @@ export type UserBook = {
    * Reading progress information
    */
   bookProgress: BookProgress | null;
+  /**
+   * History of prior reads (re-reads), most recent first. JSON in DB.
+   */
+  previousReads: PreviousRead[] | null;
 };
 
-export type UserBookRow = Omit<UserBook, "bookProgress"> & {
+export type UserBookRow = Omit<UserBook, "bookProgress" | "previousReads"> & {
   bookProgress: string | null;
+  previousReads: string | null;
 };
 
 export type Buzz = {

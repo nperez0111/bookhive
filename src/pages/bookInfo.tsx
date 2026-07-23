@@ -1,4 +1,4 @@
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { type FC, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
@@ -970,6 +970,33 @@ export const BookInfo: FC<{
                 </button>
               </div>
             </form>
+            {usersBook?.previousReads && usersBook.previousReads.length > 0 && (
+              <div>
+                <p class="mb-2 block text-sm font-semibold text-foreground">Previously Read</p>
+                <ul class="space-y-3 text-sm text-muted-foreground">
+                  {[...usersBook.previousReads]
+                    .sort(
+                      (a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime(),
+                    )
+                    .map((r, i) => {
+                      const finished = new Date(r.finishedAt);
+                      const started = r.startedAt ? new Date(r.startedAt) : null;
+                      return (
+                        <li
+                          key={`${r.finishedAt}-${i}`}
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          <span class="text-foreground">
+                            {started
+                              ? `${format(started, "MMM d, yyyy")} \u2013 ${format(finished, "MMM d, yyyy")}`
+                              : format(finished, "MMM d, yyyy")}
+                          </span>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+            )}
 
             {/* Delete - separated, with confirmation */}
             {usersBook && (

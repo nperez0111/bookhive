@@ -250,14 +250,14 @@ Client hooks/utils:
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–014) in one file. `createDb`
+SQLite via Kysely. Schema + all migrations (001–015) in one file. `createDb`
 sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.
 
 | Table             | Purpose                   | Key columns                                                                                                                                                              |
 | ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `user_book`       | User's book records       | uri (PK), cid, userDid, hiveId, title, authors, status, **stars**, review, startedAt, finishedAt, **owned**, bookProgress                                                |
+| `user_book`       | User's book records       | uri (PK), cid, userDid, hiveId, title, authors, status, **stars**, review, startedAt, finishedAt, **owned**, bookProgress, previousReads (JSON re-read history)          |
 | `hive_book`       | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, identifiers, hiveBookAtUri, language |
 | `hive_book_genre` | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here** — the old `hive_book.genres` column was dropped (mig 011)                                                         |
 | `book_id_map`     | ISBN/Goodreads cross-refs | hiveId (PK), isbn, isbn13, goodreadsId, updatedAt                                                                                                                        |
@@ -268,6 +268,18 @@ sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 
 Notes: `user_book` has no `rating` column (it's `stars`); `owned` is a boolean
 column, **not** a status (legacy `…#owned` status migrated to `owned=1`).
+`previousReads` (mig 015) is a JSON array of re-read history entries
+(`{ startedAt?, finishedAt }`), serialized by `hydrateUserBook`/
+`serializeUserBook` alongside `bookProgress`. Sync inflows persist any
+`previousReads` array present on incoming `buzz.bookhive.book` records: the
+ingester (`src/bsky/ingester.ts`) writes it, as do the re-sync route handlers
+`refetchBooks` (`src/routes/lib.ts`) and the admin PDS export/resync handler
+(`src/routes/admin.ts`). The local POST `/books/:hiveId` route and the import
+UI do not expose `previousReads` as user input (absent from their form
+schemas), and imports never synthesize it. The one local write that ever grows
+it is the server-side re-read rotation in `updateBookRecord`
+(`src/utils/getBook.ts`), which archives the prior finished dates into
+`previousReads` when a finished book is marked "Reading" again.
 `book_list*` are keyed by AT URI (`uri`/`listUri`), not numeric ids.
 
 ### KV Cache (`src/sqlite-kv.ts`)

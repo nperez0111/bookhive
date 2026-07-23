@@ -228,6 +228,12 @@
           "type": "ref",
           "ref": "buzz.bookhive.defs#bookProgress"
         },
+        "previousReads": {
+          "type": "array",
+          "description": "History of prior reads of this book by the user (most recent first)",
+          "items": { "type": "ref", "ref": "buzz.bookhive.defs#previousRead" },
+          "maxLength": 50
+        },
         "identifiers": {
           "description": "External identifiers for the book",
           "type": "ref",
@@ -237,6 +243,23 @@
           "type": "array",
           "description": "Book genres",
           "items": { "type": "string" }
+        }
+      }
+    },
+    "previousRead": {
+      "type": "object",
+      "description": "A prior read of a book by the user (re-read history)",
+      "required": ["finishedAt"],
+      "properties": {
+        "startedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the user started this prior read"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the user finished this prior read"
         }
       }
     },

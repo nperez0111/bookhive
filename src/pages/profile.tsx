@@ -39,12 +39,22 @@ export const ProfilePage: FC<{
   userLists = [],
 }) => {
   const year = new Date().getFullYear();
-  const booksThisYear = books.filter(
-    (b) =>
+  const booksThisYear = books.reduce((sum, b) => {
+    let n = 0;
+    if (
       b.status === BOOK_STATUS.FINISHED &&
       b.finishedAt &&
-      new Date(b.finishedAt).getFullYear() === year,
-  ).length;
+      new Date(b.finishedAt).getFullYear() === year
+    ) {
+      n++;
+    }
+    if (b.previousReads) {
+      for (const r of b.previousReads) {
+        if (r.finishedAt && new Date(r.finishedAt).getFullYear() === year) n++;
+      }
+    }
+    return sum + n;
+  }, 0);
   const finishedWithRating = books.filter(
     (b) => b.status === BOOK_STATUS.FINISHED && b.stars != null,
   );
