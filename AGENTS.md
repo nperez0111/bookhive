@@ -270,10 +270,16 @@ Notes: `user_book` has no `rating` column (it's `stars`); `owned` is a boolean
 column, **not** a status (legacy `…#owned` status migrated to `owned=1`).
 `previousReads` (mig 015) is a JSON array of re-read history entries
 (`{ startedAt?, finishedAt }`), serialized by `hydrateUserBook`/
-`serializeUserBook` alongside `bookProgress`. It is view-only — the
-`/books/:hiveId` POST route and importers do not currently populate it; the
-ingester persists any `previousReads` array present on incoming
-`buzz.bookhive.book` records.
+`serializeUserBook` alongside `bookProgress`. Sync inflows persist any
+`previousReads` array present on incoming `buzz.bookhive.book` records: the
+ingester (`src/bsky/ingester.ts`) writes it, as do the re-sync route handlers
+`refetchBooks` (`src/routes/lib.ts`) and the admin PDS export/resync handler
+(`src/routes/admin.ts`). The local POST `/books/:hiveId` route and the import
+UI do not expose `previousReads` as user input (absent from their form
+schemas), and imports never synthesize it. The one local write that ever grows
+it is the server-side re-read rotation in `updateBookRecord`
+(`src/utils/getBook.ts`), which archives the prior finished dates into
+`previousReads` when a finished book is marked "Reading" again.
 `book_list*` are keyed by AT URI (`uri`/`listUri`), not numeric ids.
 
 ### KV Cache (`src/sqlite-kv.ts`)
