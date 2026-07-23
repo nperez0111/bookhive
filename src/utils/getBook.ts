@@ -401,7 +401,9 @@ export async function updateBookRecord({
     review: record.review || null,
     stars: record.stars || null,
     bookProgress: record.bookProgress ?? null,
-    previousReads: record.previousReads ?? null,
+      stars: c.ref("excluded.stars"),
+      bookProgress: c.ref("excluded.bookProgress"),
+      previousReads: c.ref("excluded.previousReads"),
   };
 
   await updateUserBook({ ctx, userBook: nextUserBook });
