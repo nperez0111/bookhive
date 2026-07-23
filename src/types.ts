@@ -26,7 +26,6 @@ export type BookProgress = {
 export type PreviousRead = {
   startedAt?: string;
   finishedAt: string;
-  stars?: number;
 };
 
 export type BookIdentifiers = {
