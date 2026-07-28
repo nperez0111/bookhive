@@ -17,6 +17,7 @@ import {
   sessionClientFromOAuthSession,
   type SessionClient,
 } from "./auth/client";
+import { createCrossProcessLock } from "./auth/refresh-lock";
 import { createServiceAccountAgent } from "./utils/catalogBookService";
 import { getSessionConfig } from "./auth/router";
 import {
@@ -183,7 +184,8 @@ export async function createAppDeps(): Promise<AppDeps> {
     pageCacheTimer.unref();
   }
 
-  const oauthClient = await createOAuthClient(kv);
+  const requestLock = createCrossProcessLock(authKvDb);
+  const oauthClient = await createOAuthClient(kv, { requestLock });
   const baseIdResolver = createCachingBaseIdResolver(kv, createBaseIdResolver());
   const resolver = createCachingBidirectionalResolver(kv, createBidirectionalResolverAtcute());
 

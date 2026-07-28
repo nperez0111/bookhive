@@ -6,7 +6,7 @@ import { env } from "../env";
 import { createSessionStore, createStateStore } from "./storage";
 import type { Storage } from "unstorage";
 
-const time = Date.now();
+export type LockFunction = <T>(key: string, cb: () => Promise<T>) => Promise<T>;
 
 // Toggle to use permission-set scopes (requires PDS support for permission sets).
 // When true, uses the bundled `include:buzz.bookhive.auth` scope.
@@ -35,7 +35,11 @@ function parseKeyset(): ClientAssertionPrivateJwk[] | undefined {
 
 export async function createOAuthClient(
   kv: Storage,
-  storeOverrides?: { sessions: SessionStore; states: StateStore },
+  overrides?: {
+    sessions?: SessionStore;
+    states?: StateStore;
+    requestLock?: LockFunction;
+  },
 ) {
   const publicUrl = env.PUBLIC_URL;
   const baseUrl = publicUrl || `http://127.0.0.1:${env.PORT}`;
@@ -46,34 +50,13 @@ export async function createOAuthClient(
   const keyset = isLoopback ? undefined : parseKeyset();
 
   const sharedStores = {
-    sessions: storeOverrides?.sessions ?? createSessionStore(kv),
-    states: storeOverrides?.states ?? createStateStore(kv),
+    sessions: overrides?.sessions ?? createSessionStore(kv),
+    states: overrides?.states ?? createStateStore(kv),
   };
 
-  const requestLock = async function waitForLock<T>(
-    key: string,
-    cb: () => Promise<T>,
-    attempt = 0,
-  ): Promise<T> {
-    if (attempt > 10) {
-      throw new Error(`Lock timeout for ${key}`);
-    }
-    const lock = await kv.get<number>(`auth_lock:${key}`);
-    if (!lock) {
-      try {
-        await kv.set(`auth_lock:${key}`, time);
-        return cb();
-      } finally {
-        await kv.del(`auth_lock:${key}`);
-      }
-    }
-    if (lock !== time) {
-      return new Promise((resolve, reject) =>
-        setTimeout(() => waitForLock(key, cb, attempt + 1).then(resolve, reject), 100),
-      );
-    }
-    return cb();
-  };
+  // When provided, requestLock serializes token refresh across worker processes.
+  // Without it, @atcute's in-process CachedGetter deduplication is the only guard.
+  const requestLock = overrides?.requestLock;
 
   if (keyset) {
     // Confidential client: private_key_jwt auth, up to 180-day sessions
