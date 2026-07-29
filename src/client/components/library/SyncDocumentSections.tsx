@@ -70,9 +70,8 @@ export const SyncTriage: FC<{
 const TrackedRow: FC<{
   doc: SyncDoc;
   onLink: (doc: SyncDoc) => void;
-  onUndismiss: (document: string) => void;
   onRename: (document: string, title: string) => Promise<void>;
-}> = ({ doc, onLink, onUndismiss, onRename }) => {
+}> = ({ doc, onLink, onRename }) => {
   const [renaming, setRenaming] = useState(false);
   const [value, setValue] = useState(doc.title ?? "");
   const [busy, setBusy] = useState(false);
@@ -154,18 +153,11 @@ const TrackedRow: FC<{
                 Rename
               </button>
             )}
+            {/* No explicit undo: linking a dismissed document overwrites the
+                sentinel, which is the only correction that matters. */}
             <button type="button" class="btn btn-ghost btn-sm min-h-10" onClick={() => onLink(doc)}>
               Link to book
             </button>
-            {doc.dismissed && (
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm min-h-10"
-                onClick={() => onUndismiss(doc.document)}
-              >
-                Undo
-              </button>
-            )}
           </>
         )}
       </div>
@@ -182,9 +174,8 @@ const TrackedRow: FC<{
 export const AlsoTracking: FC<{
   docs: SyncDoc[];
   onLink: (doc: SyncDoc) => void;
-  onUndismiss: (document: string) => void;
   onRename: (document: string, title: string) => Promise<void>;
-}> = ({ docs, onLink, onUndismiss, onRename }) => {
+}> = ({ docs, onLink, onRename }) => {
   if (docs.length === 0) return null;
 
   return (
@@ -199,13 +190,7 @@ export const AlsoTracking: FC<{
       </p>
       <ul class="divide-border mt-2 divide-y">
         {docs.map((doc) => (
-          <TrackedRow
-            key={doc.document}
-            doc={doc}
-            onLink={onLink}
-            onUndismiss={onUndismiss}
-            onRename={onRename}
-          />
+          <TrackedRow key={doc.document} doc={doc} onLink={onLink} onRename={onRename} />
         ))}
       </ul>
     </section>

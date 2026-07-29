@@ -221,13 +221,19 @@ export const LibraryManager: FC = () => {
 
   // ── Sync document actions ──
 
-  const setDismissed = async (document: string, dismissed: boolean) => {
+  /**
+   * Mark a document as having no BookHive counterpart. There is no un-dismiss
+   * action: linking the document to a book overwrites the sentinel, which is
+   * the only correction worth offering. The endpoint still accepts
+   * `dismissed: false` for completeness.
+   */
+  const dismissDocument = async (document: string) => {
     const previous = docs;
     setDocs((prev) =>
-      prev.map((d) => (d.document === document ? { ...d, dismissed, hiveId: null } : d)),
+      prev.map((d) => (d.document === document ? { ...d, dismissed: true, hiveId: null } : d)),
     );
     try {
-      const res = await postJson("/library/sync/dismiss", { document, dismissed });
+      const res = await postJson("/library/sync/dismiss", { document, dismissed: true });
       if (!res.ok) throw new Error("Failed");
     } catch {
       setDocs(previous);
@@ -360,7 +366,7 @@ export const LibraryManager: FC = () => {
       <SyncTriage
         docs={triageDocs}
         onLink={startLinkDoc}
-        onDismiss={(document) => void setDismissed(document, true)}
+        onDismiss={(document) => void dismissDocument(document)}
       />
 
       {shelvesLoaded && (
@@ -445,12 +451,7 @@ export const LibraryManager: FC = () => {
         </>
       )}
 
-      <AlsoTracking
-        docs={trackedDocs}
-        onLink={startLinkDoc}
-        onUndismiss={(document) => void setDismissed(document, false)}
-        onRename={handleRenameDoc}
-      />
+      <AlsoTracking docs={trackedDocs} onLink={startLinkDoc} onRename={handleRenameDoc} />
 
       <SearchPalette
         isLoggedIn={true}
