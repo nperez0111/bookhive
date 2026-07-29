@@ -78,8 +78,7 @@ const TrackedRow: FC<{
   const [value, setValue] = useState(doc.title ?? "");
   const [busy, setBusy] = useState(false);
 
-  // Unique per row; the document hash is hex, so it is already a valid
-  // custom-ident suffix for the anchor name the menu derives from this id.
+  // Unique per row; used as the id of the checkbox holding the menu's open state.
   const menuId = `sync-doc-menu-${doc.document}`;
 
   const submit = async () => {

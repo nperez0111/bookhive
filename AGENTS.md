@@ -321,15 +321,43 @@ triaged above the grid, then parked in "Also tracking" once linked or dismissed.
 page only links to `/library`.
 
 **Prefer no-JS UI primitives.** `AnchoredMenu`/`MenuItem`/`MenuConfirm`
-(`src/client/components/library/AnchoredMenu.tsx`) are the house dropdown: the
-`popover` attribute plus `popovertarget` handles open/close/light-dismiss/Escape
-with no state and no outside-click listener, the top layer means no ancestor's
-`overflow: hidden` can clip the panel, and the CSS anchor positioning API
-tethers the panel to its trigger. Styling lives in `.anchored-menu`
-(`src/index.css`), which carries a `@supports` fallback that centres the panel
-where `position-area` is unsupported. `MenuConfirm` nests a second popover
-inside the first for confirmation steps. All three library menus (book card,
-shelf tab, sync document row) use it; reach for it before writing menu state.
+(`src/client/components/library/AnchoredMenu.tsx`) are the house dropdown, built
+entirely from HTML + Tailwind with no state and no outside-click listener:
+
+- **Open/close** — a visually hidden (`sr-only`, still focusable) `peer`
+  checkbox plus a `<label for>` trigger; the panel shows via `peer-checked:`.
+- **Positioning** — plain `absolute top-full right-0` inside a
+  `relative` wrapper, the same approach as every other menu in the app (navbar
+  user menu, book status dropdown, share menus).
+- **Light dismiss** — a viewport-filling `<button type="reset">` behind the panel.
+- **Closing on item click** — the whole menu is a `<form method="dialog">`, so a
+  `<button type="reset">` returns every checkbox in it to unchecked, closing the
+  menu _and_ any nested `MenuConfirm` in one declarative step. `MenuItem` renders
+  `type="reset"` when given `menuId` and `type="button"` otherwise (omit it for
+  checkbox lists that should stay open). `method="dialog"` outside a `<dialog>`
+  makes submission a no-op, so the form can never navigate.
+
+**Do not use the CSS anchor positioning API here.** It was tried and reverted:
+`position-area`/`position-anchor` are Chromium-only, so Firefox and Safari fell
+back to a viewport-centred sheet. It is also the _only_ way to tether a `popover`
+to its trigger, because an open popover is in the top layer, which detaches it
+from the containing-block chain — `offsetParent` is null and `static`/`relative`/
+`absolute`/`fixed` all resolve against the initial containing block. That is why
+this component is not a popover.
+
+The trade-off: no Escape-to-close (consistent with every other menu in the app),
+and the trigger exposes checkbox rather than button semantics.
+
+Because the panel is no longer in the top layer, **ancestor stacking and clipping
+now matter**. `PersonalBookCard` must keep the menu in the action layer that is a
+_sibling_ of the `overflow-hidden` cover box, that layer must not use a
+`transform` (a transform would become the containing block for the `fixed`
+backdrop and trap the panel in its own stacking context — it uses a `bottom`
+offset for its hover lift instead), and the `<li>` needs `has-[:checked]:z-20` so
+the open panel paints over later grid cards.
+
+All three library menus (book card, shelf tab, sync document row) use it; reach
+for it before writing menu state.
 
 Non-mounted client components: `bookActions.tsx`, `ProgressBar.tsx` (imported by others).
 

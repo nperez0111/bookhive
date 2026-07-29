@@ -147,7 +147,7 @@ export const ShelfTabs: FC<{
                 id={`shelf-menu-${shelf.id}`}
                 label={`Shelf actions for ${shelf.name}`}
                 width="w-40"
-                triggerClass={`mr-1 -ml-1 inline-flex size-6 items-center justify-center rounded-full text-muted-foreground transition-opacity duration-150 hover:bg-muted focus:opacity-100 group-hover:opacity-100 ${
+                triggerClass={`mr-1 -ml-1 inline-flex size-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-opacity duration-150 hover:bg-muted group-hover:opacity-100 ${
                   activeShelfId === shelf.id ? "opacity-100" : "opacity-0"
                 }`}
                 trigger={

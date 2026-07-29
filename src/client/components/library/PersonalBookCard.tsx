@@ -73,7 +73,9 @@ export const PersonalBookCard: FC<{
   const meta = [book.format.toUpperCase(), formatFileSize(book.sizeBytes)].join(" · ");
 
   return (
-    <li class="relative">
+    // Raised while its menu is open so the panel paints over the grid cards that
+    // come after it in DOM order.
+    <li class="relative has-[:checked]:z-20">
       <div class="group relative">
         {/* Cover. Clips the image and gradient to the rounded corners — which is
             why the action layer below is a sibling rather than a child: a menu
@@ -109,8 +111,16 @@ export const PersonalBookCard: FC<{
         </div>
 
         {/* Action layer — a sibling of the clipped cover box so the menu panel
-            can overflow it. Mirrors the cover's hover lift to stay aligned. */}
-        <div class="pointer-events-none absolute inset-0 flex flex-col justify-end p-2 opacity-0 transition-[opacity,transform] duration-200 group-focus-within:opacity-100 group-hover:-translate-y-1 group-hover:opacity-100">
+            can overflow it. Mirrors the cover's hover lift to stay aligned, but
+            with `bottom` rather than a transform: a transform here would become
+            the containing block for the menu's `fixed` light-dismiss backdrop
+            (shrinking it to this card) and would trap the panel in its own
+            stacking context. `inset-x-0 top-0 bottom-0` instead of `inset-0`
+            keeps the hover offset a same-property override, so there is no
+            shorthand-vs-longhand ordering question.
+            `group-has-[:checked]` keeps the layer up while the menu is open —
+            the trigger is a label, so it holds no focus for `focus-within`. */}
+        <div class="pointer-events-none absolute inset-x-0 top-0 bottom-0 flex flex-col justify-end p-2 opacity-0 transition-[opacity,bottom] duration-200 group-focus-within:opacity-100 group-hover:bottom-1 group-hover:opacity-100 group-has-[:checked]:bottom-1 group-has-[:checked]:opacity-100">
           <div class="pointer-events-auto flex items-center justify-between gap-2">
             <a
               href={`/library/books/${book.contentHash}/download`}
