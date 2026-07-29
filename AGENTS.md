@@ -210,20 +210,33 @@ Each file exports a Hono JSX component rendered server-side.
 
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------------- |
-| `book.tsx`                 | Book card component                                                                           |
-| `BookCard.tsx`             | Composable book card                                                                          |
-| `buzz.tsx`                 | Buzz/comment display                                                                          |
-| `BookReview.tsx`           | Book review form/display                                                                      |
-| `EditableLibraryTable.tsx` | Library table with inline editing                                                             |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                                                              |
-| `LanguageSelect.tsx`       | Language picker (search/explore filters)                                                      |
-| `modal.tsx`                | Modal dialog (CSS-based)                                                                      |
-| `fallbackCover.tsx`        | Placeholder book cover                                                                        |
-| `cards/`                   | Sub-components: `Card.tsx`, `CardActions.tsx`, `StarDisplay.tsx`, `UserBlock.tsx`, `index.ts` |
+| File                       | What                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `book.tsx`                 | Book card component                                                                               |
+| `BookCard.tsx`             | Composable book card                                                                              |
+| `buzz.tsx`                 | Buzz/comment display                                                                              |
+| `BookReview.tsx`           | Book review form/display                                                                          |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                                                 |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                                                  |
+| `LanguageSelect.tsx`       | Language picker (search/explore filters)                                                          |
+| `modal.tsx`                | Modal dialog (CSS-based)                                                                          |
+| `fallbackCover.tsx`        | Placeholder book cover                                                                            |
+| `AtTags.tsx`               | [AT Tags](https://tangled.org/chrisshank.com/at-tags/) `<meta name="at:...">` builder (see below) |
+| `cards/`                   | Sub-components: `Card.tsx`, `CardActions.tsx`, `StarDisplay.tsx`, `UserBlock.tsx`, `index.ts`     |
 
 Inline JS helper: `src/pages/utils/script.ts`
+
+**AT Tags** (`AtTags.tsx`): emits `<meta name="at:...">` tags declaring which
+ATProto records/identities a page maps to ([proposal](https://tangled.org/chrisshank.com/at-tags/)).
+`Layout` (`src/pages/layout.tsx`) always emits a site-wide `at:me` (the
+`BOOKHIVE_DID` constant in `src/constants.ts`, also served at
+`/.well-known/atproto-did`) and renders per-page tags from its `atTags?: AtTagsProps`
+prop, which routes pass via `c.render(..., { atTags })` (the `ContextRenderer`
+type in `src/routes/main.tsx` carries it). Currently set on: book detail
+(`at:canonical` → `hive_book.hiveBookAtUri`), profile (`at:author` → DID), and
+shelf view (`at:canonical` → list AT URI, `at:author` → owner DID). Built with
+hono's `html` template, **not** JSX `<meta>` elements, because hono/jsx dedupes
+head `<meta>` tags by `name` and would collapse the proposal's array semantics.
 
 ## Client-Side Components (`src/client/`)
 

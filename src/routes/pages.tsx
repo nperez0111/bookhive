@@ -9,6 +9,7 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 
 import type { AppEnv } from "../context";
+import { BOOKHIVE_DID } from "../constants";
 import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
@@ -106,7 +107,7 @@ const app = new Hono<AppEnv>()
   })
   .get("/.well-known/atproto-did", (c) => {
     c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
-    return c.text("did:plc:enu2j5xjlqsjaylv3du4myh4");
+    return c.text(BOOKHIVE_DID);
   })
   .get("/app", (c) => {
     c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
