@@ -1,0 +1,76 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.listSyncDocuments",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List all synced documents for the authenticated user.",
+      "parameters": {
+        "type": "params",
+        "properties": {}
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["documents"],
+          "properties": {
+            "documents": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#syncDocumentView"
+              }
+            }
+          }
+        }
+      }
+    },
+    "syncDocumentView": {
+      "type": "object",
+      "required": ["documentHash", "progress", "percentage", "device", "device_id", "timestamp"],
+      "properties": {
+        "documentHash": {
+          "type": "string",
+          "description": "Hash identifying the document"
+        },
+        "progress": {
+          "type": "string",
+          "description": "Reading progress position (KOSync format)"
+        },
+        "percentage": {
+          "type": "string",
+          "description": "Reading progress as a decimal string (0-1, e.g. '0.42')"
+        },
+        "device": {
+          "type": "string",
+          "description": "Device name that last synced"
+        },
+        "device_id": {
+          "type": "string",
+          "description": "Device identifier that last synced"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Original filename of the document"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the document"
+        },
+        "authors": {
+          "type": "string",
+          "description": "Authors of the document"
+        },
+        "hiveId": {
+          "type": "string",
+          "description": "Linked BookHive catalog entry ID"
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Unix timestamp of last sync"
+        }
+      }
+    }
+  }
+}

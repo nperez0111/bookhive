@@ -45,6 +45,9 @@ index.html
 .env.local
 .env.*.local
 
+# User-uploaded ebook library data
+library/
+
 # IDE and tools
 .opencode/
 .cursor/

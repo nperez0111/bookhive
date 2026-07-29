@@ -11,6 +11,10 @@ import type {
   HiveBook,
   HiveBookGenre,
   HiveId,
+  PersonalBookRow,
+  PersonalShelfRow,
+  PersonalShelfItemRow,
+  SyncDocumentRow,
   UserBookRow,
   UserFollow,
 } from "./types";
@@ -26,6 +30,10 @@ export type DatabaseSchema = {
   user_follows: UserFollow;
   book_list: BookListRow;
   book_list_item: BookListItemRow;
+  sync_document: SyncDocumentRow;
+  personal_book: PersonalBookRow;
+  personal_shelf: PersonalShelfRow;
+  personal_shelf_item: PersonalShelfItemRow;
 };
 
 export const BookFields = [
@@ -547,6 +555,95 @@ migrations["015"] = {
   },
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("user_book").dropColumn("previousReads").execute();
+  },
+};
+
+migrations["016"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("sync_document")
+      .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("provider", "text", (col) => col.notNull().defaultTo("kosync"))
+      .addColumn("documentHash", "text", (col) => col.notNull())
+      .addColumn("hiveId", "text")
+      .addColumn("filename", "text")
+      .addColumn("title", "text")
+      .addColumn("authors", "text")
+      .addColumn("progressData", "text", (col) => col.notNull())
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("updatedAt", "text", (col) => col.notNull())
+      .execute();
+
+    await sql`CREATE UNIQUE INDEX idx_sync_document_user_provider_doc ON sync_document(userDid, provider, documentHash)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX idx_sync_document_user ON sync_document(userDid, provider)`.execute(db);
+    await sql`CREATE INDEX idx_sync_document_hive ON sync_document(hiveId)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("sync_document").execute();
+  },
+};
+
+migrations["017"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("personal_book")
+      .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("contentHash", "text", (col) => col.notNull())
+      .addColumn("hiveId", "text")
+      .addColumn("filename", "text", (col) => col.notNull())
+      .addColumn("title", "text", (col) => col.notNull())
+      .addColumn("authors", "text")
+      .addColumn("language", "text")
+      .addColumn("format", "text", (col) => col.notNull())
+      .addColumn("mime", "text", (col) => col.notNull())
+      .addColumn("filePath", "text", (col) => col.notNull())
+      .addColumn("coverPath", "text")
+      .addColumn("coverMime", "text")
+      .addColumn("sizeBytes", "integer", (col) => col.notNull())
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("updatedAt", "text", (col) => col.notNull())
+      .execute();
+
+    await sql`CREATE UNIQUE INDEX idx_personal_book_user_hash ON personal_book(userDid, contentHash)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX idx_personal_book_user ON personal_book(userDid)`.execute(db);
+    await sql`CREATE INDEX idx_personal_book_hive ON personal_book(hiveId)`.execute(db);
+
+    await db.schema
+      .createTable("personal_shelf")
+      .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+      .addColumn("userDid", "text", (col) => col.notNull())
+      .addColumn("name", "text", (col) => col.notNull())
+      .addColumn("description", "text")
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .addColumn("updatedAt", "text", (col) => col.notNull())
+      .execute();
+
+    await sql`CREATE UNIQUE INDEX idx_personal_shelf_user_name ON personal_shelf(userDid, name)`.execute(
+      db,
+    );
+
+    await db.schema
+      .createTable("personal_shelf_item")
+      .addColumn("id", "integer", (col) => col.primaryKey().autoIncrement())
+      .addColumn("shelfId", "integer", (col) => col.notNull())
+      .addColumn("personalBookId", "integer", (col) => col.notNull())
+      .addColumn("createdAt", "text", (col) => col.notNull())
+      .execute();
+
+    await sql`CREATE UNIQUE INDEX idx_personal_shelf_item_pk ON personal_shelf_item(shelfId, personalBookId)`.execute(
+      db,
+    );
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("personal_shelf_item").execute();
+    await db.schema.dropTable("personal_shelf").execute();
+    await db.schema.dropTable("personal_book").execute();
   },
 };
 

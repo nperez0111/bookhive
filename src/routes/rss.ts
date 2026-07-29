@@ -9,6 +9,7 @@ import type { AppEnv } from "../context";
 import { BookFields } from "../db";
 import { BOOK_STATUS } from "../constants";
 import type { HiveId } from "../types";
+import { escapeXml } from "../utils/xml";
 
 const STATUS_SHORTHAND: Record<string, string> = {
   finished: BOOK_STATUS.FINISHED,
@@ -28,15 +29,6 @@ function getActionText(status: string | null): string {
 
 function toRfc2822(iso: string): string {
   return new Date(iso).toUTCString();
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 function parseStatusFilter(param: string | undefined): string[] | null {

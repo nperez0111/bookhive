@@ -1,6 +1,7 @@
 import type { SessionClient } from "../auth/client";
 import { ids } from "../bsky/lexicon";
 import type { Database } from "../db";
+import { removeUserDir } from "./personalLibrary";
 
 type ListRecordsOut = {
   records: Array<{ uri: string; cid: string; value: unknown }>;
@@ -70,9 +71,21 @@ export async function deleteAccountData({
 
   // DB cleanup
   const did = agent.did;
+  await db
+    .deleteFrom("personal_shelf_item")
+    .where("shelfId", "in", (qb) =>
+      qb.selectFrom("personal_shelf").select("id").where("userDid", "=", did),
+    )
+    .execute();
+  await db.deleteFrom("personal_shelf").where("userDid", "=", did).execute();
+  await db.deleteFrom("personal_book").where("userDid", "=", did).execute();
+  await db.deleteFrom("sync_document").where("userDid", "=", did).execute();
   await db.deleteFrom("book_list_item").where("userDid", "=", did).execute();
   await db.deleteFrom("book_list").where("userDid", "=", did).execute();
   await db.deleteFrom("buzz").where("userDid", "=", did).execute();
   await db.deleteFrom("user_book").where("userDid", "=", did).execute();
   await db.deleteFrom("user_follows").where("userDid", "=", did).execute();
+
+  // Remove uploaded library files from disk
+  await removeUserDir(did).catch(() => {});
 }

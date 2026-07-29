@@ -1,0 +1,102 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getPersonalLibrary",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get the authenticated user's personal ebook library.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of books to return",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 24
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
+          },
+          "shelfId": {
+            "type": "integer",
+            "description": "Filter by personal shelf ID"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["books"],
+          "properties": {
+            "books": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#personalBookView"
+              }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pagination cursor for the next page"
+            }
+          }
+        }
+      }
+    },
+    "personalBookView": {
+      "type": "object",
+      "required": ["contentHash", "title", "format", "mime", "sizeBytes", "createdAt", "updatedAt"],
+      "properties": {
+        "contentHash": {
+          "type": "string",
+          "description": "SHA-256 hash of the file content, used as stable identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the book"
+        },
+        "authors": {
+          "type": "string",
+          "description": "Authors of the book (tab-separated)"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the book"
+        },
+        "format": {
+          "type": "string",
+          "description": "File format (e.g. epub, pdf, mobi, fb2, cbz)"
+        },
+        "mime": {
+          "type": "string",
+          "description": "MIME type of the file"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "description": "File size in bytes"
+        },
+        "hiveId": {
+          "type": "string",
+          "description": "Linked BookHive catalog entry ID"
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "URL of the book cover image"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the book was added to the library"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the book record was last updated"
+        }
+      }
+    }
+  }
+}

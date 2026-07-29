@@ -1,0 +1,76 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.createPersonalShelf",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Create a new personal shelf for organizing books in the personal library.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the shelf",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": {
+              "type": "string",
+              "description": "Optional description of the shelf",
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["shelf"],
+          "properties": {
+            "shelf": {
+              "type": "ref",
+              "ref": "#personalShelfView"
+            }
+          }
+        }
+      }
+    },
+    "personalShelfView": {
+      "type": "object",
+      "required": ["id", "name", "bookCount", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Unique shelf identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the shelf"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the shelf"
+        },
+        "bookCount": {
+          "type": "integer",
+          "description": "Number of books on this shelf",
+          "minimum": 0
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the shelf was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When the shelf was last updated"
+        }
+      }
+    }
+  }
+}

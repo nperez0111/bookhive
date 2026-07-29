@@ -1,4 +1,4 @@
-import type { ProfileViewDetailed } from "./types";
+import type { HiveId, ProfileViewDetailed } from "./types";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { Did } from "@atcute/lexicons";
 import type { OAuthClient } from "@atcute/oauth-node-client";
@@ -35,6 +35,8 @@ import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
 import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
+import { updateBookRecord } from "./utils/getBook";
+import type { PendingWrite } from "./utils/syncBridge";
 
 /** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
 export type AddWideEventContext = (context: Record<string, unknown>) => void;
@@ -163,6 +165,9 @@ export async function createAppDeps(): Promise<AppDeps> {
   // Shared (not in-memory) so the main process and the ingester/import
   // workers see the same per-DID book locks.
   kv.mount("book_lock:", sqliteKv({ table: "book_lock", db: kvDb }));
+  kv.mount("sync_pending:", sqliteKv({ table: "sync_pending", db: kvDb }));
+  // Per-user KOSync token rotation counter (see src/middleware/sync-auth.ts).
+  kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
   if (isPrimaryWorker) {
@@ -395,6 +400,7 @@ export function createContextMiddleware(deps: AppDeps) {
       getSessionAgent(c.req.raw, c.res, ctx, sessionTiming).then((client) => {
         if (client) {
           ctx.addWideEventContext({ userDid: client.did });
+          void flushPendingSyncWrites(client, ctx);
         }
         return client;
       }),
@@ -450,4 +456,50 @@ export function createContextMiddleware(deps: AppDeps) {
     c.set("ctx", ctx);
     await next();
   };
+}
+
+/**
+ * Flush KOSync progress that was written optimistically to `user_book` but
+ * could not yet be persisted to the user's PDS (KOSync requests carry no OAuth
+ * session). Runs opportunistically whenever we do have a session agent, and
+ * routes through the canonical `updateBookRecord` writer so PDS + DB stay
+ * consistent with every other book update.
+ */
+async function flushPendingSyncWrites(client: SessionClient, ctx: BookUtilContext): Promise<void> {
+  const key = `sync_pending:${client.did}`;
+  try {
+    const pending = await ctx.kv.getItem<PendingWrite[]>(key);
+    if (!pending?.length) return;
+
+    const failed: PendingWrite[] = [];
+    for (const entry of pending) {
+      try {
+        // Only bridge books the user still tracks; never auto-create from a sync.
+        const userBook = await ctx.db
+          .selectFrom("user_book")
+          .select(["uri"])
+          .where("userDid", "=", client.did)
+          .where("hiveId", "=", entry.hiveId as HiveId)
+          .executeTakeFirst();
+        if (!userBook) continue;
+
+        await updateBookRecord({
+          ctx,
+          agent: client,
+          hiveId: entry.hiveId as HiveId,
+          updates: { bookProgress: JSON.parse(entry.bookProgress) },
+        });
+      } catch {
+        failed.push(entry);
+      }
+    }
+
+    if (failed.length > 0) {
+      await ctx.kv.setItem(key, failed);
+    } else {
+      await ctx.kv.removeItem(key);
+    }
+  } catch {
+    // fire-and-forget — don't break the login flow
+  }
 }

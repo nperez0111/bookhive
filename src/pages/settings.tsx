@@ -1,10 +1,10 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-export const SettingsPage: FC<{ handle: string; languages: string[] }> = ({
-  handle,
-  languages,
-}) => {
+export const SettingsPage: FC<{
+  handle: string;
+  languages: string[];
+}> = ({ handle, languages }) => {
   return (
     <div class="mx-auto max-w-2xl space-y-8 px-4 py-8 lg:px-8">
       <h1 class="text-2xl font-bold text-foreground">Account Settings</h1>
@@ -50,6 +50,34 @@ export const SettingsPage: FC<{ handle: string; languages: string[] }> = ({
               });
             }}
           />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <h2 class="text-lg font-semibold text-foreground">E-Reader &amp; Personal Library</h2>
+          <p class="text-muted-foreground mt-1 text-sm">
+            Manage your e-reader connection, upload ebooks, and sync reading progress.
+          </p>
+          <a
+            href="/library"
+            class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            Go to your Personal Library
+            <svg
+              class="size-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+              />
+            </svg>
+          </a>
         </div>
       </div>
 

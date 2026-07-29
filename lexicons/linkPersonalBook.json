@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.linkPersonalBook",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Link a personal library book to a BookHive catalog entry. Overwrites title, authors, and cover from the catalog.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["contentHash", "hiveId"],
+          "properties": {
+            "contentHash": {
+              "type": "string",
+              "description": "SHA-256 hash of the file content"
+            },
+            "hiveId": {
+              "type": "string",
+              "description": "BookHive catalog entry ID to link to"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["book"],
+          "properties": {
+            "book": {
+              "type": "ref",
+              "ref": "buzz.bookhive.getPersonalLibrary#personalBookView"
+            }
+          }
+        }
+      }
+    }
+  }
+}

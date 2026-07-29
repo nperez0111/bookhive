@@ -1,0 +1,74 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.putSyncProgress",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Push reading progress for a document. Mirrors KOSync PUT /syncs/progress semantics.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["document", "progress", "percentage", "device", "device_id"],
+          "properties": {
+            "document": {
+              "type": "string",
+              "description": "Document identifier"
+            },
+            "progress": {
+              "type": "string",
+              "description": "Reading progress position (KOSync format)"
+            },
+            "percentage": {
+              "type": "string",
+              "description": "Reading progress as a decimal string (0-1, e.g. '0.42')"
+            },
+            "device": {
+              "type": "string",
+              "description": "Device name"
+            },
+            "device_id": {
+              "type": "string",
+              "description": "Device identifier"
+            },
+            "metadata": {
+              "type": "ref",
+              "ref": "#syncMetadata"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "description": "Result status of the operation"
+            }
+          }
+        }
+      }
+    },
+    "syncMetadata": {
+      "type": "object",
+      "description": "Optional metadata about the document being synced",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "Original filename of the document"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the document"
+        },
+        "authors": {
+          "type": "string",
+          "description": "Authors of the document"
+        }
+      }
+    }
+  }
+}

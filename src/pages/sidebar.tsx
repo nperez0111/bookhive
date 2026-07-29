@@ -35,6 +35,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
       authRequired: true,
     },
     { href: "/explore", label: "Explore", icon: "compass", authRequired: false },
+    { href: "/library", label: "Personal Library", icon: "library", authRequired: true },
     { href: "/import", label: "Import", icon: "upload", authRequired: true },
     ...(pdsEnabled
       ? [{ href: "/pds", label: "Community", icon: "users", authRequired: false }]
@@ -55,7 +56,8 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
             (item.icon === "home" && (currentPath === "/" || currentPath === "/home")) ||
             (item.href.includes("/stats") && currentPath.includes("/stats")) ||
             (item.href === "/explore" && currentPath.startsWith("/explore")) ||
-            (item.icon === "shelf" && currentPath.startsWith("/shelves"));
+            (item.icon === "shelf" && currentPath.startsWith("/shelves")) ||
+            (item.icon === "library" && currentPath.startsWith("/library"));
           return (
             <li>
               <a href={item.href} aria-current={isActive ? "page" : undefined}>
