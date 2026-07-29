@@ -11,6 +11,7 @@ import type { KvDb } from "../sqlite-kv";
 const OWNER = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 
 const STALE_LOCK_MS = 30_000;
+const HEARTBEAT_MS = STALE_LOCK_MS / 3;
 const POLL_INTERVAL_MS = 150;
 const MAX_ATTEMPTS = 250;
 
@@ -46,9 +47,17 @@ export function createCrossProcessLock(
       const holder = result.rows[0]?.owner;
 
       if (holder === OWNER) {
+        // Renew the lock timestamp while the callback runs so other processes
+        // don't evict it as stale during a legitimately slow refresh.
+        const heartbeat = setInterval(() => {
+          void sql`UPDATE auth_refresh_lock SET acquired_at = ${Date.now()} WHERE id = ${key} AND owner = ${OWNER}`.execute(
+            db,
+          );
+        }, HEARTBEAT_MS);
         try {
           return await cb();
         } finally {
+          clearInterval(heartbeat);
           await sql`DELETE FROM auth_refresh_lock WHERE id = ${key} AND owner = ${OWNER}`.execute(
             db,
           );
@@ -58,8 +67,9 @@ export function createCrossProcessLock(
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
 
-    // Safety valve: if we timed out, force-break the lock so the system recovers.
-    await sql`DELETE FROM auth_refresh_lock WHERE id = ${key}`.execute(db);
+    // Only clean up our own lock (defensive no-op — we never acquired one).
+    // Don't delete another process's legitimately-held lock.
+    await sql`DELETE FROM auth_refresh_lock WHERE id = ${key} AND owner = ${OWNER}`.execute(db);
     throw new Error(`Cross-process lock timeout for ${key}`);
   };
 }
