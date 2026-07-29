@@ -12,6 +12,7 @@ import {
   sessionClientFromOAuthSession,
   type SessionClient,
 } from "../../auth/client";
+import { createCrossProcessLock } from "../../auth/refresh-lock";
 import { createDb } from "../../db";
 import sqliteKv, { createSharedKvDb } from "../../sqlite-kv";
 import { createServiceAccountAgent } from "../../utils/catalogBookService";
@@ -84,9 +85,11 @@ export async function createWorkerContext({
   authKv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: kvDb }));
   authKv.mount("auth_state:", sqliteKv({ table: "auth_state", db: kvDb }));
 
+  const requestLock = createCrossProcessLock(kvDb);
   const oauthClient = await createOAuthClient(authKv, {
     sessions: sessionStore,
     states: createNoopStateStore(),
+    requestLock,
   });
   const oauthSession = await oauthClient.restore(did as Did, { refresh: "auto" });
   const agent = sessionClientFromOAuthSession(oauthSession);
