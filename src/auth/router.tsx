@@ -151,19 +151,13 @@ export function loginRouter(
   // Login page
   app.get("/login", async (c) => {
     const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";
-    const agent = await c.get("ctx").getSessionAgent();
-    if (agent) {
-      try {
-        // try using the profile to see if the user actually has valid permissions
-        await c.get("ctx").getProfile();
-      } catch {
-        return c.html(
-          <Layout assetUrls={c.get("assetUrls")}>
-            <Login handle={c.req.query("handle")} signupUrl={signupUrl} />
-          </Layout>,
-        );
+    try {
+      const profile = await c.get("ctx").getProfile();
+      if (profile) {
+        return c.redirect("/");
       }
-      return c.redirect("/");
+    } catch {
+      // session restore or profile fetch failed — show login
     }
     return c.html(
       <Layout assetUrls={c.get("assetUrls")}>
