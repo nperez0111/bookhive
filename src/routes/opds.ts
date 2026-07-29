@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../context";
 import { opdsAuthMiddleware } from "../middleware/opds-auth";
 import { escapeXml } from "../utils/xml";
-import { OPDS_PAGE_SIZE } from "../utils/personalLibrary";
+import { OPDS_PAGE_SIZE, streamPersonalBook } from "../utils/personalLibrary";
 import type { Selectable } from "kysely";
 import type { PersonalBookRow } from "../types";
 
@@ -317,30 +317,12 @@ app.get("/books/:hash/download", async (c) => {
   const { db } = c.get("ctx");
   const hash = c.req.param("hash");
 
-  const book = await db
-    .selectFrom("personal_book")
-    .select(["filePath", "filename", "mime", "format"])
-    .where("userDid", "=", userDid)
-    .where("contentHash", "=", hash)
-    .executeTakeFirst();
-
-  if (!book) {
+  const download = await streamPersonalBook(db, userDid, hash);
+  if (!download) {
     return c.body("Not found", 404);
   }
 
-  const file = Bun.file(book.filePath);
-  if (!(await file.exists())) {
-    return c.body("Not found", 404);
-  }
-
-  const downloadName = book.filename.toLowerCase().includes(".")
-    ? book.filename
-    : `${book.filename}.${book.format || "epub"}`;
-
-  return c.body(file.stream(), 200, {
-    "Content-Type": book.mime || "application/epub+zip",
-    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
-  });
+  return c.body(download.stream, 200, download.headers);
 });
 
 // GET /books/:hash/cover — Serve cover image

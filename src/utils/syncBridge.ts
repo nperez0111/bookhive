@@ -2,6 +2,7 @@ import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { READING, FINISHED, ABANDONED } from "../constants";
+import { NO_HIVE_MATCH } from "./syncMatching";
 
 export type PendingWrite = { hiveId: string; bookProgress: string };
 
@@ -41,6 +42,9 @@ export async function bridgeProgressToUserBook(
   hiveId: HiveId,
   percentage: number,
 ): Promise<void> {
+  // A dismissed document has no BookHive book to bridge onto.
+  if (hiveId === NO_HIVE_MATCH) return;
+
   const userBook = await db
     .selectFrom("user_book")
     .select(["uri", "status"])

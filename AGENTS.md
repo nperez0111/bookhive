@@ -48,7 +48,7 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
   import-worker       — CSV import processing
 ```
 
-**Key pattern**: Server components (`src/pages/`) render full HTML. Only 7 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors for tabs, dropdowns, modals) or inline `<Script>` vanilla JS.
+**Key pattern**: Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors for tabs, dropdowns, modals) or inline `<Script>` vanilla JS.
 
 **Asset URLs**: In production, resolved from the Vite build manifest via `src/utils/manifest.ts` (`loadViteManifest`/`getAssetUrlsFromManifest`), exposed on the Hono context as `assetUrls`. The `/_bundle` HTML import route still exists for Bun dev.
 
@@ -66,7 +66,7 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 | `src/server.ts`        | Wires deps via `createAppDeps()` + `createApp()`; graceful shutdown |
 | `src/app.ts`           | Hono app factory — all middleware + route mounting                  |
 | `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)                     |
-| `src/client/index.tsx` | Client bundle entry — mounts 5 hydrated components                  |
+| `src/client/index.tsx` | Client bundle entry — mounts 6 hydrated components                  |
 
 ## Routes
 
@@ -155,14 +155,19 @@ User book lists ("shelves"). Lists use the **shared popfeed lexicons**
 
 ### `src/routes/library.tsx` (mounted at `/library`)
 
-Personal library: ebook uploads, e-reader credentials, sync documents. All routes require session auth.
+Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync documents. All routes require session auth.
 
-- GET `/` → `src/pages/library.tsx` (auth) — personal library page with e-reader connection, upload zone, library manager island, sync documents island
-- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes SHA-256 hash, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links via KOReader partial MD5 matching)
+- GET `/` → `src/pages/library.tsx` (auth). Counts `personal_book` + `sync_document` to pick the layout: with **both zero** it renders an explainer with the credentials block and upload dropzone inline (no island); otherwise a header with two `<dialog>` triggers ("Connect e-reader" / "Upload books") plus the `LibraryManager` island.
+- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash)
+- GET `/covers/:hash` → extracted cover image for a personal book
+- GET `/books/:hash/download` → **session-authenticated** file download. Shares `streamPersonalBook` (`src/utils/personalLibrary.ts`) with the Basic-auth OPDS acquisition route, so the two can't drift.
+- GET `/shelves` → JSON list of user's personal shelves with book counts (`{ shelves: [{ id, name, description, bookCount, createdAt, updatedAt }] }`)
 - GET `/sync/password` → current KOSync password (same as settings, duplicated here for library page)
 - POST `/sync/rotate` → rotate sync token (same as settings)
-- GET `/sync/documents` → synced e-reader documents list
-- POST `/sync/link` → link synced document to hive book
+- GET `/sync/documents` → synced e-reader documents. Each row also carries `hasFile` (an uploaded `personal_book` shares the hash, so the grid already represents it) and `dismissed` (the `NO_HIVE_MATCH` sentinel; `hiveId`/`bookTitle` are nulled out in that case so no client links to `/books/bk_none`).
+- POST `/sync/link` (`{document, hiveId}`) → link synced document to hive book
+- POST `/sync/dismiss` (`{document, dismissed}`) → write/clear the `NO_HIVE_MATCH` sentinel. Only toggles between null and the sentinel — never clobbers a real link (404 otherwise).
+- POST `/sync/rename` (`{document, title}`) → name a document that arrived without metadata
 
 ### `src/routes/api.tsx` (mounted at `/api`) — JSON/form mutations
 
@@ -193,6 +198,15 @@ queued in KV (`sync_pending:{did}`) and flushed via the canonical
 `flushPendingSyncWrites` in `src/context.ts`). Documents auto-bridge to a book
 only on an **exact** `getHiveId` match (`src/utils/syncMatching.ts`); a miss
 leaves `hiveId` null and still syncs progress at the document level.
+
+**`NO_HIVE_MATCH` sentinel** (`src/utils/syncMatching.ts`, value `bk_none`): written
+to `sync_document.hiveId` when the user says a document has no BookHive
+counterpart (POST `/library/sync/dismiss`). It is shaped like a `HiveId` so the
+column type holds but can never collide with a real `hive_book.id`. Because every
+auto-match path only runs when `hiveId` is falsy, the sentinel also permanently
+stops re-matching. Rules: read paths must surface it as
+`{ hiveId: null, dismissed: true }` (never let a client link to `/books/bk_none`),
+and `bridgeProgressToUserBook` early-returns on it.
 
 - `POST /users/create` → returns 403 directing users to BookHive Settings
 - `GET /users/auth` → validates sync credentials
@@ -277,21 +291,33 @@ head `<meta>` tags by `name` and would collapse the proposal's array semantics.
 
 ## Client-Side Components (`src/client/`)
 
-7 hydration islands, mounted in `src/client/index.tsx`:
+6 hydration islands, mounted in `src/client/index.tsx`:
 
-| Component        | Mount Point                                | File                                              |
-| ---------------- | ------------------------------------------ | ------------------------------------------------- |
-| `SearchTrigger`  | `#mount-search-box` (navbar)               | `src/client/components/SearchBox.tsx`             |
-| `SearchPalette`  | `#mount-search-palette`                    | `src/client/components/SearchPalette.tsx`         |
-| `StarRating`     | `#star-rating` (book page)                 | `src/client/components/StarRating.tsx`            |
-| `ImportTableApp` | `#import-table` (import page)              | `src/client/components/import/ImportTableApp.tsx` |
-| `LibraryTable`   | `#mount-library-table` (profile)           | `src/client/components/LibraryTable.tsx`          |
-| `LibraryManager` | `#mount-library-manager` (library)         | `src/client/components/LibraryManager.tsx`        |
-| `SyncDocuments`  | `#mount-sync-documents` (settings/library) | `src/client/components/SyncDocuments.tsx`         |
+| Component        | Mount Point                        | File                                              |
+| ---------------- | ---------------------------------- | ------------------------------------------------- |
+| `SearchTrigger`  | `#mount-search-box` (navbar)       | `src/client/components/SearchBox.tsx`             |
+| `SearchPalette`  | `#mount-search-palette`            | `src/client/components/SearchPalette.tsx`         |
+| `StarRating`     | `#star-rating` (book page)         | `src/client/components/StarRating.tsx`            |
+| `ImportTableApp` | `#import-table` (import page)      | `src/client/components/import/ImportTableApp.tsx` |
+| `LibraryTable`   | `#mount-library-table` (profile)   | `src/client/components/LibraryTable.tsx`          |
+| `LibraryManager` | `#mount-library-manager` (library) | `src/client/components/LibraryManager.tsx`        |
 
 `SearchPalette` takes an optional `onSelectBook` prop: when set it acts as a
-book picker (select instead of navigate, no status buttons) — `SyncDocuments`
-and `LibraryManager` reuse it to link e-reader documents / personal books to hive books.
+book picker (select instead of navigate, no status buttons) — `LibraryManager`
+reuses it to link e-reader documents / personal books to hive books.
+
+`LibraryManager` owns the whole library body and its sub-components live in
+`src/client/components/library/`: `types.ts` (shared types + formatting),
+`ShelfTabs.tsx` (All books + per-shelf tabs with inline CRUD),
+`PersonalBookCard.tsx` (grid card mirroring the server-side dense `BookCard`,
+plus format/size, sync progress bar, and a hover overlay for download and
+management), and `SyncDocumentSections.tsx` (the triage strip and "Also
+tracking" list). Personal books and sync documents are keyed by the same
+KOReader partial MD5, so a document with a matching file is folded into its grid
+card as a progress bar rather than listed separately; documents with no file are
+triaged above the grid, then parked in "Also tracking" once linked or dismissed.
+`SyncDocuments.tsx` was removed — `LibraryManager` absorbed it, and the settings
+page only links to `/library`.
 
 Non-mounted client components: `bookActions.tsx`, `ProgressBar.tsx` (imported by others).
 
@@ -306,10 +332,18 @@ Client hooks/utils:
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–015) in one file. `createDb`
+SQLite via Kysely. Schema + all migrations (001–016) in one file. `createDb`
 sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.
+
+Kysely talks to `bun:sqlite` through the adapter in `src/bun-sqlite-kysely.ts`.
+Its `isReaderStatement()` decides whether Kysely calls `all()` (rows) or `run()`
+(changes + lastInsertRowid), so it must return true for **anything that produces
+rows** — `SELECT`, and also `INSERT`/`UPDATE`/`DELETE ... RETURNING`. Getting
+this wrong doesn't error: the statement executes and Kysely just sees zero rows,
+so `.returning(...).executeTakeFirstOrThrow()` fails with "no result" far from
+the cause. Covered by `src/bun-sqlite-kysely.test.ts`.
 
 | Table             | Purpose                   | Key columns                                                                                                                                                              |
 | ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -345,29 +379,30 @@ SQLite-backed unstorage for: profiles, identity resolution, search results, auth
 
 ### Key Data Utilities
 
-| File                                                                                                                           | Purpose                                                |
-| ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `src/utils/getBook.ts`                                                                                                         | Book record CRUD against user's PDS                    |
-| `src/utils/getProfile.ts`                                                                                                      | Profile fetching from Bluesky                          |
-| `src/utils/getFollows.ts`                                                                                                      | Follow graph sync                                      |
-| `src/utils/enrichBookData.ts`                                                                                                  | Background Goodreads enrichment                        |
-| `src/utils/bookIdentifiers.ts`                                                                                                 | ISBN/ID normalization + persistence                    |
-| `src/utils/bookProgress.ts`                                                                                                    | BookProgress serialization                             |
-| `src/utils/readThroughCache.ts`                                                                                                | KV read-through with TTL                               |
-| `src/utils/csv.ts`                                                                                                             | Goodreads/StoryGraph CSV parsers                       |
-| `src/utils/lists.ts`                                                                                                           | Book list (shelf) CRUD against PDS                     |
-| `src/utils/readingStats.ts`                                                                                                    | Reading stats aggregation by year                      |
-| `src/utils/catalogBookService.ts`                                                                                              | Catalog backfill (admin)                               |
-| `src/utils/deleteAccount.ts`                                                                                                   | Account data deletion                                  |
-| `src/utils/dbExport.ts`                                                                                                        | Sanitized DB/KV export (admin)                         |
-| `src/utils/manifest.ts`                                                                                                        | Vite manifest → asset URLs                             |
-| `src/utils/getLanguages.ts`                                                                                                    | Language list/normalization                            |
-| `src/utils/importBook.ts`                                                                                                      | Import a single book record                            |
-| `src/utils/authorMatching.ts`                                                                                                  | Author name matching                                   |
-| `src/utils/generateInitialsAvatar.ts`                                                                                          | SVG initials avatar                                    |
-| `src/utils/syncMatching.ts`                                                                                                    | KOReader document → BookHive book matching (exact)     |
-| `src/utils/syncBridge.ts`                                                                                                      | Bridge e-reader progress → user_book + queue PDS write |
-| `src/utils/htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts` | misc helpers                                           |
+| File                                                                                                                           | Purpose                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `src/utils/getBook.ts`                                                                                                         | Book record CRUD against user's PDS                                          |
+| `src/utils/getProfile.ts`                                                                                                      | Profile fetching from Bluesky                                                |
+| `src/utils/getFollows.ts`                                                                                                      | Follow graph sync                                                            |
+| `src/utils/enrichBookData.ts`                                                                                                  | Background Goodreads enrichment                                              |
+| `src/utils/bookIdentifiers.ts`                                                                                                 | ISBN/ID normalization + persistence                                          |
+| `src/utils/bookProgress.ts`                                                                                                    | BookProgress serialization                                                   |
+| `src/utils/readThroughCache.ts`                                                                                                | KV read-through with TTL                                                     |
+| `src/utils/csv.ts`                                                                                                             | Goodreads/StoryGraph CSV parsers                                             |
+| `src/utils/lists.ts`                                                                                                           | Book list (shelf) CRUD against PDS                                           |
+| `src/utils/readingStats.ts`                                                                                                    | Reading stats aggregation by year                                            |
+| `src/utils/catalogBookService.ts`                                                                                              | Catalog backfill (admin)                                                     |
+| `src/utils/deleteAccount.ts`                                                                                                   | Account data deletion                                                        |
+| `src/utils/dbExport.ts`                                                                                                        | Sanitized DB/KV export (admin)                                               |
+| `src/utils/manifest.ts`                                                                                                        | Vite manifest → asset URLs                                                   |
+| `src/utils/getLanguages.ts`                                                                                                    | Language list/normalization                                                  |
+| `src/utils/importBook.ts`                                                                                                      | Import a single book record                                                  |
+| `src/utils/authorMatching.ts`                                                                                                  | Author name matching                                                         |
+| `src/utils/generateInitialsAvatar.ts`                                                                                          | SVG initials avatar                                                          |
+| `src/utils/syncMatching.ts`                                                                                                    | KOReader document → BookHive book matching (exact); `NO_HIVE_MATCH` sentinel |
+| `src/utils/syncBridge.ts`                                                                                                      | Bridge e-reader progress → user_book + queue PDS write                       |
+| `src/utils/personalLibrary.ts`                                                                                                 | Personal library file paths + `streamPersonalBook`                           |
+| `src/utils/htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts` | misc helpers                                                                 |
 
 ## Types (`src/types.ts`)
 
@@ -403,6 +438,20 @@ scaled ×10. Queries: `searchBooks`, `listGenres`, `getBookIdentifiers`,
 `getAuthorBooks`, `getReadingStats`, `getUserLists`, `getList`. Auth-required
 list procedures: `createList`, `updateList`, `deleteList`, `addToList`,
 `removeFromList`, `reorderList` (delegate to `src/utils/lists.ts`).
+
+**Personal library** (all auth-required, all server-local — no PDS writes).
+Queries: `getPersonalLibrary`, `getPersonalBook`, `getSyncProgress`,
+`listSyncDocuments`. Procedures: `uploadPersonalBook`, `deletePersonalBook`,
+`linkPersonalBook`, `unlinkPersonalBook`, `putSyncProgress`,
+`createPersonalShelf`, `updatePersonalShelf`, `deletePersonalShelf`,
+`addToPersonalShelf`, `removeFromPersonalShelf`.
+
+`getPersonalLibrary` returns `{ books, total, cursor? }` (offset-based cursor).
+Each book carries `progress` (from a `sync_document` left-joined on
+`documentHash = contentHash`) and `shelfIds` (one grouped query over the page) so
+the client never has to fan out a request per shelf. `linkPersonalBook`
+**overwrites** the file's `title`/`authors` from the hive book and propagates the
+`hiveId` onto the matching `sync_document`; `unlinkPersonalBook` clears both.
 
 ## Scrapers (`src/scrapers/`)
 

@@ -38,6 +38,10 @@
                 "ref": "#personalBookView"
               }
             },
+            "total": {
+              "type": "integer",
+              "description": "Total number of books matching the query, across all pages"
+            },
             "cursor": {
               "type": "string",
               "description": "Pagination cursor for the next page"
@@ -95,6 +99,37 @@
           "type": "string",
           "format": "datetime",
           "description": "When the book record was last updated"
+        },
+        "progress": {
+          "type": "ref",
+          "ref": "#syncProgressView",
+          "description": "E-reader reading progress, when this book has been synced"
+        },
+        "shelfIds": {
+          "type": "array",
+          "description": "IDs of the personal shelves this book belongs to",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "syncProgressView": {
+      "type": "object",
+      "required": ["percentage", "updatedAt"],
+      "properties": {
+        "percentage": {
+          "type": "string",
+          "description": "Reading progress as a fraction between 0 and 1"
+        },
+        "device": {
+          "type": "string",
+          "description": "Name of the device that last reported progress"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When progress was last synced"
         }
       }
     }

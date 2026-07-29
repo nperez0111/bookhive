@@ -105,18 +105,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const syncDocuments = document.getElementById("mount-sync-documents");
-  if (syncDocuments) {
-    const docsEndpoint = syncDocuments.dataset["endpoint"] || "/settings/sync/documents";
-    const linkEndpoint = syncDocuments.dataset["linkEndpoint"] || "/settings/sync/link";
-    void import("./components/SyncDocuments").then(({ SyncDocuments }) => {
-      render(
-        <SyncDocuments docsEndpoint={docsEndpoint} linkEndpoint={linkEndpoint} />,
-        syncDocuments,
-      );
-    });
-  }
-
   // Update page title based on active tab on home page
   const tabInputs = document.querySelectorAll('input[name="tabs"]');
   if (tabInputs.length > 0) {

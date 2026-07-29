@@ -14,7 +14,14 @@ import {
   koreaderPartialMD5,
   isUsableCover,
 } from "../utils/bookMetadata/index";
-import { ensureDir, personalBookDir, bookFilePath, coverFilePath } from "../utils/personalLibrary";
+import {
+  ensureDir,
+  personalBookDir,
+  bookFilePath,
+  coverFilePath,
+  streamPersonalBook,
+} from "../utils/personalLibrary";
+import { NO_HIVE_MATCH } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -25,9 +32,32 @@ const app = new Hono<AppEnv>()
     if (!agent) return c.redirect("/login");
     const profile = await c.get("ctx").getProfile();
     const handle = profile?.handle ?? agent.did;
-    return c.render(<LibraryPage handle={handle} />, {
-      title: "Personal Library",
-    });
+    const { db } = c.get("ctx");
+
+    // Drives the empty-vs-populated layout: with nothing uploaded and nothing
+    // synced there is no library to manage, so the page explains itself and
+    // puts setup inline instead of behind modals.
+    const [books, documents] = await Promise.all([
+      db
+        .selectFrom("personal_book")
+        .select((eb) => eb.fn.countAll<number>().as("total"))
+        .where("userDid", "=", agent.did)
+        .executeTakeFirstOrThrow(),
+      db
+        .selectFrom("sync_document")
+        .select((eb) => eb.fn.countAll<number>().as("total"))
+        .where("userDid", "=", agent.did)
+        .executeTakeFirstOrThrow(),
+    ]);
+
+    return c.render(
+      <LibraryPage
+        handle={handle}
+        bookCount={Number(books.total)}
+        syncDocCount={Number(documents.total)}
+      />,
+      { title: "Personal Library" },
+    );
   })
   .post("/upload", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
@@ -157,6 +187,54 @@ app.get("/covers/:hash", async (c) => {
   });
 });
 
+// Session-authenticated download for the web UI. OPDS serves the same bytes at
+// /opds/books/:hash/download, but that route is behind HTTP Basic auth, which a
+// logged-in browser doesn't have.
+app.get("/books/:hash/download", async (c) => {
+  const userDid = await c.get("ctx").getSessionDid();
+  if (!userDid) return c.json({ error: "Unauthorized" }, 401);
+
+  const download = await streamPersonalBook(c.get("ctx").db, userDid, c.req.param("hash"));
+  if (!download) return c.notFound();
+
+  return c.body(download.stream, 200, download.headers);
+});
+
+app.get("/shelves", async (c) => {
+  const userDid = await c.get("ctx").getSessionDid();
+  if (!userDid) return c.json({ error: "Unauthorized" }, 401);
+  const { db } = c.get("ctx");
+
+  const rows = await db
+    .selectFrom("personal_shelf")
+    .select(["id", "name", "description", "createdAt", "updatedAt"])
+    .where("userDid", "=", userDid)
+    .orderBy("name", "asc")
+    .execute();
+
+  // Get book counts per shelf in a single query
+  const counts = await db
+    .selectFrom("personal_shelf_item")
+    .innerJoin("personal_shelf", "personal_shelf.id", "personal_shelf_item.shelfId")
+    .select(["personal_shelf_item.shelfId", db.fn.count("personal_shelf_item.id").as("count")])
+    .where("personal_shelf.userDid", "=", userDid)
+    .groupBy("personal_shelf_item.shelfId")
+    .execute();
+
+  const countMap = new Map(counts.map((r) => [r.shelfId, Number(r.count)]));
+
+  return c.json({
+    shelves: rows.map((s) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description ?? undefined,
+      bookCount: countMap.get(s.id) ?? 0,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    })),
+  });
+});
+
 app.get("/sync/password", async (c) => {
   const agent = await c.get("ctx").getSessionAgent();
   if (!agent) return c.json({ error: "Unauthorized" }, 401);
@@ -182,6 +260,13 @@ app.get("/sync/documents", async (c) => {
   const rows = await db
     .selectFrom("sync_document")
     .leftJoin("hive_book", "hive_book.id", "sync_document.hiveId")
+    // A document whose hash matches an uploaded file is the same book: the
+    // library grid renders it, so the sync sections must not claim it too.
+    .leftJoin("personal_book", (join) =>
+      join
+        .onRef("personal_book.contentHash", "=", "sync_document.documentHash")
+        .onRef("personal_book.userDid", "=", "sync_document.userDid"),
+    )
     .select([
       "sync_document.documentHash as document",
       "sync_document.title as title",
@@ -191,6 +276,7 @@ app.get("/sync/documents", async (c) => {
       "sync_document.updatedAt as updatedAt",
       "sync_document.hiveId as hiveId",
       "hive_book.title as bookTitle",
+      "personal_book.id as personalBookId",
     ])
     .where("sync_document.userDid", "=", agent.did)
     .orderBy("sync_document.updatedAt", "desc")
@@ -206,6 +292,9 @@ app.get("/sync/documents", async (c) => {
     } catch {
       // ignore malformed progress
     }
+    // The sentinel means "the user says this isn't on BookHive" — surface it as
+    // a dismissed flag rather than a hiveId nothing can resolve.
+    const dismissed = row.hiveId === NO_HIVE_MATCH;
     return {
       document: row.document,
       title: row.title,
@@ -214,8 +303,10 @@ app.get("/sync/documents", async (c) => {
       percentage,
       device,
       updatedAt: row.updatedAt,
-      hiveId: row.hiveId,
-      bookTitle: row.bookTitle,
+      hiveId: dismissed ? null : row.hiveId,
+      bookTitle: dismissed ? null : row.bookTitle,
+      dismissed,
+      hasFile: row.personalBookId != null,
     };
   });
 
@@ -290,6 +381,61 @@ app.post(
     }
 
     return c.json({ hiveId: book.id, bookTitle: book.title });
+  },
+);
+
+// Mark a synced document as having no BookHive counterpart (or undo that).
+// Writes the NO_HIVE_MATCH sentinel into hiveId, which both records the user's
+// assertion and stops the auto-matcher from retrying on every progress push.
+app.post(
+  "/sync/dismiss",
+  zValidator("json", z.object({ document: z.string().min(1), dismissed: z.boolean() })),
+  async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    const { db } = c.get("ctx");
+    const { document, dismissed } = c.req.valid("json");
+
+    const result = await db
+      .updateTable("sync_document")
+      .set({ hiveId: dismissed ? NO_HIVE_MATCH : null })
+      .where("userDid", "=", agent.did)
+      .where("documentHash", "=", document)
+      // Only ever toggle between "unknown" and "dismissed" — never clobber a
+      // real link the user (or the auto-matcher) established.
+      .where((eb) => eb.or([eb("hiveId", "is", null), eb("hiveId", "=", NO_HIVE_MATCH)]))
+      .executeTakeFirst();
+
+    if (Number(result.numUpdatedRows) === 0) {
+      return c.json({ error: "Document not found or already linked" }, 404);
+    }
+    return c.json({ dismissed });
+  },
+);
+
+// Give a synced document a human-readable name. Useful for documents that
+// arrive from the e-reader with no embedded metadata, which would otherwise
+// show up forever as "Untitled document".
+app.post(
+  "/sync/rename",
+  zValidator("json", z.object({ document: z.string().min(1), title: z.string().min(1).max(300) })),
+  async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    const { db } = c.get("ctx");
+    const { document, title } = c.req.valid("json");
+
+    const result = await db
+      .updateTable("sync_document")
+      .set({ title, updatedAt: new Date().toISOString() })
+      .where("userDid", "=", agent.did)
+      .where("documentHash", "=", document)
+      .executeTakeFirst();
+
+    if (Number(result.numUpdatedRows) === 0) {
+      return c.json({ error: "Document not found" }, 404);
+    }
+    return c.json({ title });
   },
 );
 

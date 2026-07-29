@@ -33,6 +33,10 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getPersonalLibrary", {
        * Pagination cursor for the next page
        */
       cursor: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+      /**
+       * Total number of books matching the query, across all pages
+       */
+      total: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
     }),
   },
 });
@@ -73,6 +77,16 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   mime: /*#__PURE__*/ v.string(),
   /**
+   * E-reader reading progress, when this book has been synced
+   */
+  get progress() {
+    return /*#__PURE__*/ v.optional(syncProgressViewSchema);
+  },
+  /**
+   * IDs of the personal shelves this book belongs to
+   */
+  shelfIds: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(/*#__PURE__*/ v.integer())),
+  /**
    * File size in bytes
    */
   sizeBytes: /*#__PURE__*/ v.integer(),
@@ -85,16 +99,39 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   updatedAt: /*#__PURE__*/ v.datetimeString(),
 });
+const _syncProgressViewSchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(
+    /*#__PURE__*/ v.literal("buzz.bookhive.getPersonalLibrary#syncProgressView"),
+  ),
+  /**
+   * Name of the device that last reported progress
+   */
+  device: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+  /**
+   * Reading progress as a fraction between 0 and 1
+   */
+  percentage: /*#__PURE__*/ v.string(),
+  /**
+   * When progress was last synced
+   */
+  updatedAt: /*#__PURE__*/ v.datetimeString(),
+});
 type main$schematype = typeof _mainSchema;
 type personalBookView$schematype = typeof _personalBookViewSchema;
+type syncProgressView$schematype = typeof _syncProgressViewSchema;
 
 export interface mainSchema extends main$schematype {}
 
 export interface personalBookViewSchema extends personalBookView$schematype {}
+
+export interface syncProgressViewSchema extends syncProgressView$schematype {}
 export const mainSchema = _mainSchema as mainSchema;
 export const personalBookViewSchema = _personalBookViewSchema as personalBookViewSchema;
+export const syncProgressViewSchema = _syncProgressViewSchema as syncProgressViewSchema;
 
 export interface PersonalBookView extends v.InferInput<typeof personalBookViewSchema> {}
+
+export interface SyncProgressView extends v.InferInput<typeof syncProgressViewSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
 

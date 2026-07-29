@@ -102,6 +102,27 @@ import { matchSyncDocument } from "../utils/syncMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
 
 /**
+ * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
+ * Returns undefined when the book has never been synced or the blob is unusable.
+ */
+function syncProgressView(
+  progressData: string | null,
+  progressUpdatedAt: string | null,
+): { percentage: string; device?: string; updatedAt: string } | undefined {
+  if (!progressData || !progressUpdatedAt) return undefined;
+  try {
+    const data = JSON.parse(progressData) as SyncProgressData;
+    return {
+      percentage: String(data.percentage ?? 0),
+      device: data.device || undefined,
+      updatedAt: progressUpdatedAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Process a book upload: detect format, hash, extract metadata, write to disk,
  * insert DB row, and attempt auto-linking to a hive_book. Exported so it can be
  * called from both the XRPC handler and a regular Hono multipart form route.
@@ -1403,6 +1424,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       let query = ctx.db
         .selectFrom("personal_book")
         .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
+        // The KOReader partial MD5 is both `personal_book.contentHash` and
+        // `sync_document.documentHash`, so a synced file joins straight to its
+        // e-reader progress.
+        .leftJoin("sync_document", (join) =>
+          join
+            .onRef("sync_document.documentHash", "=", "personal_book.contentHash")
+            .on("sync_document.userDid", "=", userDid)
+            .on("sync_document.provider", "=", "kosync"),
+        )
         .select([
           "personal_book.id",
           "personal_book.contentHash",
@@ -1421,6 +1451,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           "personal_book.updatedAt",
           "hive_book.cover as hiveCover",
           "hive_book.thumbnail as hiveThumbnail",
+          "sync_document.progressData as progressData",
+          "sync_document.updatedAt as progressUpdatedAt",
         ])
         .where("personal_book.userDid", "=", userDid)
         .orderBy("personal_book.createdAt", "desc");
@@ -1435,13 +1467,54 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .where("personal_shelf_item.shelfId", "=", shelfId) as typeof query;
       }
 
-      const rows = await query
-        .limit(limit + 1)
-        .offset(offset)
-        .execute();
+      // Total across all pages, so the UI can label the tab without having to
+      // page through everything first.
+      let countQuery = ctx.db
+        .selectFrom("personal_book")
+        .select((eb) => eb.fn.countAll<number>().as("total"))
+        .where("personal_book.userDid", "=", userDid);
+      if (shelfId !== undefined) {
+        countQuery = countQuery
+          .innerJoin(
+            "personal_shelf_item",
+            "personal_book.id",
+            "personal_shelf_item.personalBookId",
+          )
+          .where("personal_shelf_item.shelfId", "=", shelfId) as typeof countQuery;
+      }
+
+      const [rows, counted] = await Promise.all([
+        query
+          .limit(limit + 1)
+          .offset(offset)
+          .execute(),
+        countQuery.executeTakeFirstOrThrow(),
+      ]);
       const hasMore = rows.length > limit;
       const books = rows.slice(0, limit);
       const nextCursor = hasMore ? String(offset + limit) : undefined;
+
+      // Shelf membership for the whole page in one query, so the client doesn't
+      // have to fan out a request per shelf to reconstruct it.
+      const shelfIdsByBook = new Map<number, number[]>();
+      if (books.length > 0) {
+        const memberships = await ctx.db
+          .selectFrom("personal_shelf_item")
+          .innerJoin("personal_shelf", "personal_shelf.id", "personal_shelf_item.shelfId")
+          .select(["personal_shelf_item.personalBookId", "personal_shelf_item.shelfId"])
+          .where("personal_shelf.userDid", "=", userDid)
+          .where(
+            "personal_shelf_item.personalBookId",
+            "in",
+            books.map((b) => b.id),
+          )
+          .execute();
+        for (const m of memberships) {
+          const list = shelfIdsByBook.get(m.personalBookId);
+          if (list) list.push(m.shelfId);
+          else shelfIdsByBook.set(m.personalBookId, [m.shelfId]);
+        }
+      }
 
       return json({
         books: books.map((b) => ({
@@ -1459,7 +1532,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             b.hiveCover ??
             b.hiveThumbnail ??
             (b.coverPath ? `/library/covers/${b.contentHash}` : undefined),
+          progress: syncProgressView(b.progressData, b.progressUpdatedAt),
+          shelfIds: shelfIdsByBook.get(b.id) ?? [],
         })),
+        total: Number(counted.total),
         cursor: nextCursor,
       });
     },
@@ -1682,6 +1758,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .set({ hiveId: null, updatedAt: now })
         .where("userDid", "=", userDid)
         .where("contentHash", "=", contentHash)
+        .execute();
+
+      // linkPersonalBook propagates the hiveId onto the matching sync_document;
+      // unlinking has to undo that too, or the document stays falsely linked.
+      await ctx.db
+        .updateTable("sync_document")
+        .set({ hiveId: null })
+        .where("userDid", "=", userDid)
+        .where("documentHash", "=", contentHash)
         .execute();
 
       return json({

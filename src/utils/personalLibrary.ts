@@ -2,6 +2,7 @@ import path from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 
 import { env } from "../env";
+import type { Database } from "../db";
 
 /** Number of items per page in OPDS catalog responses. */
 export const OPDS_PAGE_SIZE = 24;
@@ -39,4 +40,39 @@ export async function removeBookDir(did: string, contentHash: string): Promise<v
 /** Remove a user's entire library directory (for account deletion). */
 export async function removeUserDir(did: string): Promise<void> {
   await rm(path.join(getLibraryDir(), did), { recursive: true, force: true });
+}
+
+/**
+ * Stream a personal library book file as an attachment. Shared by the OPDS
+ * acquisition endpoint (HTTP Basic auth) and the web download button (session
+ * auth) so the two can't drift. Returns null when the row or file is missing;
+ * callers turn that into their own 404.
+ */
+export async function streamPersonalBook(
+  db: Database,
+  userDid: string,
+  contentHash: string,
+): Promise<{ stream: ReadableStream; headers: Record<string, string> } | null> {
+  const book = await db
+    .selectFrom("personal_book")
+    .select(["filePath", "filename", "mime", "format"])
+    .where("userDid", "=", userDid)
+    .where("contentHash", "=", contentHash)
+    .executeTakeFirst();
+  if (!book) return null;
+
+  const file = Bun.file(book.filePath);
+  if (!(await file.exists())) return null;
+
+  const downloadName = book.filename.toLowerCase().includes(".")
+    ? book.filename
+    : `${book.filename}.${book.format || "epub"}`;
+
+  return {
+    stream: file.stream(),
+    headers: {
+      "Content-Type": book.mime || "application/epub+zip",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
+    },
+  };
 }
