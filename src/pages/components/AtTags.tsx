@@ -34,13 +34,17 @@ export type AtTagsProps = {
   custom?: Record<string, MaybeList>;
 };
 
-/** Flatten to a deduped array of non-empty strings. */
-function clean(value: MaybeList): string[] {
+/**
+ * Flatten to a deduped array of non-empty strings. An optional `transform` is
+ * applied before dedup so equivalent representations collapse (e.g. `did:x` and
+ * `at://did:x` both normalize to `at://did:x` and yield a single value).
+ */
+function clean(value: MaybeList, transform?: (s: string) => string): string[] {
   const arr = Array.isArray(value) ? value : [value];
   const seen = new Set<string>();
   for (const v of arr) {
     const s = v?.trim();
-    if (s) seen.add(s);
+    if (s) seen.add(transform ? transform(s) : s);
   }
   return [...seen];
 }
@@ -65,11 +69,11 @@ export const AtTags = ({
   for (const content of clean(alternate)) {
     tags.push({ name: "at:alternate", content });
   }
-  for (const content of clean(author)) {
-    tags.push({ name: "at:author", content: toDidUri(content) });
+  for (const content of clean(author, toDidUri)) {
+    tags.push({ name: "at:author", content });
   }
-  for (const content of clean(me)) {
-    tags.push({ name: "at:me", content: toDidUri(content) });
+  for (const content of clean(me, toDidUri)) {
+    tags.push({ name: "at:me", content });
   }
   if (custom) {
     for (const [key, value] of Object.entries(custom)) {

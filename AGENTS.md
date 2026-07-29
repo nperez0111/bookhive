@@ -210,19 +210,19 @@ Each file exports a Hono JSX component rendered server-side.
 
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------------- |
-| `book.tsx`                 | Book card component                                                                           |
-| `BookCard.tsx`             | Composable book card                                                                          |
-| `buzz.tsx`                 | Buzz/comment display                                                                          |
-| `BookReview.tsx`           | Book review form/display                                                                      |
-| `EditableLibraryTable.tsx` | Library table with inline editing                                                             |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                                                              |
-| `LanguageSelect.tsx`       | Language picker (search/explore filters)                                                      |
-| `modal.tsx`                | Modal dialog (CSS-based)                                                                      |
-| `fallbackCover.tsx`        | Placeholder book cover                                                                        |
-| `AtTags.tsx`               | [AT Tags](https://tangled.org/chrisshank.com/at-tags/) `<meta at:...>` builder (see below)    |
-| `cards/`                   | Sub-components: `Card.tsx`, `CardActions.tsx`, `StarDisplay.tsx`, `UserBlock.tsx`, `index.ts` |
+| File                       | What                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `book.tsx`                 | Book card component                                                                               |
+| `BookCard.tsx`             | Composable book card                                                                              |
+| `buzz.tsx`                 | Buzz/comment display                                                                              |
+| `BookReview.tsx`           | Book review form/display                                                                          |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                                                 |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                                                  |
+| `LanguageSelect.tsx`       | Language picker (search/explore filters)                                                          |
+| `modal.tsx`                | Modal dialog (CSS-based)                                                                          |
+| `fallbackCover.tsx`        | Placeholder book cover                                                                            |
+| `AtTags.tsx`               | [AT Tags](https://tangled.org/chrisshank.com/at-tags/) `<meta name="at:...">` builder (see below) |
+| `cards/`                   | Sub-components: `Card.tsx`, `CardActions.tsx`, `StarDisplay.tsx`, `UserBlock.tsx`, `index.ts`     |
 
 Inline JS helper: `src/pages/utils/script.ts`
 

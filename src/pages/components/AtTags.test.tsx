@@ -64,6 +64,17 @@ describe("AtTags", () => {
     ]);
   });
 
+  it("dedupes equivalent DID representations after normalization", () => {
+    const html = render({
+      author: ["did:plc:author", "at://did:plc:author"],
+      me: ["at://did:plc:site", "did:plc:site"],
+    });
+    expect(metas(html)).toEqual([
+      ["at:author", "at://did:plc:author"],
+      ["at:me", "at://did:plc:site"],
+    ]);
+  });
+
   it("dedupes repeated values", () => {
     const html = render({ alternate: ["at://did:plc:a/c/1", "at://did:plc:a/c/1"] });
     expect(metas(html)).toEqual([["at:alternate", "at://did:plc:a/c/1"]]);
