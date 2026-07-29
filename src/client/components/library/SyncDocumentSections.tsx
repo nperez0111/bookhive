@@ -176,7 +176,8 @@ const TrackedRow: FC<{
 /**
  * Documents whose progress we keep syncing even though there's no file in the
  * library: either linked to a BookHive book, or explicitly marked as not being
- * on BookHive. Collapsed by default — it's reference, not a to-do list.
+ * on BookHive. A plain section rather than a card — it reads as a continuation
+ * of the library, not a separate object.
  */
 export const AlsoTracking: FC<{
   docs: SyncDoc[];
@@ -187,29 +188,26 @@ export const AlsoTracking: FC<{
   if (docs.length === 0) return null;
 
   return (
-    <details class="mt-8 rounded-lg border border-border">
-      <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-foreground select-none">
+    <section class="mt-10 border-t border-border pt-6">
+      <h2 class="flex items-baseline gap-1.5 text-sm font-semibold text-foreground">
         Also tracking
-        {/* Margin rather than a JSX text space, which hono/jsx/dom drops here. */}
-        <span class="ml-1 text-muted-foreground tabular-nums">({docs.length})</span>
-      </summary>
-      <div class="border-t border-border px-4 pt-1 pb-3">
-        <p class="mt-2 text-xs text-muted-foreground">
-          Books your e-reader is syncing that don't have a file in your library. Their progress is
-          still tracked.
-        </p>
-        <ul class="divide-border mt-1 divide-y">
-          {docs.map((doc) => (
-            <TrackedRow
-              key={doc.document}
-              doc={doc}
-              onLink={onLink}
-              onUndismiss={onUndismiss}
-              onRename={onRename}
-            />
-          ))}
-        </ul>
-      </div>
-    </details>
+        <span class="text-muted-foreground tabular-nums">({docs.length})</span>
+      </h2>
+      <p class="mt-1 text-xs text-muted-foreground">
+        Books your e-reader is syncing that don't have a file in your library. Their progress is
+        still tracked.
+      </p>
+      <ul class="divide-border mt-2 divide-y">
+        {docs.map((doc) => (
+          <TrackedRow
+            key={doc.document}
+            doc={doc}
+            onLink={onLink}
+            onUndismiss={onUndismiss}
+            onRename={onRename}
+          />
+        ))}
+      </ul>
+    </section>
   );
 };
