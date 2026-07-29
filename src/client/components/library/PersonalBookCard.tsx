@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
+import type { FC } from "hono/jsx/dom";
 
+import { AnchoredMenu, MenuConfirm, MenuItem } from "./AnchoredMenu";
 import {
   authorsDisplay,
   bookPercent,
@@ -15,14 +16,6 @@ const DownloadIcon: FC = () => (
       stroke-linejoin="round"
       d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
     />
-  </svg>
-);
-
-const MoreIcon: FC = () => (
-  <svg class="size-4" fill="currentColor" viewBox="0 0 16 16">
-    <circle cx="3" cy="8" r="1.5" />
-    <circle cx="8" cy="8" r="1.5" />
-    <circle cx="13" cy="8" r="1.5" />
   </svg>
 );
 
@@ -73,31 +66,14 @@ export const PersonalBookCard: FC<{
   onAddToShelf,
   onRemoveFromShelf,
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
+  const menuId = `personal-book-menu-${book.contentHash}`;
   const percent = bookPercent(book);
   const href = book.hiveId ? `/books/${book.hiveId}` : undefined;
   const shelfIds = new Set(book.shelfIds ?? []);
   const meta = [book.format.toUpperCase(), formatFileSize(book.sizeBytes)].join(" · ");
 
   return (
-    // Raise the whole card while its menu is open so the panel paints above
-    // neighbouring grid items.
-    <li class={`relative ${menuOpen ? "z-30" : ""}`}>
+    <li class="relative">
       <div class="group relative">
         {/* Cover. Clips the image and gradient to the rounded corners — which is
             why the action layer below is a sibling rather than a child: a menu
@@ -146,111 +122,62 @@ export const PersonalBookCard: FC<{
               <DownloadIcon />
             </a>
 
-            <div class="relative" ref={menuRef}>
-              <button
-                type="button"
-                class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-md bg-white/15 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-white/30 active:scale-[0.96]"
-                onClick={() => setMenuOpen(!menuOpen)}
-                aria-label={`Manage ${book.title}`}
-              >
-                <MoreIcon />
-              </button>
-
-              {menuOpen && (
-                <div class="absolute right-0 bottom-full z-20 mb-1 w-48 rounded-md border border-border bg-popover py-1 text-left shadow-md">
-                  {book.hiveId ? (
-                    <button
-                      type="button"
-                      class="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onUnlink(book.contentHash);
-                      }}
-                    >
-                      Unlink from BookHive
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      class="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onLink(book);
-                      }}
-                    >
-                      Link to a BookHive book
-                    </button>
-                  )}
-
-                  {shelves.length > 0 && (
-                    <>
-                      <p class="mt-1 border-t border-border px-3 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
-                        Shelves
-                      </p>
-                      {shelves.map((shelf) => {
-                        const isOn = shelfIds.has(shelf.id);
-                        return (
-                          <button
-                            key={shelf.id}
-                            type="button"
-                            class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted"
-                            onClick={() =>
-                              isOn
-                                ? onRemoveFromShelf(shelf.id, book.contentHash)
-                                : onAddToShelf(shelf.id, book.contentHash)
-                            }
-                          >
-                            <span
-                              class={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] ${
-                                isOn
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-border"
-                              }`}
-                            >
-                              {isOn ? "✓" : ""}
-                            </span>
-                            <span class="truncate">{shelf.name}</span>
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
-
-                  <div class="mt-1 border-t border-border pt-1">
-                    {confirmDelete ? (
-                      <div class="flex items-center gap-2 px-3 py-1.5">
-                        <button
-                          type="button"
-                          class="text-xs text-destructive hover:underline"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            setConfirmDelete(false);
-                            onDelete(book.contentHash);
-                          }}
-                        >
-                          Delete file
-                        </button>
-                        <button
-                          type="button"
-                          class="text-xs text-muted-foreground hover:underline"
-                          onClick={() => setConfirmDelete(false)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        class="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
-                        onClick={() => setConfirmDelete(true)}
-                      >
-                        Delete from library
-                      </button>
-                    )}
-                  </div>
-                </div>
+            <AnchoredMenu id={menuId} label={`Manage ${book.title}`}>
+              {book.hiveId ? (
+                <MenuItem menuId={menuId} onClick={() => onUnlink(book.contentHash)}>
+                  Unlink from BookHive
+                </MenuItem>
+              ) : (
+                <MenuItem menuId={menuId} onClick={() => onLink(book)}>
+                  Link to a BookHive book
+                </MenuItem>
               )}
-            </div>
+
+              {shelves.length > 0 && (
+                <>
+                  <p class="mt-1 border-t border-border px-3 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
+                    Shelves
+                  </p>
+                  {shelves.map((shelf) => {
+                    const isOn = shelfIds.has(shelf.id);
+                    return (
+                      // No menuId: toggling several shelves in a row should not
+                      // close the menu each time.
+                      <MenuItem
+                        key={shelf.id}
+                        onClick={() =>
+                          isOn
+                            ? onRemoveFromShelf(shelf.id, book.contentHash)
+                            : onAddToShelf(shelf.id, book.contentHash)
+                        }
+                      >
+                        <span
+                          class={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] ${
+                            isOn
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border"
+                          }`}
+                        >
+                          {isOn ? "\u2713" : ""}
+                        </span>
+                        <span class="truncate">{shelf.name}</span>
+                      </MenuItem>
+                    );
+                  })}
+                </>
+              )}
+
+              <div class="mt-1 border-t border-border pt-1">
+                <MenuConfirm
+                  id={`${menuId}-confirm`}
+                  menuId={menuId}
+                  label="Delete from library"
+                  description={`Delete "${book.title}" and its file from your library? This cannot be undone.`}
+                  confirmLabel="Delete file"
+                  onConfirm={() => onDelete(book.contentHash)}
+                />
+              </div>
+            </AnchoredMenu>
           </div>
         </div>
       </div>

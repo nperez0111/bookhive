@@ -168,6 +168,7 @@ Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync
 - POST `/sync/link` (`{document, hiveId}`) → link synced document to hive book
 - POST `/sync/dismiss` (`{document, dismissed}`) → write/clear the `NO_HIVE_MATCH` sentinel. Only toggles between null and the sentinel — never clobbers a real link (404 otherwise).
 - POST `/sync/rename` (`{document, title}`) → name a document that arrived without metadata
+- POST `/sync/delete` (`{document}`) → forget a synced document and the e-reader progress held for it. Scoped to `sync_document` only: progress already bridged onto `user_book` is the user's own BookHive record (mirrored to their PDS), so it is left alone. The row returns if the e-reader syncs that book again.
 
 ### `src/routes/api.tsx` (mounted at `/api`) — JSON/form mutations
 
@@ -307,7 +308,7 @@ book picker (select instead of navigate, no status buttons) — `LibraryManager`
 reuses it to link e-reader documents / personal books to hive books.
 
 `LibraryManager` owns the whole library body and its sub-components live in
-`src/client/components/library/`: `types.ts` (shared types + formatting),
+`src/client/components/library/`: `AnchoredMenu.tsx` (see below), `types.ts` (shared types + formatting),
 `ShelfTabs.tsx` (All books + per-shelf tabs with inline CRUD),
 `PersonalBookCard.tsx` (grid card mirroring the server-side dense `BookCard`,
 plus format/size, sync progress bar, and a hover overlay for download and
@@ -318,6 +319,17 @@ card as a progress bar rather than listed separately; documents with no file are
 triaged above the grid, then parked in "Also tracking" once linked or dismissed.
 `SyncDocuments.tsx` was removed — `LibraryManager` absorbed it, and the settings
 page only links to `/library`.
+
+**Prefer no-JS UI primitives.** `AnchoredMenu`/`MenuItem`/`MenuConfirm`
+(`src/client/components/library/AnchoredMenu.tsx`) are the house dropdown: the
+`popover` attribute plus `popovertarget` handles open/close/light-dismiss/Escape
+with no state and no outside-click listener, the top layer means no ancestor's
+`overflow: hidden` can clip the panel, and the CSS anchor positioning API
+tethers the panel to its trigger. Styling lives in `.anchored-menu`
+(`src/index.css`), which carries a `@supports` fallback that centres the panel
+where `position-area` is unsupported. `MenuConfirm` nests a second popover
+inside the first for confirmation steps. All three library menus (book card,
+shelf tab, sync document row) use it; reach for it before writing menu state.
 
 Non-mounted client components: `bookActions.tsx`, `ProgressBar.tsx` (imported by others).
 

@@ -1,5 +1,6 @@
 import { useState, type FC } from "hono/jsx/dom";
 
+import { AnchoredMenu, MenuConfirm, MenuItem } from "./AnchoredMenu";
 import { syncDocMeta, syncDocName, toPercent, type SyncDoc } from "./types";
 
 /** Slim progress bar shared by both sync document sections. */
@@ -71,10 +72,15 @@ const TrackedRow: FC<{
   doc: SyncDoc;
   onLink: (doc: SyncDoc) => void;
   onRename: (document: string, title: string) => Promise<void>;
-}> = ({ doc, onLink, onRename }) => {
+  onDelete: (document: string) => void;
+}> = ({ doc, onLink, onRename, onDelete }) => {
   const [renaming, setRenaming] = useState(false);
   const [value, setValue] = useState(doc.title ?? "");
   const [busy, setBusy] = useState(false);
+
+  // Unique per row; the document hash is hex, so it is already a valid
+  // custom-ident suffix for the anchor name the menu derives from this id.
+  const menuId = `sync-doc-menu-${doc.document}`;
 
   const submit = async () => {
     const title = value.trim();
@@ -89,7 +95,7 @@ const TrackedRow: FC<{
   };
 
   return (
-    <li class="flex flex-wrap items-center gap-3 py-2.5">
+    <li class="flex flex-wrap items-center gap-3 py-3">
       <div class="min-w-0 flex-1">
         {renaming ? (
           <div class="flex items-center gap-1">
@@ -137,29 +143,32 @@ const TrackedRow: FC<{
         <MiniProgress percentage={doc.percentage} />
       </div>
 
-      <div class="flex shrink-0 items-center gap-2">
+      <div class="flex shrink-0 items-center gap-1">
         {doc.hiveId ? (
           <a href={`/books/${doc.hiveId}`} class="truncate text-xs text-primary hover:underline">
             {doc.bookTitle || "Linked"}
           </a>
         ) : (
-          <>
-            {!renaming && (
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm min-h-10"
-                onClick={() => setRenaming(true)}
-              >
-                Rename
-              </button>
-            )}
-            {/* No explicit undo: linking a dismissed document overwrites the
-                sentinel, which is the only correction that matters. */}
-            <button type="button" class="btn btn-ghost btn-sm min-h-10" onClick={() => onLink(doc)}>
-              Link to book
-            </button>
-          </>
+          // No explicit undo: linking a dismissed document overwrites the
+          // sentinel, which is the only correction that matters.
+          <button type="button" class="btn btn-ghost btn-sm min-h-10" onClick={() => onLink(doc)}>
+            Link to book
+          </button>
         )}
+
+        <AnchoredMenu id={menuId} label={`Actions for ${syncDocName(doc)}`} width="w-44">
+          <MenuItem menuId={menuId} onClick={() => setRenaming(true)}>
+            Rename
+          </MenuItem>
+          <MenuConfirm
+            id={`${menuId}-confirm`}
+            menuId={menuId}
+            label="Delete progress"
+            description="Delete the synced progress for this book? It comes back if your e-reader syncs it again."
+            confirmLabel="Delete progress"
+            onConfirm={() => onDelete(doc.document)}
+          />
+        </AnchoredMenu>
       </div>
     </li>
   );
@@ -168,29 +177,35 @@ const TrackedRow: FC<{
 /**
  * Documents whose progress we keep syncing even though there's no file in the
  * library: either linked to a BookHive book, or explicitly marked as not being
- * on BookHive. A plain section rather than a card — it reads as a continuation
- * of the library, not a separate object.
+ * on BookHive. A section of the page in its own right, not a footnote.
  */
 export const AlsoTracking: FC<{
   docs: SyncDoc[];
   onLink: (doc: SyncDoc) => void;
   onRename: (document: string, title: string) => Promise<void>;
-}> = ({ docs, onLink, onRename }) => {
+  onDelete: (document: string) => void;
+}> = ({ docs, onLink, onRename, onDelete }) => {
   if (docs.length === 0) return null;
 
   return (
-    <section class="mt-10 border-t border-border pt-6">
-      <h2 class="flex items-baseline gap-1.5 text-sm font-semibold text-foreground">
+    <section class="mt-12 border-t border-border pt-8">
+      <h2 class="flex items-baseline gap-2 text-xl font-bold text-foreground">
         Also tracking
-        <span class="text-muted-foreground tabular-nums">({docs.length})</span>
+        <span class="text-base font-normal text-muted-foreground tabular-nums">{docs.length}</span>
       </h2>
-      <p class="mt-1 text-xs text-muted-foreground">
+      <p class="text-muted-foreground mt-1 text-sm">
         Books your e-reader is syncing that don't have a file in your library. Their progress is
         still tracked.
       </p>
-      <ul class="divide-border mt-2 divide-y">
+      <ul class="divide-border mt-4 divide-y border-t border-border">
         {docs.map((doc) => (
-          <TrackedRow key={doc.document} doc={doc} onLink={onLink} onRename={onRename} />
+          <TrackedRow
+            key={doc.document}
+            doc={doc}
+            onLink={onLink}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
         ))}
       </ul>
     </section>

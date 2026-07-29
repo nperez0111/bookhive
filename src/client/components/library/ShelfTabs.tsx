@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
+import { AnchoredMenu, MenuConfirm, MenuItem } from "./AnchoredMenu";
 import type { Shelf } from "./types";
 
 const tabClass = (active: boolean): string =>
@@ -28,26 +29,11 @@ export const ShelfTabs: FC<{
   const [createName, setCreateName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const createInputRef = useRef<HTMLInputElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (menuOpenId === null) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenId(null);
-        setConfirmDeleteId(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpenId]);
 
   useEffect(() => {
     if (creating) createInputRef.current?.focus();
@@ -157,72 +143,39 @@ export const ShelfTabs: FC<{
 
               {/* Always visible on the active tab: hover-only would leave shelf
                   rename/delete unreachable on touch devices. */}
-              <button
-                type="button"
-                class={`mr-1 -ml-1 inline-flex size-6 items-center justify-center rounded-full text-muted-foreground transition-opacity duration-150 hover:bg-muted focus:opacity-100 group-hover:opacity-100 ${
+              <AnchoredMenu
+                id={`shelf-menu-${shelf.id}`}
+                label={`Shelf actions for ${shelf.name}`}
+                width="w-40"
+                triggerClass={`mr-1 -ml-1 inline-flex size-6 items-center justify-center rounded-full text-muted-foreground transition-opacity duration-150 hover:bg-muted focus:opacity-100 group-hover:opacity-100 ${
                   activeShelfId === shelf.id ? "opacity-100" : "opacity-0"
                 }`}
-                aria-label={`Shelf actions for ${shelf.name}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpenId(menuOpenId === shelf.id ? null : shelf.id);
-                }}
+                trigger={
+                  <svg class="size-3" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="8" cy="3" r="1.5" />
+                    <circle cx="8" cy="8" r="1.5" />
+                    <circle cx="8" cy="13" r="1.5" />
+                  </svg>
+                }
               >
-                <svg class="size-3" fill="currentColor" viewBox="0 0 16 16">
-                  <circle cx="8" cy="3" r="1.5" />
-                  <circle cx="8" cy="8" r="1.5" />
-                  <circle cx="8" cy="13" r="1.5" />
-                </svg>
-              </button>
-
-              {menuOpenId === shelf.id && (
-                <div
-                  ref={menuRef}
-                  class="absolute top-full left-0 z-20 mt-1 w-36 rounded-md border border-border bg-popover py-1 shadow-md"
+                <MenuItem
+                  menuId={`shelf-menu-${shelf.id}`}
+                  onClick={() => {
+                    setRenameValue(shelf.name);
+                    setRenamingId(shelf.id);
+                  }}
                 >
-                  <button
-                    type="button"
-                    class="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted"
-                    onClick={() => {
-                      setMenuOpenId(null);
-                      setRenameValue(shelf.name);
-                      setRenamingId(shelf.id);
-                    }}
-                  >
-                    Rename
-                  </button>
-                  {confirmDeleteId === shelf.id ? (
-                    <div class="flex items-center gap-2 px-3 py-1.5">
-                      <button
-                        type="button"
-                        class="text-xs text-destructive hover:underline"
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          setConfirmDeleteId(null);
-                          void onDelete(shelf.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        class="text-xs text-muted-foreground hover:underline"
-                        onClick={() => setConfirmDeleteId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      class="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
-                      onClick={() => setConfirmDeleteId(shelf.id)}
-                    >
-                      Delete shelf
-                    </button>
-                  )}
-                </div>
-              )}
+                  Rename
+                </MenuItem>
+                <MenuConfirm
+                  id={`shelf-menu-${shelf.id}-confirm`}
+                  menuId={`shelf-menu-${shelf.id}`}
+                  label="Delete shelf"
+                  description={`Delete the "${shelf.name}" shelf? The books stay in your library.`}
+                  confirmLabel="Delete shelf"
+                  onConfirm={() => void onDelete(shelf.id)}
+                />
+              </AnchoredMenu>
             </div>
           ),
         )}

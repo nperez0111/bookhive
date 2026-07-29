@@ -295,6 +295,87 @@ describe("POST /library/sync/rename", () => {
   });
 });
 
+describe("POST /library/sync/delete", () => {
+  let db: Database;
+  let app: TestApp;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    app = createApp(db);
+  });
+
+  const remove = (document: string) =>
+    app.request("/library/sync/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document }),
+    });
+
+  it("forgets the document and its progress", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-1" });
+
+    expect((await remove("hash-1")).status).toBe(200);
+    expect(await getDocuments(app)).toEqual([]);
+  });
+
+  it("leaves the user's own book progress alone", async () => {
+    // The e-reader record is ours to discard; `user_book.bookProgress` is the
+    // user's BookHive reading record and is mirrored to their PDS.
+    await seedSyncDocument(db, { documentHash: "hash-1", hiveId: "bk_real" as HiveId });
+    await db
+      .insertInto("user_book")
+      .values({
+        uri: `at://${DID}/buzz.bookhive.book/1`,
+        cid: "cid1",
+        userDid: DID,
+        hiveId: "bk_real" as HiveId,
+        title: "A Book",
+        authors: "An Author",
+        status: "buzz.bookhive.defs#reading",
+        owned: 0,
+        bookProgress: JSON.stringify({ percent: 42, updatedAt: now }),
+        createdAt: now,
+        indexedAt: now,
+      })
+      .execute();
+
+    expect((await remove("hash-1")).status).toBe(200);
+
+    const book = await db
+      .selectFrom("user_book")
+      .select("bookProgress")
+      .where("userDid", "=", DID)
+      .executeTakeFirst();
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(42);
+  });
+
+  it("cannot delete another user's document", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-theirs", userDid: OTHER_DID });
+
+    expect((await remove("hash-theirs")).status).toBe(404);
+    const survivor = await db
+      .selectFrom("sync_document")
+      .select("id")
+      .where("documentHash", "=", "hash-theirs")
+      .executeTakeFirst();
+    expect(survivor).toBeDefined();
+  });
+
+  it("404s for an unknown document", async () => {
+    expect((await remove("nope")).status).toBe(404);
+  });
+
+  it("401s without a session", async () => {
+    const anon = createApp(db, null);
+    const res = await anon.request("/library/sync/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: "hash-1" }),
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("GET /library/books/:hash/download", () => {
   let db: Database;
   let app: TestApp;

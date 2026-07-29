@@ -439,4 +439,31 @@ app.post(
   },
 );
 
+// Forget a synced document entirely, discarding the e-reader progress we hold
+// for it. Deliberately scoped to `sync_document`: if the document was linked,
+// the reading progress already bridged onto `user_book` is the user's own
+// BookHive record (and is mirrored to their PDS), so it is not ours to delete
+// here. The row reappears if the e-reader syncs that book again.
+app.post(
+  "/sync/delete",
+  zValidator("json", z.object({ document: z.string().min(1) })),
+  async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    const { db } = c.get("ctx");
+    const { document } = c.req.valid("json");
+
+    const result = await db
+      .deleteFrom("sync_document")
+      .where("userDid", "=", agent.did)
+      .where("documentHash", "=", document)
+      .executeTakeFirst();
+
+    if (Number(result.numDeletedRows) === 0) {
+      return c.json({ error: "Document not found" }, 404);
+    }
+    return c.json({ deleted: true });
+  },
+);
+
 export default app;

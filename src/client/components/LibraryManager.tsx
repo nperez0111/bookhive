@@ -251,6 +251,18 @@ export const LibraryManager: FC = () => {
     }
   };
 
+  /** Discard the e-reader progress we hold for a document. */
+  const handleDeleteDoc = async (document: string) => {
+    const previous = docs;
+    setDocs((prev) => prev.filter((d) => d.document !== document));
+    try {
+      const res = await postJson("/library/sync/delete", { document });
+      if (!res.ok) throw new Error("Failed");
+    } catch {
+      setDocs(previous);
+    }
+  };
+
   // ── Shelf actions ──
 
   const handleCreateShelf = async (name: string): Promise<string | null> => {
@@ -451,7 +463,12 @@ export const LibraryManager: FC = () => {
         </>
       )}
 
-      <AlsoTracking docs={trackedDocs} onLink={startLinkDoc} onRename={handleRenameDoc} />
+      <AlsoTracking
+        docs={trackedDocs}
+        onLink={startLinkDoc}
+        onRename={handleRenameDoc}
+        onDelete={(document) => void handleDeleteDoc(document)}
+      />
 
       <SearchPalette
         isLoggedIn={true}
