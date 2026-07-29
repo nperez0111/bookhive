@@ -268,6 +268,7 @@ const app = new Hono<AppEnv>()
         title: `BookHive | ${result.list.name}`,
         description:
           result.list.description || `${result.list.name} — a book shelf by @${handle} on BookHive`,
+        atTags: { canonical: result.list.uri, author: result.list.userDid },
       },
     );
   })

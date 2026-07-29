@@ -29,3 +29,6 @@ export const BOOK_STATUS_PAST_TENSE_MAP = {
   [WANTTOREAD]: "wants to read this book",
   [FINISHED]: "has read this book",
 } as const;
+
+/** DID of the @bookhive.buzz service account / site identity. */
+export const BOOKHIVE_DID = "did:plc:enu2j5xjlqsjaylv3du4myh4";

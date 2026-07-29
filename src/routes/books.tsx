@@ -99,7 +99,8 @@ const app = new Hono<AppEnv>()
           {isbn && <meta property="book:isbn" content={isbn} />}
         </>
       ),
-    } as any);
+      atTags: { canonical: book.hiveBookAtUri },
+    });
     endTime(c, "render_book_page");
     endTime(c, "route_get_book");
     return res;

@@ -450,6 +450,7 @@ const app = new Hono<AppEnv>()
         title: "BookHive | @" + handle,
         description: `@${handle}'s reading profile — ${parsedBooks.length} books read on BookHive`,
         image: `${new URL(c.req.url).origin}/og/profile/${handle}`,
+        atTags: { author: did },
       },
     );
   });

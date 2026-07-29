@@ -12,6 +12,7 @@ import { BookFields } from "../db";
 import { createContextMiddleware } from "../context";
 import { loginRouter } from "../auth/router";
 import { Layout } from "../pages/layout";
+import { type AtTagsProps } from "../pages/components/AtTags";
 import { Navbar } from "../pages/navbar";
 import { Sidebar } from "../pages/sidebar";
 import { getProfile, getProfiles } from "../utils/getProfile";
@@ -53,7 +54,15 @@ declare module "hono" {
   interface ContextRenderer {
     (
       content: string | Promise<string>,
-      props: { title?: string; image?: string; description?: string },
+      props: {
+        title?: string;
+        image?: string;
+        description?: string;
+        url?: string;
+        ogType?: string;
+        ogExtra?: unknown;
+        atTags?: AtTagsProps;
+      },
     ): Response;
   }
 }

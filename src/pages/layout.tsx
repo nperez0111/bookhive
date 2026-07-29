@@ -3,6 +3,9 @@ import { html, raw } from "hono/html";
 import { type FC, type PropsWithChildren } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 
+import { BOOKHIVE_DID } from "../constants";
+import { AtTags, type AtTagsProps } from "./components/AtTags";
+
 type BundleAssetUrls = { css: string[]; js: string[]; inlineCss?: string } | null;
 
 export const Layout: FC<
@@ -15,6 +18,8 @@ export const Layout: FC<
     url?: string;
     ogType?: string;
     ogExtra?: any;
+    /** AT Tags — ATProto records/identities this page corresponds to. */
+    atTags?: AtTagsProps;
   }>
 > = ({
   children,
@@ -25,6 +30,7 @@ export const Layout: FC<
   url: urlProp,
   ogType = "website",
   ogExtra,
+  atTags,
 }) => {
   let url = urlProp ?? "https://bookhive.buzz";
   let assetUrls = assetUrlsProp;
@@ -89,6 +95,8 @@ export const Layout: FC<
         <meta property="og:image" content="${image}" />
         <meta property="og:logo" content="/icon.svg" />
         ${ogExtra}
+        <meta name="at:me" content="${`at://${BOOKHIVE_DID}`}" />
+        ${AtTags(atTags ?? {})}
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="bookhive.buzz" />
         <meta property="twitter:url" content="${url}" />
