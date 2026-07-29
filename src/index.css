@@ -387,7 +387,11 @@ p {
   [popover].anchored-menu {
     position: fixed;
     inset: auto;
-    position-area: bottom span-inline-start;
+    /* Keep the keywords in one coordinate system: mixing a physical keyword
+       (`bottom`) with a logical one (`span-inline-start`) is invalid, and the
+       whole declaration is dropped while `@supports (position-area: bottom)`
+       still passes — leaving the menu unpositioned in the corner. */
+    position-area: bottom span-left;
     margin-top: 0.25rem;
     /* Flip above / to the other side rather than overflow the viewport. */
     position-try-fallbacks:
