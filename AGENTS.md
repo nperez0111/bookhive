@@ -157,18 +157,18 @@ User book lists ("shelves"). Lists use the **shared popfeed lexicons**
 
 Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync documents. All routes require session auth.
 
-- GET `/` → `src/pages/library.tsx` (auth). Counts `personal_book` + `sync_document` to pick the layout: with **both zero** it renders an explainer with the credentials block and upload dropzone inline (no island); otherwise a header with two `<dialog>` triggers ("Connect e-reader" / "Upload books") plus the `LibraryManager` island.
+- GET `/` → `src/pages/library.tsx` (auth). With no books _and_ no synced documents it renders an explainer with the credentials block and upload dropzone inline; otherwise a header with two `<dialog>` triggers plus the `LibraryManager` island.
 - POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash)
 - GET `/covers/:hash` → extracted cover image for a personal book
-- GET `/books/:hash/download` → **session-authenticated** file download. Shares `streamPersonalBook` (`src/utils/personalLibrary.ts`) with the Basic-auth OPDS acquisition route, so the two can't drift.
+- GET `/books/:hash/download` → session-authenticated file download; shares `streamPersonalBook` (`src/utils/personalLibrary.ts`) with the Basic-auth OPDS route.
 - GET `/shelves` → JSON list of user's personal shelves with book counts (`{ shelves: [{ id, name, description, bookCount, createdAt, updatedAt }] }`)
 - GET `/sync/password` → current KOSync password (same as settings, duplicated here for library page)
 - POST `/sync/rotate` → rotate sync token (same as settings)
-- GET `/sync/documents` → synced e-reader documents. Each row also carries `hasFile` (an uploaded `personal_book` shares the hash, so the grid already represents it) and `dismissed` (the `NO_HIVE_MATCH` sentinel; `hiveId`/`bookTitle` are nulled out in that case so no client links to `/books/bk_none`).
+- GET `/sync/documents` → synced e-reader documents; each row carries `hasFile` (an upload shares its hash) and `dismissed`.
 - POST `/sync/link` (`{document, hiveId}`) → link synced document to hive book
-- POST `/sync/dismiss` (`{document, dismissed}`) → write/clear the `NO_HIVE_MATCH` sentinel. Only toggles between null and the sentinel — never clobbers a real link (404 otherwise).
+- POST `/sync/dismiss` (`{document, dismissed}`) → write/clear the `NO_HIVE_MATCH` sentinel; 404s rather than clobbering a real link.
 - POST `/sync/rename` (`{document, title}`) → name a document that arrived without metadata
-- POST `/sync/delete` (`{document}`) → forget a synced document and the e-reader progress held for it. Scoped to `sync_document` only: progress already bridged onto `user_book` is the user's own BookHive record (mirrored to their PDS), so it is left alone. The row returns if the e-reader syncs that book again.
+- POST `/sync/delete` (`{document}`) → forget a synced document and its e-reader progress. Scoped to `sync_document`; leaves `user_book.bookProgress` alone.
 
 ### `src/routes/api.tsx` (mounted at `/api`) — JSON/form mutations
 
@@ -200,14 +200,10 @@ queued in KV (`sync_pending:{did}`) and flushed via the canonical
 only on an **exact** `getHiveId` match (`src/utils/syncMatching.ts`); a miss
 leaves `hiveId` null and still syncs progress at the document level.
 
-**`NO_HIVE_MATCH` sentinel** (`src/utils/syncMatching.ts`, value `bk_none`): written
-to `sync_document.hiveId` when the user says a document has no BookHive
-counterpart (POST `/library/sync/dismiss`). It is shaped like a `HiveId` so the
-column type holds but can never collide with a real `hive_book.id`. Because every
-auto-match path only runs when `hiveId` is falsy, the sentinel also permanently
-stops re-matching. Rules: read paths must surface it as
-`{ hiveId: null, dismissed: true }` (never let a client link to `/books/bk_none`),
-and `bridgeProgressToUserBook` early-returns on it.
+**`NO_HIVE_MATCH` sentinel** (`src/utils/syncMatching.ts`, value `bk_none`):
+written to `sync_document.hiveId` when the user says a document has no BookHive
+counterpart. Read paths must surface it as `{ hiveId: null, dismissed: true }` so
+nothing links to `/books/bk_none`.
 
 - `POST /users/create` → returns 403 directing users to BookHive Settings
 - `GET /users/auth` → validates sync credentials
@@ -307,54 +303,18 @@ head `<meta>` tags by `name` and would collapse the proposal's array semantics.
 book picker (select instead of navigate, no status buttons) — `LibraryManager`
 reuses it to link e-reader documents / personal books to hive books.
 
-`LibraryManager` owns the whole library body and its sub-components live in
-`src/client/components/library/`: `AnchoredMenu.tsx` (see below), `types.ts` (shared types + formatting),
-`ShelfTabs.tsx` (All books + per-shelf tabs with inline CRUD),
-`PersonalBookCard.tsx` (grid card mirroring the server-side dense `BookCard`,
-plus format/size, sync progress bar, and a hover overlay for download and
-management), and `SyncDocumentSections.tsx` (the triage strip and "Also
-tracking" list). Personal books and sync documents are keyed by the same
-KOReader partial MD5, so a document with a matching file is folded into its grid
-card as a progress bar rather than listed separately; documents with no file are
-triaged above the grid, then parked in "Also tracking" once linked or dismissed.
-`SyncDocuments.tsx` was removed — `LibraryManager` absorbed it, and the settings
-page only links to `/library`.
+`LibraryManager` owns the whole library body; its sub-components are in
+`src/client/components/library/`: `AnchoredMenu.tsx` (dropdown primitives),
+`ShelfTabs.tsx`, `PersonalBookCard.tsx` (grid card), `SyncDocumentSections.tsx`
+(triage strip + "Also tracking"), `types.ts`. Personal books and sync documents
+share the KOReader partial MD5, so a document with a matching file is folded
+into that book's grid card instead of listed separately. `SyncDocuments.tsx` was
+removed — `LibraryManager` absorbed it.
 
-**Prefer no-JS UI primitives.** `AnchoredMenu`/`MenuItem`/`MenuConfirm`
-(`src/client/components/library/AnchoredMenu.tsx`) are the house dropdown, built
-entirely from HTML + Tailwind with no state and no outside-click listener:
-
-- **Open/close** — a visually hidden (`sr-only`, still focusable) `peer`
-  checkbox plus a `<label for>` trigger; the panel shows via `peer-checked:`.
-- **Positioning** — plain `absolute top-full right-0` inside a
-  `relative` wrapper, the same approach as every other menu in the app (navbar
-  user menu, book status dropdown, share menus).
-- **Light dismiss** — a viewport-filling `<button type="reset">` behind the panel.
-- **Closing on item click** — the whole menu is a `<form method="dialog">`, so a
-  `<button type="reset">` returns every checkbox in it to unchecked, closing the
-  menu _and_ any nested `MenuConfirm` in one declarative step. `MenuItem` renders
-  `type="reset"` when given `menuId` and `type="button"` otherwise (omit it for
-  checkbox lists that should stay open). `method="dialog"` outside a `<dialog>`
-  makes submission a no-op, so the form can never navigate.
-
-**Do not use the CSS anchor positioning API here.** It was tried and reverted:
-`position-area`/`position-anchor` are Chromium-only, so Firefox and Safari fell
-back to a viewport-centred sheet. It is also the _only_ way to tether a `popover`
-to its trigger, because an open popover is in the top layer, which detaches it
-from the containing-block chain — `offsetParent` is null and `static`/`relative`/
-`absolute`/`fixed` all resolve against the initial containing block. That is why
-this component is not a popover.
-
-The trade-off: no Escape-to-close (consistent with every other menu in the app),
-and the trigger exposes checkbox rather than button semantics.
-
-Because the panel is no longer in the top layer, **ancestor stacking and clipping
-now matter**. `PersonalBookCard` must keep the menu in the action layer that is a
-_sibling_ of the `overflow-hidden` cover box, that layer must not use a
-`transform` (a transform would become the containing block for the `fixed`
-backdrop and trap the panel in its own stacking context — it uses a `bottom`
-offset for its hover lift instead), and the `<li>` needs `has-[:checked]:z-20` so
-the open panel paints over later grid cards.
+`AnchoredMenu`/`MenuItem`/`MenuConfirm` are the house dropdown: no state, no
+outside-click listener, built from a `peer` checkbox + `<form>` reset. Prefer it
+over writing menu state. Don't switch it to the Popover API or CSS anchor
+positioning — both were tried and reverted; the file's header comment says why.
 
 All three library menus (book card, shelf tab, sync document row) use it; reach
 for it before writing menu state.
@@ -377,13 +337,10 @@ sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.
 
-Kysely talks to `bun:sqlite` through the adapter in `src/bun-sqlite-kysely.ts`.
-Its `isReaderStatement()` decides whether Kysely calls `all()` (rows) or `run()`
-(changes + lastInsertRowid), so it must return true for **anything that produces
-rows** — `SELECT`, and also `INSERT`/`UPDATE`/`DELETE ... RETURNING`. Getting
-this wrong doesn't error: the statement executes and Kysely just sees zero rows,
-so `.returning(...).executeTakeFirstOrThrow()` fails with "no result" far from
-the cause. Covered by `src/bun-sqlite-kysely.test.ts`.
+Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`. Its
+`isReaderStatement()` must return true for anything that produces rows —
+`SELECT` and `... RETURNING` — or those queries silently come back empty. See
+`src/bun-sqlite-kysely.test.ts`.
 
 | Table             | Purpose                   | Key columns                                                                                                                                                              |
 | ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -486,10 +443,8 @@ Queries: `getPersonalLibrary`, `getPersonalBook`, `getSyncProgress`,
 `createPersonalShelf`, `updatePersonalShelf`, `deletePersonalShelf`,
 `addToPersonalShelf`, `removeFromPersonalShelf`.
 
-`getPersonalLibrary` returns `{ books, total, cursor? }` (offset-based cursor).
-Each book carries `progress` (from a `sync_document` left-joined on
-`documentHash = contentHash`) and `shelfIds` (one grouped query over the page) so
-the client never has to fan out a request per shelf. `linkPersonalBook`
+`getPersonalLibrary` returns `{ books, total, cursor? }`; each book carries
+`progress` (joined from `sync_document`) and `shelfIds`. `linkPersonalBook`
 **overwrites** the file's `title`/`authors` from the hive book and propagates the
 `hiveId` onto the matching `sync_document`; `unlinkPersonalBook` clears both.
 
