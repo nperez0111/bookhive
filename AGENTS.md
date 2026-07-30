@@ -522,7 +522,14 @@ basecoat-css, envalid (env validation in `src/env.ts`).
 
 ## iOS App (`app/`)
 
-Separate Expo/React Native workspace. Not relevant for web UI refactor.
+Separate Expo/React Native workspace with its own reference doc,
+`app/ARCHITECTURE.md` — update that file, not this one, when changing app
+screens, hooks, or components. Not relevant for web UI refactor.
+
+The app consumes the personal-library and KOSync surfaces: the XRPC
+`*PersonalBook` / `*PersonalShelf` methods, the REST `/library/shelves`,
+`/library/sync/*` and `/settings/sync/*` routes, and the content-negotiated
+`POST /library/upload`. Changes to any of those are app-visible.
 
 ## Workers, Logging & Observability
 

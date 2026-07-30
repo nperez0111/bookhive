@@ -1,5 +1,5 @@
-import { authFetch } from "@/context/auth";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { authFetch, getAuthState, getBaseUrl } from "@/context/auth";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { HiveBook, HiveId, GetBook, GetProfile, UserBook } from "../../src/types";
 import { useEffect, useState } from "react";
 import { classifyNetworkError } from "@/utils/networkErrorHandler";
@@ -717,5 +717,451 @@ export const useReadingStats = (handle: string, year: number) => {
     enabled: Boolean(handle),
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
+  });
+};
+
+// ── Personal Library & E-Reader Sync ──
+
+/** A book file the user uploaded, as returned by `getPersonalLibrary`. */
+export type PersonalBook = {
+  contentHash: string;
+  title: string;
+  authors?: string;
+  language?: string;
+  format: string;
+  mime: string;
+  sizeBytes: number;
+  coverUrl?: string;
+  hiveId?: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Percentage arrives as a decimal string ("0.42") straight from KOSync. */
+  progress?: { percentage: string; device?: string; updatedAt: string };
+  shelfIds?: number[];
+};
+
+/** A user-defined shelf grouping personal library books. */
+export type PersonalShelf = {
+  id: number;
+  name: string;
+  description?: string;
+  bookCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * A document an e-reader has reported progress for. `hasFile` means an upload
+ * shares its content hash, so the library grid already shows it; `dismissed`
+ * means the user said it has no BookHive counterpart.
+ */
+export type SyncDoc = {
+  document: string;
+  title: string | null;
+  authors: string | null;
+  filename: string | null;
+  percentage: number;
+  device: string | null;
+  updatedAt: string;
+  hiveId: string | null;
+  bookTitle: string | null;
+  dismissed: boolean;
+  hasFile: boolean;
+};
+
+const PERSONAL_LIBRARY_PAGE_SIZE = 24;
+
+export const usePersonalLibrary = (shelfId?: number) => {
+  return useInfiniteQuery({
+    queryKey: ["personalLibrary", shelfId ?? null] as const,
+    initialPageParam: "",
+    queryFn: async ({ queryKey: [, shelf], pageParam }) => {
+      let url = `/xrpc/buzz.bookhive.getPersonalLibrary?limit=${PERSONAL_LIBRARY_PAGE_SIZE}`;
+      if (shelf != null) url += `&shelfId=${shelf}`;
+      if (pageParam) url += `&cursor=${encodeURIComponent(pageParam)}`;
+      return await enhancedAuthFetch<{
+        books: PersonalBook[];
+        total?: number;
+        cursor?: string;
+      }>(url);
+    },
+    getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
+    staleTime: 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};
+
+export const usePersonalShelves = () => {
+  return useQuery({
+    queryKey: ["personalShelves"] as const,
+    queryFn: async () => {
+      const result = await enhancedAuthFetch<{ shelves: PersonalShelf[] }>(`/library/shelves`);
+      return result?.shelves ?? [];
+    },
+    staleTime: 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};
+
+export const useSyncDocuments = () => {
+  return useQuery({
+    queryKey: ["syncDocuments"] as const,
+    queryFn: async () => {
+      const result = await enhancedAuthFetch<{ documents: SyncDoc[] }>(`/library/sync/documents`);
+      return result?.documents ?? [];
+    },
+    staleTime: 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+};
+
+export const useSyncPassword = () => {
+  return useQuery({
+    queryKey: ["syncPassword"] as const,
+    queryFn: async () => {
+      const result = await enhancedAuthFetch<{ password: string }>(`/settings/sync/password`);
+      return result.password;
+    },
+    // Derived server-side from a rotation counter, so it only changes when the
+    // user rotates it — no reason to refetch while the screen is open.
+    staleTime: Infinity,
+    gcTime: 60 * 60 * 1000,
+  });
+};
+
+export const useRotateSyncPassword = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      return await enhancedAuthFetch<{ password: string }>(`/settings/sync/rotate`, {
+        method: "POST",
+      });
+    },
+    onSuccess: ({ password }) => {
+      queryClient.setQueryData(["syncPassword"], password);
+    },
+    retry: false,
+  });
+};
+
+/**
+ * Multipart upload with real progress. Goes through XMLHttpRequest rather than
+ * the shared fetch wrapper for two reasons: React Native streams a
+ * `{ uri, name, type }` form part straight off disk (a 100 MB ebook never lands
+ * in JS memory), and `upload.onprogress` is the only way to drive a determinate
+ * progress bar.
+ */
+function uploadBookFile({
+  uri,
+  name,
+  mime,
+  onProgress,
+}: {
+  uri: string;
+  name: string;
+  mime?: string;
+  onProgress?: (fraction: number) => void;
+}): Promise<{ book: PersonalBook }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", {
+      uri,
+      name,
+      type: mime || "application/octet-stream",
+    } as unknown as Blob);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${getBaseUrl()}/library/upload`);
+    xhr.setRequestHeader("accept", "application/json");
+    xhr.setRequestHeader("cookie", `sid=${getAuthState()?.sid ?? ""}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress?.(event.loaded / event.total);
+      }
+    };
+
+    xhr.onload = () => {
+      let payload: any = null;
+      try {
+        payload = JSON.parse(xhr.responseText);
+      } catch {
+        // Non-JSON body — fall through to the status-based message below.
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && payload?.book) {
+        onProgress?.(1);
+        resolve(payload as { book: PersonalBook });
+        return;
+      }
+      reject(
+        new Error(
+          payload?.error ||
+            (xhr.status === 401
+              ? "Your session expired. Sign in again to upload."
+              : `Upload failed (${xhr.status})`),
+        ),
+      );
+    };
+    xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+    xhr.onabort = () => reject(new Error("Upload cancelled"));
+
+    xhr.send(form);
+  });
+}
+
+export const useUploadPersonalBook = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: uploadBookFile,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["personalLibrary"] });
+      void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
+      // An upload can adopt a synced document (same content hash), which moves
+      // it out of the triage list and into the grid.
+      void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    retry: false,
+  });
+};
+
+/** Invalidate everything the library screen renders after a mutation. */
+function useInvalidateLibrary() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ["personalLibrary"] });
+    void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
+    void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
+  };
+}
+
+export const useDeletePersonalBook = () => {
+  const queryClient = useQueryClient();
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async ({ contentHash }: { contentHash: string }) => {
+      return await enhancedAuthFetch<Record<string, never>>(
+        `/xrpc/buzz.bookhive.deletePersonalBook`,
+        { method: "POST", body: { contentHash } },
+      );
+    },
+    onMutate: async ({ contentHash }) => {
+      await queryClient.cancelQueries({ queryKey: ["personalLibrary"] });
+      const previous = queryClient.getQueriesData({ queryKey: ["personalLibrary"] });
+      queryClient.setQueriesData({ queryKey: ["personalLibrary"] }, (old: any) => {
+        if (!old?.pages) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            books: page.books.filter((b: PersonalBook) => b.contentHash !== contentHash),
+            total: Math.max(0, (page.total ?? 0) - 1),
+          })),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      for (const [key, data] of context?.previous ?? []) {
+        queryClient.setQueryData(key, data);
+      }
+    },
+    onSettled: invalidateLibrary,
+    retry: false,
+  });
+};
+
+export const useLinkPersonalBook = () => {
+  const invalidateLibrary = useInvalidateLibrary();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ contentHash, hiveId }: { contentHash: string; hiveId: string }) => {
+      return await enhancedAuthFetch<{ book: PersonalBook }>(
+        `/xrpc/buzz.bookhive.linkPersonalBook`,
+        { method: "POST", body: { contentHash, hiveId } },
+      );
+    },
+    onSuccess: () => {
+      invalidateLibrary();
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    retry: false,
+  });
+};
+
+export const useUnlinkPersonalBook = () => {
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async ({ contentHash }: { contentHash: string }) => {
+      return await enhancedAuthFetch<{ book: PersonalBook }>(
+        `/xrpc/buzz.bookhive.unlinkPersonalBook`,
+        { method: "POST", body: { contentHash } },
+      );
+    },
+    onSuccess: invalidateLibrary,
+    retry: false,
+  });
+};
+
+export const useCreatePersonalShelf = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; description?: string }) => {
+      return await enhancedAuthFetch<{ shelf: PersonalShelf }>(
+        `/xrpc/buzz.bookhive.createPersonalShelf`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
+    },
+    retry: false,
+  });
+};
+
+export const useUpdatePersonalShelf = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: number; name?: string; description?: string }) => {
+      return await enhancedAuthFetch<{ shelf: PersonalShelf }>(
+        `/xrpc/buzz.bookhive.updatePersonalShelf`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
+    },
+    retry: false,
+  });
+};
+
+export const useDeletePersonalShelf = () => {
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async ({ id }: { id: number }) => {
+      return await enhancedAuthFetch<Record<string, never>>(
+        `/xrpc/buzz.bookhive.deletePersonalShelf`,
+        { method: "POST", body: { id } },
+      );
+    },
+    onSuccess: invalidateLibrary,
+    retry: false,
+  });
+};
+
+export const useAddToPersonalShelf = () => {
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async (input: { shelfId: number; contentHash: string }) => {
+      return await enhancedAuthFetch<Record<string, never>>(
+        `/xrpc/buzz.bookhive.addToPersonalShelf`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: invalidateLibrary,
+    retry: false,
+  });
+};
+
+export const useRemoveFromPersonalShelf = () => {
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async (input: { shelfId: number; contentHash: string }) => {
+      return await enhancedAuthFetch<Record<string, never>>(
+        `/xrpc/buzz.bookhive.removeFromPersonalShelf`,
+        { method: "POST", body: input },
+      );
+    },
+    onSuccess: invalidateLibrary,
+    retry: false,
+  });
+};
+
+export const useLinkSyncDocument = () => {
+  const queryClient = useQueryClient();
+  const invalidateLibrary = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: async (input: { document: string; hiveId: string }) => {
+      return await enhancedAuthFetch<{ hiveId: string; bookTitle: string }>(`/library/sync/link`, {
+        method: "POST",
+        body: input,
+      });
+    },
+    onSuccess: () => {
+      invalidateLibrary();
+      // Linking can create the user_book record, which changes their shelves.
+      void queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    retry: false,
+  });
+};
+
+export const useDismissSyncDocument = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { document: string; dismissed: boolean }) => {
+      return await enhancedAuthFetch<{ dismissed: boolean }>(`/library/sync/dismiss`, {
+        method: "POST",
+        body: input,
+      });
+    },
+    onMutate: async ({ document, dismissed }) => {
+      await queryClient.cancelQueries({ queryKey: ["syncDocuments"] });
+      const previous = queryClient.getQueryData(["syncDocuments"]);
+      queryClient.setQueryData(["syncDocuments"], (old: SyncDoc[] | undefined) =>
+        old?.map((doc) => (doc.document === document ? { ...doc, dismissed } : doc)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(["syncDocuments"], context?.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
+    },
+    retry: false,
+  });
+};
+
+export const useRenameSyncDocument = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { document: string; title: string }) => {
+      return await enhancedAuthFetch<{ title: string }>(`/library/sync/rename`, {
+        method: "POST",
+        body: input,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
+    },
+    retry: false,
+  });
+};
+
+export const useDeleteSyncDocument = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ document }: { document: string }) => {
+      return await enhancedAuthFetch<{ deleted: boolean }>(`/library/sync/delete`, {
+        method: "POST",
+        body: { document },
+      });
+    },
+    onMutate: async ({ document }) => {
+      await queryClient.cancelQueries({ queryKey: ["syncDocuments"] });
+      const previous = queryClient.getQueryData(["syncDocuments"]);
+      queryClient.setQueryData(["syncDocuments"], (old: SyncDoc[] | undefined) =>
+        old?.filter((doc) => doc.document !== document),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(["syncDocuments"], context?.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
+    },
+    retry: false,
   });
 };

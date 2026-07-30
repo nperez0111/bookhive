@@ -20,7 +20,7 @@ import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
-import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
+import { usePersonalLibrary, useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { Ionicons } from "@expo/vector-icons";
@@ -270,6 +270,8 @@ export default function HomeScreen() {
   const bottom = useBottomTabOverflow();
 
   const listsQuery = useUserLists(authState?.did);
+  const personalLibraryQuery = usePersonalLibrary();
+  const personalBookCount = personalLibraryQuery.data?.pages[0]?.total ?? 0;
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -372,6 +374,11 @@ export default function HomeScreen() {
               icon="compass"
               label="Explore"
               onPress={() => router.push("/explore" as any)}
+            />
+            <QuickAction
+              icon="library"
+              label={personalBookCount > 0 ? `Library · ${personalBookCount}` : "Library"}
+              onPress={() => router.push("/library" as any)}
             />
           </View>
         </View>

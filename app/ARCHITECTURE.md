@@ -1,6 +1,6 @@
 # BookHive Mobile App — Architecture
 
-Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript strict mode, file-based routing via expo-router.
+Expo/React Native app (SDK 56, React 19.2, RN 0.85). Bun runtime, TypeScript strict mode, file-based routing via expo-router.
 
 ## Entry Points
 
@@ -37,6 +37,32 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 | `/profile/[did]/stats`      | `(tabs)/profile/[did]/stats.tsx`      | Reading statistics by year                                                   |
 | `/explore/genres/[genre]`   | `(tabs)/explore/genres/[genre].tsx`   | Books by genre, sortable & paginated                                         |
 | `/explore/authors/[author]` | `(tabs)/explore/authors/[author].tsx` | Books by author, sortable & paginated                                        |
+| `/library`                  | `(tabs)/library/index.tsx`            | Personal library — uploads, shelves, synced-document triage                  |
+| `/sync`                     | `(tabs)/sync/index.tsx`               | E-Reader sync — KOSync/OPDS credentials and KOReader setup                   |
+
+### Personal Library & E-Reader Sync
+
+Two screens over the server's personal-library and KOSync features. `/library`
+is "the files"; `/sync` is "how to connect a device". Both are reachable from
+the Profile tab; `/library` also has a Home-tab quick action showing the file
+count.
+
+**`/library`** is a 2-column `FlatList` of `PersonalBookCard`s with a shelf-pill
+header, an amber triage strip for synced documents that need a match, and an
+"Also tracking" footer for documents with no uploaded file. Tapping a card opens
+an `ActionSheet` (match/unmatch, shelves, delete) — there is no in-app reader, so
+"manage this file" is the only meaningful primary action. Uploads go through
+`expo-document-picker` → `POST /library/upload` as multipart, which lets React
+Native stream the file off disk and drive a determinate progress bar from
+`XMLHttpRequest.upload.onprogress`.
+
+**`/sync`** shows a connection-status card (derived from whether any documents
+have synced), the KOSync server URL, OPDS catalog URL, username and derived
+password with reveal/copy/reset, and the six KOReader setup steps.
+
+Sync documents are surfaced in three places by state: `hasFile` → folded into
+the grid card that shares its content hash; unmatched → triage strip; matched or
+dismissed → "Also tracking".
 
 ## State Management
 
@@ -60,6 +86,24 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 | `useDeleteBook()`       | Mutation: delete book                 |
 | `useFollow()`           | Mutation: follow user                 |
 
+#### Personal library & sync hooks
+
+| Hook                                                       | Purpose                                        |
+| ---------------------------------------------------------- | ---------------------------------------------- |
+| `usePersonalLibrary(shelfId?)`                             | Infinite query of uploaded books (24/page)     |
+| `usePersonalShelves()`                                     | Shelves with book counts                       |
+| `useSyncDocuments()`                                       | Synced e-reader documents                      |
+| `useSyncPassword()` / `useRotateSyncPassword()`            | Derived KOSync/OPDS password, and rotating it  |
+| `useUploadPersonalBook()`                                  | Multipart upload with progress (XHR)           |
+| `useDeletePersonalBook()`                                  | Delete a file (optimistic)                     |
+| `useLinkPersonalBook()` / `useUnlinkPersonalBook()`        | Match a file to a catalog entry                |
+| `useCreate/Update/DeletePersonalShelf()`                   | Shelf CRUD                                     |
+| `useAddToPersonalShelf()` / `useRemoveFromPersonalShelf()` | Shelf membership                               |
+| `useLinkSyncDocument()` / `useDismissSyncDocument()`       | Match a document, or mark it "not on BookHive" |
+| `useRenameSyncDocument()` / `useDeleteSyncDocument()`      | Rename / forget a document (both optimistic)   |
+
+Exported types: `PersonalBook`, `PersonalShelf`, `SyncDoc`.
+
 ### Context Providers
 
 | Provider        | File                | Persists to                | Purpose                      |
@@ -77,19 +121,29 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 
 ### Endpoints
 
-| Endpoint                                 | Method | Purpose                          |
-| ---------------------------------------- | ------ | -------------------------------- |
-| `/xrpc/buzz.bookhive.searchBooks?q=`     | GET    | Search books                     |
-| `/xrpc/buzz.bookhive.getBook?id=`        | GET    | Book detail with comments        |
-| `/xrpc/buzz.bookhive.getProfile?did=`    | GET    | User profile                     |
-| `/xrpc/buzz.bookhive.getFeed?tab=&page=` | GET    | Activity feed                    |
-| `/xrpc/buzz.bookhive.getExplore`         | GET    | Genres & top authors             |
-| `/api/update-book`                       | POST   | Update book status/rating/review |
-| `/api/update-comment`                    | POST   | Add/edit comments                |
-| `/api/delete-book`                       | POST   | Delete book                      |
-| `/api/follow`                            | POST   | Follow user                      |
-| `/mobile/login?handle=&redirect_uri=`    | GET    | OAuth login                      |
-| `/mobile/refresh-token`                  | GET    | Refresh session                  |
+| Endpoint                                     | Method | Purpose                          |
+| -------------------------------------------- | ------ | -------------------------------- |
+| `/xrpc/buzz.bookhive.searchBooks?q=`         | GET    | Search books                     |
+| `/xrpc/buzz.bookhive.getBook?id=`            | GET    | Book detail with comments        |
+| `/xrpc/buzz.bookhive.getProfile?did=`        | GET    | User profile                     |
+| `/xrpc/buzz.bookhive.getFeed?tab=&page=`     | GET    | Activity feed                    |
+| `/xrpc/buzz.bookhive.getExplore`             | GET    | Genres & top authors             |
+| `/api/update-book`                           | POST   | Update book status/rating/review |
+| `/api/update-comment`                        | POST   | Add/edit comments                |
+| `/api/delete-book`                           | POST   | Delete book                      |
+| `/api/follow`                                | POST   | Follow user                      |
+| `/xrpc/buzz.bookhive.getPersonalLibrary`     | GET    | Uploaded books (paginated)       |
+| `/xrpc/buzz.bookhive.*PersonalBook`          | POST   | Delete / link / unlink a file    |
+| `/xrpc/buzz.bookhive.*PersonalShelf`         | POST   | Shelf CRUD & membership          |
+| `/library/upload`                            | POST   | Multipart ebook upload           |
+| `/library/covers/:hash`                      | GET    | Cover extracted from a file      |
+| `/library/shelves`                           | GET    | Shelves with book counts         |
+| `/library/sync/documents`                    | GET    | Synced e-reader documents        |
+| `/library/sync/{link,dismiss,rename,delete}` | POST   | Manage a synced document         |
+| `/settings/sync/password`                    | GET    | Derived KOSync/OPDS password     |
+| `/settings/sync/rotate`                      | POST   | Rotate the sync password         |
+| `/mobile/login?handle=&redirect_uri=`        | GET    | OAuth login                      |
+| `/mobile/refresh-token`                      | GET    | Refresh session                  |
 
 ## Authentication
 
@@ -125,6 +179,8 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 | `StatusSelectionModal`    | Modal for changing book status  |
 | `DeleteConfirmationModal` | Delete confirmation dialog      |
 | `DatePickerModal`         | Date picker for reading dates   |
+| `PersonalBookCard`        | Grid card for an uploaded file  |
+| `BookSearchModal`         | Catalog picker for matching     |
 
 ### Layout & Navigation
 
@@ -135,6 +191,13 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 | `SectionHeader`        | Section title with icon          |
 | `ListItem`             | Settings list item with chevron  |
 | `Divider`              | Visual divider                   |
+| `ActionSheet`          | Themed bottom sheet of actions   |
+| `TextPromptModal`      | Single-field prompt sheet        |
+| `ProgressBar`          | Animated 0–1 progress bar        |
+
+`ActionSheet` is the house menu — prefer it over `Alert.alert` with more than
+two buttons, which reads as a warning and stacks badly on Android.
+`TextPromptModal` exists because `Alert.prompt` is iOS-only.
 
 ### Animation
 
@@ -164,25 +227,29 @@ Expo/React Native app (SDK 54, React 19, RN 0.81). Bun runtime, TypeScript stric
 
 ## Utilities
 
-| File                                          | Purpose                                                              |
-| --------------------------------------------- | -------------------------------------------------------------------- |
-| `utils/htmlToText.tsx`                        | Parse HTML → React Native Text with nested tags                      |
-| `utils/calculatePercentFromProgressValues.ts` | Progress percentage calculation                                      |
-| `utils/networkErrorHandler.ts`                | Error classification (network/timeout/server/auth/404) & retry logic |
-| `utils/navigation.ts`                         | Navigation helpers                                                   |
+| File                                          | Purpose                                                                          |
+| --------------------------------------------- | -------------------------------------------------------------------------------- |
+| `utils/htmlToText.tsx`                        | Parse HTML → React Native Text with nested tags                                  |
+| `utils/calculatePercentFromProgressValues.ts` | Progress percentage calculation                                                  |
+| `utils/networkErrorHandler.ts`                | Error classification (network/timeout/server/auth/404) & retry logic             |
+| `utils/navigation.ts`                         | Navigation helpers                                                               |
+| `utils/personalLibrary.ts`                    | Cover source resolution (incl. the `sid` cookie), size/author/percent formatting |
 
 ## Key Dependencies
 
-| Package                                   | Version  | Purpose                 |
-| ----------------------------------------- | -------- | ----------------------- |
-| expo                                      | ~54.0.0  | Framework               |
-| expo-router                               | ~6.0.23  | File-based routing      |
-| @tanstack/react-query                     | ^5.90.10 | Data fetching & caching |
-| react-native-reanimated                   | ~4.1.5   | Animations              |
-| ofetch                                    | ^1.4.1   | HTTP client             |
-| @react-native-async-storage/async-storage | 2.2.0    | Persistent storage      |
-| date-fns                                  | ^3.6.0   | Date formatting         |
-| @react-native-community/netinfo           | 11.4.1   | Network detection       |
+| Package                                   | Version   | Purpose                  |
+| ----------------------------------------- | --------- | ------------------------ |
+| expo                                      | ^56.0.0   | Framework                |
+| expo-router                               | ~56.2.11  | File-based routing       |
+| @tanstack/react-query                     | ^5.100.10 | Data fetching & caching  |
+| react-native                              | 0.85.3    | Runtime                  |
+| react-native-reanimated                   | 4.3.1     | Animations               |
+| ofetch                                    | 1.5.1     | HTTP client              |
+| @react-native-async-storage/async-storage | 2.2.0     | Persistent storage       |
+| date-fns                                  | ^4.1.0    | Date formatting          |
+| @react-native-community/netinfo           | 12.0.1    | Network detection        |
+| expo-document-picker                      | ~56.0.4   | Picking ebook files      |
+| expo-clipboard                            | ~56.0.4   | Copying sync credentials |
 
 ## Build & Deploy
 
