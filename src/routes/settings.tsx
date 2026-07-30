@@ -12,6 +12,7 @@ import { deleteAccountData } from "../utils/deleteAccount";
 import { getAvailableLanguages } from "../utils/getLanguages";
 import { currentSyncPassword, rotateSyncToken } from "../middleware/sync-auth";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
+import { NO_HIVE_MATCH } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
 const app = new Hono<AppEnv>()
@@ -146,6 +147,9 @@ app.get("/sync/documents", async (c) => {
     } catch {
       // ignore malformed progress
     }
+    // The sentinel means "the user says this isn't on BookHive" — surface it as
+    // a dismissed flag rather than a hiveId nothing can resolve (/books/bk_none).
+    const dismissed = row.hiveId === NO_HIVE_MATCH;
     return {
       document: row.document,
       title: row.title,
@@ -154,8 +158,9 @@ app.get("/sync/documents", async (c) => {
       percentage,
       device,
       updatedAt: row.updatedAt,
-      hiveId: row.hiveId,
-      bookTitle: row.bookTitle,
+      hiveId: dismissed ? null : row.hiveId,
+      bookTitle: dismissed ? null : row.bookTitle,
+      dismissed,
     };
   });
 

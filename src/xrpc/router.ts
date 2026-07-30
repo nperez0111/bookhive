@@ -98,7 +98,7 @@ import {
   personalBookDir,
   removeBookDir,
 } from "../utils/personalLibrary";
-import { matchSyncDocument } from "../utils/syncMatching";
+import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
 
 /**
@@ -2142,7 +2142,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           filename: row.filename ?? undefined,
           title: row.title ?? undefined,
           authors: row.authors ?? undefined,
-          hiveId: row.hiveId ?? undefined,
+          // The NO_HIVE_MATCH sentinel ("bk_none") records that the user
+          // dismissed this document; never surface it as a hiveId a client
+          // would resolve to /books/bk_none.
+          hiveId: !row.hiveId || row.hiveId === NO_HIVE_MATCH ? undefined : row.hiveId,
           timestamp: data.timestamp,
         };
       });
