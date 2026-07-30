@@ -155,7 +155,7 @@ User book lists ("shelves"). Lists use the **shared popfeed lexicons**
 
 ### `src/routes/library.tsx` (mounted at `/library`)
 
-Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync documents. All routes require session auth.
+Personal library: ebook uploads (= the OPDS catalog, served by `src/routes/opds.ts`), e-reader credentials, sync documents. All routes require session auth.
 
 - GET `/` → `src/pages/library.tsx` (auth). With no books _and_ no synced documents it renders an explainer with the credentials block and upload dropzone inline; otherwise a header with two `<dialog>` triggers plus the `LibraryManager` island.
 - POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash). Content-negotiated: `Accept: application/json` (the mobile app) gets `{ book }` in the `personalBookView` shape, or 409 on a duplicate; the browser form gets a 302 back to `/library`.
@@ -178,6 +178,38 @@ Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync
 ### `src/routes/rss.ts` (mounted at `/rss`)
 
 - GET `/user/:handle`, `/book/:hiveId`, `/friends/:handle` → RSS 2.0 feeds
+
+### `src/routes/opds.ts` (mounted at `/opds`) — e-reader catalog
+
+Serves the user's personal library (`personal_book` / `personal_shelf`) to
+e-readers. Every route is behind `src/middleware/opds-auth.ts`: HTTP Basic with
+the Bluesky handle as username and the **same derived password as KOSync**
+(`currentSyncPassword`), compared in full rather than as an md5.
+
+**Dual-format.** The four feed routes emit either OPDS 1.2 Atom XML or OPDS 2.0
+JSON depending on the request's `Accept` header (`wantsOpds2()` — true when it
+contains `application/opds+json`). KOReader ≥ [#15696](https://github.com/koreader/koreader/pull/15696)
+(header fixed in [#15751](https://github.com/koreader/koreader/pull/15751)) sends
+`application/opds+json, application/atom+xml;profile=opds-catalog, */*` and picks
+its parser from the **first byte of the body** (`{` → 2.0, `<` → 1.x), not from
+`Content-Type`. Older clients send no such header and keep getting XML.
+
+- GET `/` → root navigation feed (All Books + one entry per shelf). The 2.0 form
+  is a `navigation` array carrying `properties.numberOfItems` per entry; the 1.x
+  form has no counts, so the count queries only run on the JSON path.
+- GET `/all`, `/shelves/:id`, `/search/results` → acquisition feeds, paginated at
+  `OPDS_PAGE_SIZE` (24, `src/utils/personalLibrary.ts`). 2.0 emits
+  `metadata.{numberOfItems,itemsPerPage,currentPage}` plus `publications[]`.
+- GET `/search` → OpenSearch description (1.x only; advertises `q`). The 2.0
+  feeds instead carry a templated `rel: "search"` link — see `opds2SearchLink`
+  for why it is spelled `?query={query}` and not `{?query}`. `/search/results`
+  therefore accepts **both** `q` and `query`.
+- GET `/books/:hash/download` → shares `streamPersonalBook` with `/library`.
+- GET `/books/:hash/cover` → local cover file, else redirect to `/images/books/:hiveId`.
+
+OPDS 2.0 publications use the exact rel strings KOReader matches:
+`http://opds-spec.org/acquisition`, `.../image`, `.../image/thumbnail`.
+Tests: `src/routes/opds.test.ts`.
 
 ### `src/routes/og.tsx` (mounted at `/og`) — OG images (offloaded to og-render worker)
 

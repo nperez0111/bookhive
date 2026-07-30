@@ -10,6 +10,13 @@ import type { PersonalBookRow } from "../types";
 const OPDS_NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation";
 const OPDS_ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition";
 
+// OPDS 2.0 JSON feed content type (https://specs.opds.io/opds-2.0.html)
+const OPDS2_TYPE = "application/opds+json";
+
+const ACQUISITION_REL = "http://opds-spec.org/acquisition";
+const IMAGE_REL = "http://opds-spec.org/image";
+const THUMBNAIL_REL = "http://opds-spec.org/image/thumbnail";
+
 type OpdsEnv = AppEnv & { Variables: { opdsUserDid: string } };
 
 type BookForEntry = Selectable<PersonalBookRow> & {
@@ -130,6 +137,117 @@ function opdsAcquisitionFeed(
 }
 
 // ---------------------------------------------------------------------------
+// OPDS 2.0 (JSON) builders
+//
+// KOReader (>= PR #15696, header fixed in #15751) sends
+// `Accept: application/opds+json, application/atom+xml;profile=opds-catalog, */*`
+// and picks the parser from the first byte of the body: `{` is OPDS 2.0, `<` is
+// OPDS 1.x. So the two formats are just two renderings of the same query.
+// ---------------------------------------------------------------------------
+
+type Opds2Link = {
+  rel: string;
+  href: string;
+  type: string;
+  title?: string;
+  templated?: boolean;
+  properties?: { numberOfItems?: number };
+};
+
+/** True when the client asked for an OPDS 2.0 JSON feed. */
+function wantsOpds2(c: { req: { header: (n: string) => string | undefined } }): boolean {
+  return (c.req.header("accept") || "").toLowerCase().includes(OPDS2_TYPE);
+}
+
+/**
+ * The templated search link OPDS 2.0 clients expand into a query URL.
+ *
+ * Spelled `?query={query}` rather than the form-style `{?query}`: KOReader
+ * rewrites the template with a Lua `gsub`, and only this shape hits the branch
+ * whose replacement string is plain `%%s`. The `{?query}` shape lands on a
+ * branch that relies on a `%?` escape, which LuaJIT tolerates but stricter Lua
+ * builds reject. Both expand to the same URL.
+ */
+function opds2SearchLink(origin: string): Opds2Link {
+  return {
+    rel: "search",
+    href: `${origin}/opds/search/results?query={query}`,
+    type: OPDS2_TYPE,
+    templated: true,
+  };
+}
+
+/** Build an OPDS 2.0 Publication object for a personal library book. */
+function opds2Publication(origin: string, book: BookForEntry) {
+  const images: Opds2Link[] = [];
+  if (book.coverPath || book.hiveId) {
+    const href = `${origin}/opds/books/${book.contentHash}/cover`;
+    const type = book.coverPath ? book.coverMime || "image/jpeg" : "image/jpeg";
+    images.push({ rel: IMAGE_REL, href, type }, { rel: THUMBNAIL_REL, href, type });
+  }
+
+  return {
+    metadata: {
+      "@type": "http://schema.org/Book",
+      identifier: `urn:bookhive:book:${book.contentHash}`,
+      title: book.title,
+      ...(book.authors ? { author: { name: book.authors } } : {}),
+      ...(book.language ? { language: book.language } : {}),
+      ...(book.hiveBookDescription ? { description: book.hiveBookDescription } : {}),
+      modified: isoDate(book.updatedAt),
+    },
+    ...(images.length ? { images } : {}),
+    links: [
+      {
+        rel: ACQUISITION_REL,
+        href: `${origin}/opds/books/${book.contentHash}/download`,
+        type: book.mime || "application/epub+zip",
+      },
+    ],
+  };
+}
+
+/** Build a complete paginated OPDS 2.0 acquisition feed. */
+function opds2AcquisitionFeed(
+  origin: string,
+  opts: {
+    title: string;
+    selfPath: string;
+    books: BookForEntry[];
+    page: number;
+    totalPages: number;
+    total: number;
+  },
+) {
+  const { title, selfPath, books, page, totalPages, total } = opts;
+  const pageLink = (p: number) =>
+    `${origin}${selfPath}${selfPath.includes("?") ? "&" : "?"}page=${p}`;
+
+  const links: Opds2Link[] = [
+    { rel: "self", href: `${origin}${selfPath}`, type: OPDS2_TYPE },
+    { rel: "start", href: `${origin}/opds`, type: OPDS2_TYPE },
+    opds2SearchLink(origin),
+  ];
+  if (totalPages > 1) {
+    links.push({ rel: "first", href: pageLink(1), type: OPDS2_TYPE });
+    links.push({ rel: "last", href: pageLink(totalPages), type: OPDS2_TYPE });
+    if (page > 1) links.push({ rel: "previous", href: pageLink(page - 1), type: OPDS2_TYPE });
+    if (page < totalPages) links.push({ rel: "next", href: pageLink(page + 1), type: OPDS2_TYPE });
+  }
+
+  return {
+    metadata: {
+      title,
+      numberOfItems: total,
+      itemsPerPage: OPDS_PAGE_SIZE,
+      currentPage: page,
+    },
+    links,
+    publications: books.map((b) => opds2Publication(origin, b)),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -138,11 +256,66 @@ const app = new Hono<OpdsEnv>();
 app.use("*", opdsAuthMiddleware);
 
 // GET / — Root navigation feed
-app.get("/", (c) => {
+app.get("/", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
   const origin = requestOrigin(c);
   const now = isoDate(Date.now());
+
+  const shelves = await db
+    .selectFrom("personal_shelf")
+    .select(["id", "name"])
+    .where("userDid", "=", userDid)
+    .orderBy("name", "asc")
+    .execute();
+
+  if (wantsOpds2(c)) {
+    // Counts are only rendered in the 2.0 feed — KOReader shows them next to
+    // each entry, and OPDS 1.x has no equivalent on a navigation link.
+    const { total } = await db
+      .selectFrom("personal_book")
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .where("userDid", "=", userDid)
+      .executeTakeFirstOrThrow();
+
+    const shelfCounts = new Map<number, number>();
+    if (shelves.length) {
+      const rows = await db
+        .selectFrom("personal_shelf_item")
+        .select((eb) => ["shelfId", eb.fn.countAll<number>().as("count")])
+        .where(
+          "shelfId",
+          "in",
+          shelves.map((s) => s.id),
+        )
+        .groupBy("shelfId")
+        .execute();
+      for (const row of rows) shelfCounts.set(row.shelfId, row.count);
+    }
+
+    return c.json(
+      {
+        metadata: { title: "BookHive Library" },
+        links: [{ rel: "self", href: `${origin}/opds`, type: OPDS2_TYPE }, opds2SearchLink(origin)],
+        navigation: [
+          {
+            title: "All Books",
+            href: `${origin}/opds/all`,
+            type: OPDS2_TYPE,
+            properties: { numberOfItems: total },
+          },
+          ...shelves.map((shelf) => ({
+            title: shelf.name,
+            href: `${origin}/opds/shelves/${shelf.id}`,
+            type: OPDS2_TYPE,
+            properties: { numberOfItems: shelfCounts.get(shelf.id) ?? 0 },
+          })),
+        ],
+      },
+      200,
+      { "Content-Type": OPDS2_TYPE },
+    );
+  }
 
   const navEntry = (id: string, title: string, href: string) =>
     `<entry><title>${escapeXml(title)}</title><id>${id}</id>` +
@@ -150,36 +323,28 @@ app.get("/", (c) => {
     `<link rel="subsection" href="${href}" type="${OPDS_ACQ_TYPE}"/>` +
     `</entry>`;
 
-  return db
-    .selectFrom("personal_shelf")
-    .select(["id", "name"])
-    .where("userDid", "=", userDid)
-    .orderBy("name", "asc")
-    .execute()
-    .then((shelves) => {
-      let entries = navEntry("urn:bookhive:all", "All Books", `${origin}/opds/all`);
-      for (const shelf of shelves) {
-        entries += navEntry(
-          `urn:bookhive:shelf:${shelf.id}`,
-          shelf.name,
-          `${origin}/opds/shelves/${shelf.id}`,
-        );
-      }
+  let entries = navEntry("urn:bookhive:all", "All Books", `${origin}/opds/all`);
+  for (const shelf of shelves) {
+    entries += navEntry(
+      `urn:bookhive:shelf:${shelf.id}`,
+      shelf.name,
+      `${origin}/opds/shelves/${shelf.id}`,
+    );
+  }
 
-      const feed =
-        `<?xml version="1.0" encoding="UTF-8"?>` +
-        `<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">` +
-        `<id>urn:bookhive:opds:root</id>` +
-        `<title>BookHive Library</title>` +
-        `<updated>${now}</updated>` +
-        `<link rel="self" href="${origin}/opds" type="${OPDS_NAV_TYPE}"/>` +
-        `<link rel="start" href="${origin}/opds" type="${OPDS_NAV_TYPE}"/>` +
-        `<link rel="search" href="${origin}/opds/search" type="application/opensearchdescription+xml"/>` +
-        entries +
-        `</feed>`;
+  const feed =
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">` +
+    `<id>urn:bookhive:opds:root</id>` +
+    `<title>BookHive Library</title>` +
+    `<updated>${now}</updated>` +
+    `<link rel="self" href="${origin}/opds" type="${OPDS_NAV_TYPE}"/>` +
+    `<link rel="start" href="${origin}/opds" type="${OPDS_NAV_TYPE}"/>` +
+    `<link rel="search" href="${origin}/opds/search" type="application/opensearchdescription+xml"/>` +
+    entries +
+    `</feed>`;
 
-      return c.body(feed, 200, { "Content-Type": OPDS_NAV_TYPE });
-    });
+  return c.body(feed, 200, { "Content-Type": OPDS_NAV_TYPE });
 });
 
 // GET /all — Acquisition feed: all books
@@ -225,6 +390,21 @@ app.get("/all", async (c) => {
     .limit(OPDS_PAGE_SIZE)
     .offset((page - 1) * OPDS_PAGE_SIZE)
     .execute();
+
+  if (wantsOpds2(c)) {
+    return c.json(
+      opds2AcquisitionFeed(origin, {
+        title: "All Books",
+        selfPath: "/opds/all",
+        books,
+        page,
+        totalPages,
+        total,
+      }),
+      200,
+      { "Content-Type": OPDS2_TYPE },
+    );
+  }
 
   const feed = opdsAcquisitionFeed(origin, {
     feedId: "urn:bookhive:all",
@@ -299,6 +479,21 @@ app.get("/shelves/:id", async (c) => {
     .limit(OPDS_PAGE_SIZE)
     .offset((page - 1) * OPDS_PAGE_SIZE)
     .execute();
+
+  if (wantsOpds2(c)) {
+    return c.json(
+      opds2AcquisitionFeed(origin, {
+        title: shelf.name,
+        selfPath: `/opds/shelves/${shelfId}`,
+        books,
+        page,
+        totalPages,
+        total,
+      }),
+      200,
+      { "Content-Type": OPDS2_TYPE },
+    );
+  }
 
   const feed = opdsAcquisitionFeed(origin, {
     feedId: `urn:bookhive:shelf:${shelfId}`,
@@ -383,9 +578,25 @@ app.get("/search/results", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
   const origin = requestOrigin(c);
-  const q = c.req.query("q")?.trim();
+  const opds2 = wantsOpds2(c);
+  // OpenSearch (1.x) advertises `q`; the OPDS 2.0 URI template expands to `query`.
+  const q = (c.req.query("q") ?? c.req.query("query"))?.trim();
 
   if (!q) {
+    if (opds2) {
+      return c.json(
+        opds2AcquisitionFeed(origin, {
+          title: "Search Results",
+          selfPath: "/opds/search/results",
+          books: [],
+          page: 1,
+          totalPages: 1,
+          total: 0,
+        }),
+        200,
+        { "Content-Type": OPDS2_TYPE },
+      );
+    }
     const feed = opdsAcquisitionFeed(origin, {
       feedId: "urn:bookhive:search",
       title: "Search Results",
@@ -443,6 +654,21 @@ app.get("/search/results", async (c) => {
     .limit(OPDS_PAGE_SIZE)
     .offset((page - 1) * OPDS_PAGE_SIZE)
     .execute();
+
+  if (opds2) {
+    return c.json(
+      opds2AcquisitionFeed(origin, {
+        title: `Search: ${q}`,
+        selfPath: `/opds/search/results?query=${encodeURIComponent(q)}`,
+        books,
+        page,
+        totalPages,
+        total,
+      }),
+      200,
+      { "Content-Type": OPDS2_TYPE },
+    );
+  }
 
   const selfPath = `/opds/search/results?q=${encodeURIComponent(q)}`;
   const feed = opdsAcquisitionFeed(origin, {
