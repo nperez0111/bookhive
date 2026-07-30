@@ -158,7 +158,7 @@ User book lists ("shelves"). Lists use the **shared popfeed lexicons**
 Personal library: ebook uploads (= the OPDS catalog), e-reader credentials, sync documents. All routes require session auth.
 
 - GET `/` → `src/pages/library.tsx` (auth). With no books _and_ no synced documents it renders an explainer with the credentials block and upload dropzone inline; otherwise a header with two `<dialog>` triggers plus the `LibraryManager` island.
-- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash)
+- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash). Content-negotiated: `Accept: application/json` (the mobile app) gets `{ book }` in the `personalBookView` shape, or 409 on a duplicate; the browser form gets a 302 back to `/library`.
 - GET `/covers/:hash` → extracted cover image for a personal book
 - GET `/books/:hash/download` → session-authenticated file download; shares `streamPersonalBook` (`src/utils/personalLibrary.ts`) with the Basic-auth OPDS route.
 - GET `/shelves` → JSON list of user's personal shelves with book counts (`{ shelves: [{ id, name, description, bookCount, createdAt, updatedAt }] }`)

@@ -7,6 +7,7 @@ import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import type { AppContext, AppEnv } from "../context";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
 import type { HiveId } from "../types";
+import { koreaderPartialMD5 } from "../utils/bookMetadata/index";
 import { NO_HIVE_MATCH } from "../utils/syncMatching";
 import libraryRouter from "./library";
 
@@ -426,6 +427,49 @@ describe("GET /library/books/:hash/download", () => {
   it("401s without a session", async () => {
     const anon = createApp(db, null);
     const res = await anon.request("/library/books/hash-1/download");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /library/upload", () => {
+  let db: Database;
+  let app: TestApp;
+
+  // Smallest thing detectFormat accepts without a zip container.
+  const FB2 = '<?xml version="1.0"?><FictionBook><body/></FictionBook>';
+
+  function uploadRequest(app: TestApp, init: { json: boolean }) {
+    const form = new FormData();
+    form.append("file", new File([FB2], "duplicate.fb2"));
+    return app.request("/library/upload", {
+      method: "POST",
+      body: form,
+      headers: init.json ? { accept: "application/json" } : {},
+    });
+  }
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    app = createApp(db);
+    // Seed the row the uploader will collide with, keyed by the same hash the
+    // upload computes, so neither request reaches the filesystem.
+    await seedPersonalBook(db, koreaderPartialMD5(new TextEncoder().encode(FB2)), "/tmp/dupe.fb2");
+  });
+
+  it("409s a duplicate for a client that asked for JSON", async () => {
+    const res = await uploadRequest(app, { json: true });
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { error: string }).toHaveProperty("error");
+  });
+
+  it("still redirects the browser back to the library", async () => {
+    const res = await uploadRequest(app, { json: false });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/library");
+  });
+
+  it("401s without a session", async () => {
+    const res = await uploadRequest(createApp(db, null), { json: true });
     expect(res.status).toBe(401);
   });
 });

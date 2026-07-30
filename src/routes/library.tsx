@@ -63,6 +63,11 @@ const app = new Hono<AppEnv>()
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) return c.json({ error: "Unauthorized" }, 401);
 
+    // The browser posts a plain <form> and wants to land back on the library;
+    // the mobile app posts the same multipart body but needs the created record
+    // (and a real status on duplicates) rather than a redirect to HTML.
+    const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
+
     const formData = await c.req.formData();
     const file = formData.get("file");
     if (!file || !(file instanceof File)) {
@@ -91,6 +96,9 @@ const app = new Hono<AppEnv>()
       .where("contentHash", "=", contentHash)
       .executeTakeFirst();
     if (existing) {
+      if (wantsJson) {
+        return c.json({ error: "This book is already in your library" }, 409);
+      }
       return c.redirect("/library");
     }
 
@@ -153,6 +161,26 @@ const app = new Hono<AppEnv>()
         .where("hiveId", "=", matchedHiveId)
         .where("owned", "=", 0)
         .execute();
+    }
+
+    if (wantsJson) {
+      // Same shape as getPersonalLibrary#personalBookView so clients have one
+      // book type for both the list and the upload response.
+      return c.json({
+        book: {
+          contentHash,
+          title: metadata.title,
+          authors: metadata.authors || undefined,
+          language: metadata.language || undefined,
+          format: formatInfo.format,
+          mime: formatInfo.mime,
+          sizeBytes: bytes.length,
+          createdAt: now,
+          updatedAt: now,
+          hiveId: matchedHiveId ?? undefined,
+          coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
+        },
+      });
     }
 
     return c.redirect("/library");
