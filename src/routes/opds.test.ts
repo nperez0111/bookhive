@@ -32,6 +32,9 @@ async function createTestDb(): Promise<Database> {
 
 const kv = createStorage({ driver: memoryDriver() });
 
+/** Collects whatever the routes put on the wide event for the last request. */
+const wideEvent: Record<string, unknown> = {};
+
 function createApp(db: Database): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
@@ -41,7 +44,7 @@ function createApp(db: Database): Hono<AppEnv> {
       baseIdResolver: {
         handle: { resolve: async (h: string) => (h === HANDLE ? DID : null) },
       },
-      addWideEventContext: () => {},
+      addWideEventContext: (fields: Record<string, unknown>) => Object.assign(wideEvent, fields),
     } as unknown as AppContext);
     await next();
   });
@@ -114,6 +117,17 @@ describe("OPDS 2.0 content negotiation", () => {
     db = await createTestDb();
     app = createApp(db);
     auth = await authHeader();
+    for (const k of Object.keys(wideEvent)) delete wideEvent[k];
+  });
+
+  it("records the negotiated format on the wide event", async () => {
+    // A silent fallback to Atom still renders fine, so the logs need to say
+    // which format actually went out.
+    await app.request("/opds", { headers: { authorization: auth, accept: KOREADER_ACCEPT } });
+    expect(wideEvent["opds_format"]).toBe("2.0");
+
+    await app.request("/opds", { headers: { authorization: auth } });
+    expect(wideEvent["opds_format"]).toBe("1.2");
   });
 
   it("serves Atom XML when the client does not ask for OPDS 2.0", async () => {

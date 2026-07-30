@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { AppEnv } from "../context";
 import { opdsAuthMiddleware } from "../middleware/opds-auth";
 import { escapeXml } from "../utils/xml";
@@ -160,6 +160,19 @@ function wantsOpds2(c: { req: { header: (n: string) => string | undefined } }): 
 }
 
 /**
+ * Pick the feed format and record it on the request's wide event.
+ *
+ * Worth logging: a client whose `Accept` header we don't match falls back to
+ * Atom and still renders perfectly, so a silent fallback is indistinguishable
+ * from a successful 2.0 negotiation unless the chosen format is recorded.
+ */
+function negotiateFeedFormat(c: Context<OpdsEnv>): boolean {
+  const opds2 = wantsOpds2(c);
+  c.get("ctx").addWideEventContext({ opds_format: opds2 ? "2.0" : "1.2" });
+  return opds2;
+}
+
+/**
  * The templated search link OPDS 2.0 clients expand into a query URL.
  *
  * Spelled `?query={query}` rather than the form-style `{?query}`: KOReader
@@ -269,7 +282,7 @@ app.get("/", async (c) => {
     .orderBy("name", "asc")
     .execute();
 
-  if (wantsOpds2(c)) {
+  if (negotiateFeedFormat(c)) {
     // Counts are only rendered in the 2.0 feed — KOReader shows them next to
     // each entry, and OPDS 1.x has no equivalent on a navigation link.
     const { total } = await db
@@ -391,7 +404,7 @@ app.get("/all", async (c) => {
     .offset((page - 1) * OPDS_PAGE_SIZE)
     .execute();
 
-  if (wantsOpds2(c)) {
+  if (negotiateFeedFormat(c)) {
     return c.json(
       opds2AcquisitionFeed(origin, {
         title: "All Books",
@@ -480,7 +493,7 @@ app.get("/shelves/:id", async (c) => {
     .offset((page - 1) * OPDS_PAGE_SIZE)
     .execute();
 
-  if (wantsOpds2(c)) {
+  if (negotiateFeedFormat(c)) {
     return c.json(
       opds2AcquisitionFeed(origin, {
         title: shelf.name,
@@ -578,7 +591,7 @@ app.get("/search/results", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
   const origin = requestOrigin(c);
-  const opds2 = wantsOpds2(c);
+  const opds2 = negotiateFeedFormat(c);
   // OpenSearch (1.x) advertises `q`; the OPDS 2.0 URI template expands to `query`.
   const q = (c.req.query("q") ?? c.req.query("query"))?.trim();
 
