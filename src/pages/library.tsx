@@ -87,6 +87,11 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
         <li>Go to Settings &rarr; Progress Sync &rarr; Custom sync server</li>
         <li>Enter the KOSync Server URL above</li>
         <li>Select "Login" and enter your username and password</li>
+        <li>
+          Enable "Send document metadata" in Progress Sync settings so BookHive can automatically
+          match documents to books. Without this, synced documents will appear as "Untitled" and
+          need to be linked by hand.
+        </li>
         <li>Test with "Push progress from this device now"</li>
         <li>
           For OPDS access, add the OPDS Catalog URL to your e-reader's OPDS browser with the same
