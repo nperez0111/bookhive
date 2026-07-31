@@ -1,5 +1,5 @@
 /**
- * XRPC router: mounts the four BookHive query methods at /xrpc/*
+ * XRPC router: mounts BookHive query/procedure methods at /xrpc/*
  * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -23,6 +23,20 @@ import {
   BuzzBookhiveRemoveFromList,
   BuzzBookhiveReorderList,
   BuzzBookhiveGetLanguages,
+  BuzzBookhiveGetPersonalLibrary,
+  BuzzBookhiveGetPersonalBook,
+  BuzzBookhiveUploadPersonalBook,
+  BuzzBookhiveDeletePersonalBook,
+  BuzzBookhiveLinkPersonalBook,
+  BuzzBookhiveUnlinkPersonalBook,
+  BuzzBookhiveCreatePersonalShelf,
+  BuzzBookhiveUpdatePersonalShelf,
+  BuzzBookhiveDeletePersonalShelf,
+  BuzzBookhiveAddToPersonalShelf,
+  BuzzBookhiveRemoveFromPersonalShelf,
+  BuzzBookhiveGetSyncProgress,
+  BuzzBookhivePutSyncProgress,
+  BuzzBookhiveListSyncDocuments,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -69,7 +83,181 @@ import {
 } from "../utils/lists";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
-import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
+import type {
+  BookIdentifiers,
+  HiveBook,
+  HiveId as HiveIdType,
+  ProfileViewDetailed,
+  SyncProgressData,
+} from "../types";
+import { detectFormat, parseBook, koreaderPartialMD5 } from "../utils/bookMetadata/index";
+import {
+  bookFilePath,
+  coverFilePath,
+  ensureDir,
+  personalBookDir,
+  removeBookDir,
+} from "../utils/personalLibrary";
+import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
+import { bridgeProgressToUserBook } from "../utils/syncBridge";
+
+/**
+ * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
+ * Returns undefined when the book has never been synced or the blob is unusable.
+ */
+function syncProgressView(
+  progressData: string | null,
+  progressUpdatedAt: string | null,
+): { percentage: string; device?: string; updatedAt: string } | undefined {
+  if (!progressData || !progressUpdatedAt) return undefined;
+  try {
+    const data = JSON.parse(progressData) as SyncProgressData;
+    return {
+      percentage: String(data.percentage ?? 0),
+      device: data.device || undefined,
+      updatedAt: progressUpdatedAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Process a book upload: detect format, hash, extract metadata, write to disk,
+ * insert DB row, and attempt auto-linking to a hive_book. Exported so it can be
+ * called from both the XRPC handler and a regular Hono multipart form route.
+ */
+export async function processBookUpload(
+  db: Database,
+  _kv: Storage,
+  userDid: string,
+  bytes: Uint8Array,
+  filename: string,
+): Promise<{
+  contentHash: string;
+  title: string;
+  authors?: string;
+  language?: string;
+  format: string;
+  mime: string;
+  sizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  hiveId?: string;
+  coverUrl?: string;
+}> {
+  // 1. Detect format — reject unknown
+  const formatInfo = detectFormat(bytes, filename);
+  if (formatInfo.format === "unknown") {
+    throw new XRPCError({
+      status: 400,
+      error: "InvalidRequest",
+      message: `Unsupported file format: ${filename}`,
+    });
+  }
+
+  // 2. Compute content hash
+  const contentHash = koreaderPartialMD5(bytes);
+
+  // 3. Check for duplicate
+  const duplicate = await db
+    .selectFrom("personal_book")
+    .select(["id", "contentHash"])
+    .where("userDid", "=", userDid)
+    .where("contentHash", "=", contentHash)
+    .executeTakeFirst();
+
+  if (duplicate) {
+    throw new XRPCError({
+      status: 409,
+      error: "AlreadyExists",
+      message: "This book already exists in your library",
+    });
+  }
+
+  // 4. Parse metadata + cover
+  const metadata = parseBook(bytes, filename);
+
+  // 5. Write file to disk
+  const dir = personalBookDir(userDid, contentHash);
+  await ensureDir(dir);
+  const filePath = bookFilePath(userDid, contentHash, formatInfo.ext);
+  await Bun.write(filePath, bytes);
+
+  // 6. Write cover if extracted
+  let coverPath: string | null = null;
+  let coverMime: string | null = null;
+  if (metadata.cover) {
+    coverPath = coverFilePath(userDid, contentHash, metadata.cover.ext);
+    coverMime = metadata.cover.mime;
+    await Bun.write(coverPath, metadata.cover.bytes);
+  }
+
+  // 7. Insert into personal_book
+  const now = new Date().toISOString();
+
+  // 8. Auto-link: try to match to a hive_book
+  let hiveId = await matchSyncDocument(db, {
+    title: metadata.title,
+    authors: metadata.authors,
+    filename,
+  });
+
+  await db
+    .insertInto("personal_book")
+    .values({
+      userDid,
+      contentHash,
+      hiveId,
+      filename,
+      title: metadata.title,
+      authors: metadata.authors || null,
+      language: metadata.language ?? null,
+      format: formatInfo.format,
+      mime: formatInfo.mime,
+      filePath,
+      coverPath,
+      coverMime,
+      sizeBytes: bytes.length,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .execute();
+
+  // 9. If contentHash matches a sync_document for this user, update its hiveId
+  if (hiveId) {
+    await db
+      .updateTable("sync_document")
+      .set({ hiveId })
+      .where("userDid", "=", userDid)
+      .where("documentHash", "=", contentHash)
+      .where("hiveId", "is", null)
+      .execute();
+
+    // Mark the book as owned if the user has it in their library
+    await db
+      .updateTable("user_book")
+      .set({ owned: 1 })
+      .where("userDid", "=", userDid)
+      .where("hiveId", "=", hiveId)
+      .where("owned", "=", 0)
+      .execute();
+  }
+
+  return {
+    contentHash,
+    title: metadata.title,
+    authors: metadata.authors || undefined,
+    language: metadata.language ?? undefined,
+    format: formatInfo.format,
+    mime: formatInfo.mime,
+    sizeBytes: bytes.length,
+    createdAt: now,
+    updatedAt: now,
+    hiveId: hiveId ?? undefined,
+    coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
+  };
+}
 
 /** Minimal context shape required by XRPC handlers (avoids importing index). */
 export type XrpcContext = {
@@ -1218,6 +1406,752 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           rating: item.rating != null ? Math.round(item.rating * 10) : undefined,
         })),
       });
+    },
+  });
+
+  // ── Personal Library CRUD ──
+
+  router.addQuery(BuzzBookhiveGetPersonalLibrary, {
+    async handler({ params: _params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const params = _params as BuzzBookhiveGetPersonalLibrary.$params;
+      const { limit = 24, shelfId } = params;
+      const offset = params.cursor ? parseInt(params.cursor, 10) : 0;
+
+      let query = ctx.db
+        .selectFrom("personal_book")
+        .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
+        // The KOReader partial MD5 is both `personal_book.contentHash` and
+        // `sync_document.documentHash`, so a synced file joins straight to its
+        // e-reader progress.
+        .leftJoin("sync_document", (join) =>
+          join
+            .onRef("sync_document.documentHash", "=", "personal_book.contentHash")
+            .on("sync_document.userDid", "=", userDid)
+            .on("sync_document.provider", "=", "kosync"),
+        )
+        .select([
+          "personal_book.id",
+          "personal_book.contentHash",
+          "personal_book.hiveId",
+          "personal_book.filename",
+          "personal_book.title",
+          "personal_book.authors",
+          "personal_book.language",
+          "personal_book.format",
+          "personal_book.mime",
+          "personal_book.filePath",
+          "personal_book.coverPath",
+          "personal_book.coverMime",
+          "personal_book.sizeBytes",
+          "personal_book.createdAt",
+          "personal_book.updatedAt",
+          "hive_book.cover as hiveCover",
+          "hive_book.thumbnail as hiveThumbnail",
+          "sync_document.progressData as progressData",
+          "sync_document.updatedAt as progressUpdatedAt",
+        ])
+        .where("personal_book.userDid", "=", userDid)
+        .orderBy("personal_book.createdAt", "desc");
+
+      if (shelfId !== undefined) {
+        query = query
+          .innerJoin(
+            "personal_shelf_item",
+            "personal_book.id",
+            "personal_shelf_item.personalBookId",
+          )
+          .where("personal_shelf_item.shelfId", "=", shelfId) as typeof query;
+      }
+
+      // Total across all pages, so the UI can label the tab without having to
+      // page through everything first.
+      let countQuery = ctx.db
+        .selectFrom("personal_book")
+        .select((eb) => eb.fn.countAll<number>().as("total"))
+        .where("personal_book.userDid", "=", userDid);
+      if (shelfId !== undefined) {
+        countQuery = countQuery
+          .innerJoin(
+            "personal_shelf_item",
+            "personal_book.id",
+            "personal_shelf_item.personalBookId",
+          )
+          .where("personal_shelf_item.shelfId", "=", shelfId) as typeof countQuery;
+      }
+
+      const [rows, counted] = await Promise.all([
+        query
+          .limit(limit + 1)
+          .offset(offset)
+          .execute(),
+        countQuery.executeTakeFirstOrThrow(),
+      ]);
+      const hasMore = rows.length > limit;
+      const books = rows.slice(0, limit);
+      const nextCursor = hasMore ? String(offset + limit) : undefined;
+
+      // Shelf membership for the whole page in one query, so the client doesn't
+      // have to fan out a request per shelf to reconstruct it.
+      const shelfIdsByBook = new Map<number, number[]>();
+      if (books.length > 0) {
+        const memberships = await ctx.db
+          .selectFrom("personal_shelf_item")
+          .innerJoin("personal_shelf", "personal_shelf.id", "personal_shelf_item.shelfId")
+          .select(["personal_shelf_item.personalBookId", "personal_shelf_item.shelfId"])
+          .where("personal_shelf.userDid", "=", userDid)
+          .where(
+            "personal_shelf_item.personalBookId",
+            "in",
+            books.map((b) => b.id),
+          )
+          .execute();
+        for (const m of memberships) {
+          const list = shelfIdsByBook.get(m.personalBookId);
+          if (list) list.push(m.shelfId);
+          else shelfIdsByBook.set(m.personalBookId, [m.shelfId]);
+        }
+      }
+
+      return json({
+        books: books.map((b) => ({
+          contentHash: b.contentHash,
+          title: b.title,
+          authors: b.authors ?? undefined,
+          language: b.language ?? undefined,
+          format: b.format,
+          mime: b.mime,
+          sizeBytes: b.sizeBytes,
+          createdAt: b.createdAt,
+          updatedAt: b.updatedAt,
+          hiveId: b.hiveId ?? undefined,
+          coverUrl:
+            b.hiveCover ??
+            b.hiveThumbnail ??
+            (b.coverPath ? `/library/covers/${b.contentHash}` : undefined),
+          progress: syncProgressView(b.progressData, b.progressUpdatedAt),
+          shelfIds: shelfIdsByBook.get(b.id) ?? [],
+        })),
+        total: Number(counted.total),
+        cursor: nextCursor,
+      });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveGetPersonalBook, {
+    async handler({ params: _params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { contentHash } = _params as BuzzBookhiveGetPersonalBook.$params;
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
+        .select([
+          "personal_book.contentHash",
+          "personal_book.hiveId",
+          "personal_book.title",
+          "personal_book.authors",
+          "personal_book.language",
+          "personal_book.format",
+          "personal_book.mime",
+          "personal_book.coverPath",
+          "personal_book.sizeBytes",
+          "personal_book.createdAt",
+          "personal_book.updatedAt",
+          "hive_book.cover as hiveCover",
+          "hive_book.thumbnail as hiveThumbnail",
+        ])
+        .where("personal_book.userDid", "=", userDid)
+        .where("personal_book.contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      return json({
+        book: {
+          contentHash: book.contentHash,
+          title: book.title,
+          authors: book.authors ?? undefined,
+          language: book.language ?? undefined,
+          format: book.format,
+          mime: book.mime,
+          sizeBytes: book.sizeBytes,
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt,
+          hiveId: book.hiveId ?? undefined,
+          coverUrl:
+            book.hiveCover ??
+            book.hiveThumbnail ??
+            (book.coverPath ? `/library/covers/${book.contentHash}` : undefined),
+        },
+      });
+    },
+  });
+
+  // TODO: The uploadPersonalBook XRPC handler uses blob input. If the XRPC
+  // server's binary handling proves problematic, the actual upload route may
+  // need to be a standard Hono multipart form handler at `/library/upload`
+  // instead. The core logic is exported as `processBookUpload` so it can be
+  // called from either location.
+  router.addProcedure(BuzzBookhiveUploadPersonalBook, {
+    async handler({ request }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      const filename = request.headers.get("x-file-name") ?? "unknown";
+
+      const result = await processBookUpload(ctx.db, ctx.kv, userDid, bytes, filename);
+      return json({ book: result });
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveDeletePersonalBook, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { contentHash } = _input as BuzzBookhiveDeletePersonalBook.$input;
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .select(["id"])
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      // Remove shelf items referencing this book first
+      await ctx.db
+        .deleteFrom("personal_shelf_item")
+        .where("personalBookId", "=", book.id)
+        .execute();
+
+      await ctx.db
+        .deleteFrom("personal_book")
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .execute();
+
+      await removeBookDir(userDid, contentHash);
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveLinkPersonalBook, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { contentHash, hiveId } = _input as BuzzBookhiveLinkPersonalBook.$input;
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .selectAll()
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      const hiveBook = await ctx.db
+        .selectFrom("hive_book")
+        .select(["id", "title", "authors", "cover", "thumbnail"])
+        .where("id", "=", hiveId as HiveId)
+        .executeTakeFirst();
+
+      if (!hiveBook) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Hive book not found" });
+      }
+
+      const now = new Date().toISOString();
+      await ctx.db
+        .updateTable("personal_book")
+        .set({
+          hiveId: hiveBook.id,
+          title: hiveBook.title,
+          authors: hiveBook.authors,
+          updatedAt: now,
+        })
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .execute();
+
+      // Also update any matching sync_document with the same contentHash
+      await ctx.db
+        .updateTable("sync_document")
+        .set({ hiveId: hiveBook.id })
+        .where("userDid", "=", userDid)
+        .where("documentHash", "=", contentHash)
+        .execute();
+
+      // Mark the book as owned if the user has it in their library
+      await ctx.db
+        .updateTable("user_book")
+        .set({ owned: 1 })
+        .where("userDid", "=", userDid)
+        .where("hiveId", "=", hiveBook.id)
+        .where("owned", "=", 0)
+        .execute();
+
+      return json({
+        book: {
+          contentHash,
+          title: hiveBook.title,
+          authors: hiveBook.authors ?? undefined,
+          language: book.language ?? undefined,
+          format: book.format,
+          mime: book.mime,
+          sizeBytes: book.sizeBytes,
+          createdAt: book.createdAt,
+          updatedAt: now,
+          hiveId: hiveBook.id,
+          coverUrl:
+            hiveBook.cover ??
+            hiveBook.thumbnail ??
+            (book.coverPath ? `/library/covers/${contentHash}` : undefined),
+        },
+      });
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveUnlinkPersonalBook, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { contentHash } = _input as BuzzBookhiveUnlinkPersonalBook.$input;
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .selectAll()
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      const now = new Date().toISOString();
+      await ctx.db
+        .updateTable("personal_book")
+        .set({ hiveId: null, updatedAt: now })
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .execute();
+
+      // linkPersonalBook propagates the hiveId onto the matching sync_document;
+      // unlinking has to undo that too, or the document stays falsely linked.
+      await ctx.db
+        .updateTable("sync_document")
+        .set({ hiveId: null })
+        .where("userDid", "=", userDid)
+        .where("documentHash", "=", contentHash)
+        .execute();
+
+      return json({
+        book: {
+          contentHash,
+          title: book.title,
+          authors: book.authors ?? undefined,
+          language: book.language ?? undefined,
+          format: book.format,
+          mime: book.mime,
+          sizeBytes: book.sizeBytes,
+          createdAt: book.createdAt,
+          updatedAt: now,
+          coverUrl: book.coverPath ? `/library/covers/${contentHash}` : undefined,
+        },
+      });
+    },
+  });
+
+  // ── Personal Shelf Management ──
+
+  router.addProcedure(BuzzBookhiveCreatePersonalShelf, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { name, description } = _input as BuzzBookhiveCreatePersonalShelf.$input;
+
+      const now = new Date().toISOString();
+      const result = await ctx.db
+        .insertInto("personal_shelf")
+        .values({
+          userDid,
+          name,
+          description: description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning(["id", "name", "description", "createdAt", "updatedAt"])
+        .executeTakeFirstOrThrow();
+
+      return json({
+        shelf: {
+          id: result.id,
+          name: result.name,
+          description: result.description ?? undefined,
+          bookCount: 0,
+          createdAt: result.createdAt,
+          updatedAt: result.updatedAt,
+        },
+      });
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveUpdatePersonalShelf, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { id, name, description } = _input as BuzzBookhiveUpdatePersonalShelf.$input;
+
+      const existing = await ctx.db
+        .selectFrom("personal_shelf")
+        .select(["id"])
+        .where("id", "=", id)
+        .where("userDid", "=", userDid)
+        .executeTakeFirst();
+
+      if (!existing) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Shelf not found" });
+      }
+
+      const now = new Date().toISOString();
+      const updates: Record<string, unknown> = { updatedAt: now };
+      if (name !== undefined) updates["name"] = name;
+      if (description !== undefined) updates["description"] = description;
+
+      await ctx.db
+        .updateTable("personal_shelf")
+        .set(updates)
+        .where("id", "=", id)
+        .where("userDid", "=", userDid)
+        .execute();
+
+      const shelf = await ctx.db
+        .selectFrom("personal_shelf")
+        .select(["id", "name", "description", "createdAt", "updatedAt"])
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow();
+
+      const countResult = await ctx.db
+        .selectFrom("personal_shelf_item")
+        .select(sql<number>`COUNT(*)`.as("count"))
+        .where("shelfId", "=", id)
+        .executeTakeFirst();
+
+      return json({
+        shelf: {
+          id: shelf.id,
+          name: shelf.name,
+          description: shelf.description ?? undefined,
+          bookCount: Number(countResult?.count ?? 0),
+          createdAt: shelf.createdAt,
+          updatedAt: shelf.updatedAt,
+        },
+      });
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveDeletePersonalShelf, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { id } = _input as BuzzBookhiveDeletePersonalShelf.$input;
+
+      const existing = await ctx.db
+        .selectFrom("personal_shelf")
+        .select(["id"])
+        .where("id", "=", id)
+        .where("userDid", "=", userDid)
+        .executeTakeFirst();
+
+      if (!existing) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Shelf not found" });
+      }
+
+      await ctx.db.deleteFrom("personal_shelf_item").where("shelfId", "=", id).execute();
+      await ctx.db
+        .deleteFrom("personal_shelf")
+        .where("id", "=", id)
+        .where("userDid", "=", userDid)
+        .execute();
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveAddToPersonalShelf, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { shelfId, contentHash } = _input as BuzzBookhiveAddToPersonalShelf.$input;
+
+      const shelf = await ctx.db
+        .selectFrom("personal_shelf")
+        .select(["id"])
+        .where("id", "=", shelfId)
+        .where("userDid", "=", userDid)
+        .executeTakeFirst();
+
+      if (!shelf) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Shelf not found" });
+      }
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .select(["id"])
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      const now = new Date().toISOString();
+      await ctx.db
+        .insertInto("personal_shelf_item")
+        .values({ shelfId, personalBookId: book.id, createdAt: now })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+
+      return json({});
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveRemoveFromPersonalShelf, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { shelfId, contentHash } = _input as BuzzBookhiveRemoveFromPersonalShelf.$input;
+
+      const shelf = await ctx.db
+        .selectFrom("personal_shelf")
+        .select(["id"])
+        .where("id", "=", shelfId)
+        .where("userDid", "=", userDid)
+        .executeTakeFirst();
+
+      if (!shelf) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Shelf not found" });
+      }
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .select(["id"])
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      await ctx.db
+        .deleteFrom("personal_shelf_item")
+        .where("shelfId", "=", shelfId)
+        .where("personalBookId", "=", book.id)
+        .execute();
+
+      return json({});
+    },
+  });
+
+  // ── Sync Progress (XRPC mirrors of KOSync) ──
+
+  router.addQuery(BuzzBookhiveGetSyncProgress, {
+    async handler({ params: _params }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const { contentHash } = _params as BuzzBookhiveGetSyncProgress.$params;
+
+      const row = await ctx.db
+        .selectFrom("sync_document")
+        .select(["documentHash", "progressData"])
+        .where("userDid", "=", userDid)
+        .where("provider", "=", "kosync")
+        .where("documentHash", "=", contentHash)
+        .executeTakeFirst();
+
+      if (!row) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Document not found" });
+      }
+
+      const data: SyncProgressData = JSON.parse(row.progressData);
+      return json({
+        document: row.documentHash,
+        progress: data.progress,
+        percentage: String(data.percentage),
+        device: data.device,
+        device_id: data.device_id,
+        timestamp: data.timestamp,
+      });
+    },
+  });
+
+  router.addProcedure(BuzzBookhivePutSyncProgress, {
+    async handler({ input: _input }) {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+      const input = _input as BuzzBookhivePutSyncProgress.$input;
+      const { document, progress, percentage: percentageStr, device, device_id, metadata } = input;
+
+      const percentage = parseFloat(percentageStr);
+      if (isNaN(percentage)) {
+        throw new XRPCError({
+          status: 400,
+          error: "InvalidRequest",
+          message: "Invalid percentage",
+        });
+      }
+
+      const now = new Date().toISOString();
+      const timestamp = Math.floor(Date.now() / 1000);
+      const filename = metadata?.filename ?? null;
+      const title = metadata?.title ?? null;
+      const authors = metadata?.authors ?? null;
+
+      const progressData: SyncProgressData = {
+        progress,
+        percentage,
+        device,
+        device_id,
+        timestamp,
+      };
+
+      const existing = await ctx.db
+        .selectFrom("sync_document")
+        .select(["id", "hiveId"])
+        .where("userDid", "=", userDid)
+        .where("provider", "=", "kosync")
+        .where("documentHash", "=", document)
+        .executeTakeFirst();
+
+      if (existing) {
+        await ctx.db
+          .updateTable("sync_document")
+          .set({
+            progressData: JSON.stringify(progressData),
+            updatedAt: now,
+            ...(filename != null ? { filename } : {}),
+            ...(title != null ? { title } : {}),
+            ...(authors != null ? { authors } : {}),
+          })
+          .where("id", "=", existing.id)
+          .execute();
+      } else {
+        await ctx.db
+          .insertInto("sync_document")
+          .values({
+            userDid,
+            provider: "kosync",
+            documentHash: document,
+            hiveId: null,
+            filename,
+            title,
+            authors,
+            progressData: JSON.stringify(progressData),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .execute();
+      }
+
+      let hiveId = existing?.hiveId ?? null;
+
+      if (!hiveId && (title || authors)) {
+        hiveId = await matchSyncDocument(ctx.db, { title, authors, filename });
+        if (hiveId) {
+          await ctx.db
+            .updateTable("sync_document")
+            .set({ hiveId })
+            .where("userDid", "=", userDid)
+            .where("provider", "=", "kosync")
+            .where("documentHash", "=", document)
+            .execute();
+        }
+      }
+
+      if (hiveId) {
+        await bridgeProgressToUserBook(ctx.db, ctx.kv, userDid, hiveId as HiveIdType, percentage);
+      }
+
+      return json({ status: "success" });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveListSyncDocuments, {
+    async handler() {
+      const ctx = getCtx();
+      const agent = await ctx.getSessionAgent();
+      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const userDid = agent.did;
+
+      const rows = await ctx.db
+        .selectFrom("sync_document")
+        .select(["documentHash", "progressData", "filename", "title", "authors", "hiveId"])
+        .where("userDid", "=", userDid)
+        .where("provider", "=", "kosync")
+        .orderBy("updatedAt", "desc")
+        .execute();
+
+      const documents = rows.map((row) => {
+        const data: SyncProgressData = JSON.parse(row.progressData);
+        return {
+          documentHash: row.documentHash,
+          progress: data.progress,
+          percentage: String(data.percentage),
+          device: data.device,
+          device_id: data.device_id,
+          filename: row.filename ?? undefined,
+          title: row.title ?? undefined,
+          authors: row.authors ?? undefined,
+          // The NO_HIVE_MATCH sentinel ("bk_none") records that the user
+          // dismissed this document; never surface it as a hiveId a client
+          // would resolve to /books/bk_none.
+          hiveId: !row.hiveId || row.hiveId === NO_HIVE_MATCH ? undefined : row.hiveId,
+          dismissed: row.hiveId === NO_HIVE_MATCH,
+          timestamp: data.timestamp,
+        };
+      });
+
+      return json({ documents });
     },
   });
 

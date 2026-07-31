@@ -148,6 +148,18 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="library/index"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="sync/index"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

@@ -1,0 +1,30 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.deletePersonalShelf",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Delete a personal shelf. Books on the shelf are not deleted.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "ID of the shelf to delete"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.uploadPersonalBook",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Upload an ebook file to the personal library. Accepts EPUB, PDF, MOBI, FB2, CBZ.",
+      "input": {
+        "encoding": "*/*"
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["book"],
+          "properties": {
+            "book": {
+              "type": "ref",
+              "ref": "buzz.bookhive.getPersonalLibrary#personalBookView"
+            }
+          }
+        }
+      }
+    }
+  }
+}

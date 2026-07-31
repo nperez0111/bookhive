@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
 import { FINISHED, READING, WANTTOREAD } from "../../constants";
+import type { HiveBook } from "../../types";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
 import { useSearchBooks } from "./utils/useSearchBooks";
@@ -13,8 +14,16 @@ const STATUS_OPTIONS = [
 
 export const SearchPalette: FC<{
   isLoggedIn: boolean;
-  onRegisterOpen: (fn: () => void) => void;
-}> = ({ isLoggedIn, onRegisterOpen }) => {
+  onRegisterOpen: (fn: (initialQuery?: string) => void) => void;
+  /**
+   * When provided, the palette acts as a book picker: selecting a result calls
+   * this instead of navigating, and the per-book status buttons / "see all
+   * results" link are hidden.
+   */
+  onSelectBook?: (book: HiveBook) => void;
+  placeholder?: string;
+}> = ({ isLoggedIn, onRegisterOpen, onSelectBook, placeholder }) => {
+  const selectMode = !!onSelectBook;
   const [isOpen, setIsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [query, setQuery] = useState("");
@@ -35,17 +44,28 @@ export const SearchPalette: FC<{
     }
   }, [bookResults.userStatuses]);
 
-  const open = () => setIsOpen(true);
+  const [initialQuery, setInitialQuery] = useState("");
+  const open = (iq?: string) => {
+    setInitialQuery(iq ?? "");
+    setIsOpen(true);
+  };
   const close = () => setIsOpen(false);
+  const handleSelect = (book: HiveBook) => {
+    onSelectBook?.(book);
+    close();
+  };
 
-  // Register the open fn so the trigger button can call it
+  // Register the open fn so the trigger button can call it.
+  // Re-register on every render so the caller always has the latest closure.
   useEffect(() => {
     onRegisterOpen(open);
-  }, []);
+  });
 
   // CMD+K / Ctrl+K toggles the palette once mounted. (Before mount, the client
-  // entry handles ⌘K to lazily load + open this component.)
+  // entry handles ⌘K to lazily load + open this component.) Skipped in select
+  // mode so a picker instance never fights the global navbar palette.
   useEffect(() => {
+    if (selectMode) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
@@ -61,20 +81,19 @@ export const SearchPalette: FC<{
     if (isOpen) {
       setIsVisible(false);
       requestAnimationFrame(() => setIsVisible(true));
-      setQuery("");
+      setQuery(initialQuery);
       setSelectedIndex(0);
+
+      setTimeout(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.value = initialQuery;
+        el.focus();
+      }, 10);
     } else {
       setIsVisible(false);
     }
-  }, [isOpen]);
-
-  // Focus input when opened
-  useEffect(() => {
-    if (!isOpen) return;
-    // slight delay to let animation start
-    const t = setTimeout(() => inputRef.current?.focus(), 10);
-    return () => clearTimeout(t);
-  }, [isOpen]);
+  }, [isOpen, initialQuery]);
 
   // Body scroll lock
   useEffect(() => {
@@ -128,8 +147,12 @@ export const SearchPalette: FC<{
       case "Enter":
         e.preventDefault();
         if (books[selectedIndex]) {
-          window.location.href = `/books/${books[selectedIndex].id}`;
-        } else if (debouncedQuery.length > 2) {
+          if (selectMode) {
+            handleSelect(books[selectedIndex]);
+          } else {
+            window.location.href = `/books/${books[selectedIndex].id}`;
+          }
+        } else if (!selectMode && debouncedQuery.length > 2) {
           const lang = localStorage.getItem("preferred_language") || "";
           const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : "";
           window.location.href = `/search?q=${encodeURIComponent(debouncedQuery)}${langParam}`;
@@ -226,7 +249,7 @@ export const SearchPalette: FC<{
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search books..."
+              placeholder={placeholder ?? "Search books..."}
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               class="flex-1 bg-transparent py-4 my-[3px] text-foreground placeholder:text-muted-foreground [outline:none] border border-border focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 focus:ring-offset-0 rounded text-base"
@@ -286,7 +309,14 @@ export const SearchPalette: FC<{
                     href={`/books/${book.id}`}
                     class="shrink-0"
                     tabIndex={-1}
-                    onClick={close}
+                    onClick={(e) => {
+                      if (selectMode) {
+                        (e as unknown as Event).preventDefault();
+                        handleSelect(book);
+                      } else {
+                        close();
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if ((e as unknown as KeyboardEvent).key === "Escape") close();
                     }}
@@ -304,7 +334,14 @@ export const SearchPalette: FC<{
                     href={`/books/${book.id}`}
                     class="flex-1 min-w-0 group"
                     tabIndex={-1}
-                    onClick={close}
+                    onClick={(e) => {
+                      if (selectMode) {
+                        (e as unknown as Event).preventDefault();
+                        handleSelect(book);
+                      } else {
+                        close();
+                      }
+                    }}
                   >
                     <p class="text-sm font-semibold text-foreground truncate group-hover:text-primary">
                       {book.title}
@@ -315,7 +352,7 @@ export const SearchPalette: FC<{
                   </a>
 
                   {/* Status buttons */}
-                  {isLoggedIn && (
+                  {isLoggedIn && !selectMode && (
                     <div class="flex shrink-0 items-center gap-1.5 ml-auto">
                       {STATUS_OPTIONS.map(({ value, label }, btnIndex) => {
                         const isActive = currentStatus === value;
@@ -359,24 +396,26 @@ export const SearchPalette: FC<{
                     <kbd class="font-sans">↑↓</kbd> navigate
                   </span>
                   <span>
-                    <kbd class="font-sans">↵</kbd> open
+                    <kbd class="font-sans">↵</kbd> {selectMode ? "select" : "open"}
                   </span>
                 </>
               )}
               <span>
                 <kbd class="font-sans">esc</kbd> close
               </span>
-              <a
-                href={(() => {
-                  const lang = localStorage.getItem("preferred_language") || "";
-                  const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : "";
-                  return `/search?q=${encodeURIComponent(debouncedQuery)}${langParam}`;
-                })()}
-                class="ml-auto text-primary hover:underline"
-                onClick={close}
-              >
-                See all results →
-              </a>
+              {!selectMode && (
+                <a
+                  href={(() => {
+                    const lang = localStorage.getItem("preferred_language") || "";
+                    const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : "";
+                    return `/search?q=${encodeURIComponent(debouncedQuery)}${langParam}`;
+                  })()}
+                  class="ml-auto text-primary hover:underline"
+                  onClick={close}
+                >
+                  See all results →
+                </a>
+              )}
             </div>
           )}
         </div>

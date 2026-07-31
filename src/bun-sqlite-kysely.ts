@@ -19,8 +19,15 @@ export interface KyselySqliteStatement {
   iterate(parameters: ReadonlyArray<unknown>): IterableIterator<unknown>;
 }
 
+/**
+ * Kysely's SqliteDialect uses `statement.reader` to choose between `all()` (row
+ * results) and `run()` (changes + lastInsertRowid). Any statement that produces
+ * rows must report true — including `INSERT`/`UPDATE`/`DELETE ... RETURNING`
+ * (SQLite >= 3.35), which otherwise executes fine but hands Kysely zero rows, so
+ * `.returning(...).executeTakeFirstOrThrow()` fails with "no result".
+ */
 function isReaderStatement(sql: string): boolean {
-  return /^\s*SELECT\b/i.test(sql);
+  return /^\s*SELECT\b/i.test(sql) || /\bRETURNING\b/i.test(sql);
 }
 
 /**

@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.updatePersonalShelf",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Update an existing personal shelf.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "ID of the shelf to update"
+            },
+            "name": {
+              "type": "string",
+              "description": "New name for the shelf",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": {
+              "type": "string",
+              "description": "New description for the shelf",
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["shelf"],
+          "properties": {
+            "shelf": {
+              "type": "ref",
+              "ref": "buzz.bookhive.createPersonalShelf#personalShelfView"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -205,6 +205,18 @@ export default function ProfileScreen() {
                 }}
               />
               <ListItem
+                icon="library"
+                title="My Library"
+                subtitle="Your uploaded ebooks and OPDS catalog"
+                onPress={() => router.push("/library" as any)}
+              />
+              <ListItem
+                icon="sync"
+                title="E-Reader Sync"
+                subtitle="Connect KOReader to sync reading progress"
+                onPress={() => router.push("/sync" as any)}
+              />
+              <ListItem
                 icon="bar-chart"
                 title="Reading Stats"
                 onPress={() =>

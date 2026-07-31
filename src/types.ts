@@ -1,4 +1,5 @@
 import type { AppBskyActorDefs } from "@atcute/bluesky";
+import type { Generated } from "kysely";
 
 export type BlobRef = { ref: { $link: string }; mimeType: string };
 
@@ -244,6 +245,63 @@ export type BookListItemRow = {
   embeddedCoverUrl: string | null;
   /** JSON-serialized identifiers from the record, for later book matching. */
   identifiers: string | null;
+};
+
+export type SyncProgressData = {
+  progress: string;
+  percentage: number;
+  device: string;
+  device_id: string;
+  timestamp: number;
+};
+
+export type PersonalBookRow = {
+  id: Generated<number>;
+  userDid: string;
+  contentHash: string;
+  hiveId: HiveId | null;
+  filename: string;
+  title: string;
+  authors: string | null;
+  language: string | null;
+  format: string;
+  mime: string;
+  filePath: string;
+  coverPath: string | null;
+  coverMime: string | null;
+  sizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PersonalShelfRow = {
+  id: Generated<number>;
+  userDid: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PersonalShelfItemRow = {
+  id: Generated<number>;
+  shelfId: number;
+  personalBookId: number;
+  createdAt: string;
+};
+
+export type SyncDocumentRow = {
+  id: Generated<number>;
+  userDid: string;
+  provider: string;
+  documentHash: string;
+  hiveId: HiveId | null;
+  filename: string | null;
+  title: string | null;
+  authors: string | null;
+  progressData: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type UserFollow = {

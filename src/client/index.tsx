@@ -98,6 +98,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const libraryManager = document.getElementById("mount-library-manager");
+  if (libraryManager) {
+    void import("./components/LibraryManager").then(({ LibraryManager }) => {
+      render(<LibraryManager />, libraryManager);
+    });
+  }
+
   // Update page title based on active tab on home page
   const tabInputs = document.querySelectorAll('input[name="tabs"]');
   if (tabInputs.length > 0) {

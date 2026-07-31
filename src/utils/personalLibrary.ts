@@ -1,0 +1,78 @@
+import path from "node:path";
+import { mkdir, rm } from "node:fs/promises";
+
+import { env } from "../env";
+import type { Database } from "../db";
+
+/** Number of items per page in OPDS catalog responses. */
+export const OPDS_PAGE_SIZE = 24;
+
+/** Root directory for all personal library files, adjacent to the DB. */
+export function getLibraryDir(): string {
+  return path.join(path.dirname(env.DB_PATH), "library");
+}
+
+/** Directory for a specific book: `{libraryDir}/{did}/{contentHash}/` */
+export function personalBookDir(did: string, contentHash: string): string {
+  return path.join(getLibraryDir(), did, contentHash);
+}
+
+/** Path to the book file: `{bookDir}/book.{ext}` */
+export function bookFilePath(did: string, contentHash: string, ext: string): string {
+  return path.join(personalBookDir(did, contentHash), "book." + ext);
+}
+
+/** Path to the cover image: `{bookDir}/cover.{ext}` */
+export function coverFilePath(did: string, contentHash: string, ext: string): string {
+  return path.join(personalBookDir(did, contentHash), "cover." + ext);
+}
+
+/** Create a directory recursively if it doesn't exist. */
+export async function ensureDir(dirPath: string): Promise<void> {
+  await mkdir(dirPath, { recursive: true });
+}
+
+/** Remove a book's directory from disk. */
+export async function removeBookDir(did: string, contentHash: string): Promise<void> {
+  await rm(personalBookDir(did, contentHash), { recursive: true, force: true });
+}
+
+/** Remove a user's entire library directory (for account deletion). */
+export async function removeUserDir(did: string): Promise<void> {
+  await rm(path.join(getLibraryDir(), did), { recursive: true, force: true });
+}
+
+/**
+ * Stream a personal library book file as an attachment. Shared by the OPDS
+ * acquisition endpoint (HTTP Basic auth) and the web download button (session
+ * auth) so the two can't drift. Returns null when the row or file is missing;
+ * callers turn that into their own 404.
+ */
+export async function streamPersonalBook(
+  db: Database,
+  userDid: string,
+  contentHash: string,
+): Promise<{ stream: ReadableStream; headers: Record<string, string> } | null> {
+  const book = await db
+    .selectFrom("personal_book")
+    .select(["filePath", "filename", "mime", "format"])
+    .where("userDid", "=", userDid)
+    .where("contentHash", "=", contentHash)
+    .executeTakeFirst();
+  if (!book) return null;
+
+  const file = Bun.file(book.filePath);
+  if (!(await file.exists())) return null;
+
+  const downloadName = book.filename.toLowerCase().includes(".")
+    ? book.filename
+    : `${book.filename}.${book.format || "epub"}`;
+
+  return {
+    stream: file.stream(),
+    headers: {
+      "Content-Type": book.mime || "application/epub+zip",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
+    },
+  };
+}

@@ -45,6 +45,11 @@ index.html
 .env.local
 .env.*.local
 
+# User-uploaded ebook library data (getLibraryDir() → {dirname(DB_PATH)}/library,
+# which is the repo root in dev). Anchored: unanchored it also swallowed source
+# directories named "library/", e.g. src/client/components/library/.
+/library/
+
 # IDE and tools
 .opencode/
 .cursor/

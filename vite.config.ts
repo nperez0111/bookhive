@@ -83,7 +83,7 @@ function devImageProxyPassthrough(): Plugin {
     enforce: "pre",
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        if (req.url && req.url.startsWith("/images/")) {
+        if (req.url && (req.url.startsWith("/images/") || req.url.startsWith("/library/covers/"))) {
           req.headers["sec-fetch-dest"] = "document";
         }
         next();
@@ -164,6 +164,7 @@ export default defineConfig(({ command }): any => ({
   server: {
     host: "127.0.0.1",
     port: 8080,
+    allowedHosts: true,
   },
   root: ".",
   publicDir: "public",

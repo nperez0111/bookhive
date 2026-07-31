@@ -25,6 +25,9 @@ Goodreads, but better, built on Bluesky.
 - Displaying a feed of new books & reviews from the firehose
 - Works without JavaScript, but has some dynamic features
 - All data is stored in your PDS, and can be used by other apps
+- **Personal library** — upload your ebooks (EPUB, MOBI, AZW3, FB2, CBZ) and serve them to your e-reader via an OPDS catalog
+- **E-reader sync** — built-in KOSync server syncs reading progress from KOReader back to your BookHive books automatically
+- **iOS app** — native iPhone app for managing your library on the go
 
 I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u) to share my progress, but this is usable right now on <https://bookhive.buzz>.
 
@@ -38,6 +41,8 @@ The goal is to:
 - Have a much nicer UI/UX than Goodreads
 - "Buzz" about the books with friends with Bluesky comments
 - Be decentralized, take your books to other apps if you want to!
+- Host your personal ebook library and serve it to your e-reader over OPDS
+- Sync reading progress from KOReader (and other KOSync-compatible readers) back to your BookHive books
 
 Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/issues/new)!
 
