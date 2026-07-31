@@ -66,6 +66,10 @@
           "type": "string",
           "description": "Linked BookHive catalog entry ID"
         },
+        "dismissed": {
+          "type": "boolean",
+          "description": "True when the user marked this document as having no BookHive counterpart"
+        },
         "timestamp": {
           "type": "integer",
           "description": "Unix timestamp of last sync"

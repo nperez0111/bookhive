@@ -642,7 +642,7 @@ export default function LibraryScreen() {
                   </ThemedText>
                   <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                     {[
-                      `${Math.round(doc.percentage * 100)}%`,
+                      `${Math.round(progressFraction(doc.percentage) * 100)}%`,
                       formatAuthors(doc.authors) || doc.device,
                     ]
                       .filter(Boolean)
@@ -750,7 +750,7 @@ export default function LibraryScreen() {
                 >
                   {doc.dismissed
                     ? "Not on BookHive"
-                    : `${Math.round(doc.percentage * 100)}% · ${doc.bookTitle ?? "Linked"}`}
+                    : `${Math.round(progressFraction(doc.percentage) * 100)}% · ${doc.bookTitle ?? "Linked"}`}
                 </ThemedText>
               </View>
               <Ionicons name="ellipsis-horizontal" size={18} color={colors.tertiaryText} />
@@ -835,6 +835,7 @@ export default function LibraryScreen() {
           </ThemedText>
           <Pressable
             onPress={handleUpload}
+            disabled={upload.isPending}
             style={[styles.primaryCta, { backgroundColor: colors.primary }]}
           >
             <Ionicons name="cloud-upload-outline" size={20} color="#fff" />

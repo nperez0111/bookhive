@@ -444,7 +444,11 @@ describe("POST /library/upload", () => {
     return app.request("/library/upload", {
       method: "POST",
       body: form,
-      headers: init.json ? { accept: "application/json" } : {},
+      headers: {
+        accept: init.json
+          ? "application/json"
+          : "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
     });
   }
 

@@ -275,10 +275,12 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    void Promise.all([profile.refetch(), listsQuery.refetch()]).finally(() =>
-      setIsRefreshing(false),
-    );
-  }, [profile.refetch, listsQuery.refetch]);
+    void Promise.all([
+      profile.refetch(),
+      listsQuery.refetch(),
+      personalLibraryQuery.refetch(),
+    ]).finally(() => setIsRefreshing(false));
+  }, [profile.refetch, listsQuery.refetch, personalLibraryQuery.refetch]);
 
   const stats = useMemo(() => {
     if (!profile.data) return { totalRead: 0, thisMonth: 0, thisYear: 0 };

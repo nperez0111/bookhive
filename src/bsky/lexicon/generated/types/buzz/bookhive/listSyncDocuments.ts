@@ -30,6 +30,10 @@ const _syncDocumentViewSchema = /*#__PURE__*/ v.object({
    */
   device_id: /*#__PURE__*/ v.string(),
   /**
+   * True when the user marked this document as having no BookHive counterpart
+   */
+  dismissed: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
+  /**
    * Hash identifying the document
    */
   documentHash: /*#__PURE__*/ v.string(),

@@ -904,6 +904,9 @@ function uploadBookFile({
     };
     xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
     xhr.onabort = () => reject(new Error("Upload cancelled"));
+    xhr.timeout = 5 * 60_000;
+    xhr.ontimeout = () =>
+      reject(new Error("Upload timed out. Check your connection and try again."));
 
     xhr.send(form);
   });

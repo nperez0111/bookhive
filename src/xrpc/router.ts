@@ -2146,6 +2146,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           // dismissed this document; never surface it as a hiveId a client
           // would resolve to /books/bk_none.
           hiveId: !row.hiveId || row.hiveId === NO_HIVE_MATCH ? undefined : row.hiveId,
+          dismissed: row.hiveId === NO_HIVE_MATCH,
           timestamp: data.timestamp,
         };
       });

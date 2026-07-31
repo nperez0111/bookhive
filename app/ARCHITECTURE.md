@@ -133,7 +133,11 @@ Exported types: `PersonalBook`, `PersonalShelf`, `SyncDoc`.
 | `/api/delete-book`                           | POST   | Delete book                      |
 | `/api/follow`                                | POST   | Follow user                      |
 | `/xrpc/buzz.bookhive.getPersonalLibrary`     | GET    | Uploaded books (paginated)       |
-| `/xrpc/buzz.bookhive.*PersonalBook`          | POST   | Delete / link / unlink a file    |
+| `/xrpc/buzz.bookhive.getPersonalBook`        | GET    | Single personal book detail      |
+| `/xrpc/buzz.bookhive.uploadPersonalBook`     | POST   | Upload a personal book           |
+| `/xrpc/buzz.bookhive.deletePersonalBook`     | POST   | Delete a personal book file      |
+| `/xrpc/buzz.bookhive.linkPersonalBook`       | POST   | Link file to a hive book         |
+| `/xrpc/buzz.bookhive.unlinkPersonalBook`     | POST   | Unlink file from a hive book     |
 | `/xrpc/buzz.bookhive.*PersonalShelf`         | POST   | Shelf CRUD & membership          |
 | `/library/upload`                            | POST   | Multipart ebook upload           |
 | `/library/covers/:hash`                      | GET    | Cover extracted from a file      |

@@ -102,6 +102,36 @@ describe("GET /settings/sync/documents", () => {
     expect(doc?.hiveId).toBeNull();
   });
 
+  it("excludes documents belonging to a different user", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-mine" });
+    await db
+      .insertInto("sync_document")
+      .values({
+        userDid: "did:plc:otheruser",
+        provider: "kosync",
+        documentHash: "hash-theirs",
+        hiveId: null,
+        filename: "other.epub",
+        title: "Someone Else's Book",
+        authors: "Other Author",
+        progressData: JSON.stringify({
+          progress: "/body/1",
+          percentage: 0.1,
+          device: "Kindle",
+          device_id: "xyz",
+          timestamp: 1785312033,
+        }),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .execute();
+
+    const docs = await getDocuments(app);
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.hiveId).toBeNull();
+    expect(docs[0]?.dismissed).toBe(false);
+  });
+
   it("401s without a session", async () => {
     const anon = createApp(db, null);
     const res = await anon.request("/settings/sync/documents");

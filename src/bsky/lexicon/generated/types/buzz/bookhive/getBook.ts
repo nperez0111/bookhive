@@ -72,9 +72,14 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
       owned: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
       /**
        * History of prior reads of this book by the user (most recent first)
+       * @maxLength 50
        */
       get previousReads() {
-        return /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(BuzzBookhiveDefs.previousReadSchema));
+        return /*#__PURE__*/ v.optional(
+          /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.array(BuzzBookhiveDefs.previousReadSchema), [
+            /*#__PURE__*/ v.arrayLength(0, 50),
+          ]),
+        );
       },
       /**
        * The book's review
