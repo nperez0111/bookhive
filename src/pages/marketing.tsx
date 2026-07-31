@@ -363,6 +363,95 @@ type TrendingBook = {
   readerCount: number;
 };
 
+function EReaderSection() {
+  return (
+    <section class="bg-card px-4 py-20 lg:px-8">
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-col items-center gap-12 lg:flex-row lg:items-center">
+          <div class="flex-1">
+            <p class="text-primary mb-3 text-sm font-semibold uppercase tracking-widest">
+              E-Reader Sync
+            </p>
+            <h2 class="text-foreground text-4xl font-bold tracking-tight lg:text-5xl">
+              Read on your terms, <span class="text-primary">sync everywhere</span>
+            </h2>
+            <p class="text-muted-foreground mt-5 max-w-lg text-lg">
+              BookHive bridges your e-reader and your reading life. Upload your ebooks, browse them
+              from KOReader, and your reading progress flows back to BookHive automatically.
+            </p>
+            <ul class="mt-8 space-y-4">
+              {[
+                "Upload ebooks and serve them to your e-reader via OPDS",
+                "Reading progress syncs back to your BookHive books automatically",
+                "Works with KOReader and any OPDS-compatible app",
+              ].map((item) => (
+                <li key={item} class="flex items-start gap-3">
+                  <div class="bg-primary/10 text-primary mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  </div>
+                  <span class="text-foreground">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div class="w-full lg:w-[40%]">
+            <div class="card space-y-4 shadow-lg">
+              <div class="card-body space-y-4">
+                <h3 class="text-foreground font-semibold">How it works</h3>
+                {[
+                  {
+                    step: "1",
+                    title: "Upload your ebooks",
+                    description: "EPUB, MOBI, AZW3, FB2, and CBZ — up to 100 MB each",
+                  },
+                  {
+                    step: "2",
+                    title: "Connect your e-reader",
+                    description: "Add your OPDS catalog URL and KOSync server to KOReader",
+                  },
+                  {
+                    step: "3",
+                    title: "Read and sync",
+                    description:
+                      "Browse and download books on your device. Progress syncs back to BookHive",
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.step}
+                    class="flex items-start gap-3 rounded-lg p-3 shadow-[0_0_0_1px_var(--border),0_1px_2px_rgba(0,0,0,0.04)]"
+                  >
+                    <div class="bg-primary text-primary-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold">
+                      {item.step}
+                    </div>
+                    <div>
+                      <div class="text-foreground text-sm font-semibold">{item.title}</div>
+                      <div class="text-muted-foreground text-xs">{item.description}</div>
+                    </div>
+                  </div>
+                ))}
+                <p class="text-muted-foreground text-xs">
+                  Your files stay private. Nothing is published to your PDS.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
   return (
     <section class="bg-card px-4 py-20 lg:px-8">
@@ -762,6 +851,7 @@ export const MarketingPage: FC<{
         profileByDid={profileByDid}
       />
       <LibrarySection />
+      <EReaderSection />
       <DiscoverSection trendingBooks={trendingBooks} />
       <OwnershipSection />
       <OpenSourceSection />
