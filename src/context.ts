@@ -156,9 +156,9 @@ export async function createAppDeps(): Promise<AppDeps> {
       // main DB is essentially append-only — the ingester and enrichment add
       // rows, almost nothing deletes them. That is 22s of startup, on every
       // deploy that ships a migration, for zero bytes. The delete-heavy file is
-      // the KV, which is VACUUMed unconditionally below and went 1.94 GB → 34.7
-      // MB. Same freelist-ratio gate as `vacuumKvIfBloated`, so a future
-      // migration that does free a lot still gets cleaned up.
+      // the KV, which went 1.94 GB → 34.7 MB. Gated on *this* file's own
+      // freelist ratio, against the same threshold `vacuumKvIfBloated` uses, so
+      // a future migration that does free a lot still gets cleaned up.
       const pageCount = readPragma(sqlite, "page_count");
       const freelist = readPragma(sqlite, "freelist_count");
       const ratio = pageCount > 0 ? freelist / pageCount : 0;
@@ -235,15 +235,19 @@ export async function createAppDeps(): Promise<AppDeps> {
         const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
         void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
           .execute(kvDb)
+          .then(() => {
+            // Awaited: this hands back the pages *that DELETE just freed*, and
+            // firing it alongside an un-awaited DELETE only ever reclaimed the
+            // previous cycle's. Bounded, so it can never become the
+            // multi-second stall a full VACUUM would be on this timer. The
+            // logger is passed so a SQLITE_BUSY or a full disk here is visible
+            // rather than swallowed on a 15-minute timer nobody watches.
+            incrementalVacuumKv(kvSqlite, 1000, (fields, msg) => logger.warn(fields, msg));
+          })
           .catch((e: any) => {
             if (String(e?.message).includes("no such table")) return;
             logger.error({ err: e }, "page_cache cleanup failed");
           });
-
-        // Hand the pages that DELETE just freed back to the filesystem.
-        // Bounded, so it can never become the multi-second stall a full VACUUM
-        // would be on this timer.
-        incrementalVacuumKv(kvSqlite);
       },
       15 * 60 * 1000,
     );

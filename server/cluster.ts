@@ -61,6 +61,11 @@ function logWorkerExit(
     uptimeMs,
     memory: lastMemory.get(index) ?? null,
   });
+  // Drop the sample now that it has been read. Indices are reused by the
+  // restarted worker, and the next sampler tick is up to 15s away — without
+  // this, a worker that dies inside that window reports its *predecessor's*
+  // memory, which is the most misleading possible number during a crash loop.
+  lastMemory.delete(index);
   console.error(JSON.stringify({ time: Date.now(), ...event }));
   return event;
 }
@@ -93,7 +98,7 @@ function spawnWorker(index: number) {
         return;
       }
       const backoffMs = Math.min(1000 * 2 ** (recent.length - 1), 15_000);
-      const anon = lastMemory.get(index)?.anon_kb;
+      const anon = exit.anon_kb;
       log(
         `worker ${index} exited (code ${exitCode}, signal ${exit.signal ?? "none"}${
           exit.likely_oom ? ", likely OOM" : ""

@@ -39,18 +39,6 @@ export const opentelemetryMiddleware = (): MiddlewareHandler => async (ctx, next
     await context.with(trace.setSpan(context.active(), span), async () => {
       await next();
     });
-    // Every span used to be called "hono-middleware": 82.6% of an hour's 2,341
-    // production spans shared that single name, so nothing could be grouped,
-    // ranked or compared. `routePath` is only known after routing, and it is
-    // the matched *pattern* (`/books/:hiveId`) rather than the concrete URL —
-    // so per-route aggregation works without minting a distinct operation name
-    // for every book id.
-    const routePath = ctx.req.routePath;
-    if (routePath && routePath !== "/*") {
-      span.updateName(`${ctx.req.method} ${routePath}`);
-      span.setAttribute("http.route", routePath);
-    }
-    span.setAttribute("http.status_code", ctx.res.status);
     if (ctx.error) {
       span.recordException(ctx.error);
       span.setStatus({
@@ -67,6 +55,30 @@ export const opentelemetryMiddleware = (): MiddlewareHandler => async (ctx, next
       message: error instanceof Error ? error.message : "unknown error",
     });
     throw error;
+  } finally {
+    // In `finally`, not after the try: a throwing `next()` used to rethrow past
+    // `span.end()`, so the span was never ended and never exported. That lost
+    // the trace for exactly the requests worth tracing, and left the span
+    // pinned in the SDK.
+    //
+    // Every span used to be called "hono-middleware": 82.6% of an hour's 2,341
+    // production spans shared that single name, so nothing could be grouped,
+    // ranked or compared. `routePath` is only known after routing, and it is
+    // the matched *pattern* (`/books/:hiveId`) rather than the concrete URL —
+    // so per-route aggregation works without minting a distinct operation name
+    // for every book id.
+    try {
+      const routePath = ctx.req.routePath;
+      if (routePath && routePath !== "/*") {
+        span.updateName(`${ctx.req.method} ${routePath}`);
+        span.setAttribute("http.route", routePath);
+      }
+      span.setAttribute("http.status_code", ctx.res.status);
+    } catch {
+      // Guarded because this now runs on the throwing path too, and a throw
+      // from a `finally` would *replace* the request's real error with a
+      // telemetry one. Ending the span still matters more than labelling it.
+    }
+    span.end();
   }
-  span.end();
 };

@@ -141,12 +141,17 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  // Trimmed to match `hive_book_author.author`, which mig 020's trigger stores
-  // via `trim(substr(...))`. Without this, a stored `authors` with a leading or
-  // trailing space around the first name fails the equality filter below — the
-  // "more by this author" list comes back empty and the /authors/ link points
-  // at a padded name that matches nothing.
-  const firstAuthor = book.authors.split("\t")[0]?.trim() ?? "";
+  // Split once, trimmed, and used for every author-keyed lookup and link on
+  // this page. `hive_book.authors` stays tab-separated as the canonical form,
+  // but mig 020's trigger stores each name through `trim(substr(...))` — so a
+  // padded segment here fails the equality filter and produces an /authors/
+  // link that matches nothing. Deriving both from one array is what keeps the
+  // first author and the rendered list from disagreeing about that.
+  const authors = book.authors
+    .split("\t")
+    .map((author) => author.trim())
+    .filter(Boolean);
+  const firstAuthor = authors[0] ?? "";
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
@@ -288,7 +293,7 @@ export const BookInfo: FC<{
               </h1>
               <p class="mb-3 text-lg text-muted-foreground">
                 by{" "}
-                {book.authors.split("\t").map((author, index, array) => (
+                {authors.map((author, index, array) => (
                   <Fragment key={author}>
                     <a
                       href={`/authors/${encodeURIComponent(author)}`}
