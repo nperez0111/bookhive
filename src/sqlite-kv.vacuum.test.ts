@@ -64,6 +64,21 @@ describe("vacuumKvIfBloated", () => {
   it("does not throw on an empty database", () => {
     expect(() => vacuumKvIfBloated(new DatabaseSync(":memory:"), noop)).not.toThrow();
   });
+
+  it("swallows a VACUUM failure and reports it, rather than failing startup", () => {
+    const db = makeBloated();
+    const realExec = db.exec.bind(db);
+    // A VACUUM can genuinely fail at runtime — no disk space for the rewrite,
+    // or another connection holding an open transaction on the file.
+    db.exec = ((sql: string) => {
+      if (sql.includes("VACUUM")) throw new Error("database or disk is full");
+      return realExec(sql);
+    }) as typeof db.exec;
+
+    const logs: Array<{ fields: Record<string, unknown>; msg: string }> = [];
+    expect(() => vacuumKvIfBloated(db, (fields, msg) => logs.push({ fields, msg }))).not.toThrow();
+    expect(logs.some((l) => l.msg === "kv VACUUM failed")).toBe(true);
+  });
 });
 
 describe("incrementalVacuumKv", () => {

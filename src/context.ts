@@ -146,14 +146,37 @@ export async function createAppDeps(): Promise<AppDeps> {
       );
       const vacuumStart = Date.now();
       sqlite.exec("VACUUM");
-      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
+      // `hive_book_fts` is an external-content FTS5 table keyed by
+      // `hive_book`'s *implicit* rowid (`id` is TEXT, so it is not an alias for
+      // rowid). SQLite documents that VACUUM "may change the ROWIDs of entries
+      // in any tables that do not have an explicit INTEGER PRIMARY KEY" — and
+      // if it ever does, every search result silently points at the wrong book.
+      // Measured on SQLite 3.51 the rowids are preserved, and FTS5's own
+      // 'integrity-check' does *not* detect this class of desync (verified: it
+      // passes against a deliberately shifted content table), so there is no
+      // cheap way to notice the day that changes. A 'rebuild' is ~1s at 356k
+      // rows, once, on the primary worker inside the startup barrier where
+      // VACUUM already runs. Cheap insurance against silent corruption.
+      const rebuildStart = Date.now();
+      try {
+        sqlite.exec(`INSERT INTO hive_book_fts(hive_book_fts) VALUES('rebuild')`);
+      } catch (err) {
+        logger.error({ err }, "hive_book_fts rebuild after VACUUM failed");
+      }
+      logger.info(
+        {
+          durationMs: Date.now() - vacuumStart,
+          ftsRebuildMs: Date.now() - rebuildStart,
+        },
+        "db VACUUM complete",
+      );
     }
   }
 
   // Single shared connection for all KV tables on KV_DB_PATH.
   const { db: kvDb, sqlite: kvSqlite } = createSharedKvDb(env.KV_DB_PATH);
   if (isPrimaryWorker) {
-    // The KV is delete-heavy (page + OG caches, auth state, the sweeps below)
+    // The KV is delete-heavy (the page cache, auth state, the sweep below)
     // and had never been VACUUMed: 1.94 GB on disk for 34.7 MB of live rows,
     // 98.1% free pages. Runs before the siblings spawn, and only when the file
     // is actually bloated — deploys are frequent enough to keep it in check.

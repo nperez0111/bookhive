@@ -116,12 +116,23 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   // streaming outright. Those routes set their own ETag from the stored
   // contentHash (see streamPersonalBook), so clients keep their 304s.
   //
-  // `/import` is excluded by mounting above this line, not by prefix: its SSE
-  // stream never ends, and the digest would never complete.
-  const ETAG_EXCLUDED_PREFIXES = ["/library/books/", "/opds/books/"];
+  // `/import` is listed too, even though mounting it above this line already
+  // keeps it out. Relying on mount order alone means a future reorder silently
+  // hangs the import SSE stream forever — it never ends, so the digest never
+  // completes and no byte is ever flushed. That failure is severe and would
+  // look like "import is broken" rather than "etag is misconfigured", so it is
+  // worth being order-independent about.
+  const ETAG_EXCLUDED_PREFIXES = ["/library/books/", "/opds/books/", "/import"];
+  const isEtagExcluded = (path: string) =>
+    ETAG_EXCLUDED_PREFIXES.some(
+      (prefix) =>
+        // Exact or path-segment match, so "/importer" wouldn't be caught by
+        // "/import" if such a route were ever added.
+        path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`),
+    );
   const etagMiddleware = etag();
   app.use("*", async (c, next) => {
-    if (ETAG_EXCLUDED_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))) {
+    if (isEtagExcluded(c.req.path)) {
       return next();
     }
     return etagMiddleware(c, next);

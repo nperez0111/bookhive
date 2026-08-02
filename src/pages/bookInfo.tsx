@@ -141,7 +141,12 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  const firstAuthor = book.authors.split("\t")[0] ?? "";
+  // Trimmed to match `hive_book_author.author`, which mig 020's trigger stores
+  // via `trim(substr(...))`. Without this, a stored `authors` with a leading or
+  // trailing space around the first name fails the equality filter below — the
+  // "more by this author" list comes back empty and the /authors/ link points
+  // at a padded name that matches nothing.
+  const firstAuthor = book.authors.split("\t")[0]?.trim() ?? "";
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");

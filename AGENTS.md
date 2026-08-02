@@ -72,7 +72,19 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 
 **Middleware order** in `createApp`: `timing` → `prettyJSON` (dev) → context → wide-event logging → error capture → asset URLs (Vite manifest) → `/images/*` CORP override → `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → default `Cache-Control: private, no-store` → Prometheus `registerMetrics` → `etag` → anon page cache (prod).
 
-**`etag()` must never see a large or streamed body** — it buffers the entire response in memory. `/library/books/*`, `/opds/books/*` are excluded (they set their own ETag from `contentHash`); `/import` is excluded (SSE stream).
+**`etag()` must never see a large or streamed body** — it buffers the entire
+response in memory. `/library/books/*`, `/opds/books/*` and `/import` are all
+excluded **by prefix** in `src/app.ts` (`ETAG_EXCLUDED_PREFIXES`). `/import` is
+also mounted above the middleware, but do not rely on that alone: its SSE stream
+never ends, so if a reorder ever let the digest see it, imports would hang
+forever and look like an import bug rather than an etag one.
+
+Because those routes skip `etag()`, **they must answer `If-None-Match`
+themselves** — the middleware is what turns a validator into a 304, and setting
+the header alone does nothing. `streamPersonalBook`
+(`src/utils/personalLibrary.ts`) takes the request's `If-None-Match` and returns
+`{ notModified: true }` before it opens the file; both download routes turn that
+into a 304. Without it an e-reader re-downloads every book on every sync.
 
 **Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML.
 
@@ -284,7 +296,7 @@ SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` s
 | `user_book`           | User's book records       | uri (PK), userDid, hiveId, title, authors, status, **stars** (not `rating`), review, startedAt, finishedAt, **owned** (bool), bookProgress, previousReads (JSON)                                         |
 | `hive_book`           | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, enrichAttempts, enrichFailedAt, identifiers, hiveBookAtUri, language |
 | `hive_book_genre`     | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here**                                                                                                                                                   |
-| `hive_book_fts`       | FTS5 search index         | External-content FTS5 over `hive_book(title, rawTitle, authors)`, trigger-maintained. Never written directly                                                                                             |
+| `hive_book_fts`       | FTS5 search index         | External-content FTS5 over `hive_book(title, rawTitle, authors)`, trigger-maintained. Never written directly. **Rebuilt after VACUUM** — see below                                                       |
 | `hive_book_author`    | Author-to-book mapping    | hiveId, author, position (PK hiveId+author). Trigger-maintained. `position = 0` = first author                                                                                                           |
 | `book_id_map`         | ISBN/Goodreads cross-refs | hiveId (PK), isbn, isbn13, goodreadsId, updatedAt                                                                                                                                                        |
 | `buzz`                | Comments on books         | uri (PK), userDid, hiveId, **comment**, bookUri, parentUri, createdAt                                                                                                                                    |
@@ -299,39 +311,50 @@ SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` s
 
 Notes: `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface as `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
+**`hive_book_fts` is rebuilt after the startup VACUUM** (`src/context.ts`). It is
+an external-content table keyed by `hive_book`'s _implicit_ rowid — `id` is
+TEXT, so it is not an INTEGER PRIMARY KEY alias — and SQLite documents that
+VACUUM "may change the ROWIDs of entries in any tables that do not have an
+explicit INTEGER PRIMARY KEY". If it ever does, every search result silently
+points at the wrong book. Measured on SQLite 3.51 rowids are preserved, and
+FTS5's own `'integrity-check'` does **not** detect this class of desync
+(verified against a deliberately shifted content table), so there is no cheap
+way to notice the day that changes. `'rebuild'` is ~1s at 356k rows, once, on
+the primary worker inside the startup barrier where VACUUM already runs.
+
 ### KV Cache (`src/sqlite-kv.ts`)
 
 SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep.
 
 ### Key Utilities (`src/utils/`)
 
-| File                  | Purpose                                                                                                                                                                                                                          |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getBook.ts`          | Book record CRUD against user's PDS                                                                                                                                                                                              |
-| `getProfile.ts`       | Profile fetching from Bluesky                                                                                                                                                                                                    |
-| `getFollows.ts`       | Follow graph sync                                                                                                                                                                                                                |
-| `enrichBookData.ts`   | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                           |
-| `enrichQueue.ts`      | `enrich_queue` producer + primary-worker drain                                                                                                                                                                                   |
-| `semaphore.ts`        | Async concurrency limiter + `withTimeout`                                                                                                                                                                                        |
-| `circuitBreaker.ts`   | Three-state breaker                                                                                                                                                                                                              |
-| `bookIdentifiers.ts`  | ISBN/ID normalization + persistence                                                                                                                                                                                              |
-| `bookProgress.ts`     | BookProgress serialization                                                                                                                                                                                                       |
-| `readThroughCache.ts` | KV read-through with TTL                                                                                                                                                                                                         |
-| `csv.ts`              | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                 |
-| `lists.ts`            | Book list (shelf) CRUD against PDS                                                                                                                                                                                               |
-| `readingStats.ts`     | Reading stats aggregation by year                                                                                                                                                                                                |
-| `imageProxy.ts`       | imgproxy signing + proxy helper                                                                                                                                                                                                  |
-| `personalLibrary.ts`  | Personal library paths, `streamPersonalBook`                                                                                                                                                                                     |
-| `bookMetadata/`       | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                   |
-| `bookMeta.ts`         | Book metadata utilities                                                                                                                                                                                                          |
-| `syncMatching.ts`     | KOReader document → BookHive book matching; `NO_HIVE_MATCH` sentinel                                                                                                                                                             |
-| `syncBridge.ts`       | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                           |
-| `ftsQuery.ts`         | FTS5 MATCH expression builder                                                                                                                                                                                                    |
-| `importBook.ts`       | Import a single book record                                                                                                                                                                                                      |
-| `authorMatching.ts`   | Author name matching                                                                                                                                                                                                             |
-| `manifest.ts`         | Vite manifest → asset URLs                                                                                                                                                                                                       |
-| `xml.ts`              | XML utilities                                                                                                                                                                                                                    |
-| Other                 | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts` |
+| File                  | Purpose                                                                                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBook.ts`          | Book record CRUD against user's PDS                                                                                                                                                                                                      |
+| `getProfile.ts`       | Profile fetching from Bluesky                                                                                                                                                                                                            |
+| `getFollows.ts`       | Follow graph sync                                                                                                                                                                                                                        |
+| `enrichBookData.ts`   | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                   |
+| `enrichQueue.ts`      | `enrich_queue` producer + primary-worker drain. The `exhausted` gauge/heartbeat counts `hive_book.enrichFailedAt` inside the cooldown, **not** queue rows at MAX_ATTEMPTS — those are deleted as they exhaust, so that read was always 0 |
+| `semaphore.ts`        | Async concurrency limiter + `withTimeout`                                                                                                                                                                                                |
+| `circuitBreaker.ts`   | Three-state breaker                                                                                                                                                                                                                      |
+| `bookIdentifiers.ts`  | ISBN/ID normalization + persistence                                                                                                                                                                                                      |
+| `bookProgress.ts`     | BookProgress serialization                                                                                                                                                                                                               |
+| `readThroughCache.ts` | KV read-through with TTL                                                                                                                                                                                                                 |
+| `csv.ts`              | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                         |
+| `lists.ts`            | Book list (shelf) CRUD against PDS                                                                                                                                                                                                       |
+| `readingStats.ts`     | Reading stats aggregation by year                                                                                                                                                                                                        |
+| `imageProxy.ts`       | imgproxy signing + proxy helper                                                                                                                                                                                                          |
+| `personalLibrary.ts`  | Personal library paths, `streamPersonalBook`                                                                                                                                                                                             |
+| `bookMetadata/`       | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                           |
+| `bookMeta.ts`         | Book metadata utilities                                                                                                                                                                                                                  |
+| `syncMatching.ts`     | KOReader document → BookHive book matching; `NO_HIVE_MATCH` sentinel                                                                                                                                                                     |
+| `syncBridge.ts`       | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                                   |
+| `ftsQuery.ts`         | FTS5 MATCH expression builder                                                                                                                                                                                                            |
+| `importBook.ts`       | Import a single book record                                                                                                                                                                                                              |
+| `authorMatching.ts`   | Author name matching                                                                                                                                                                                                                     |
+| `manifest.ts`         | Vite manifest → asset URLs                                                                                                                                                                                                               |
+| `xml.ts`              | XML utilities                                                                                                                                                                                                                            |
+| Other                 | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`         |
 
 ## Types & Constants
 
@@ -371,7 +394,10 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `index.ts`         | `findBookDetails` entry point                  |
 | `waf/`             | AWS WAF challenge solver (see `waf/README.md`) |
 
-`google.ts` and `isbndb.ts` exist but are unused (not imported anywhere). `images.isbndb.com` stays in the `imageProxy` allowlist for historical `hive_book` rows.
+`google.ts` and `isbndb.ts` were **deleted** (2026-08-02) — dead code behind
+commented-out imports, with no fallback branch in `findBookDetails` to reach
+them. Goodreads is the only scraper. `images.isbndb.com` stays in the
+`imageProxy` allowlist because historical `hive_book` rows still point there.
 
 The WAF solver's circuit breaker currently also gates the plain-HTTP fetch path. Splitting into separate breakers is the open fix.
 

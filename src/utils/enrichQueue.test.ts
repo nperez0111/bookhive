@@ -6,7 +6,12 @@ import type { Logger } from "pino";
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import { migrateToLatest, type Database, type DatabaseSchema } from "../db";
 import type { HiveId } from "../types";
-import { drainEnrichmentQueue, enqueueEnrichment, enqueueEnrichmentBatch } from "./enrichQueue";
+import {
+  drainEnrichmentQueue,
+  enqueueEnrichment,
+  enqueueEnrichmentBatch,
+  publishEnrichQueueStats,
+} from "./enrichQueue";
 import type { EnrichFn } from "./enrichQueue";
 
 const HIVE_ID = "bk_queued" as HiveId;
@@ -265,6 +270,24 @@ describe("convergence", () => {
     // The crawler comes back. This is the exact step that used to refill it.
     await enqueueEnrichment(db, HIVE_ID);
     expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(0);
+  });
+
+  it("reports exhausted books in the heartbeat, not a structurally-zero count", async () => {
+    // The gauge used to count `enrich_queue` rows at MAX_ATTEMPTS. Those rows
+    // are deleted in the same call that stamps enrichFailedAt, so it could
+    // only ever read 0 — the same illusion that hid the requeue loop. It has
+    // to be read off hive_book to mean anything.
+    const db = await createTestDb();
+    const { logger, events } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+    await drainUntilExhausted(db, logger);
+
+    await publishEnrichQueueStats(db, logger);
+
+    const heartbeat = events.filter((e) => e["msg"] === "enrich_drainer_heartbeat").at(-1);
+    expect(heartbeat).toBeDefined();
+    expect(heartbeat!["exhausted"]).toBe(1);
   });
 
   it("lets a book back in once the cooldown has passed", async () => {

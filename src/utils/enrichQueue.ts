@@ -275,10 +275,18 @@ export async function publishEnrichQueueStats(db: Database, logger: Logger): Pro
     ])
     .executeTakeFirst();
 
+  // Counted on `hive_book`, not `enrich_queue`. A row that exhausts its
+  // attempts is deleted from the queue in the same call that stamps
+  // `enrichFailedAt` (see `reschedule`), so `enrich_queue.attempts >=
+  // MAX_ATTEMPTS` matches nothing and this gauge was structurally always 0 —
+  // the same "zero rows ever observed at max attempts" illusion that hid the
+  // requeue loop in the first place. What is actually worth watching is how
+  // many books are parked in the cooldown right now.
   const exhausted = await db
-    .selectFrom("enrich_queue")
+    .selectFrom("hive_book")
     .select((eb) => eb.fn.countAll().as("count"))
-    .where("attempts", ">=", MAX_ATTEMPTS)
+    .where("enrichFailedAt", "is not", null)
+    .where("enrichFailedAt", ">", new Date(Date.now() - ENRICH_RETRY_AFTER_MS).toISOString())
     .executeTakeFirst();
 
   const total = Number(stats?.total ?? 0);

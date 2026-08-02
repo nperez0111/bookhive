@@ -21,8 +21,9 @@
  * should skip the FTS lookup entirely rather than run an empty MATCH.
  */
 export function ftsMatchQuery(input: string): string | null {
-  // Strip characters FTS5 treats as token separators from the ends so we don't
-  // emit an empty phrase, and collapse internal whitespace.
+  // Collapse internal whitespace runs and trim the ends. Punctuation is left
+  // alone here — FTS5's tokenizer drops separator characters itself, and the
+  // all-separators case is handled below.
   const cleaned = input.replace(/\s+/g, " ").trim();
   if (!cleaned) return null;
 

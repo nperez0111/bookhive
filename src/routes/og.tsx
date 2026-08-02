@@ -402,9 +402,13 @@ const app = new Hono<AppEnv>()
     const [totalRow, avgRow, books] = await Promise.all([
       c
         .get("ctx")
-        .db.selectFrom("hive_book_author")
+        // Joined to hive_book like the two queries below it. Counting
+        // hive_book_author alone would report a different total than the books
+        // actually rendered if the mapping ever holds a row whose book is gone.
+        .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select((eb) => eb.fn.countAll().as("count"))
-        .where("author", "=", author)
+        .where("hive_book_author.author", "=", author)
         .executeTakeFirst(),
       c
         .get("ctx")

@@ -50,17 +50,38 @@ export async function removeUserDir(did: string): Promise<void> {
   await rm(path.join(getLibraryDir(), did), { recursive: true, force: true });
 }
 
+export type PersonalBookDownload =
+  | { notModified: true; headers: Record<string, string> }
+  | { notModified: false; stream: ReadableStream; headers: Record<string, string> };
+
+/**
+ * Does an `If-None-Match` header match our strong ETag? Handles the comma list
+ * and `*` forms, and tolerates the `W/` prefix a client may echo back — the
+ * validator is a content hash, so a weak match is still the same bytes.
+ */
+function etagMatches(ifNoneMatch: string | null | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const normalize = (raw: string) => raw.trim().replace(/^W\//, "");
+  return ifNoneMatch
+    .split(",")
+    .some((candidate) => normalize(candidate) === "*" || normalize(candidate) === etag);
+}
+
 /**
  * Stream a personal library book file as an attachment. Shared by the OPDS
  * acquisition endpoint (HTTP Basic auth) and the web download button (session
  * auth) so the two can't drift. Returns null when the row or file is missing;
  * callers turn that into their own 404.
+ *
+ * Pass the request's `If-None-Match` to get a `notModified` result instead of a
+ * stream — see the comment on that branch for why this is done by hand.
  */
 export async function streamPersonalBook(
   db: Database,
   userDid: string,
   contentHash: string,
-): Promise<{ stream: ReadableStream; headers: Record<string, string> } | null> {
+  ifNoneMatch?: string | null,
+): Promise<PersonalBookDownload | null> {
   const book = await db
     .selectFrom("personal_book")
     .select(["filePath", "filename", "mime", "format"])
@@ -68,6 +89,22 @@ export async function streamPersonalBook(
     .where("contentHash", "=", contentHash)
     .executeTakeFirst();
   if (!book) return null;
+
+  const etag = `"${contentHash}"`;
+  const cacheHeaders = {
+    ETag: etag,
+    "Cache-Control": "private, max-age=0, must-revalidate",
+  };
+
+  // Answer the conditional request *before* opening the file. These routes are
+  // excluded from hono's `etag()` middleware (it buffers the whole body through
+  // a digest — 134 MB of arrayBuffers for a 120 MB download), and that
+  // middleware is what used to turn `If-None-Match` into a 304. Setting the
+  // header alone does not: without this branch an e-reader re-downloads the
+  // entire book on every sync.
+  if (etagMatches(ifNoneMatch, etag)) {
+    return { notModified: true, headers: cacheHeaders };
+  }
 
   const file = Bun.file(book.filePath);
   if (!(await file.exists())) return null;
@@ -77,18 +114,13 @@ export async function streamPersonalBook(
     : `${book.filename}.${book.format || "epub"}`;
 
   return {
+    notModified: false,
     stream: file.stream(),
     headers: {
       "Content-Type": book.mime || "application/epub+zip",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
-      // The content hash *is* a strong validator, so e-readers still get their
-      // 304s. Setting it here also means hono's etag middleware would short out
-      // rather than digest the body — belt and braces alongside the path
-      // exclusion in src/app.ts, since digesting a 100 MB epub buffers the
-      // whole thing in native memory before any of it ships.
-      ETag: `"${contentHash}"`,
+      ...cacheHeaders,
       "Content-Length": String(file.size),
-      "Cache-Control": "private, max-age=0, must-revalidate",
     },
   };
 }

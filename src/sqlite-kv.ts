@@ -137,11 +137,21 @@ export function vacuumKvIfBloated(
  * periodic timer without ever becoming a long synchronous stall — unlike a full
  * VACUUM, which rewrites the file.
  */
-export function incrementalVacuumKv(sqlite: DatabaseSync, pages = 1000): void {
+export function incrementalVacuumKv(
+  sqlite: DatabaseSync,
+  pages = 1000,
+  log?: (fields: Record<string, unknown>, msg: string) => void,
+): void {
+  // PRAGMA arguments cannot be bound, so this is string-interpolated — coerce
+  // to a whole number rather than trusting every present and future caller to
+  // pass one.
+  const count = Math.max(1, Math.floor(Number(pages) || 0));
   try {
-    sqlite.exec(`PRAGMA incremental_vacuum(${pages})`);
-  } catch {
-    // No-op when auto_vacuum isn't INCREMENTAL yet.
+    sqlite.exec(`PRAGMA incremental_vacuum(${count})`);
+  } catch (err) {
+    // Expected no-op when auto_vacuum isn't INCREMENTAL yet; anything else is
+    // worth a line, since this runs on a timer where silence is the default.
+    log?.({ err }, "kv incremental_vacuum failed");
   }
 }
 

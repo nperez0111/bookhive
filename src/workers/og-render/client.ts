@@ -64,7 +64,9 @@ export function renderOgImage(card: OgCard): Promise<ArrayBuffer> {
     // Shed load loudly. This used to be a bare reject with no counter and no
     // log line, so sustained shedding looked identical to no traffic at all.
     ogRenderShedTotal.inc();
-    logger.error({ msg: "og_render_shed", card_kind: card.kind, pending: pending.size });
+    // warn, not error: shedding is the backpressure working as designed. Only
+    // og_render_timeout is a genuine fault.
+    logger.warn({ msg: "og_render_shed", card_kind: card.kind, pending: pending.size });
     return Promise.reject(new Error("OG render queue is full"));
   }
 

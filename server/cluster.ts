@@ -13,7 +13,7 @@
  * Not bundled — the Dockerfile copies this file and ./worker-exit.ts verbatim
  * and Bun runs the TS source directly. Zero external dependencies.
  */
-import { classifyWorkerExit, readProcessMemoryKb, signalName } from "./worker-exit.ts";
+import { classifyWorkerExit, readProcessMemoryKb } from "./worker-exit.ts";
 
 const concurrency = Math.max(1, Number(process.env["WEB_CONCURRENCY"]) || 4);
 const port = process.env["PORT"] ?? "8080";
@@ -42,6 +42,10 @@ function sampleWorkerMemory() {
   }
 }
 
+/** Emits the structured line and hands the classification back, so the
+ *  human-readable restart message below reads the same `likely_oom` rather than
+ *  re-deriving it from the raw signal — that duplicate condition is how the
+ *  two logs could disagree about whether a kill was an OOM. */
 function logWorkerExit(
   index: number,
   pid: number | null,
@@ -49,19 +53,16 @@ function logWorkerExit(
   signalCode: number | string | null | undefined,
   uptimeMs: number,
 ) {
-  console.error(
-    JSON.stringify({
-      time: Date.now(),
-      ...classifyWorkerExit({
-        index,
-        pid,
-        exitCode,
-        signalCode,
-        uptimeMs,
-        memory: lastMemory.get(index) ?? null,
-      }),
-    }),
-  );
+  const event = classifyWorkerExit({
+    index,
+    pid,
+    exitCode,
+    signalCode,
+    uptimeMs,
+    memory: lastMemory.get(index) ?? null,
+  });
+  console.error(JSON.stringify({ time: Date.now(), ...event }));
+  return event;
 }
 
 function spawnWorker(index: number) {
@@ -75,7 +76,13 @@ function spawnWorker(index: number) {
       children.delete(index);
       // A SIGTERM we sent ourselves is not a failure — don't page on it.
       if (shuttingDown) return;
-      logWorkerExit(index, exited?.pid ?? null, exitCode, signalCode, Date.now() - startedAt);
+      const exit = logWorkerExit(
+        index,
+        exited?.pid ?? null,
+        exitCode,
+        signalCode,
+        Date.now() - startedAt,
+      );
       const now = Date.now();
       const recent = (restartTimes.get(index) ?? []).filter((t) => now - t < 60_000);
       recent.push(now);
@@ -86,11 +93,10 @@ function spawnWorker(index: number) {
         return;
       }
       const backoffMs = Math.min(1000 * 2 ** (recent.length - 1), 15_000);
-      const signal = signalName(signalCode);
       const anon = lastMemory.get(index)?.anon_kb;
       log(
-        `worker ${index} exited (code ${exitCode}, signal ${signal ?? "none"}${
-          signal === "SIGKILL" && exitCode === null ? ", likely OOM" : ""
+        `worker ${index} exited (code ${exitCode}, signal ${exit.signal ?? "none"}${
+          exit.likely_oom ? ", likely OOM" : ""
         }${anon ? `, last anon ${Math.round(anon / 1024)}MB` : ""}), restarting in ${backoffMs}ms`,
       );
       setTimeout(() => spawnWorker(index), backoffMs);

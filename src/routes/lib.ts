@@ -30,7 +30,18 @@ import { sql } from "kysely";
  * this right — the import worker chunks the identical work at 3.
  */
 const REFETCH_SEARCH_CONCURRENCY = 3;
-const searchSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, { label: "refetch_search" });
+/**
+ * `maxPending`/`acquireTimeoutMs` are finite on purpose. The semaphore is
+ * module-scoped, so concurrent re-syncs share it: one page pushes up to 100
+ * waiters, and with several users re-syncing at once the queue is bounded only
+ * by traffic. Shedding past that point is the right answer — these searches are
+ * best-effort cache warming, not part of the response.
+ */
+const searchSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, {
+  label: "refetch_search",
+  maxPending: 500,
+  acquireTimeoutMs: 60_000,
+});
 
 /** Sets Cache-Control header on successful responses. Won't override if already set by the handler. */
 export const cacheControl = (directive: string) =>
@@ -393,7 +404,12 @@ export async function refetchBooks({
     // outbound Goodreads fetch *and* a `LIKE '%…%'` scan of all 356k hive_book
     // rows sorting into a temp B-tree; firing 100 at once per page, recursing
     // over the whole library, was the largest uncapped fan-out in the app.
-    promises.push(searchSlots.run(() => searchBooks({ query: book.title, ctx })));
+    //
+    // Swallowed: `promises` is awaited with `Promise.all`, and the result of
+    // this search is discarded — it runs to warm the catalog. Letting one
+    // Goodreads timeout (or a shed slot) reject would abort the user's entire
+    // library re-sync, including the upserts queued alongside it.
+    promises.push(searchSlots.run(() => searchBooks({ query: book.title, ctx })).catch(() => null));
     uris.push(record.uri);
 
     if (!book.hiveBookUri) {

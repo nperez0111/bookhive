@@ -41,7 +41,7 @@ const BREAKER_OPTIONS = {
 } as const;
 
 /** Distinct hosts tracked before the idle ones are pruned. */
-const MAX_BREAKERS = 512;
+export const MAX_BREAKERS = 512;
 
 type Entry = { breaker: CircuitBreaker; lastUsedAt: number };
 
@@ -55,18 +55,31 @@ function getBreaker(key: string): CircuitBreaker {
   }
 
   if (breakers.size >= MAX_BREAKERS) {
-    // Drop the least recently used closed breaker. An open one is load-bearing
-    // — evicting it would let traffic straight back into a dead host.
-    let oldestKey: string | null = null;
-    let oldestAt = Infinity;
+    // Prefer the least recently used *closed* breaker: an open one is
+    // load-bearing, and evicting it lets traffic straight back into a dead
+    // host. But preferring is not the same as requiring. If every breaker is
+    // open or half-open — a mass PDS outage, which is exactly the scenario this
+    // module exists for — then nothing is closed, nothing gets evicted, and the
+    // map grows without bound. Fall back to the overall LRU so MAX_BREAKERS is
+    // always enforced; the replacement re-opens after a few failures, and
+    // guardedRestore's timeout still bounds every attempt in the meantime.
+    let closedKey: string | null = null;
+    let closedAt = Infinity;
+    let anyKey: string | null = null;
+    let anyAt = Infinity;
     for (const [k, entry] of breakers) {
+      if (entry.lastUsedAt < anyAt) {
+        anyAt = entry.lastUsedAt;
+        anyKey = k;
+      }
       if (entry.breaker.getState() !== "closed") continue;
-      if (entry.lastUsedAt < oldestAt) {
-        oldestAt = entry.lastUsedAt;
-        oldestKey = k;
+      if (entry.lastUsedAt < closedAt) {
+        closedAt = entry.lastUsedAt;
+        closedKey = k;
       }
     }
-    if (oldestKey) breakers.delete(oldestKey);
+    const evict = closedKey ?? anyKey;
+    if (evict) breakers.delete(evict);
   }
 
   const breaker = new CircuitBreaker(BREAKER_OPTIONS);

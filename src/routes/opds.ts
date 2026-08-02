@@ -525,10 +525,11 @@ app.get("/books/:hash/download", async (c) => {
   const { db } = c.get("ctx");
   const hash = c.req.param("hash");
 
-  const download = await streamPersonalBook(db, userDid, hash);
+  const download = await streamPersonalBook(db, userDid, hash, c.req.header("if-none-match"));
   if (!download) {
     return c.body("Not found", 404);
   }
+  if (download.notModified) return c.body(null, 304, download.headers);
 
   return c.body(download.stream, 200, download.headers);
 });

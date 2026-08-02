@@ -43,6 +43,15 @@ services:
       - "5080:5080"
     volumes:
       - telem_data:/data
+    # No healthcheck, and deliberately not a `depends_on` for the server.
+    # Two reasons, both checked rather than assumed:
+    #  1. The image is distroless — no /bin/sh, no curl, no wget (verified on
+    #     the host), so any `test:` here would report permanently unhealthy and
+    #     make `docker ps` lie in the opposite direction.
+    #  2. The app must not refuse to boot because its telemetry backend is
+    #     down. The log transport already tolerates connection-refused and the
+    #     OTLP exporter retries; gating startup on OpenObserve would turn
+    #     observability into a SPOF for the product.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     restart: unless-stopped

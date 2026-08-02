@@ -17,10 +17,13 @@ let tracer: Tracer | undefined = trace.getTracer("hono", "0.0.1");
 
 export const opentelemetryMiddleware = (): MiddlewareHandler => async (ctx, next) => {
   const span = tracer.startSpan(
-    // Renamed to the matched route once routing has happened — see updateName
-    // below. This initial value only survives if the request throws before a
-    // route matches.
-    `${ctx.req.method} ${ctx.req.path}`,
+    // Method only. Renamed to the matched route once routing has happened (see
+    // updateName below), so this value survives just for requests that throw
+    // before a route matches — and those are exactly the ones with arbitrary
+    // paths. Interpolating the raw path here would mint a distinct operation
+    // name per URL, which is the cardinality blow-up this rename exists to
+    // avoid. The full path is still on the span as ATTR_URL_PATH.
+    ctx.req.method,
     {
       attributes: {
         [ATTR_HTTP_REQUEST_METHOD]: ctx.req.method,

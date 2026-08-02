@@ -6,6 +6,7 @@ import {
   resetRestoreGuards,
   restoreGuardStates,
   RESTORE_TIMEOUT_MS,
+  MAX_BREAKERS,
 } from "./restore-guard";
 
 beforeEach(() => {
@@ -100,6 +101,26 @@ describe("guardedRestore", () => {
       }),
     ).resolves.toBe("ok");
     expect(dispatched).toBe(true);
+  });
+
+  it("stays bounded even when every tracked host is open", async () => {
+    // The scenario this module exists for: a mass PDS outage. Eviction used to
+    // consider only *closed* breakers, so with nothing closed there was no
+    // candidate, nothing was dropped, and the map grew one entry per host
+    // forever — an unbounded leak inside the leak guard.
+    for (let i = 0; i < MAX_BREAKERS + 50; i++) {
+      // Trip each host so it lands open, never closed.
+      for (let n = 0; n < 3; n++) {
+        await expect(
+          guardedRestore(`dead-${i}.example`, async () => {
+            throw new Error("Unable to connect.");
+          }),
+        ).rejects.toThrow();
+      }
+    }
+
+    expect(restoreGuardStates().length).toBeLessThanOrEqual(MAX_BREAKERS);
+    expect(restoreGuardStates().every((s) => s.state === "open")).toBe(true);
   });
 
   it("reports the outcome for the wide event", async () => {
