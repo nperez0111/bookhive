@@ -81,7 +81,7 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
         <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
           <a
             href="/"
-            class="min-h-[40px] inline-flex items-center hover:text-foreground transition-colors"
+            class="min-h-10 inline-flex items-center hover:text-foreground transition-colors"
           >
             Home
           </a>
@@ -112,7 +112,7 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
             </h2>
             <a
               href={buildUrl("/explore/genres", { lang })}
-              class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
+              class="min-h-10 inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all genres →
             </a>
@@ -121,23 +121,24 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
             {genres.map((genre) => (
               <a
                 href={buildUrl(`/explore/genres/${encodeURIComponent(genre.genre)}`, { lang })}
-                class="card group relative overflow-hidden p-4 text-center transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
+                class="card group flex flex-col items-center gap-1 p-4 text-center transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
                 style={`--genre-name: genre-${genre.genre}`}
               >
-                <span
-                  class="pointer-events-none absolute inset-0 flex items-center justify-center text-6xl opacity-[0.06] select-none"
-                  aria-hidden="true"
-                >
+                {/*
+                  The emoji used to be a `text-6xl opacity-[0.06]` watermark absolutely centred in
+                  the tile. Its glyph box was taller than the tile, so `overflow-hidden` sliced it
+                  and it read as a rendering artifact rather than decoration — worst on the short
+                  labels, where all you saw was a cropped rectangle. It works as a plain icon.
+                */}
+                <span class="text-2xl leading-none select-none" aria-hidden="true">
                   {getEmoji(genre.genre)}
                 </span>
-                <div class="relative">
-                  <div class="text-xl font-bold tabular-nums text-primary/70 group-hover:text-primary">
-                    {formatCount(genre.count)}
-                  </div>
-                  <p class="genre-name mt-1 truncate text-xs font-medium text-foreground group-hover:text-primary">
-                    {genre.genre}
-                  </p>
+                <div class="text-xl font-bold tabular-nums text-primary/70 group-hover:text-primary">
+                  {formatCount(genre.count)}
                 </div>
+                <p class="genre-name w-full truncate text-xs font-medium text-foreground group-hover:text-primary">
+                  {genre.genre}
+                </p>
               </a>
             ))}
           </div>
@@ -151,7 +152,7 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
             </h2>
             <a
               href={buildUrl("/explore/authors", { lang })}
-              class="min-h-[40px] inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
+              class="min-h-10 inline-flex items-center text-primary hover:text-primary/80 text-sm transition-colors"
             >
               See all authors →
             </a>

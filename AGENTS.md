@@ -56,6 +56,38 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 - **Author lookups use `hive_book_author` join** (mig 020), not `LIKE`. This is exact identity, not text search.
 - **Library re-sync** fans out at most `REFETCH_SEARCH_CONCURRENCY` (3) searches.
 
+**The app shell scroller — never put `overflow-*-auto` on `<main>`.** The `jsxRenderer` in
+`src/routes/main.tsx` wraps every app page in
+`<main class="flex-1 overflow-x-clip [overflow-clip-margin:5rem] flex justify-center px-4 py-4 lg:px-6 lg:py-6">`
+→ `<div class="mx-auto w-full min-w-0 max-w-5xl">`. Four constraints, each load-bearing:
+
+- **`overflow-x-clip`, not `auto`.** `overflow-x: auto` with `overflow-y: visible` forces
+  `overflow-y` to compute to `auto`, making `<main>` a scroll container on _both_ axes. Its height
+  equals its content height, so it ends up with a few px of residual scrollable overflow that the
+  mouse wheel latches onto and never chains out of — the page stopped scrolling ~26px in on
+  `/books/:id`, `/profile/:handle` and `/explore`. A clip container is not a scroll container.
+- **Not `overflow-visible` either.** `BookTooltip` is always rendered (at `opacity-0`), so its
+  `w-48` box permanently contributes horizontal overflow; removing the clip produces a
+  document-level h-scrollbar on grid pages at 768–1280px. `overflow-clip-margin` widens the clip
+  edge instead so tooltips can overhang the column. `src/pages/components/book.tsx` does the same
+  for the profile `BookList` panel.
+- **`w-full min-w-0` on the inner column, and keep `flex justify-center`.** Without `w-full` the
+  column is sized to max-content, so content-light pages silently render narrower. `min-w-0`
+  keeps the flex floor deterministic. `justify-center` is the only thing centring the column at
+  `lg`+, and `<main>`'s flex `align-items: stretch` is what makes `min-h-full` resolve for the
+  `-mx-4 … min-h-full` full-bleed pattern on `explore.tsx` / `genres.tsx` / `authorDirectory.tsx`.
+- **The gutter is `px-4 lg:px-6` PADDING on `<main>`, never a margin on the column.** It used to be
+  `m-4 lg:m-6` on the column, next to `mx-auto` — but Tailwind v4 emits `margin-inline` after
+  `margin`, so `mx-auto` won and the horizontal margin computed to **0 at every width below `lg`**.
+  Every app page's content sat flush against both screen edges on mobile, and the `-mx-4 … px-4`
+  full-bleed sections overhung the viewport by 16px per side and had their right edge clipped off
+  (the "See all genres →" arrow on `/explore` was the visible tell). Padding can't be overridden by
+  `mx-auto`, still lets the column centre itself, and keeps the negative-margin full-bleed trick
+  cancelling exactly — `-mx-4` against `px-4` lands the bleed on the viewport edge, and the
+  section's own `px-4` re-aligns its content with the rest of the page.
+
+Wide content (the library/import tables) already clips itself, so `<main>` does not need to.
+
 ## Entry Points
 
 | File                   | Purpose                                                             |
@@ -105,7 +137,7 @@ into a 304. Without it an e-reader re-downloads every book on every sync.
 - `/privacy-policy` → `src/pages/privacy-policy.tsx`
 - `/legal` → `src/pages/terms.tsx`
 - `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled)
-- `/` → `src/pages/marketing.tsx` — landing; redirects to `/home` when logged in
+- `/` → `src/pages/marketing.tsx` — landing; always renders regardless of auth state (logged-in users navigate to `/home` via sidebar)
 - `/images/*` → signing reverse-proxy to **imgproxy** (`src/utils/imageProxy.ts`). Three route shapes:
   - `/images/books/:hiveId?w=N` — ID-keyed canonical (preferred). Helpers: `coverImageUrl`, `avatarImageUrl`
   - `/images/avatars/:did?s=N` — ID-keyed avatar
@@ -114,7 +146,7 @@ into a 304. Without it an e-reader re-downloads every book on every sync.
 
 ### `src/routes/pages.tsx` (mounted at `/`)
 
-- `/home` → `src/pages/home.tsx` — authenticated home
+- `/home` → `src/pages/home.tsx` — authenticated home (redirects to `/login` if no profile)
 - `/feed` → `src/pages/feed.tsx` — activity feed (friends/all/tracking, paginated 25/page)
 - `/app` → `src/pages/app.tsx` — iOS app landing
 - `/import` → `src/pages/import.tsx` — CSV import page, SSE progress
@@ -220,7 +252,7 @@ Each file exports a Hono JSX component rendered server-side.
 | `simple-navbar.tsx`   | Simplified nav bar variant                        |
 | `sidebar.tsx`         | Sidebar layout component                          |
 | `home.tsx`            | Authenticated home page                           |
-| `marketing.tsx`       | Marketing landing (logged-out)                    |
+| `marketing.tsx`       | Marketing landing (auth-independent)              |
 | `searchResults.tsx`   | Search results                                    |
 | `bookInfo.tsx`        | Book detail                                       |
 | `profile.tsx`         | User profile + shelves                            |
@@ -247,21 +279,59 @@ Each file exports a Hono JSX component rendered server-side.
 
 Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/buildUrl.ts`.
 
+**`Layout` always needs `url={c.req.url}`.** It resolves `url` from `useRequestContext()` only as
+a fallback, and that throws for the ~14 routes that render via `c.html(<Layout …>)` instead of
+`c.render(…)` — there is no jsx-renderer context on those. When it throws, `url` silently falls
+back to the hardcoded `https://bookhive.buzz`, so `<link rel="canonical">`, `og:url` and the
+JSON-LD `SearchAction` all pointed at the site root. `/privacy-policy` and `/legal` were live in
+production telling crawlers their canonical URL was the homepage. Every direct call site now
+passes `url` explicitly; keep doing that when adding one. `og:image`/`twitter:image` are
+absolutised against `url` inside `Layout` (crawlers don't resolve relative image URLs), and the
+JSON-LD block uses `new URL(url).origin` because it describes the site, not the page.
+
+### Raster images in `public/`
+
+Page images are `<picture>` with a WebP `<source>` and the original as the `<img>` fallback.
+Regenerate with `cwebp -preset picture -q 78..82 -m 6 [-resize <w> 0] in -o out.webp` — **always
+pass `-preset picture`**; the default preset is far more conservative (it gave 419 KB where
+`picture` gave 164 KB on the same input at the same quality). Lossless (`-z 9`) is not worth
+trying on anything sourced from a JPEG: it preserves the existing compression noise and came out
+larger than the JPEG. Size the WebP to ~2x the CSS slot, not to the source's intrinsic size.
+
+| Asset                                                       | Serves                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `hive-{768,1280}.webp` + `hive.jpg`                         | Marketing hero. The LCP element — `fetchpriority="high"`, intrinsic `width`/`height`, never lazy |
+| `screenshots/{home-screen,book-info,comment}.webp` + `.png` | `/app` phone mockups                                                                             |
+| `full_logo-384.webp` + `full_logo.jpg`                      | Login/signup logo (rendered at 192px)                                                            |
+
+**Do not convert these**, each for a specific reason:
+
+- `full_logo.jpg` must stay — it is also the default `og:image` and the OAuth client `logo_uri`
+  in `src/auth/client.ts`, both consumed by third parties that may not decode WebP.
+- `og-fallback.png` — OG/Twitter card images; crawler WebP support is unreliable.
+- `android-chrome-{192,512}.png` — referenced by `public/site.webmanifest` with an explicit
+  `"type": "image/png"`; changing the format means editing the manifest and risking PWA install.
+- `apple-touch-icon.png`, `favicon*.png`, `favicon.ico` — fixed-format platform requirements.
+- `reading.png` — only used by `README.md` / `app/README.md`, never served.
+
+The other 16 `public/screenshots/*.png` (~6.6 MB) are referenced nowhere in the codebase; they
+look like App Store listing assets (light/dark and `-16` variants), so they are kept as-is.
+
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                              |
-| -------------------------- | ------------------------------------------------- |
-| `book.tsx`                 | Book card component                               |
-| `BookCard.tsx`             | Composable book card                              |
-| `buzz.tsx`                 | Buzz/comment display                              |
-| `BookReview.tsx`           | Book review form/display                          |
-| `EditableLibraryTable.tsx` | Library table with inline editing                 |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                  |
-| `LanguageSelect.tsx`       | Language picker                                   |
-| `modal.tsx`                | Modal dialog (CSS-based)                          |
-| `fallbackCover.tsx`        | Placeholder book cover                            |
-| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder            |
-| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock` |
+| File                       | What                                                                   |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `book.tsx`                 | Book card component                                                    |
+| `BookCard.tsx`             | Composable book card (`dense` takes `showAuthor` for search/genre grids) |
+| `buzz.tsx`                 | Buzz/comment display                                                   |
+| `BookReview.tsx`           | Book review form/display                                               |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                      |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                       |
+| `LanguageSelect.tsx`       | Language picker                                                        |
+| `modal.tsx`                | Modal dialog (CSS-based)                                               |
+| `fallbackCover.tsx`        | Placeholder book cover                                                 |
+| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                 |
+| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                      |
 
 **AT Tags** (`AtTags.tsx`): emits `<meta>` tags declaring ATProto records/identities a page maps to. Built with hono's `html` template (not JSX `<meta>`) because hono/jsx dedupes by `name`. Routes pass tags via `c.render(..., { atTags })`.
 
@@ -448,8 +518,39 @@ Tracing: app → OpenObserve directly (`server/plugins/otel-sdk.ts`). Two spans 
 ## Styling
 
 - **Tailwind CSS v4** with `@tailwindcss/forms` and `tailwindcss-animated`
-- Config: `tailwind.config.js` — custom `yello` color palette
+- Config: `tailwind.config.js` — `darkMode: "class"`; theming lives in `:root`/`.dark` CSS vars in `src/index.css`
 - Entry: `src/index.css`
+
+**basecoat's button variants are standalone classes, not modifiers.** `.btn` _is_ the primary
+variant (`bg-primary text-primary-foreground`); `.btn-ghost` only declares a `:hover` state and
+`.btn-outline` overrides the background but not the text colour. The app writes `btn btn-ghost`
+in ~40 places, which rendered every one of them as a filled primary button, and `btn btn-outline`
+rendered as invisible text. `src/index.css` patches both via the higher-specificity
+`.btn.btn-ghost` / `.btn.btn-outline` selectors — keep using the compound form; don't "fix" call
+sites individually.
+
+**App-defined classes in `src/index.css`** (basecoat does not provide these; several were already
+used in markup before they existed, so that markup silently rendered unstyled):
+
+| Class                                            | What                                                                                                                         |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `.card-title`                                    | Section heading inside (or outside) a `.card`. Deliberately unscoped                                                         |
+| `.empty` / `.empty-title` / `.empty-description` | The one empty-state treatment — prefer it over another hand-rolled `py-12 text-center` block                                 |
+| `.focus-ring`                                    | The one focus recipe (`focus-visible` outline on `--ring`). Use instead of `focus:outline-none` plus a hardcoded ring colour |
+| `.book-cover-frame`                              | Tinted placeholder on a cover box so lazy-loaded grids don't flash empty                                                     |
+| `.sidebar`, `.tab-label`                         | Pre-existing component classes                                                                                               |
+
+Form controls get a low-alpha white overlay in dark mode rather than `var(--input)` — `--input` is
+a saturated amber here, which made every input and outline button look like a filled control.
+
+Tap targets are `min-h-10` / `min-w-10` (not the `min-h-[40px]` bracket form).
+
+**The solid `bg-primary` fill means "call to action", not "you are here".** The sidebar's
+`a[aria-current="page"]` rules (nav list and footer, `src/index.css`) use a `bg-primary/15
+text-primary` tinted pill for the current page. They used to use `bg-primary
+text-primary-foreground` — byte-identical to `.btn-primary` — so in the mobile drawer the active
+nav item and the "Buzz in" sign-in button rendered as two indistinguishable filled amber pills.
+Keep selected/current states tinted and leave the solid fill to real actions.
 
 ## Build & Dev
 

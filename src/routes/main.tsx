@@ -93,7 +93,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
     const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
     c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.html(
-      <Layout assetUrls={c.get("assetUrls")}>
+      <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
         <SimpleNavbar isPds={isPds} />
         <PrivacyPolicy />
       </Layout>,
@@ -104,7 +104,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
     const isPds = !c.req.url.startsWith(env.PUBLIC_URL);
     c.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
     return c.html(
-      <Layout assetUrls={c.get("assetUrls")}>
+      <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
         <SimpleNavbar isPds={isPds} />
         <Terms />
       </Layout>,
@@ -134,7 +134,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
     const bookCounts = Object.fromEntries(bookCountRows.map((r) => [r.userDid, r.count]));
     c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
     return c.html(
-      <Layout assetUrls={c.get("assetUrls")}>
+      <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
         <SimpleNavbar isPds={isPds} />
         <div class="mx-auto max-w-3xl px-4 py-12">
           <PdsLanding profiles={profiles} bookCounts={bookCounts} />
@@ -143,17 +143,14 @@ export function mainRouter(deps: AppDeps): HonoServer {
     );
   });
 
-  // Marketing landing page — standalone, no Navbar/Sidebar
+  // Marketing landing page — standalone, no Navbar/Sidebar.
+  // Always renders the marketing page regardless of auth state. Logged-in users
+  // navigate via the sidebar to /home; keeping / auth-free means the response is
+  // safely cacheable (no Vary-by-cookie footgun).
   app.get("/", async (c) => {
     const url = new URL(c.req.raw.url);
     if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
       return c.redirect("/app");
-    }
-    startTime(c, "marketing_session_check");
-    const did = await c.get("ctx").getSessionDid();
-    endTime(c, "marketing_session_check");
-    if (did) {
-      return c.redirect("/home");
     }
     const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";
 
@@ -294,10 +291,41 @@ export function mainRouter(deps: AppDeps): HonoServer {
               }
             />
             <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true" />
-            <div class="layout-content flex flex-1 flex-col">
+            <div class="layout-content flex min-w-0 flex-1 flex-col">
               <Navbar profile={profileData} />
-              <main class="flex-1 overflow-x-auto flex justify-center">
-                <div class="mx-auto max-w-5xl m-4 lg:m-6">{children}</div>
+              {/*
+                `overflow-x-clip`, never `overflow-x-auto`: `auto` on one axis forces the other to
+                compute to `auto` too, which turns <main> into a scroll container on BOTH axes.
+                Its height equals its content height, so it ends up with a few px of residual
+                scrollable overflow that the mouse wheel latches onto and never chains out of —
+                i.e. the page stops scrolling a few px in. `clip` is the only value that legally
+                pairs with `overflow-y: visible`, and a clip container is not a scroll container.
+
+                Plain `overflow-visible` is not an option: BookTooltip is always rendered (at
+                `opacity-0`), so its w-48 box permanently contributes horizontal overflow and
+                would produce a document-level h-scrollbar on grid pages at 768–1280px.
+                `overflow-clip-margin` widens the clip edge so tooltips can still overhang the
+                content column without any of that.
+              */}
+              {/*
+                The gutter lives here as PADDING, not as a margin on the column below. It used to
+                be `m-4 lg:m-6` on the column, alongside `mx-auto` — but Tailwind v4 emits
+                `margin-inline` after `margin`, so `mx-auto` won and the horizontal margin
+                computed to 0 at every width below `lg`. Every app page's content sat flush
+                against both screen edges on mobile, and the `-mx-4 … px-4` full-bleed sections
+                (explore/genres/authorDirectory) overhung the viewport by 16px per side and had
+                their right edge clipped away. Padding here can't be overridden by `mx-auto`,
+                still lets the column centre itself, and keeps the negative-margin full-bleed
+                trick cancelling exactly.
+              */}
+              <main class="flex-1 overflow-x-clip [overflow-clip-margin:5rem] flex justify-center px-4 py-4 lg:px-6 lg:py-6">
+                {/*
+                  `w-full`: as a flex item under `justify-center` this div was sized to its
+                  max-content width, so the page column silently got narrower on content-light
+                  pages (an empty profile rendered at ~470px while a populated one filled the
+                  5xl). Fill the available width and let max-w-5xl do the capping.
+                */}
+                <div class="mx-auto w-full min-w-0 max-w-5xl">{children}</div>
               </main>
             </div>
           </div>

@@ -66,7 +66,8 @@ export const SearchResults: FC<SearchResultsProps> = ({
           </h1>
           {totalBooks > 0 && (
             <p class="text-muted-foreground mt-2 text-sm tabular-nums">
-              Showing {start}–{end} of {totalBooks} books
+              Showing {start.toLocaleString()}–{end.toLocaleString()} of{" "}
+              {totalBooks.toLocaleString()} books
             </p>
           )}
         </div>
@@ -85,11 +86,11 @@ export const SearchResults: FC<SearchResultsProps> = ({
           name="q"
           value={query}
           placeholder="Search books..."
-          class="flex-1 rounded-md bg-card px-3 py-2 text-sm text-foreground shadow-sm ring-1 ring-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          class="input focus-ring flex-1"
           autofocus={!query}
         />
         <input type="hidden" name="lang" id="search-lang-input" value={lang || ""} />
-        <button type="submit" class="btn btn-primary btn-sm">
+        <button type="submit" class="btn btn-primary">
           Search
         </button>
       </form>
@@ -107,20 +108,30 @@ export const SearchResults: FC<SearchResultsProps> = ({
 
       {!query && (
         <div class="card">
-          <section class="py-12 text-center">
-            <p class="text-muted-foreground">Enter a search term to find books.</p>
-          </section>
+          <div class="empty">
+            <h3 class="empty-title">Search for a book</h3>
+            <p class="empty-description">
+              Look up any title, author or ISBN — or browse by genre if you're not sure yet.
+            </p>
+            <a href="/explore" class="btn btn-outline mt-4 min-h-10">
+              Explore books
+            </a>
+          </div>
         </div>
       )}
 
       {query && books.length === 0 && (
         <div class="card">
-          <section class="py-12 text-center">
-            <h3 class="text-xl font-semibold text-foreground">No results found</h3>
-            <p class="text-muted-foreground mt-2">
-              No books found for "{query}". Try a different search term.
+          <div class="empty">
+            <h3 class="empty-title">No results found</h3>
+            <p class="empty-description">
+              No books found for "{query}". Try a different spelling, search by author, or browse by
+              genre.
             </p>
-          </section>
+            <a href="/explore/genres" class="btn btn-outline mt-4 min-h-10">
+              Browse genres
+            </a>
+          </div>
         </div>
       )}
 
@@ -130,7 +141,7 @@ export const SearchResults: FC<SearchResultsProps> = ({
             <section>
               <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {books.map((book) => (
-                  <BookCard variant="dense" book={normalizeBookData(book)} />
+                  <BookCard variant="dense" showAuthor book={normalizeBookData(book)} />
                 ))}
               </ul>
             </section>

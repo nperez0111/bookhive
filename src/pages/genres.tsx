@@ -83,17 +83,22 @@ export const GenresDirectory: FC = async () => {
             {featured.map((genre) => (
               <a
                 href={`/explore/genres/${encodeURIComponent(genre.genre)}`}
-                class="card group flex flex-col justify-between p-5 transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.06)] active:scale-[0.97]"
+                // Same stacking as the /explore genre tile (centred emoji → count → name) so one
+                // object doesn't get two renderings a click apart. This used to be left-aligned
+                // with `justify-between`, which stretched three short lines over ~190px of tile
+                // on a 2-column mobile grid and read as mostly empty.
+                class="card group flex flex-col items-center gap-1 p-4 text-center transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
                 style={`--genre-name: genre-${genre.genre}`}
               >
-                <div class="text-3xl font-bold tabular-nums text-primary/70 group-hover:text-primary">
+                <span class="text-2xl leading-none select-none" aria-hidden="true">
+                  {getEmoji(genre.genre)}
+                </span>
+                <div class="text-2xl font-bold tabular-nums text-primary/70 group-hover:text-primary">
                   {formatCount(genre.count)}
                 </div>
-                <div class="mt-4">
-                  <h3 class="genre-name font-semibold leading-tight text-foreground group-hover:text-primary">
-                    {genre.genre}
-                  </h3>
-                </div>
+                <h3 class="genre-name text-sm font-semibold leading-tight text-foreground group-hover:text-primary">
+                  {genre.genre}
+                </h3>
               </a>
             ))}
           </div>

@@ -55,7 +55,7 @@ export const ReadingStatsPage: FC<{
               <a
                 href={`/profile/${handle}/stats`}
                 class={
-                  "rounded-md px-3 py-2 text-sm min-h-[40px] min-w-[40px] inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
+                  "rounded-md px-3 py-2 text-sm min-h-10 min-w-10 inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                   (year === new Date().getFullYear()
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted")
@@ -71,7 +71,7 @@ export const ReadingStatsPage: FC<{
                   key={y}
                   href={`/profile/${handle}/stats/${y}`}
                   class={
-                    "rounded-md px-3 py-2 text-sm min-h-[40px] min-w-[40px] inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
+                    "rounded-md px-3 py-2 text-sm min-h-10 min-w-10 inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                     (y === year
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted")

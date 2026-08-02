@@ -44,9 +44,7 @@ export const BuzzSection: FC<{
               <h2 class="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl lg:tracking-tight">
                 {title}
               </h2>
-              <p class="mt-2 text-base text-slate-600 dark:text-slate-400 sm:mt-4 sm:text-lg">
-                {subtitle}
-              </p>
+              <p class="text-muted-foreground mt-2 text-base sm:mt-4 sm:text-lg">{subtitle}</p>
             </div>
             {showViewAll && (
               <a href={viewAllHref} class="text-primary shrink-0 text-sm hover:underline">

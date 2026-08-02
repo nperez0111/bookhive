@@ -31,9 +31,10 @@ import { getAvailableLanguages } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
+    c.header("Cache-Control", "private, no-cache");
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
-      return c.redirect("/", 302);
+      return c.redirect("/login", 302);
     }
     return c.render(<Home />, { title: "BookHive | Home" });
   })
@@ -114,6 +115,7 @@ const app = new Hono<AppEnv>()
     return c.html(
       <Layout
         assetUrls={c.get("assetUrls")}
+        url={c.req.url}
         title="BookHive App for iOS"
         description="The BookHive iOS app lets you manage, organize, and review your books anywhere."
         image="/og/app"

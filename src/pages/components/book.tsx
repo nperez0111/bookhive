@@ -57,7 +57,9 @@ export const BookList: FC<{
   const defaultTab = readingBooks.length ? "reading" : wantBooks.length ? "want" : "read";
 
   return (
-    <div class="relative overflow-x-clip rounded-lg bg-card pb-16">
+    // `overflow-clip-margin` lets the w-48 book tooltips overhang the first/last grid column
+    // without this panel being able to propagate horizontal scrollable overflow.
+    <div class="relative overflow-x-clip [overflow-clip-margin:5rem] rounded-lg bg-card pb-16">
       <input
         type="radio"
         id="tab-read"
@@ -89,10 +91,10 @@ export const BookList: FC<{
                 role="tab"
                 aria-selected={defaultTab === "reading" ? "true" : "false"}
                 aria-controls="tab-reading-panel"
-                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-muted-foreground select-none transition-[color,border-color] duration-150 hover:border-border hover:text-foreground"
               >
                 Reading{" "}
-                <span class="text-base text-gray-400 dark:text-gray-500">
+                <span class="text-base text-muted-foreground/70 tabular-nums">
                   {readingBooks.length}
                 </span>
               </label>
@@ -105,10 +107,12 @@ export const BookList: FC<{
                 role="tab"
                 aria-selected={defaultTab === "want" ? "true" : "false"}
                 aria-controls="tab-want-panel"
-                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-muted-foreground select-none transition-[color,border-color] duration-150 hover:border-border hover:text-foreground"
               >
                 Want to Read{" "}
-                <span class="text-base text-gray-400 dark:text-gray-500">{wantBooks.length}</span>
+                <span class="text-base text-muted-foreground/70 tabular-nums">
+                  {wantBooks.length}
+                </span>
               </label>
             </li>
           )}
@@ -119,10 +123,12 @@ export const BookList: FC<{
                 role="tab"
                 aria-selected={defaultTab === "read" ? "true" : "false"}
                 aria-controls="tab-read-panel"
-                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-gray-500 select-none hover:border-gray-300 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
+                class="inline-block cursor-pointer rounded-t-lg border-b-2 border-transparent p-4 text-xl text-muted-foreground select-none transition-[color,border-color] duration-150 hover:border-border hover:text-foreground"
               >
                 Read{" "}
-                <span class="text-base text-gray-400 dark:text-gray-500">{readBooks.length}</span>
+                <span class="text-base text-muted-foreground/70 tabular-nums">
+                  {readBooks.length}
+                </span>
               </label>
             </li>
           )}

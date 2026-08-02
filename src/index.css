@@ -99,6 +99,34 @@ body {
   }
 }
 
+/*
+  Covers are `loading="lazy"`, so a grid renders as a field of empty holes until the images
+  arrive. Tint the cover box so the grid reads as a shelf of books immediately, and fade each
+  cover in over it once decoded rather than snapping.
+*/
+.book-cover-frame {
+  background-color: var(--muted);
+}
+
+.book-cover {
+  animation: bookCoverIn 200ms ease-out;
+}
+
+@keyframes bookCoverIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-cover {
+    animation: none;
+  }
+}
+
 /* View Transitions - Cross-document transitions */
 @view-transition {
   navigation: auto;
@@ -189,12 +217,16 @@ body {
   scale: 0.96;
 }
 
+/* "You are here", NOT a call to action. This used to be `bg-primary text-primary-foreground`,
+   byte-identical to `.btn-primary` — so in the mobile drawer the active nav item and the "Buzz in"
+   sign-in button rendered as two identical filled amber pills with no way to tell which was
+   which. A tinted pill still reads as selected and leaves the solid fill to actual CTAs. */
 .sidebar > ul a[aria-current="page"] {
-  @apply bg-primary text-primary-foreground;
+  @apply bg-primary/15 text-primary font-semibold;
 }
 
 .sidebar > ul a[aria-current="page"]:hover {
-  @apply bg-primary/90 text-primary-foreground;
+  @apply bg-primary/25 text-primary;
 }
 
 .sidebar hr {
@@ -224,12 +256,13 @@ body {
   scale: 0.96;
 }
 
+/* Same reasoning as the nav list above — Privacy/Terms are destinations, not CTAs. */
 .sidebar footer a[aria-current="page"] {
-  @apply bg-primary text-primary-foreground;
+  @apply bg-primary/15 text-primary font-semibold;
 }
 
 .sidebar footer a[aria-current="page"]:hover {
-  @apply bg-primary/90 text-primary-foreground;
+  @apply bg-primary/25 text-primary;
 }
 
 /* User block in sidebar (when logged in) */
@@ -331,23 +364,73 @@ select.select,
 :is(.form, .field) textarea {
   background-color: var(--card);
 }
+/*
+  In dark mode --background and --card are the same amber-950, so a form control needs its own
+  surface to read as editable. It used to use var(--input) (a saturated amber-800), which made
+  every input and select look like a filled amber button. A low-alpha white overlay lifts the
+  control off whichever surface it sits on without adding another saturated colour.
+*/
 .dark .textarea,
 .dark .input,
 .dark select.select,
 .dark :is(.form, .field) select,
 .dark :is(.form, .field) textarea {
-  background-color: var(--input);
+  background-color: rgb(255 255 255 / 0.05);
+}
+
+/*
+  Same root cause for outline buttons: basecoat's `.btn-outline` applies `dark:bg-input/30`,
+  which assumes --input is a near-neutral border colour. Here it is amber, so "outline" buttons
+  rendered as filled amber blocks. Let the border carry the affordance.
+*/
+.dark .btn-outline:not(:hover) {
+  background-color: transparent;
 }
 
 /* Tactile button feedback */
 .btn {
-  transition-property: scale, background-color, color;
+  transition-property: scale, background-color, color, box-shadow, border-color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
 }
 
 .btn:active:not(:disabled) {
   scale: 0.96;
+}
+
+/*
+  basecoat's button variants are STANDALONE classes, not modifiers on `.btn`: `.btn` is itself the
+  default (primary) variant and applies `bg-primary text-primary-foreground`, while `.btn-ghost`
+  only declares a `:hover` state. So `class="btn btn-ghost"` — the idiom this app uses in 39 places
+  — rendered as a filled primary button with a ghost hover, i.e. the exact opposite of "ghost", and
+  made every secondary action shout as loudly as the real CTA.
+
+  Rather than rewrite 39 call sites, make the compound selector self-sufficient. `.btn.btn-ghost`
+  (0,2,0) outranks both `.btn` and `.btn-sm` (0,1,0). Hover uses `bg-muted` to match the sidebar's
+  house hover rather than basecoat's `bg-accent`, which is a saturated amber here.
+*/
+.btn.btn-ghost {
+  background-color: transparent;
+  box-shadow: none;
+  @apply text-foreground;
+}
+
+.btn.btn-ghost:hover:not(:disabled),
+.btn.btn-ghost[aria-pressed="true"] {
+  @apply bg-muted text-foreground;
+}
+
+/*
+  `.btn-outline` has the same problem in the other direction: it overrides the background but not
+  the text colour, so `btn btn-outline` kept `.btn`'s `text-primary-foreground` and rendered as
+  near-invisible text on a transparent button.
+*/
+.btn.btn-outline {
+  @apply text-foreground;
+}
+
+.btn.btn-outline:hover:not(:disabled) {
+  @apply bg-muted text-foreground;
 }
 
 /* Typography polish */
@@ -368,4 +451,41 @@ p {
 
 .card .card-body {
   @apply px-6;
+}
+
+/*
+  basecoat styles `.card > header/section/footer`, but this app uses the shadcn-style
+  card-header/card-body/card-title divs instead. `.card-title` was referenced in 9 places and
+  defined nowhere, so Preflight's h2 reset made every one of them render as plain body text.
+*/
+/* Deliberately unscoped — a few section headings use it outside a .card wrapper. */
+.card-title {
+  @apply text-foreground text-lg font-semibold leading-none;
+}
+
+/*
+  Same story as .card-title: `empty` / `empty-title` / `empty-description` were used in feed.tsx,
+  error.tsx and profile.tsx but defined in neither basecoat nor here, so every "no results" state
+  rendered as three unstyled stacked divs. This is the one empty-state treatment — prefer it over
+  hand-rolling another `py-12 text-center` block.
+*/
+.empty {
+  @apply flex flex-col items-center justify-center px-6 py-12 text-center;
+}
+
+.empty-title {
+  @apply text-foreground text-lg font-semibold;
+}
+
+.empty-description {
+  @apply text-muted-foreground mt-1 max-w-prose text-sm;
+}
+
+/*
+  One focus recipe. Most inputs/buttons in the app set `focus:outline-none` without a
+  focus-visible replacement, and 14 of ~28 ring declarations hardcode amber/yellow instead of
+  --ring. Prefer `.focus-ring` over hand-rolling either.
+*/
+.focus-ring {
+  @apply focus-visible:outline-ring focus-visible:outline-2 focus-visible:outline-offset-2;
 }

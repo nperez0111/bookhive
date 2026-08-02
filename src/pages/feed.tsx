@@ -45,7 +45,7 @@ export const FeedPage: FC<FeedPageProps> = ({
           <a
             href={`/rss/friends/${currentUserHandle}`}
             title="RSS feed for friends' activity"
-            class="btn btn-ghost flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px]"
+            class="btn btn-ghost flex items-center justify-center gap-1.5 min-h-10 min-w-10"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -65,7 +65,7 @@ export const FeedPage: FC<FeedPageProps> = ({
         {(["friends", "all", "tracking"] as const).map((t) => (
           <a
             href={`/feed?tab=${t}`}
-            class={`tab-label cursor-pointer px-3 py-2 text-sm font-medium min-h-[40px] flex items-center transition-[color,border-color] duration-150 active:scale-[0.96] ${
+            class={`tab-label cursor-pointer px-3 py-2 text-sm font-medium min-h-10 flex items-center transition-[color,border-color] duration-150 active:scale-[0.96] ${
               currentTab === t
                 ? "border-b-2 border-primary text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -96,7 +96,7 @@ export const FeedPage: FC<FeedPageProps> = ({
         <div class="text-center">
           <a
             href={`/feed?tab=${currentTab}&page=${currentPage + 1}`}
-            class="btn btn-secondary tabular-nums min-h-[40px]"
+            class="btn btn-secondary tabular-nums min-h-10"
           >
             Load more
           </a>

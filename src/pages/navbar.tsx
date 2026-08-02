@@ -31,7 +31,7 @@ export const Navbar: FC<{
         </button>
 
         {/* Logo - hidden when sidebar visible (md+) */}
-        <a href="/" class="flex shrink-0 items-center md:hidden">
+        <a href={profile ? "/home" : "/"} class="flex shrink-0 items-center md:hidden">
           <img src="/book.svg" alt="" width="24" height="24" />
           <span class="ml-2 font-bold">BookHive</span>
         </a>
@@ -149,7 +149,7 @@ export const Navbar: FC<{
               >
                 <a
                   href={`/profile/${profile.handle}`}
-                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
+                  class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                   role="menuitem"
                   tabindex={-1}
                 >
@@ -157,7 +157,7 @@ export const Navbar: FC<{
                 </a>
                 <a
                   href="/refresh-books"
-                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
+                  class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                   role="menuitem"
                   tabindex={-1}
                 >
@@ -165,7 +165,7 @@ export const Navbar: FC<{
                 </a>
                 <a
                   href="/settings"
-                  class="text-card-foreground hover:bg-muted block min-h-[40px] rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
+                  class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                   role="menuitem"
                   tabindex={-1}
                 >
@@ -174,7 +174,7 @@ export const Navbar: FC<{
                 <form action="/logout" method="post">
                   <button
                     type="submit"
-                    class="text-card-foreground hover:bg-muted block w-full min-h-[40px] cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-[background-color] duration-150"
+                    class="text-card-foreground hover:bg-muted block w-full min-h-10 cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-[background-color] duration-150"
                     role="menuitem"
                     tabindex={-1}
                   >

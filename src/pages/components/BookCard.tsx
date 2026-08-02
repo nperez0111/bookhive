@@ -80,7 +80,7 @@ export const BookTooltip: FC<{
 
   return (
     <div
-      class={`pointer-events-none absolute z-20 w-48 text-left opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${positionClasses}`}
+      class={`pointer-events-none absolute z-20 w-48 max-w-[min(12rem,calc(100vw-2rem))] text-left opacity-0 transition-opacity delay-150 duration-200 group-hover:opacity-100 ${positionClasses}`}
     >
       <div class="relative rounded-lg bg-card px-3 py-2 shadow-lg ring-1 ring-border">
         <h3 class="text-sm font-bold leading-tight text-foreground line-clamp-2">{book.title}</h3>
@@ -143,6 +143,12 @@ type DenseProps = {
   badge?: Child;
   overlay?: Child;
   tooltipPosition?: "top" | "bottom";
+  /**
+   * Show the author under the title. Worth turning on wherever a grid can contain several
+   * editions or translations of the same work (search, genre listings) — without it those rows
+   * are visually identical and there is no way to tell them apart without hovering.
+   */
+  showAuthor?: boolean;
 };
 
 const DenseCard: FC<DenseProps> = ({
@@ -151,18 +157,22 @@ const DenseCard: FC<DenseProps> = ({
   badge,
   overlay,
   tooltipPosition = "top",
+  showAuthor = false,
 }) => {
   const href = book.hiveId ? `/books/${book.hiveId}` : undefined;
   const Tag = href ? "a" : "div";
 
   return (
-    <div class={`relative ${className ?? ""}`}>
+    // `hover:z-30`: the tooltip is z-20 inside this wrapper, but sibling grid items are
+    // unlayered, so DOM order would paint it *under* the covers of later cards in the row.
+    // Raising the whole card while hovered is what PersonalBookCard does with has-[:checked]:z-20.
+    <div class={`relative hover:z-30 ${className ?? ""}`}>
       <div class="group relative">
         <BookTooltip book={book} position={tooltipPosition} />
 
         <Tag
           {...(href ? { href } : {})}
-          class="relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-md"
+          class="book-cover-frame relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-md"
         >
           <CoverImage book={book} class="h-full w-full object-cover" />
           {badge}
@@ -188,6 +198,11 @@ const DenseCard: FC<DenseProps> = ({
           {book.title}
         </h3>
       )}
+      {showAuthor && book.authors && (
+        <p class="mt-0.5 text-xs leading-tight text-muted-foreground line-clamp-1">
+          {authorsDisplay(book.authors)}
+        </p>
+      )}
     </div>
   );
 };
@@ -204,13 +219,13 @@ type ListProps = {
 
 const ListCard: FC<ListProps> = ({ book, class: className, children }) => {
   return (
-    <div class={`relative ${className ?? ""}`}>
+    <div class={`relative hover:z-30 ${className ?? ""}`}>
       <div class="group relative">
         <BookTooltip book={book} position="top" showChips={false} />
 
         <a
           href={book.hiveId ? `/books/${book.hiveId}` : undefined}
-          class="block overflow-hidden rounded-lg transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+          class="book-cover-frame block overflow-hidden rounded-lg transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
         >
           <div class="aspect-[2/3] w-full">
             <CoverImage book={book} class="h-full w-full object-cover" />

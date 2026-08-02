@@ -55,21 +55,14 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
   const profileMap = new Map<string, (typeof profiles)[number]>(profiles.map((p) => [p.did, p]));
 
   if (!peerBooks.length) {
-    return (
-      <div class="rounded-xl bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
-        Be the first to read this on BookHive!
-      </div>
-    );
+    return <p class="empty-description text-center">Be the first to read this on BookHive!</p>;
   }
 
   if (peerBooks.every((related) => related.userDid === did)) {
     return (
-      <div
-        class="rounded-xl bg-card px-4 py-6 text-center text-sm text-muted-foreground shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-        style={{ textWrap: "balance" }}
-      >
+      <p class="empty-description text-center">
         You are the only one to have added this on BookHive, so far!
-      </div>
+      </p>
     );
   }
 
@@ -82,6 +75,11 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
           const profile = profileMap.get(related.userDid);
           const handle = profile?.handle || related.userDid;
           const avatar = profile?.avatar;
+          // Handles don't always resolve; a bare 32-char `did:plc:…` is unreadable and wraps
+          // the row onto three lines. Shorten it but keep the full value in the title.
+          const label = handle.startsWith("did:")
+            ? `${handle.slice(0, 12)}…${handle.slice(-4)}`
+            : `@${handle}`;
           return (
             <a
               key={related.userDid}
@@ -99,7 +97,9 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
                 <div class="h-8 w-8 shrink-0 rounded-full bg-muted" />
               )}
               <div class="min-w-0">
-                <span class="text-primary font-medium">@{handle}</span>
+                <span class="text-primary font-medium" title={handle}>
+                  {label}
+                </span>
                 <span class="text-muted-foreground">
                   {" "}
                   -{" "}
@@ -273,6 +273,11 @@ export const BookInfo: FC<{
                         coverImageUrl(book.id) ?? sourceCoverImageUrl(book.cover || book.thumbnail)
                       }
                       alt={`Cover of ${book.title}`}
+                      decoding="async"
+                      /* The LCP element on /books/:id — the page anon page-caching exists to
+                         serve. `aspect-2/3` already reserves the box, so this only affects
+                         fetch order, not layout. */
+                      fetchpriority="high"
                       class="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover outline outline-1 outline-black/5"
                       style={`--book-cover-name: book-cover-${book.id}`}
                     />
@@ -286,7 +291,7 @@ export const BookInfo: FC<{
             {/* Info */}
             <div class="flex-1">
               <h1
-                class="book-title mb-1 text-2xl font-bold md:text-3xl dark:text-gray-100"
+                class="book-title text-foreground mb-1 text-2xl font-bold md:text-3xl"
                 style={`--book-title-name: book-title-${book.id}; text-wrap: balance`}
               >
                 {book.title}
@@ -513,6 +518,16 @@ export const BookInfo: FC<{
                     </form>
                   )}
 
+                  {/* Logged-out CTA. Without this the action row holds nothing but the
+                      right-aligned Share button, so it reads as an empty strip — and an anonymous
+                      visitor (the audience /books/* is anon-cached for) gets no way to act on the
+                      book at all. */}
+                  {!did && (
+                    <a href="/login" class="btn btn-primary min-h-10">
+                      Add to your library
+                    </a>
+                  )}
+
                   {/* Share dropdown */}
                   <div class="relative ml-auto">
                     <button
@@ -697,7 +712,7 @@ export const BookInfo: FC<{
                     <a
                       key={index}
                       href={`/explore/genres/${encodeURIComponent(genre)}`}
-                      class="genre-name min-h-[40px] inline-flex items-center rounded-full bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
+                      class="genre-name min-h-10 inline-flex items-center rounded-full bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
                       style={`--genre-name: genre-${genre}`}
                     >
                       {genre}
@@ -714,10 +729,10 @@ export const BookInfo: FC<{
       {book.description && (
         <div class="card">
           <div class="card-body">
-            <h2 class="mb-3 text-lg font-semibold text-foreground">Description</h2>
+            <h2 class="card-title mb-3">Description</h2>
             <input type="checkbox" id="desc-expand" class="peer hidden" />
             <div
-              class="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-gray-700 peer-checked:line-clamp-none dark:text-gray-300"
+              class="text-foreground/90 max-w-none leading-relaxed peer-checked:line-clamp-none"
               style="display: -webkit-box; -webkit-line-clamp: 10; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty"
               id="desc-content"
               dangerouslySetInnerHTML={{ __html: book.description }}
@@ -762,7 +777,7 @@ export const BookInfo: FC<{
       {did && (
         <div class="card">
           <div class="card-body space-y-6">
-            <h2 class="text-xl font-bold text-foreground">Your Activity</h2>
+            <h2 class="card-title">Your Activity</h2>
 
             <form action="/books" method="post" id="activity-form">
               {/* Hidden fields to preserve book identity */}
@@ -863,7 +878,7 @@ export const BookInfo: FC<{
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
                         min={0}
-                        class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
+                        class="input focus-ring w-20 px-2 py-1.5 text-sm"
                         placeholder="0"
                       />
                       <span class="text-muted-foreground">/</span>
@@ -876,7 +891,7 @@ export const BookInfo: FC<{
                           (meta?.numPages ? meta.numPages : "")
                         }
                         min={1}
-                        class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
+                        class="input focus-ring w-20 px-2 py-1.5 text-sm"
                         placeholder="Total"
                       />
                     </div>
@@ -895,7 +910,7 @@ export const BookInfo: FC<{
                             name="currentChapter"
                             value={usersBook?.bookProgress?.currentChapter ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
+                            class="input focus-ring w-20 px-2 py-1.5 text-sm"
                             placeholder="0"
                           />
                           <span class="text-muted-foreground">/</span>
@@ -905,7 +920,7 @@ export const BookInfo: FC<{
                             name="totalChapters"
                             value={usersBook?.bookProgress?.totalChapters ?? ""}
                             min={1}
-                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
+                            class="input focus-ring w-20 px-2 py-1.5 text-sm"
                             placeholder="Total"
                           />
                         </div>
@@ -918,7 +933,7 @@ export const BookInfo: FC<{
                             value={usersBook?.bookProgress?.percent ?? ""}
                             min={0}
                             max={100}
-                            class="w-20 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-50"
+                            class="input focus-ring w-20 px-2 py-1.5 text-sm"
                             placeholder="Auto"
                           />
                           <span class="text-xs text-muted-foreground">
@@ -1010,7 +1025,7 @@ export const BookInfo: FC<{
                 <button
                   type="button"
                   id="delete-book-btn"
-                  class="min-h-[40px] inline-flex items-center cursor-pointer text-xs text-muted-foreground hover:text-destructive"
+                  class="min-h-10 inline-flex items-center cursor-pointer text-xs text-muted-foreground hover:text-destructive"
                 >
                   Remove from library
                 </button>
@@ -1109,7 +1124,7 @@ export const BookInfo: FC<{
         (meta.secondaryAuthors && meta.secondaryAuthors.length > 0)) && (
         <div class="card">
           <div class="card-body">
-            <h2 class="mb-3 text-lg font-semibold text-foreground">
+            <h2 class="card-title mb-3">
               About{" "}
               <a
                 href={`/authors/${encodeURIComponent(firstAuthor)}`}
@@ -1124,7 +1139,7 @@ export const BookInfo: FC<{
                   <input type="checkbox" id="author-expand" class="peer hidden" />
                   <div
                     id="author-bio-content"
-                    class="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed text-muted-foreground"
+                    class="text-muted-foreground max-w-none text-sm leading-relaxed"
                     style="display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;"
                     dangerouslySetInnerHTML={{ __html: meta.authorBio }}
                   />
@@ -1208,11 +1223,11 @@ export const BookInfo: FC<{
       )}
 
       {/* ===== SECTION 5: Community ===== */}
-      <div class="grid gap-6 md:grid-cols-2">
+      <div class="grid items-start gap-6 md:grid-cols-2">
         {/* Who's Reading */}
         <div class="card">
           <div class="card-header">
-            <h3 class="text-lg font-semibold text-foreground">Who's Reading This</h3>
+            <h2 class="card-title">Who's Reading This</h2>
           </div>
           <div class="card-body">
             <Recommendations book={book} did={did} />
@@ -1222,7 +1237,7 @@ export const BookInfo: FC<{
         {/* Shelves */}
         <div class="card">
           <div class="card-header">
-            <h3 class="text-lg font-semibold text-foreground">Shelves</h3>
+            <h2 class="card-title">Shelves</h2>
           </div>
           <div class="card-body space-y-3">
             {/* Other users' shelves */}
@@ -1317,7 +1332,7 @@ export const BookInfo: FC<{
                         <span class="flex items-center justify-between">
                           <span>Add to shelf...</span>
                           <svg
-                            class="h-4 w-4 text-gray-400"
+                            class="text-muted-foreground h-4 w-4"
                             viewBox="0 0 20 20"
                             fill="currentColor"
                             aria-hidden="true"
@@ -1391,7 +1406,7 @@ export const BookInfo: FC<{
       {/* ===== SECTION 6: Reviews (always visible) ===== */}
       <div>
         <CommentsSection book={book} did={did} reviewId={reviewId}>
-          <h2 class="mb-5 text-2xl font-bold text-foreground">
+          <h2 class="card-title mb-5">
             Reviews
             {reviewCount > 0 && (
               <span style={{ fontVariantNumeric: "tabular-nums" }}>{` (${reviewCount})`}</span>

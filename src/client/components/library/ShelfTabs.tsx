@@ -4,7 +4,7 @@ import { AnchoredMenu, MenuConfirm, MenuItem } from "./AnchoredMenu";
 import type { Shelf } from "./types";
 
 const tabClass = (active: boolean): string =>
-  `tab-label flex min-h-[40px] cursor-pointer items-center gap-1.5 px-3 py-2 text-sm font-medium transition-[color,border-color] duration-150 active:scale-[0.96] ${
+  `tab-label flex min-h-10 cursor-pointer items-center gap-1.5 px-3 py-2 text-sm font-medium transition-[color,border-color] duration-150 active:scale-[0.96] ${
     active
       ? "border-b-2 border-primary text-foreground"
       : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
@@ -89,7 +89,7 @@ export const ShelfTabs: FC<{
 
         {shelves.map((shelf) =>
           renamingId === shelf.id ? (
-            <div key={shelf.id} class="flex min-h-[40px] items-center gap-1 px-2">
+            <div key={shelf.id} class="flex min-h-10 items-center gap-1 px-2">
               <input
                 ref={renameInputRef}
                 type="text"
@@ -181,7 +181,7 @@ export const ShelfTabs: FC<{
         )}
 
         {creating ? (
-          <div class="flex min-h-[40px] items-center gap-1 px-2">
+          <div class="flex min-h-10 items-center gap-1 px-2">
             <input
               ref={createInputRef}
               type="text"
@@ -226,7 +226,7 @@ export const ShelfTabs: FC<{
         ) : (
           <button
             type="button"
-            class="flex min-h-[40px] items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:scale-[0.96]"
+            class="flex min-h-10 items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:scale-[0.96]"
             onClick={() => setCreating(true)}
           >
             <svg

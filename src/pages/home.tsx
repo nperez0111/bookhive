@@ -96,7 +96,7 @@ export const Home: FC = async () => {
           <h2 class="card-title">Quick Stats</h2>
           <a
             href={`/profile/${profile.handle}/stats`}
-            class="text-primary min-h-[40px] inline-flex items-center text-sm hover:underline active:scale-[0.96] transition-[transform] duration-150"
+            class="text-primary min-h-10 inline-flex items-center text-sm hover:underline active:scale-[0.96] transition-[transform] duration-150"
           >
             See full stats →
           </a>
@@ -131,7 +131,7 @@ export const Home: FC = async () => {
                 You're not reading anything right now.{" "}
                 <a
                   href="/explore"
-                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                  class="text-primary inline-flex min-h-10 items-center hover:underline"
                 >
                   Find your next book
                 </a>
@@ -153,14 +153,14 @@ export const Home: FC = async () => {
                 Your reading list is empty.{" "}
                 <a
                   href="/explore"
-                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                  class="text-primary inline-flex min-h-10 items-center hover:underline"
                 >
                   Explore books
                 </a>{" "}
                 or{" "}
                 <a
                   href="/import"
-                  class="text-primary inline-flex min-h-[40px] items-center hover:underline"
+                  class="text-primary inline-flex min-h-10 items-center hover:underline"
                 >
                   import your library
                 </a>

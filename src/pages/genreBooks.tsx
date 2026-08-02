@@ -50,10 +50,13 @@ const ChevronRight = () => (
 
 const NO_BOOKS_FOUND = (genre: string) => (
   <div class="card">
-    <section class="py-12 text-center">
-      <h3 class="text-xl font-semibold text-foreground">No books found</h3>
-      <p class="text-muted-foreground mt-2">No books found in the "{genre}" genre yet.</p>
-    </section>
+    <div class="empty">
+      <h3 class="empty-title">No books found</h3>
+      <p class="empty-description">No books found in the "{genre}" genre yet.</p>
+      <a href="/explore/genres" class="btn btn-outline mt-4 min-h-10">
+        Browse all genres
+      </a>
+    </div>
   </div>
 );
 
@@ -127,14 +130,15 @@ export const GenreBooks: FC<GenreBooksProps> = ({
         ) : (
           <>
             <p class="text-muted-foreground tabular-nums text-sm">
-              Showing {start}-{end} of {totalBooks} books
+              Showing {start.toLocaleString()}–{end.toLocaleString()} of{" "}
+              {totalBooks.toLocaleString()} books
             </p>
 
             <div class="card">
               <section>
                 <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {books.map((book) => (
-                    <BookCard variant="dense" book={normalizeBookData(book)} />
+                    <BookCard variant="dense" showAuthor book={normalizeBookData(book)} />
                   ))}
                 </ul>
               </section>
@@ -176,7 +180,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
                   return (
                     <a
                       href={buildUrl(basePath, { sort: sortBy, page: String(pageNum), lang })}
-                      class={`btn btn-sm tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
+                      class={`btn btn-sm min-w-10 min-h-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
                       aria-current={isCurrentPage ? "page" : undefined}
                     >
                       {pageNum}

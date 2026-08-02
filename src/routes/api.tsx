@@ -389,7 +389,7 @@ const app = new Hono<AppEnv>()
   .post("/follow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.redirect("/", 302);
+      return c.redirect("/login", 302);
     }
     const { did } = c.req.valid("form");
     let targetHandle = did;
@@ -541,7 +541,7 @@ const app = new Hono<AppEnv>()
   .post("/unfollow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.redirect("/", 302);
+      return c.redirect("/login", 302);
     }
     const { did } = c.req.valid("form");
     let targetHandle = did;

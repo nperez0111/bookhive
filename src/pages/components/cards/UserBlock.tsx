@@ -31,10 +31,19 @@ export const UserBlock: FC<{
     <div class={`bg-muted ${avatarClass} rounded-full`} />
   );
 
+  // Callers fall back to the raw DID when a handle hasn't resolved yet
+  // (`user.handle ?? user.did`). A 32-char `did:plc:…` reads as noise and blows out narrow
+  // columns, so show it shortened while keeping the full value in the tooltip.
+  const isDid = handle.startsWith("did:");
+  const label = isDid ? `${handle.slice(0, 12)}…${handle.slice(-4)}` : `@${handle}`;
+
   const handleEl = (
+    // `truncate`, not `whitespace-nowrap`: without it these chips overflow their column at 320px.
     <>
-      <span class="text-foreground font-semibold whitespace-nowrap">@{handle}</span>
-      {showName && <div class="text-muted-foreground text-xs whitespace-nowrap">{displayName}</div>}
+      <span class="text-foreground block truncate font-semibold" title={handle}>
+        {label}
+      </span>
+      {showName && <div class="text-muted-foreground truncate text-xs">{displayName}</div>}
     </>
   );
 
@@ -56,8 +65,9 @@ export const UserBlock: FC<{
             <a
               href={`/profile/${handle}`}
               class="text-foreground hover:text-primary font-semibold truncate block"
+              title={handle}
             >
-              @{handle}
+              {label}
             </a>
             {showName && <div class="text-muted-foreground text-xs truncate">{displayName}</div>}
           </>
