@@ -270,18 +270,24 @@ used to be silent. `OG_RENDER_OPTIONS.onError` suppresses takumi's
 `defaultErrorHandler`, which wrote unstructured `Failed to render image.` +
 raw DOMException dumps to stdout.
 
-**Rendered cards are cached in the shared KV**, not in process memory —
-`src/utils/ogCache.ts` (`og:` mount → `og_cache` table), with a per-process
-in-flight map that collapses a concurrent burst on one cold card into a single
-render. This was ocache's `defineCachedFunction`, whose default store is a plain
-`Map` with **no size cap or eviction**, holding webp bytes as `Uint8Array` —
-native memory, invisible to `heapUsed`, duplicated per worker, for up to 7 days.
-Production traffic is a crawler sweeping the catalog (674 distinct cards in 3h
-at a 4.4% hit rate), so it only ever grew. The primary worker sweeps `og_cache`
-and publishes `bookhive_og_cache_entries`/`_bytes` on the same 15-min timer as
-`page_cache`. The plumbing lives in `src/utils/ogCache.ts` rather than here
-specifically so `src/context.ts` can run the sweep without an import cycle
-through the render worker's module-scope pino instance.
+**There is no server-side OG cache, deliberately — Cloudflare is the cache.**
+Every render is on demand. These responses carry `public, max-age=…`, so a card
+requested twice is served from the edge and never reaches the origin; measured
+over 48h of production traffic the origin sees an almost perfectly unique
+stream — 1,189 requests across 1,134 distinct cards, **1,081 requested exactly
+once**, max 4 repeats. A _perfect_ origin cache could have served 4% of them.
+That 4% was previously bought with ocache's `defineCachedFunction`, whose
+default store is a plain `Map` with **no size cap or eviction**, holding webp
+bytes as `Uint8Array` — native memory, invisible to `heapUsed`, duplicated per
+worker, for up to 7 days; and then with an `og_cache` KV table that cost a
+base64 round-trip, a sweep on the 15-min timer, two gauges and another writer to
+the file we already have to VACUUM. Rendering costs ~600ms p50 on a worker
+thread, ~25 times an hour. **Do not add the cache back without re-measuring that
+repeat rate** — if it is still ~4%, an origin cache is strictly overhead.
+
+The one thing kept is `renderOnce` in `src/routes/og.tsx`: concurrent requests
+for the _same_ cold card share a single render rather than starting N. It holds
+promises, never bytes, and always clears in `finally`.
 
 ### `src/routes/sync/kosync.ts` (mounted at `/kosync`) — KOReader sync (KOSync protocol)
 
@@ -494,7 +500,7 @@ it is the server-side re-read rotation in `updateBookRecord`
 
 ### KV Cache (`src/sqlite-kv.ts`)
 
-SQLite-backed unstorage for: profiles, identity resolution, search results, auth sessions/state, follows sync timestamps, sync pending PDS writes, cached anonymous pages (`page:`), and rendered OG cards (`og:`).
+SQLite-backed unstorage for: profiles, identity resolution, search results, auth sessions/state, follows sync timestamps, sync pending PDS writes, and cached anonymous pages (`page:`).
 
 **The KV is VACUUMed on startup** by the primary worker (`vacuumKvIfBloated`),
 gated on a 25% free-page ratio, and switched to `auto_vacuum = INCREMENTAL` so
@@ -533,7 +539,6 @@ took 1.36s, cheap enough to run on every deploy.
 | `src/utils/syncMatching.ts`                                                                                                    | KOReader document → BookHive book matching (exact); `NO_HIVE_MATCH` sentinel |
 | `src/utils/syncBridge.ts`                                                                                                      | Bridge e-reader progress → user_book + queue PDS write                       |
 | `src/utils/personalLibrary.ts`                                                                                                 | Personal library file paths, `MAX_PERSONAL_BOOK_BYTES`, `streamPersonalBook` |
-| `src/utils/ogCache.ts`                                                                                                         | Shared KV cache for rendered OG cards + sweep stats                          |
 | `src/utils/ftsQuery.ts`                                                                                                        | Builds FTS5 MATCH expressions from free-text search input                    |
 | `src/utils/htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts` | misc helpers                                                                 |
 
@@ -786,9 +791,9 @@ Metrics conventions in `src/metrics.ts`:
   unbounded allocations actually live, and they were unmeasured through the
   whole incident. Under Bun `heap_total`/`heap_used` are JSC values —
   `heap_used > heap_total` is normal and is **not** a labelling bug.
-- Cluster-wide gauges (`bookhive_enrich_queue_depth`, `bookhive_og_cache_*`)
-  describe shared SQLite state and are published by the primary worker only, so
-  they are never triple-counted.
+- Cluster-wide gauges (`bookhive_enrich_queue_depth`) describe shared SQLite
+  state and are published by the primary worker only, so they are never
+  triple-counted.
 - An empty metric family emits its `# HELP`/`# TYPE` header and no samples.
   The old `name 0` placeholder published an unlabelled sample for metrics whose
   real samples are labelled, which Prometheus rejects as an inconsistent label

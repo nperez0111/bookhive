@@ -4,16 +4,14 @@
  *
  * Route handlers run DB queries and build props on the main thread.
  * Rendering is offloaded to a dedicated worker thread via renderOgImage().
- * Results are cached in the shared SQLite KV (`og:` mount) with per-route TTLs.
+ * There is **no server-side cache** — see the note above `renderOnce` below.
  */
 import { Hono } from "hono";
 import { isDid } from "@atcute/lexicons/syntax";
-import type { Storage } from "unstorage";
 
 import type { AppEnv } from "../context";
 import type { Context } from "hono";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
-import { cachedOgRender, ogCacheKey } from "../utils/ogCache";
 import { BookFields } from "../db";
 import type { Book, HiveId } from "../types";
 import { getProfile } from "../utils/getProfile";
@@ -32,15 +30,36 @@ import type { OgCard } from "../workers/og-render/types";
 // ─── Cache + helpers ─────────────────────────────────────────────────────────
 
 /**
- * Rendered cards live in the shared SQLite KV, not in process memory — see
- * src/utils/ogCache.ts for why. The plumbing lives there rather than here so
- * src/context.ts can run the sweep without importing this module (which would
- * cycle back through the render worker's module-scope logger).
+ * Renders are **not cached server-side**. Cloudflare is the cache: these
+ * responses carry `public, max-age=…`, and a card that gets requested twice is
+ * served from the edge without touching the origin. Measured over 48h of
+ * production traffic, the origin therefore sees an almost perfectly unique
+ * stream — 1,189 requests across 1,134 distinct cards, 1,081 of them requested
+ * exactly once, max 4 repeats. A *perfect* origin cache could have served 4% of
+ * them.
+ *
+ * That 4% was previously bought with an unbounded per-process `Map` of webp
+ * bytes (the OOM), and then with an `og_cache` KV table that cost a base64
+ * round-trip, a sweep on the 15-min timer, two gauges, and an extra writer to a
+ * file we already have to VACUUM. Rendering on demand costs ~600ms p50 on a
+ * worker thread, ~25 times an hour.
+ *
+ * `renderOnce` is all that survives: concurrent requests for the *same* cold
+ * card share one render instead of starting N. It holds promises, never bytes,
+ * and always clears in `finally`.
  */
-function cachedRenderOg(kv: Storage, card: OgCard, ttlSeconds: number) {
-  return cachedOgRender(kv, ogCacheKey(card.kind, card.props), ttlSeconds, () =>
-    renderOgImage(card),
-  );
+const inflight = new Map<string, Promise<Uint8Array<ArrayBuffer>>>();
+
+function renderOnce(card: OgCard): Promise<Uint8Array<ArrayBuffer>> {
+  const key = `${card.kind}:${Bun.hash(JSON.stringify(card.props)).toString(36)}`;
+  const existing = inflight.get(key);
+  if (existing) return existing;
+
+  const work = renderOgImage(card).then((buf) => new Uint8Array(buf) as Uint8Array<ArrayBuffer>);
+  inflight.set(key, work);
+  return work.finally(() => {
+    inflight.delete(key);
+  });
 }
 
 // Cache TTLs in seconds
@@ -108,7 +127,7 @@ async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number):
   const end = imageProcessingDuration.startTimer(LABEL.op.og_image);
   activeOperations.inc(LABEL.op.og_image);
   try {
-    const bytes = await cachedRenderOg(c.get("ctx").kv, card, maxAge);
+    const bytes = await renderOnce(card);
     return new Response(bytes, {
       headers: {
         "Content-Type": "image/webp",

@@ -34,7 +34,6 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
-import { OG_CACHE_MAX_TTL_MS, publishOgCacheStats } from "./utils/ogCache";
 import sqliteKv, { createSharedKvDb, incrementalVacuumKv, vacuumKvIfBloated } from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./utils/enrichQueue";
 import { lazy } from "./utils/lazy";
@@ -183,10 +182,6 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
-  // Rendered OG cards (see src/routes/og.tsx). Shared so one render serves all
-  // workers — this was a per-process unbounded Map holding webp bytes for up
-  // to seven days.
-  kv.mount("og:", sqliteKv({ table: "og_cache", db: kvDb }));
   if (isPrimaryWorker) {
     // Expire old cached pages so a bot sweep of the long tail can't grow the
     // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
@@ -201,24 +196,7 @@ export async function createAppDeps(): Promise<AppDeps> {
             logger.error({ err: e }, "page_cache cleanup failed");
           });
 
-        // Same idea for OG cards. The longest TTL is 7 days (TTL.STATIC), so
-        // anything untouched for twice that is a card nothing links to any
-        // more — a crawler sweep of the long tail must not grow the KV file
-        // without bound.
-        const ogCutoff = new Date(Date.now() - 2 * OG_CACHE_MAX_TTL_MS).toISOString();
-        void sql`DELETE FROM og_cache WHERE updated_at < ${ogCutoff}`
-          .execute(kvDb)
-          .catch((e: any) => {
-            if (String(e?.message).includes("no such table")) return;
-            logger.error({ err: e }, "og_cache cleanup failed");
-          });
-
-        void publishOgCacheStats(kvDb).catch((e: any) => {
-          if (String(e?.message).includes("no such table")) return;
-          logger.error({ err: e }, "og_cache stats failed");
-        });
-
-        // Hand the pages those two DELETEs just freed back to the filesystem.
+        // Hand the pages that DELETE just freed back to the filesystem.
         // Bounded, so it can never become the multi-second stall a full VACUUM
         // would be on this timer.
         incrementalVacuumKv(kvSqlite);

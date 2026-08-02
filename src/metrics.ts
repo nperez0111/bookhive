@@ -269,14 +269,6 @@ export const enrichQueueDepth = registry.register(
   new Gauge("bookhive_enrich_queue_depth", "Rows in enrich_queue by state"),
 );
 
-export const ogCacheEntries = registry.register(
-  new Gauge("bookhive_og_cache_entries", "Cached OG images"),
-);
-
-export const ogCacheBytes = registry.register(
-  new Gauge("bookhive_og_cache_bytes", "Bytes held by cached OG images"),
-);
-
 // ─── Runtime gauges ─────────────────────────────────────────────────────────
 
 export const processMemoryBytes = registry.register(
