@@ -57,17 +57,16 @@ call; the worker returns updated values to fold back in.
 - **Crypto config** is cached in memory keyed by the `challenge.js` URL. It only
   changes when Goodreads deploys a new challenge script (rare), so it's reused
   across solves.
-- **WAF token** is cached for `TOKEN_MAX_AGE_MS` (currently 10 minutes) and
-  reused across all Goodreads pages. If a fetch with it fails, the worker
-  re-solves and returns a fresh token; if a solve fails the cached token is
-  dropped.
+- **WAF token** is cached for `TOKEN_MAX_AGE_MS` (4 minutes) and reused across
+  all Goodreads pages. If a fetch with it fails, the worker re-solves and
+  returns a fresh token; if a solve fails the cached token is dropped.
 
-  > **The measured token lifetime is 300 s**, not 10 minutes — AWS WAF's default
-  > challenge immunity time. Probed 2026-08-02 (`waf-lab/token-lifetime.ts`): the
-  > same token was still accepted at 241 s and was challenged again at 301 s. So
-  > the back half of every cache window sends a dead token and pays a full
-  > re-solve (4 requests instead of 1). `TOKEN_MAX_AGE_MS` should be ~4 min.
-  > No per-token _use_ limit was observed — one token served 10 pages in ~30 s.
+  > **The measured token lifetime is 300 s** — AWS WAF's default challenge
+  > immunity time. Probed 2026-08-02: the same token was still accepted at 241 s
+  > and was challenged again at 301 s. The cache window is deliberately set below
+  > that; it was previously 10 minutes, so the back half of every window sent a
+  > dead token and paid a full re-solve (4 requests instead of 1). No per-token
+  > _use_ limit was observed — one token served 10 pages in ~30 s.
 
 - On a cold start the full solve takes ~1.5-2 s. Subsequent requests reuse the
   cached token and are a single `fetch()` in the worker (~200 ms).
@@ -104,7 +103,7 @@ responses the WAF generated itself:
 Only `waf_token_rejected` triggers the second solve attempt; the other two return
 immediately, saving 3 of the 7 requests the old failure path spent.
 
-Measured 2026-08-02 from a residential IP (`waf-lab/`, ~450 requests total):
+Measured 2026-08-02 from a residential IP (~450 requests total):
 sequential fetches were never challenged (0/40); challenges appeared only under
 concurrency (4/12 at C=4, 10/20 at C=10, 7/24 at C=12) and **every one of the 21
 was solved successfully** (`statusWithToken: 200`). Forcing a challenge with a
