@@ -13,6 +13,7 @@ const app = createApp({
 // Ensure worker threads are terminated on shutdown so the process can exit cleanly.
 function shutdown() {
   void deps.ingester.destroy();
+  deps.stopEnrichmentDrain();
   destroyLogger();
   process.exit(0);
 }

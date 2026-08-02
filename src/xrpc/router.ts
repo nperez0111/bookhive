@@ -100,6 +100,7 @@ import {
 } from "../utils/personalLibrary";
 import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
+import { truncateForLog } from "../middleware/wide-event";
 
 /**
  * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
@@ -295,6 +296,43 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   deps: XrpcDeps<E>,
 ): void {
   const router = new XRPCRouter();
+
+  // XRPCRouter catches handler throws and turns them into a 500 Response, so
+  // Hono's error-capture middleware never sees them and the wide event logs an
+  // error-level line with no `error` field at all. Record the cause on the way
+  // past. Patching the two registration methods once beats annotating 40+
+  // handlers (and can't be forgotten by the next one added).
+  for (const method of ["addQuery", "addProcedure"] as const) {
+    const original = router[method].bind(router) as (schema: unknown, options: any) => unknown;
+    (router as any)[method] = (schema: unknown, options: any) => {
+      const handler = options?.handler;
+      if (typeof handler !== "function") return original(schema, options);
+      return original(schema, {
+        ...options,
+        handler: async (input: unknown) => {
+          try {
+            return await handler(input);
+          } catch (err) {
+            // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control
+            // flow, not defects — record them without a stack.
+            const status = (err as { status?: unknown } | null)?.status;
+            const isIntentional = typeof status === "number" && status < 500;
+            xrpcContextStorage.getStore()?.addWideEventContext({
+              xrpc_handler: "threw",
+              error: {
+                message: err instanceof Error ? err.message : String(err),
+                type: err instanceof Error ? err.name : "Error",
+                ...(!isIntentional && err instanceof Error && err.stack
+                  ? { stack: truncateForLog(err.stack) }
+                  : {}),
+              },
+            });
+            throw err;
+          }
+        },
+      });
+    };
+  }
 
   router.addQuery(BuzzBookhiveSearchBooks, {
     async handler({ params: _params }) {

@@ -690,7 +690,7 @@ export const BookInfo: FC<{
                   {genres.map((genre: string, index: number) => (
                     <a
                       key={index}
-                      href={`/genres/${encodeURIComponent(genre)}`}
+                      href={`/explore/genres/${encodeURIComponent(genre)}`}
                       class="genre-name min-h-[40px] inline-flex items-center rounded-full bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
                       style={`--genre-name: genre-${genre}`}
                     >

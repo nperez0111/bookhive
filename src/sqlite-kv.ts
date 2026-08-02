@@ -4,9 +4,48 @@ import { Kysely, SqliteDialect } from "kysely";
 import { Database as DatabaseSync } from "bun:sqlite";
 
 function applyStandardPragmas(sqlite: DatabaseSync) {
-  sqlite.exec("PRAGMA busy_timeout = 5000");
+  // 10s: four cluster processes share this file, and a write can queue behind
+  // another process's checkpoint.
+  sqlite.exec("PRAGMA busy_timeout = 10000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL");
+}
+
+/** Numeric SQLite result codes: SQLITE_BUSY and SQLITE_BUSY_SNAPSHOT. */
+const BUSY_ERRNOS = new Set([5, 517]);
+
+/** SQLITE_BUSY that survived busy_timeout — retry a whole transaction. */
+function isBusyError(err: unknown): boolean {
+  const e = err as { code?: unknown; errno?: unknown; errcode?: unknown } | null;
+  if (e?.code === "SQLITE_BUSY" || e?.code === "SQLITE_BUSY_SNAPSHOT") return true;
+  // bun:sqlite exposes `errno`; node:sqlite uses `errcode`.
+  for (const numeric of [e?.errno, e?.errcode]) {
+    if (typeof numeric === "number" && BUSY_ERRNOS.has(numeric)) return true;
+  }
+  return /database is locked/i.test((err as Error)?.message ?? "");
+}
+
+/**
+ * Each attempt can itself block for up to `busy_timeout` (10s), so a plain
+ * attempt count could hold a request for ~30s. Bound the whole thing instead:
+ * once the budget is spent, propagate the busy error rather than queueing
+ * further behind sustained contention.
+ */
+const BUSY_RETRY_BUDGET_MS = 12_000;
+
+async function withBusyRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  const deadline = Date.now() + BUSY_RETRY_BUDGET_MS;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= attempts || !isBusyError(err)) throw err;
+      const backoff = 25 * 2 ** (attempt - 1) + Math.floor(Math.random() * 25);
+      if (Date.now() + backoff >= deadline) throw err;
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+      if (Date.now() >= deadline) throw err;
+    }
+  }
 }
 
 interface TableSchema {
@@ -126,29 +165,31 @@ export default defineDriver<
     async setItems(items) {
       const now = new Date().toISOString();
 
-      await getDb()
-        .transaction()
-        .execute(async (trx) => {
-          await Promise.all(
-            items.map(({ key, value }) => {
-              return trx
-                .insertInto(table)
-                .values({
-                  id: key,
-                  value,
-                  created_at: now,
-                  updated_at: now,
-                })
-                .onConflict((oc) =>
-                  oc.column("id").doUpdateSet({
+      await withBusyRetry(() =>
+        getDb()
+          .transaction()
+          .execute(async (trx) => {
+            await Promise.all(
+              items.map(({ key, value }) => {
+                return trx
+                  .insertInto(table)
+                  .values({
+                    id: key,
                     value,
+                    created_at: now,
                     updated_at: now,
-                  }),
-                )
-                .execute();
-            }),
-          );
-        });
+                  })
+                  .onConflict((oc) =>
+                    oc.column("id").doUpdateSet({
+                      value,
+                      updated_at: now,
+                    }),
+                  )
+                  .execute();
+              }),
+            );
+          }),
+      );
     },
 
     async removeItem(key: string) {

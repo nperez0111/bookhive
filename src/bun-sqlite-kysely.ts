@@ -31,6 +31,20 @@ function isReaderStatement(sql: string): boolean {
 }
 
 /**
+ * Kysely opens transactions with a bare `begin`, which SQLite treats as
+ * DEFERRED: the write lock is only taken when the first write executes. If
+ * another process wrote in between, that upgrade fails with
+ * SQLITE_BUSY_SNAPSHOT — and the busy handler is **not** invoked for that case,
+ * so `PRAGMA busy_timeout` cannot save it. With four cluster processes on one
+ * database file, that is the residual "database is locked" (48× in 24h on
+ * 2026-08-01). BEGIN IMMEDIATE takes the write lock up front, where the busy
+ * timeout does apply.
+ */
+export function toImmediateTransaction(sql: string): string {
+  return /^\s*begin\s*;?\s*$/i.test(sql) ? "begin immediate" : sql;
+}
+
+/**
  * Wraps bun:sqlite's Database to match the interface Kysely's SqliteDialect expects.
  */
 export function wrapBunSqliteForKysely(db: DatabaseSync): KyselySqliteDatabase {
@@ -38,7 +52,8 @@ export function wrapBunSqliteForKysely(db: DatabaseSync): KyselySqliteDatabase {
     close() {
       db.close();
     },
-    prepare(sql: string): KyselySqliteStatement {
+    prepare(rawSql: string): KyselySqliteStatement {
+      const sql = toImmediateTransaction(rawSql);
       const stmt = db.prepare(sql);
       const reader = isReaderStatement(sql);
       return {

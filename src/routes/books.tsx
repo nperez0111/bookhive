@@ -3,7 +3,7 @@
  * Parent must run methodOverride for /books/:hiveId before mounting this router.
  */
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { endTime, startTime } from "hono/timing";
 import { z } from "zod";
 
@@ -15,13 +15,55 @@ import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
+import { enqueueEnrichment } from "../utils/enrichQueue";
+import { withTimeout } from "../utils/semaphore";
+
+/** How long an explicit `?force-refresh=true` will wait before falling back to
+ *  the data we already have. */
+const FORCE_REFRESH_TIMEOUT_MS = 15_000;
+
+/** Hive ids are `bk_` + base62. Anything else (notably the `/books/null` a
+ *  buggy client kept requesting) is a client bug, not a missing book. */
+const HIVE_ID_PATTERN = /^bk_[A-Za-z0-9]+$/;
+
+/**
+ * Reject a malformed `:hiveId` with a 400 instead of letting it reach the DB.
+ * Records the id and referer so the offending caller is identifiable, and sets
+ * `no-store` — the surrounding routes set a long public Cache-Control, and a
+ * cached 400 would be served to everyone hitting the same bad URL.
+ */
+function rejectBadHiveId(c: Context<AppEnv>, hiveId: string) {
+  c.get("ctx").addWideEventContext({
+    bad_hive_id: hiveId,
+    referer: c.req.header("referer") ?? null,
+  });
+  c.header("Cache-Control", "no-store");
+  c.status(400);
+  return c.render(
+    <ErrorPage
+      message="Invalid book ID"
+      description="That doesn't look like a book identifier"
+      statusCode={400}
+    />,
+    { title: "Invalid book ID" },
+  );
+}
+
+/** Query params the book page understands. Both optional; unknown params are
+ *  ignored (the anon page cache bypasses on anything outside its allowlist). */
+const bookPageQuerySchema = z.object({
+  "force-refresh": z.string().optional(),
+  "review-id": z.string().optional(),
+});
 
 const app = new Hono<AppEnv>()
-  .get("/:hiveId", async (c) => {
+  .get("/:hiveId", zValidator("query", bookPageQuerySchema), async (c) => {
     c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
     const hiveId = c.req.param("hiveId") as HiveId;
+
+    if (!HIVE_ID_PATTERN.test(hiveId)) return rejectBadHiveId(c, hiveId);
     const [book, idMap] = await Promise.all([
       c
         .get("ctx")
@@ -53,41 +95,52 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    const forceRefresh = c.req.query("force-refresh") === "true";
+    const query = c.req.valid("query");
+    const forceRefresh = query["force-refresh"] === "true";
     const needsEnrichment =
-      forceRefresh ||
       !book.enrichedAt ||
       new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    if (needsEnrichment) {
-      const enrichPromise = enrichBookWithDetailedData(book, c.get("ctx"), {
-        force: forceRefresh,
-      }).catch((error) => {
+    if (forceRefresh) {
+      // Explicit user action, so it stays inline — but bounded. On timeout we
+      // render what we already have instead of holding the request open.
+      try {
+        await withTimeout(
+          enrichBookWithDetailedData(book, c.get("ctx"), { force: true }),
+          FORCE_REFRESH_TIMEOUT_MS,
+          `force refresh ${hiveId}`,
+        );
+      } catch (error) {
         c.get("ctx").addWideEventContext({
           enrichment_failed_book_view: true,
           bookId: book.id,
           error: error instanceof Error ? error.message : (String(error) as string),
         });
-      });
-
-      if (forceRefresh) {
-        await enrichPromise;
-        // Re-fetch the book after enrichment so the page reflects updated data
-        const refreshedBook = await c
-          .get("ctx")
-          .db.selectFrom("hive_book")
-          .selectAll()
-          .where("id", "=", hiveId)
-          .limit(1)
-          .executeTakeFirst();
-        if (refreshedBook) {
-          Object.assign(book, refreshedBook);
-        }
       }
+      // Re-fetch the book after enrichment so the page reflects updated data
+      const refreshedBook = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("id", "=", hiveId)
+        .limit(1)
+        .executeTakeFirst();
+      if (refreshedBook) {
+        Object.assign(book, refreshedBook);
+      }
+    } else if (needsEnrichment) {
+      // Queue it — a page view must never wait on (or spawn) a Goodreads scrape.
+      await enqueueEnrichment(c.get("ctx").db, hiveId).catch((error) => {
+        c.get("ctx").addWideEventContext({
+          enrichment_enqueue: "failed",
+          bookId: book.id,
+          error: error instanceof Error ? error.message : (String(error) as string),
+        });
+      });
     }
 
     startTime(c, "render_book_page");
     const authors = book.authors.split("\t");
-    const reviewId = c.req.query("review-id") ?? undefined;
+    const reviewId = query["review-id"];
     const res = c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
       image: `${new URL(c.req.url).origin}/og/book/${hiveId}`,
@@ -119,6 +172,7 @@ const app = new Hono<AppEnv>()
       );
     }
     const hiveId = c.req.param("hiveId") as HiveId;
+    if (!HIVE_ID_PATTERN.test(hiveId)) return rejectBadHiveId(c, hiveId);
     startTime(c, "db_fetch_user_book");
     const book = await c
       .get("ctx")
@@ -340,12 +394,14 @@ const app = new Hono<AppEnv>()
     // Public, viewer-independent page (CommentsSection is rendered without `did`
     // here), and it reads up to ~1000 reviews + ~3000 buzzes + batched profiles.
     c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=120");
+    const commentsHiveId = c.req.param("hiveId") as HiveId;
+    if (!HIVE_ID_PATTERN.test(commentsHiveId)) return rejectBadHiveId(c, commentsHiveId);
     startTime(c, "db_fetch_book");
     const book = await c
       .get("ctx")
       .db.selectFrom("hive_book")
       .selectAll()
-      .where("id", "=", c.req.param("hiveId") as HiveId)
+      .where("id", "=", commentsHiveId)
       .limit(1)
       .executeTakeFirst();
     endTime(c, "db_fetch_book");

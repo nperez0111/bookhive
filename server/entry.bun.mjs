@@ -36,9 +36,23 @@ serve({
   plugins: [...tracingSrvxPlugins],
 });
 
-// Inlined from nitro's trapUnhandledErrors (#nitro/runtime/error/hooks)
+// Inlined from nitro's trapUnhandledErrors (#nitro/runtime/error/hooks).
+// Emitted as a single JSON line rather than console.error(error): the raw form
+// printed multi-line stack traces and bare DOMException dumps into a log stream
+// the pipeline parses as JSON (2,428 unparseable lines in 24h on 2026-08-01).
 function captureError(error, type) {
-  console.error(`[${type}]`, error);
+  console.error(
+    JSON.stringify({
+      level: 50,
+      time: Date.now(),
+      msg: type,
+      error: {
+        message: error?.message ?? String(error),
+        type: error?.name ?? "Error",
+        stack: typeof error?.stack === "string" ? error.stack.slice(0, 4000) : undefined,
+      },
+    }),
+  );
   nitroApp.captureError?.(error, { tags: [type] });
 }
 process.on("unhandledRejection", (error) => captureError(error, "unhandledRejection"));

@@ -60,7 +60,7 @@ services:
       IMGPROXY_KEY: "CHANGE_ME_imgproxy_key_hex"
       IMGPROXY_SALT: "CHANGE_ME_imgproxy_salt_hex"
       # Lock imgproxy to the same source hosts the server allowlists.
-      IMGPROXY_ALLOWED_SOURCES: "https://i.gr-assets.com/,https://cdn.bsky.app/"
+      IMGPROXY_ALLOWED_SOURCES: "https://i.gr-assets.com/,https://cdn.bsky.app/,https://images.isbndb.com/"
       IMGPROXY_MAX_SRC_RESOLUTION: "50"
     healthcheck:
       test: ["CMD", "imgproxy", "health"]
@@ -69,6 +69,11 @@ services:
       retries: 5
   server:
     restart: unless-stopped
+    # PID 1 is the cluster supervisor, which does not reap orphans. Without an
+    # init shim every HEALTHCHECK `wget` leaks a zombie (484 observed in ~4h on
+    # 2026-08-01), ending in PID exhaustion. The image also ships tini, so this
+    # is belt-and-braces for stacks that don't use this compose file.
+    init: true
     build:
       context: .
     depends_on:

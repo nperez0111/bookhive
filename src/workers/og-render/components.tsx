@@ -33,6 +33,13 @@ export const OG_RENDER_OPTIONS = {
   width: OG_WIDTH,
   height: OG_HEIGHT,
   format: "webp" as const,
+  // takumi's defaultErrorHandler does console.error("Failed to render image.")
+  // followed by console.error(error) — 92 unstructured lines (including raw
+  // DOMException dumps) in 24h of the 2026-08-01 logs, with no request id and
+  // invalid JSON for the log pipeline. The render stream is also errored, so
+  // og-render-worker's own catch reports the failure structurally; this hook
+  // only needs to stop the duplicate spam.
+  onError: () => {},
 };
 
 // ─── Shared UI components ────────────────────────────────────────────────────
