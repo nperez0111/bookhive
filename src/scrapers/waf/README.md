@@ -57,9 +57,18 @@ call; the worker returns updated values to fold back in.
 - **Crypto config** is cached in memory keyed by the `challenge.js` URL. It only
   changes when Goodreads deploys a new challenge script (rare), so it's reused
   across solves.
-- **WAF token** is cached for 10 minutes and reused across all Goodreads pages.
-  If a fetch with it fails, the worker re-solves and returns a fresh token; if a
-  solve fails the cached token is dropped.
+- **WAF token** is cached for `TOKEN_MAX_AGE_MS` (currently 10 minutes) and
+  reused across all Goodreads pages. If a fetch with it fails, the worker
+  re-solves and returns a fresh token; if a solve fails the cached token is
+  dropped.
+
+  > **The measured token lifetime is 300 s**, not 10 minutes — AWS WAF's default
+  > challenge immunity time. Probed 2026-08-02 (`waf-lab/token-lifetime.ts`): the
+  > same token was still accepted at 241 s and was challenged again at 301 s. So
+  > the back half of every cache window sends a dead token and pays a full
+  > re-solve (4 requests instead of 1). `TOKEN_MAX_AGE_MS` should be ~4 min.
+  > No per-token _use_ limit was observed — one token served 10 pages in ~30 s.
+
 - On a cold start the full solve takes ~1.5-2 s. Subsequent requests reuse the
   cached token and are a single `fetch()` in the worker (~200 ms).
 
@@ -76,6 +85,32 @@ call; the worker returns updated values to fold back in.
 The worker is bundled to `.output/server/workers/waf-solver-worker.js` by
 `standaloneBundles()` in `vite.config.ts`. `solver.ts` loads that `.js` in the
 Nitro build and the `.ts` source in dev (same pattern as `src/context.ts`).
+
+## Reading the failure reasons
+
+A solve that produces a token but still doesn't yield `__NEXT_DATA__` used to be
+reported as a single `waf_token_ineffective`. That conflated three unrelated
+causes, which is why the 5,297 such events on 2026-08-01 were undiagnosable.
+`classifyTokenFetch()` now splits them using the status and the
+`x-amzn-waf-action` header of the token fetch — the header is present only on
+responses the WAF generated itself:
+
+| Failure                      | Means                                       | Fix                              |
+| ---------------------------- | ------------------------------------------- | -------------------------------- |
+| `waf_token_rejected`         | 202 / WAF action — token genuinely refused  | Solver problem; retry can help   |
+| `origin_blocked_after_token` | Cleared the WAF, Goodreads' origin said 403 | Reputation/rate; retry is futile |
+| `page_without_next_data`     | 2xx past the WAF, no marker                 | Dead book id or page redesign    |
+
+Only `waf_token_rejected` triggers the second solve attempt; the other two return
+immediately, saving 3 of the 7 requests the old failure path spent.
+
+Measured 2026-08-02 from a residential IP (`waf-lab/`, ~450 requests total):
+sequential fetches were never challenged (0/40); challenges appeared only under
+concurrency (4/12 at C=4, 10/20 at C=10, 7/24 at C=12) and **every one of the 21
+was solved successfully** (`statusWithToken: 200`). Forcing a challenge with a
+`HeadlessChrome` UA instead gave 202 → solve → **403 from the origin** 25/25 —
+same solver, same token mechanics, different client identity. The crypto path is
+sound; what varies is whether Goodreads wants to serve the client at all.
 
 ## If Goodreads changes challenge.js
 

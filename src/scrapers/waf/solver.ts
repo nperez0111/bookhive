@@ -18,7 +18,12 @@ import type { SerializedConfig, WafRequest, WafResult } from "./messages";
 import { CircuitBreaker } from "../../utils/circuitBreaker";
 import { Semaphore, SemaphoreFullError, SemaphoreTimeoutError } from "../../utils/semaphore";
 
-const TOKEN_MAX_AGE_MS = 10 * 60 * 1000;
+/** AWS WAF's default immunity time is 300s, and Goodreads uses the default:
+ *  a token measured live was still accepted at 241s and challenged again at
+ *  301s. Cache for less than that — the previous 10 minutes meant the back half
+ *  of every window sent a token that was already dead, paying a full cold solve
+ *  to discover it. */
+const TOKEN_MAX_AGE_MS = 4 * 60 * 1000;
 const WORKER_TIMEOUT_MS = 30_000;
 
 /** Concurrent solves. Memory scales with this; throughput does not need more —
@@ -227,6 +232,11 @@ export async function fetchGoodreadsViaWaf(
   if (result.status !== undefined) addCtx({ scrape_status: result.status });
   if (result.statusWithToken !== undefined) {
     addCtx({ scrape_status_with_token: result.statusWithToken });
+  }
+  // Present ⇒ the WAF rejected our token; absent on a 4xx ⇒ we cleared the WAF
+  // and Goodreads' origin refused us. Different problems, different fixes.
+  if (result.wafActionWithToken) {
+    addCtx({ scrape_waf_action_with_token: result.wafActionWithToken });
   }
   if (result.method) addCtx({ scrape_method: result.method });
   if (result.failure) addCtx({ scrape_failure: result.failure });
