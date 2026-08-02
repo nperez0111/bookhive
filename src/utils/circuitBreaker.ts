@@ -68,6 +68,18 @@ export class CircuitBreaker {
     return true;
   }
 
+  /**
+   * Give back a probe slot reserved by `canRequest()` without judging the
+   * upstream. For when the caller never actually dispatched — our own
+   * backpressure, a cancelled request — so it counts neither as evidence of
+   * recovery nor of failure.
+   */
+  recordAbandoned(): void {
+    if (this.state === "half_open") {
+      this.probesInFlight = Math.max(0, this.probesInFlight - 1);
+    }
+  }
+
   recordSuccess(): void {
     this.consecutiveFailures = 0;
     this.failureTimes = [];

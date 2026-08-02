@@ -87,6 +87,43 @@ describe("CircuitBreaker", () => {
     expect(breaker.canRequest()).toBe(false); // halfOpenMax = 2
   });
 
+  it("does not trip from failures that a success has already cleared", () => {
+    const { breaker } = makeBreaker();
+    for (let i = 0; i < 4; i++) breaker.recordFailure();
+    breaker.recordSuccess();
+    for (let i = 0; i < 4; i++) breaker.recordFailure();
+    expect(breaker.getState()).toBe("closed");
+  });
+
+  it("reports no cooldown while closed or half-open", () => {
+    const { breaker, advance } = makeBreaker();
+    expect(breaker.cooldownRemainingMs()).toBe(0);
+
+    for (let i = 0; i < 5; i++) breaker.recordFailure();
+    expect(breaker.cooldownRemainingMs()).toBeGreaterThan(0);
+
+    advance(15 * 60_000);
+    expect(breaker.getState()).toBe("half_open");
+    expect(breaker.cooldownRemainingMs()).toBe(0);
+  });
+
+  it("recordAbandoned frees a probe slot without counting as recovery", () => {
+    const { breaker, advance } = makeBreaker();
+    for (let i = 0; i < 5; i++) breaker.recordFailure();
+    advance(15 * 60_000);
+
+    // Take both probe slots, then hand them back un-judged.
+    expect(breaker.canRequest()).toBe(true);
+    expect(breaker.canRequest()).toBe(true);
+    expect(breaker.canRequest()).toBe(false);
+    breaker.recordAbandoned();
+    breaker.recordAbandoned();
+
+    // Slots are free again, but nothing has proven the upstream is healthy.
+    expect(breaker.canRequest()).toBe(true);
+    expect(breaker.getState()).toBe("half_open");
+  });
+
   it("reopens for a full cooldown when a probe fails", () => {
     const { breaker, advance } = makeBreaker();
     for (let i = 0; i < 5; i++) breaker.recordFailure();

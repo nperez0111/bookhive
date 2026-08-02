@@ -82,9 +82,11 @@ export async function searchBooks({
             res.data.map((book) => book.id),
           );
         } catch (error) {
+          // Distinct key: the identifier-persist failure above also reports
+          // through `error`, and the last writer would win.
           ctx.addWideEventContext({
             enrichment_enqueue: "failed",
-            error: error instanceof Error ? error.message : String(error),
+            enrichment_enqueue_error: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -134,7 +136,15 @@ export async function ensureBookIdentifiersCurrent({
   // requests and a WAF-active page could hold the caller for tens of seconds.
   // Persist whatever identifiers exist now and let the queue backfill the rest.
   if (!book.enrichedAt) {
-    await enqueueEnrichment(ctx.db, book.id);
+    // Best-effort: a failed queue write must not break the read path.
+    try {
+      await enqueueEnrichment(ctx.db, book.id);
+    } catch (error) {
+      ctx.addWideEventContext({
+        enrichment_enqueue: "failed",
+        enrichment_enqueue_error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   await upsertBookIdentifiers(ctx.db, book);

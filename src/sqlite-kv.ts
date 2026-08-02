@@ -11,24 +11,39 @@ function applyStandardPragmas(sqlite: DatabaseSync) {
   sqlite.exec("PRAGMA synchronous = NORMAL");
 }
 
+/** Numeric SQLite result codes: SQLITE_BUSY and SQLITE_BUSY_SNAPSHOT. */
+const BUSY_ERRNOS = new Set([5, 517]);
+
 /** SQLITE_BUSY that survived busy_timeout — retry a whole transaction. */
 function isBusyError(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  return (
-    code === "SQLITE_BUSY" ||
-    code === "SQLITE_BUSY_SNAPSHOT" ||
-    /database is locked/i.test((err as Error)?.message ?? "")
-  );
+  const e = err as { code?: unknown; errno?: unknown; errcode?: unknown } | null;
+  if (e?.code === "SQLITE_BUSY" || e?.code === "SQLITE_BUSY_SNAPSHOT") return true;
+  // bun:sqlite exposes `errno`; node:sqlite uses `errcode`.
+  for (const numeric of [e?.errno, e?.errcode]) {
+    if (typeof numeric === "number" && BUSY_ERRNOS.has(numeric)) return true;
+  }
+  return /database is locked/i.test((err as Error)?.message ?? "");
 }
 
+/**
+ * Each attempt can itself block for up to `busy_timeout` (10s), so a plain
+ * attempt count could hold a request for ~30s. Bound the whole thing instead:
+ * once the budget is spent, propagate the busy error rather than queueing
+ * further behind sustained contention.
+ */
+const BUSY_RETRY_BUDGET_MS = 12_000;
+
 async function withBusyRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  const deadline = Date.now() + BUSY_RETRY_BUDGET_MS;
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn();
     } catch (err) {
       if (attempt >= attempts || !isBusyError(err)) throw err;
       const backoff = 25 * 2 ** (attempt - 1) + Math.floor(Math.random() * 25);
+      if (Date.now() + backoff >= deadline) throw err;
       await new Promise((resolve) => setTimeout(resolve, backoff));
+      if (Date.now() >= deadline) throw err;
     }
   }
 }

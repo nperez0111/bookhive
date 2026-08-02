@@ -222,6 +222,20 @@ export function startEnrichmentDrain({
     if (running || stopped) return;
     running = true;
     void drainEnrichmentQueue(db, logger)
+      .then(async (processed) => {
+        if (processed === 0) return;
+        // Backlog is otherwise invisible: nothing else reports queue depth, and
+        // a stalled drain looks identical to an empty queue.
+        const depth = await db
+          .selectFrom("enrich_queue")
+          .select((eb) => eb.fn.countAll().as("count"))
+          .executeTakeFirst();
+        logger.info({
+          msg: "enrichment_queue",
+          processed,
+          depth: Number(depth?.count ?? 0),
+        });
+      })
       .catch((err) => {
         logger.error({ err }, "enrichment queue drain failed");
       })

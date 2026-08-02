@@ -2,10 +2,12 @@ import type { BookUtilContext } from "../context";
 import type { HiveId } from "../types";
 import { enrichBookWithDetailedData } from "./enrichBookData";
 import { writeCatalogBookIfNeeded } from "./catalogBookService";
+import { enqueueEnrichment } from "./enrichQueue";
 import { withTimeout } from "./semaphore";
 
-// Bounds how long a user's book-save waits on the fallback scrape. The 45s
-// deadline inside enrichBookWithDetailedData is the real ceiling.
+// Bounds how long *this caller* waits on the fallback scrape before giving up
+// and letting the user's PDS write proceed. It does not bound the enrichment
+// itself — that keeps running under its own 45s deadline.
 const ENRICH_TIMEOUT_MS = 10_000;
 const CATALOG_TIMEOUT_MS = 10_000;
 
@@ -42,11 +44,22 @@ export async function ensureBookCataloged(
   // Slow path: missed by primary sync mechanisms, handle as a last resort
   try {
     if (!book.enrichedAt) {
-      await withTimeout(
-        enrichBookWithDetailedData(book, ctx),
-        ENRICH_TIMEOUT_MS,
-        `enrich book ${hiveId}`,
-      );
+      try {
+        await withTimeout(
+          enrichBookWithDetailedData(book, ctx),
+          ENRICH_TIMEOUT_MS,
+          `enrich book ${hiveId}`,
+        );
+      } catch (err) {
+        // We stopped waiting, but the book still needs enriching — hand it to
+        // the queue so the primary worker retries it out of band.
+        ctx.addWideEventContext({
+          ensure_book_cataloged_enrich: "timed_out",
+          hiveId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await enqueueEnrichment(ctx.db, hiveId).catch(() => {});
+      }
     }
 
     await withTimeout(

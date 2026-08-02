@@ -77,8 +77,9 @@ function spawnWorker(index: number) {
     stderr: "inherit",
     onExit(_proc, exitCode, signalCode) {
       children.delete(index);
-      logWorkerExit(index, exitCode, signalCode, Date.now() - startedAt);
+      // A SIGTERM we sent ourselves is not a failure — don't page on it.
       if (shuttingDown) return;
+      logWorkerExit(index, exitCode, signalCode, Date.now() - startedAt);
       const now = Date.now();
       const recent = (restartTimes.get(index) ?? []).filter((t) => now - t < 60_000);
       recent.push(now);

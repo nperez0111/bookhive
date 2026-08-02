@@ -86,6 +86,27 @@ describe("Semaphore", () => {
     expect(seen.at(-1)).toEqual({ active: 0, pending: 0 });
   });
 
+  it("acquireSlot holds the slot until released, and ignores double release", async () => {
+    const sem = new Semaphore(1);
+    const release = await sem.acquireSlot();
+    expect(sem.active).toBe(1);
+
+    // A second caller must wait — this is what stops a timed-out enrichment
+    // from letting an extra scrape run while the first is still in flight.
+    let ran = false;
+    const queued = sem.run(async () => {
+      ran = true;
+    });
+    await Bun.sleep(1);
+    expect(ran).toBe(false);
+
+    release();
+    release(); // no-op
+    await queued;
+    expect(ran).toBe(true);
+    expect(sem.active).toBe(0);
+  });
+
   it("rejects waiters on clearPending", async () => {
     const sem = new Semaphore(1);
     const gate = deferred();

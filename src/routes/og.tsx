@@ -72,10 +72,13 @@ const getOrigin = (c: { req: { url: string } }) => new URL(c.req.url).origin;
  * book's link previews indefinitely.
  */
 const FALLBACK_FILENAME = "og-fallback.png";
-let fallbackBytes: Uint8Array<ArrayBuffer> | null | undefined;
+/** Only ever holds a successful read — a miss is not memoized, so a file that
+ *  shows up later (or a path that resolves differently) still gets picked up
+ *  instead of pinning us to the redirect branch for the process's lifetime. */
+let fallbackBytes: Uint8Array<ArrayBuffer> | null = null;
 
 async function loadFallbackImage(): Promise<Uint8Array<ArrayBuffer> | null> {
-  if (fallbackBytes !== undefined) return fallbackBytes;
+  if (fallbackBytes) return fallbackBytes;
   // Nitro copies public/ to .output/public/; in dev it's read from the repo.
   const candidates = [
     new URL(`../public/${FALLBACK_FILENAME}`, import.meta.url).pathname,
@@ -93,7 +96,6 @@ async function loadFallbackImage(): Promise<Uint8Array<ArrayBuffer> | null> {
       // try the next candidate
     }
   }
-  fallbackBytes = null;
   return null;
 }
 

@@ -319,6 +319,10 @@ export function setCachedSessionClient(
  */
 const SESSION_DELETED_PATTERN = /session was deleted by another process/i;
 
+/** DIDs currently inside a refresh retry — stops a replayed call from
+ *  recursing when the restored client hits the same race again. */
+const sessionRetryInFlight = new Set<string>();
+
 function withSessionRefreshRetry(
   did: string,
   client: SessionClient,
@@ -331,11 +335,17 @@ function withSessionRefreshRetry(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!SESSION_DELETED_PATTERN.test(message)) throw err;
+        if (sessionRetryInFlight.has(did)) throw err;
 
         sessionClientCache.delete(did);
-        const fresh = await restore().catch(() => null);
-        if (!fresh) throw err;
-        return await fresh[method](name, opts);
+        sessionRetryInFlight.add(did);
+        try {
+          const fresh = await restore().catch(() => null);
+          if (!fresh) throw err;
+          return await fresh[method](name, opts);
+        } finally {
+          sessionRetryInFlight.delete(did);
+        }
       }
     }) as SessionClient[M];
 
@@ -353,8 +363,10 @@ async function restoreSessionClient(ctx: AppContext, did: string): Promise<Sessi
   try {
     const oauthSession = await ctx.oauthClient.restore(did as Did, { refresh: "auto" });
     const tokenInfo = await oauthSession.getTokenInfo(false);
+    // Same factory as the primary path, so a client that gets cached here can
+    // still recover from a later rotation by another process.
     const client = withSessionRefreshRetry(did, sessionClientFromOAuthSession(oauthSession), () =>
-      Promise.resolve(null),
+      restoreSessionClient(ctx, did),
     );
     setCachedSessionClient(did, client, tokenInfo.expiresAt?.getTime());
     return client;

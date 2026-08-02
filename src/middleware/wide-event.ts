@@ -11,7 +11,12 @@ const SKIP_PATHS = ["/healthcheck", "/metrics"];
 const SKIP_PREFIXES = ["/public", "/images"];
 
 /** Truncated so a deep stack can't dominate the log line. */
-const MAX_STACK_CHARS = 4000;
+export const MAX_STACK_CHARS = 4000;
+
+/** Truncate a stack for inclusion in a wide event. */
+export function truncateStack(stack: string): string {
+  return stack.slice(0, MAX_STACK_CHARS);
+}
 
 function toErrorPayload(err: unknown): {
   message: string;
@@ -23,7 +28,7 @@ function toErrorPayload(err: unknown): {
     return {
       message: err.message,
       type: err.name,
-      ...(err.stack ? { stack: err.stack.slice(0, MAX_STACK_CHARS) } : {}),
+      ...(err.stack ? { stack: truncateStack(err.stack) } : {}),
       ...(err.cause instanceof Error
         ? { cause: err.cause.message }
         : typeof err.cause === "string"

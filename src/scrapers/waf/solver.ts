@@ -192,10 +192,11 @@ export async function fetchGoodreadsViaWaf(
   } catch (error) {
     const overloaded =
       error instanceof SemaphoreFullError || error instanceof SemaphoreTimeoutError;
-    // Shedding load is not evidence that Goodreads is down — don't trip the
-    // breaker on our own backpressure.
+    // Shedding load is not evidence either way about Goodreads — we never sent
+    // the request. Hand back the probe slot without counting it as a success,
+    // which would otherwise let our own backpressure close the breaker.
     if (overloaded) {
-      breaker.recordSuccess();
+      breaker.recordAbandoned();
     } else {
       breaker.recordFailure();
     }

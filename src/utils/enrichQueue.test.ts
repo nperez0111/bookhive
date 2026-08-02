@@ -139,6 +139,36 @@ describe("enrichQueue", () => {
     expect(events.at(-1)).toMatchObject({ outcome: "failed", attempts: 1 });
   });
 
+  it("lengthens the backoff on later attempts, then repeats the last step", async () => {
+    const { logger } = makeLogger();
+    await insertBook(db, HIVE_ID);
+
+    // attempts already recorded -> expected delay before the next try
+    const steps: Array<[number, number]> = [
+      [0, 60_000], // 1st failure -> 1m
+      [1, 5 * 60_000], // 2nd -> 5m
+      [2, 30 * 60_000], // 3rd -> 30m
+    ];
+
+    for (const [seeded, expectedMs] of steps) {
+      await db.deleteFrom("enrich_queue").execute();
+      await enqueueEnrichment(db, HIVE_ID);
+      await db
+        .updateTable("enrich_queue")
+        .set({ attempts: seeded })
+        .where("hiveId", "=", HIVE_ID)
+        .execute();
+
+      const before = Date.now();
+      await drainEnrichmentQueue(db, logger, { enrich: fakeEnrich({ enrichment: "failed" }) });
+
+      const row = await db.selectFrom("enrich_queue").selectAll().executeTakeFirstOrThrow();
+      const delay = new Date(row.nextAttemptAt).getTime() - before;
+      expect(delay).toBeGreaterThanOrEqual(expectedMs - 1_000);
+      expect(delay).toBeLessThan(expectedMs + 5_000);
+    }
+  });
+
   it("gives up after the attempt ceiling", async () => {
     const { logger } = makeLogger();
     await insertBook(db, HIVE_ID);

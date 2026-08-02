@@ -91,6 +91,22 @@ export class Semaphore {
     }
   }
 
+  /**
+   * Acquire a slot and hand back its release function. Use when the slot's
+   * lifetime doesn't match a single awaited call — e.g. when the caller stops
+   * waiting on a deadline but the underlying work is still running and still
+   * consuming the resource. Releasing twice is a no-op.
+   */
+  async acquireSlot(): Promise<() => void> {
+    await this.acquire();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.release();
+    };
+  }
+
   private acquire(): Promise<void> {
     if (this.activeCount < this.limit) {
       this.activeCount++;
@@ -139,6 +155,12 @@ export class Semaphore {
  * Reject with `${label} timed out after ${ms}ms` if `promise` hasn't settled.
  * The timer is always cleared, so a resolved promise doesn't hold the event
  * loop open.
+ *
+ * **This does not cancel anything.** Timing out settles the returned promise
+ * only; the wrapped promise keeps running and keeps holding whatever it holds.
+ * If the underlying work must actually stop, pair this with an `AbortSignal`
+ * (or hold the resource until the original promise settles — see
+ * `Semaphore.acquireSlot`).
  */
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

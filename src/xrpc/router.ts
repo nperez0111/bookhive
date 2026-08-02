@@ -100,6 +100,7 @@ import {
 } from "../utils/personalLibrary";
 import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
+import { truncateStack } from "../middleware/wide-event";
 
 /**
  * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
@@ -312,12 +313,18 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           try {
             return await handler(input);
           } catch (err) {
+            // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control
+            // flow, not defects — record them without a stack.
+            const status = (err as { status?: unknown } | null)?.status;
+            const isIntentional = typeof status === "number" && status < 500;
             xrpcContextStorage.getStore()?.addWideEventContext({
               xrpc_handler: "threw",
               error: {
                 message: err instanceof Error ? err.message : String(err),
                 type: err instanceof Error ? err.name : "Error",
-                ...(err instanceof Error && err.stack ? { stack: err.stack.slice(0, 4000) } : {}),
+                ...(!isIntentional && err instanceof Error && err.stack
+                  ? { stack: truncateStack(err.stack) }
+                  : {}),
               },
             });
             throw err;

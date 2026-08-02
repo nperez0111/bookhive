@@ -385,7 +385,7 @@ Client hooks/utils:
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–016) in one file. `createDb`
+SQLite via Kysely. Schema + all migrations (001–018) in one file. `createDb`
 sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.

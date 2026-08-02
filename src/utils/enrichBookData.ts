@@ -74,9 +74,15 @@ export async function enrichBookWithDetailedData(
 
     // Slot acquisition is outside the deadline: waiting for a free scraper is
     // not the book's fault, and skipped books above never consume a slot.
-    await enrichmentSemaphore.run(() =>
-      withTimeout(enrich(book, ctx), ENRICH_DEADLINE_MS, `enrich book ${book.id}`),
-    );
+    const release = await enrichmentSemaphore.acquireSlot();
+    const work = enrich(book, ctx);
+    // Hold the slot until the work actually settles. withTimeout only stops us
+    // *waiting* — it can't cancel the in-flight scrape — so releasing on the
+    // deadline would let more than `limit` scrapes run at once, which is the
+    // precise failure this semaphore exists to prevent. The inner fetches have
+    // their own AbortSignals, so the work is still bounded.
+    void work.catch(() => {}).finally(release);
+    await withTimeout(work, ENRICH_DEADLINE_MS, `enrich book ${book.id}`);
   } catch (error) {
     ctx.addWideEventContext({
       enrichment: "error",
