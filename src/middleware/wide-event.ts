@@ -10,9 +10,26 @@ import type { AppEnv } from "../context";
 const SKIP_PATHS = ["/healthcheck", "/metrics"];
 const SKIP_PREFIXES = ["/public", "/images"];
 
-function toErrorPayload(err: unknown): { message: string; type: string } {
+/** Truncated so a deep stack can't dominate the log line. */
+const MAX_STACK_CHARS = 4000;
+
+function toErrorPayload(err: unknown): {
+  message: string;
+  type: string;
+  stack?: string;
+  cause?: string;
+} {
   if (err instanceof Error) {
-    return { message: err.message, type: err.name };
+    return {
+      message: err.message,
+      type: err.name,
+      ...(err.stack ? { stack: err.stack.slice(0, MAX_STACK_CHARS) } : {}),
+      ...(err.cause instanceof Error
+        ? { cause: err.cause.message }
+        : typeof err.cause === "string"
+          ? { cause: err.cause }
+          : {}),
+    };
   }
   return { message: String(err), type: "Error" };
 }
@@ -79,6 +96,15 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
             const err = c.error ?? c.get("requestError");
             if (err !== undefined) {
               wideEvent["error"] = toErrorPayload(err);
+            } else {
+              // A 5xx with no error attached means a handler caught, swallowed
+              // the cause and returned 500 itself. Mark it rather than emitting
+              // an error-level line with nothing to act on.
+              wideEvent["error"] = {
+                message: "handler returned 5xx without setting requestError",
+                type: "UnattributedError",
+              };
+              wideEvent["error_unattributed"] = true;
             }
           }
         }

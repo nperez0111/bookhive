@@ -9,6 +9,9 @@ export interface SerializedConfig {
 }
 
 export interface WafRequest {
+  /** Correlates the response with the request — workers are reused and serve
+   *  requests one at a time, so a stale reply must never resolve a new caller. */
+  id: string;
   /** Target Goodreads URL to fetch. */
   url: string;
   /** Previously-working `aws-waf-token`, if the caller has one cached. */
@@ -20,6 +23,8 @@ export interface WafRequest {
 }
 
 export interface WafResult {
+  /** Echoes `WafRequest.id`. */
+  id: string;
   /** The fetched page HTML, or null if it could not be obtained. */
   html: string | null;
   /** The token that successfully fetched the page (may equal the input token). */

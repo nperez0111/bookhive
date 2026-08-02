@@ -494,7 +494,7 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
               ))}
             </ul>
             <div class="mt-8">
-              <a href="/genres" class="btn btn-ghost">
+              <a href="/explore/genres" class="btn btn-ghost">
                 Browse genres
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -813,7 +813,7 @@ function Footer() {
           </a>
           <nav class="flex flex-wrap justify-center gap-x-6 gap-y-2">
             {[
-              { label: "Explore", href: "/genres" },
+              { label: "Explore", href: "/explore/genres" },
               { label: "Import", href: "/import" },
               { label: "Privacy", href: "/privacy-policy" },
               { label: "Terms", href: "/legal" },

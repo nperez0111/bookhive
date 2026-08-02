@@ -67,6 +67,7 @@ const app = new Hono<AppEnv>()
         const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
+        c.set("requestError", e);
         c.status(500);
         return c.render(
           <ErrorPage
@@ -357,6 +358,7 @@ const app = new Hono<AppEnv>()
         endTime(c, "updateList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
+        c.set("requestError", e);
         c.status(500);
         return c.render(
           <ErrorPage
@@ -391,6 +393,7 @@ const app = new Hono<AppEnv>()
       endTime(c, "deleteList");
       return c.redirect(`/profile/${handle}`);
     } catch (e) {
+      c.set("requestError", e);
       c.status(500);
       return c.render(
         <ErrorPage
@@ -439,6 +442,7 @@ const app = new Hono<AppEnv>()
         endTime(c, "addBookToList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
+        c.set("requestError", e);
         c.status(500);
         return c.render(
           <ErrorPage
@@ -487,6 +491,7 @@ const app = new Hono<AppEnv>()
         endTime(c, "addBookToList");
         return c.redirect(`/shelves/${handle}/${rkey}`);
       } catch (e) {
+        c.set("requestError", e);
         c.status(500);
         return c.render(
           <ErrorPage
@@ -530,6 +535,7 @@ const app = new Hono<AppEnv>()
         const safeReturn = returnTo && returnTo.startsWith("/") ? returnTo : null;
         return c.redirect(safeReturn ?? `/shelves/${handle}/${rkey}`);
       } catch (e) {
+        c.set("requestError", e);
         c.status(500);
         return c.render(
           <ErrorPage

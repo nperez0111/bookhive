@@ -12,7 +12,14 @@
 import { env } from "../env";
 
 /** Remote hosts we are willing to proxy. */
-export const ALLOWED_IMAGE_HOSTS = new Set(["i.gr-assets.com", "cdn.bsky.app"]);
+// images.isbndb.com: the ISBNdb scraper is currently disabled, but rows written
+// while it was active still carry those cover URLs — without it we reject our
+// own data as a forbidden source.
+export const ALLOWED_IMAGE_HOSTS = new Set([
+  "i.gr-assets.com",
+  "cdn.bsky.app",
+  "images.isbndb.com",
+]);
 
 /** Parsed IPX-style modifiers, e.g. { w: "440" } or { s: "300x500", fit: "cover" }. */
 export type ImageModifiers = Record<string, string>;
@@ -179,6 +186,9 @@ export function isAllowedImageSource(source: string): boolean {
 /** Public cache lifetime for proxied images (Cloudflare edge + browser). */
 export const IMAGE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
+/** Ceiling on the imgproxy round-trip before we serve the placeholder. */
+const IMGPROXY_TIMEOUT_MS = 10_000;
+
 /** An SVG placeholder — user silhouette for avatars, book card otherwise. */
 export function fallbackImageSvg(kind: "avatar" | "book"): string {
   return kind === "avatar"
@@ -246,6 +256,9 @@ export async function proxyImageResponse(opts: ProxyImageOptions): Promise<Respo
     const imgproxyUrl = buildImgproxyUrl(source, modifiers);
     const upstream = await fetch(imgproxyUrl, {
       headers: ifNoneMatch ? { "If-None-Match": ifNoneMatch } : undefined,
+      // Without this an imgproxy stall pins the request indefinitely; the
+      // placeholder is a better answer than a hung connection.
+      signal: AbortSignal.timeout(IMGPROXY_TIMEOUT_MS),
     });
 
     if (upstream.status === 304) {

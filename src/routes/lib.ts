@@ -17,7 +17,7 @@ import type { HiveBook, HiveId } from "../types";
 import { syncUserFollows, shouldSyncFollows } from "../utils/getFollows";
 import { readThroughCache } from "../utils/readThroughCache";
 import { findBookDetails } from "../scrapers";
-import { enrichBookWithDetailedData } from "../utils/enrichBookData";
+import { enqueueEnrichment, enqueueEnrichmentBatch } from "../utils/enrichQueue";
 import { serializeUserBook } from "../utils/bookProgress";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
 
@@ -72,17 +72,21 @@ export async function searchBooks({
           });
         }
 
-        const enrichmentPromises = res.data.map((book) =>
-          enrichBookWithDetailedData(book, ctx as AppContext).catch((error) => {
-            ctx.addWideEventContext({
-              enrichment_failed: true,
-              bookId: book.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }),
-        );
-
-        void Promise.allSettled(enrichmentPromises);
+        // Queue enrichment instead of scraping here. This used to fan out one
+        // WAF solver Worker per result (20 per search, per process) with the
+        // promises dropped on the floor — the direct cause of the 2026-08-01
+        // OOM kills. The primary worker drains the queue.
+        try {
+          await enqueueEnrichmentBatch(
+            ctx.db,
+            res.data.map((book) => book.id),
+          );
+        } catch (error) {
+          ctx.addWideEventContext({
+            enrichment_enqueue: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
 
       // Backfill from local DB with ILIKE to reach up to 20 results
@@ -126,23 +130,14 @@ export async function ensureBookIdentifiersCurrent({
   ctx: AppContext;
   book: HiveBook;
 }): Promise<void> {
-  let latestBook = book;
-
-  if (!latestBook.enrichedAt) {
-    await enrichBookWithDetailedData(latestBook, ctx);
-
-    const refreshedBook = await ctx.db
-      .selectFrom("hive_book")
-      .selectAll()
-      .where("id", "=", latestBook.id)
-      .executeTakeFirst();
-
-    if (refreshedBook) {
-      latestBook = refreshedBook;
-    }
+  // Never block a response on a Goodreads scrape: this ran inline on XRPC
+  // requests and a WAF-active page could hold the caller for tens of seconds.
+  // Persist whatever identifiers exist now and let the queue backfill the rest.
+  if (!book.enrichedAt) {
+    await enqueueEnrichment(ctx.db, book.id);
   }
 
-  await upsertBookIdentifiers(ctx.db, latestBook);
+  await upsertBookIdentifiers(ctx.db, book);
 }
 
 export async function syncFollowsIfNeeded({

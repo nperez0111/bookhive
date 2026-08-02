@@ -34,6 +34,17 @@ export type DatabaseSchema = {
   personal_book: PersonalBookRow;
   personal_shelf: PersonalShelfRow;
   personal_shelf_item: PersonalShelfItemRow;
+  enrich_queue: EnrichQueueRow;
+};
+
+/** Pending Goodreads enrichment work — see src/utils/enrichQueue.ts. */
+export type EnrichQueueRow = {
+  hiveId: HiveId;
+  enqueuedAt: string;
+  attempts: number;
+  nextAttemptAt: string;
+  claimedAt: string | null;
+  lastError: string | null;
 };
 
 export const BookFields = [
@@ -647,11 +658,38 @@ migrations["017"] = {
   },
 };
 
+// Work queue for Goodreads enrichment. Any process can enqueue (a cheap
+// INSERT OR IGNORE); only the primary worker drains it, so there is one WAF
+// token cache and one writer instead of an unbounded per-request fan-out
+// across all cluster processes. See src/utils/enrichQueue.ts.
+migrations["018"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("enrich_queue")
+      // hiveId as the PK is the dedupe: re-enqueueing a queued book is a no-op.
+      .addColumn("hiveId", "text", (col) => col.primaryKey())
+      .addColumn("enqueuedAt", "text", (col) => col.notNull())
+      .addColumn("attempts", "integer", (col) => col.notNull().defaultTo(0))
+      .addColumn("nextAttemptAt", "text", (col) => col.notNull())
+      .addColumn("claimedAt", "text")
+      .addColumn("lastError", "text")
+      .execute();
+
+    await sql`CREATE INDEX idx_enrich_queue_ready ON enrich_queue(claimedAt, nextAttemptAt)`.execute(
+      db,
+    );
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropTable("enrich_queue").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
   const sqlite = new DatabaseSync(location);
-  sqlite.exec("PRAGMA busy_timeout = 5000");
+  // 10s: four cluster processes write to this one file (see server/cluster.ts).
+  sqlite.exec("PRAGMA busy_timeout = 10000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
   // Private page cache is per connection and multiplies across worker

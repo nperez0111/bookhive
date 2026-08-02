@@ -15,6 +15,16 @@ import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
+import { enqueueEnrichment } from "../utils/enrichQueue";
+import { withTimeout } from "../utils/semaphore";
+
+/** How long an explicit `?force-refresh=true` will wait before falling back to
+ *  the data we already have. */
+const FORCE_REFRESH_TIMEOUT_MS = 15_000;
+
+/** Hive ids are `bk_` + base62. Anything else (notably the `/books/null` a
+ *  buggy client kept requesting) is a client bug, not a missing book. */
+const HIVE_ID_PATTERN = /^bk_[A-Za-z0-9]+$/;
 
 const app = new Hono<AppEnv>()
   .get("/:hiveId", async (c) => {
@@ -22,6 +32,22 @@ const app = new Hono<AppEnv>()
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
     const hiveId = c.req.param("hiveId") as HiveId;
+
+    if (!HIVE_ID_PATTERN.test(hiveId)) {
+      c.get("ctx").addWideEventContext({
+        bad_hive_id: hiveId,
+        referer: c.req.header("referer") ?? null,
+      });
+      c.status(400);
+      return c.render(
+        <ErrorPage
+          message="Invalid book ID"
+          description="That doesn't look like a book identifier"
+          statusCode={400}
+        />,
+        { title: "Invalid book ID" },
+      );
+    }
     const [book, idMap] = await Promise.all([
       c
         .get("ctx")
@@ -55,34 +81,44 @@ const app = new Hono<AppEnv>()
 
     const forceRefresh = c.req.query("force-refresh") === "true";
     const needsEnrichment =
-      forceRefresh ||
       !book.enrichedAt ||
       new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    if (needsEnrichment) {
-      const enrichPromise = enrichBookWithDetailedData(book, c.get("ctx"), {
-        force: forceRefresh,
-      }).catch((error) => {
+    if (forceRefresh) {
+      // Explicit user action, so it stays inline — but bounded. On timeout we
+      // render what we already have instead of holding the request open.
+      try {
+        await withTimeout(
+          enrichBookWithDetailedData(book, c.get("ctx"), { force: true }),
+          FORCE_REFRESH_TIMEOUT_MS,
+          `force refresh ${hiveId}`,
+        );
+      } catch (error) {
         c.get("ctx").addWideEventContext({
           enrichment_failed_book_view: true,
           bookId: book.id,
           error: error instanceof Error ? error.message : (String(error) as string),
         });
-      });
-
-      if (forceRefresh) {
-        await enrichPromise;
-        // Re-fetch the book after enrichment so the page reflects updated data
-        const refreshedBook = await c
-          .get("ctx")
-          .db.selectFrom("hive_book")
-          .selectAll()
-          .where("id", "=", hiveId)
-          .limit(1)
-          .executeTakeFirst();
-        if (refreshedBook) {
-          Object.assign(book, refreshedBook);
-        }
       }
+      // Re-fetch the book after enrichment so the page reflects updated data
+      const refreshedBook = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .selectAll()
+        .where("id", "=", hiveId)
+        .limit(1)
+        .executeTakeFirst();
+      if (refreshedBook) {
+        Object.assign(book, refreshedBook);
+      }
+    } else if (needsEnrichment) {
+      // Queue it — a page view must never wait on (or spawn) a Goodreads scrape.
+      await enqueueEnrichment(c.get("ctx").db, hiveId).catch((error) => {
+        c.get("ctx").addWideEventContext({
+          enrichment_enqueue: "failed",
+          bookId: book.id,
+          error: error instanceof Error ? error.message : (String(error) as string),
+        });
+      });
     }
 
     startTime(c, "render_book_page");

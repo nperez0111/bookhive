@@ -26,14 +26,58 @@ function log(message: string) {
   console.error(`[cluster] ${message}`);
 }
 
+/**
+ * Worker deaths were invisible: the app logged 82 errors against 171,145
+ * user-visible 502s on 2026-08-01 because the failure mode was process death,
+ * not an exception. A cgroup OOM kill arrives as signal SIGKILL with a null
+ * exit code, so emit it as a JSON line the log pipeline can count.
+ */
+// Bun reports signalCode as a number.
+const SIGNAL_NAMES: Record<number, string> = {
+  2: "SIGINT",
+  6: "SIGABRT",
+  9: "SIGKILL",
+  11: "SIGSEGV",
+  15: "SIGTERM",
+};
+
+function signalName(signalCode: number | null): string | null {
+  if (signalCode === null) return null;
+  return SIGNAL_NAMES[signalCode] ?? `SIG${signalCode}`;
+}
+
+function logWorkerExit(
+  index: number,
+  exitCode: number | null,
+  signalCode: number | null,
+  uptimeMs: number,
+) {
+  const signal = signalName(signalCode);
+  console.error(
+    JSON.stringify({
+      level: 50,
+      time: Date.now(),
+      msg: "worker_exit",
+      worker: index,
+      code: exitCode,
+      signal,
+      // A cgroup OOM kill arrives as SIGKILL with no exit code.
+      likely_oom: signal === "SIGKILL",
+      uptime_ms: uptimeMs,
+    }),
+  );
+}
+
 function spawnWorker(index: number) {
   if (shuttingDown) return;
+  const startedAt = Date.now();
   const proc = Bun.spawn(["bun", "run", entry], {
     env: { ...process.env, WORKER_INDEX: String(index) },
     stdout: "inherit",
     stderr: "inherit",
-    onExit(_proc, exitCode) {
+    onExit(_proc, exitCode, signalCode) {
       children.delete(index);
+      logWorkerExit(index, exitCode, signalCode, Date.now() - startedAt);
       if (shuttingDown) return;
       const now = Date.now();
       const recent = (restartTimes.get(index) ?? []).filter((t) => now - t < 60_000);
@@ -45,7 +89,12 @@ function spawnWorker(index: number) {
         return;
       }
       const backoffMs = Math.min(1000 * 2 ** (recent.length - 1), 15_000);
-      log(`worker ${index} exited (code ${exitCode}), restarting in ${backoffMs}ms`);
+      const signal = signalName(signalCode);
+      log(
+        `worker ${index} exited (code ${exitCode}, signal ${signal ?? "none"}${
+          signal === "SIGKILL" ? ", likely OOM" : ""
+        }), restarting in ${backoffMs}ms`,
+      );
       setTimeout(() => spawnWorker(index), backoffMs);
     },
   });

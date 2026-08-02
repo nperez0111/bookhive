@@ -11,6 +11,7 @@ import { isDid } from "@atcute/lexicons/syntax";
 import { defineCachedFunction } from "ocache";
 
 import type { AppEnv } from "../context";
+import type { Context } from "hono";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
 import { BookFields } from "../db";
 import type { Book, HiveId } from "../types";
@@ -65,7 +66,56 @@ const TTL = {
 
 const getOrigin = (c: { req: { url: string } }) => new URL(c.req.url).origin;
 
-async function makeOgResponse(card: OgCard, maxAge: number): Promise<Response> {
+/**
+ * Static branded card served when a render fails. Never 500 an OG endpoint:
+ * Bluesky/Discord/Slack cache a failed preview, so one bad render can break a
+ * book's link previews indefinitely.
+ */
+const FALLBACK_FILENAME = "og-fallback.png";
+let fallbackBytes: Uint8Array<ArrayBuffer> | null | undefined;
+
+async function loadFallbackImage(): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (fallbackBytes !== undefined) return fallbackBytes;
+  // Nitro copies public/ to .output/public/; in dev it's read from the repo.
+  const candidates = [
+    new URL(`../public/${FALLBACK_FILENAME}`, import.meta.url).pathname,
+    `${process.cwd()}/public/${FALLBACK_FILENAME}`,
+    `${process.cwd()}/.output/public/${FALLBACK_FILENAME}`,
+  ];
+  for (const path of candidates) {
+    try {
+      const file = Bun.file(path);
+      if (await file.exists()) {
+        fallbackBytes = new Uint8Array(await file.arrayBuffer());
+        return fallbackBytes;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  fallbackBytes = null;
+  return null;
+}
+
+async function fallbackOgResponse(): Promise<Response> {
+  const bytes = await loadFallbackImage();
+  if (!bytes) {
+    // Last resort: let the static handler serve it.
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `/${FALLBACK_FILENAME}`, "Cache-Control": "public, max-age=300" },
+    });
+  }
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": "image/png",
+      // Short, so a transient render failure isn't cached for a week.
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number): Promise<Response> {
   const end = imageProcessingDuration.startTimer(LABEL.op.og_image);
   activeOperations.inc(LABEL.op.og_image);
   try {
@@ -76,6 +126,14 @@ async function makeOgResponse(card: OgCard, maxAge: number): Promise<Response> {
         "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=86400`,
       },
     });
+  } catch (error) {
+    c.set("requestError", error);
+    c.get("ctx").addWideEventContext({
+      og_render: "failed",
+      og_card_kind: card.kind,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallbackOgResponse();
   } finally {
     end();
     activeOperations.dec(LABEL.op.og_image);
@@ -97,7 +155,7 @@ const toCovers = (
 const app = new Hono<AppEnv>()
   .get("/marketing", (c) => {
     const origin = getOrigin(c);
-    return makeOgResponse({ kind: "marketing", props: { origin } }, TTL.STATIC);
+    return makeOgResponse(c, { kind: "marketing", props: { origin } }, TTL.STATIC);
   })
   .get("/book/:hiveId", async (c) => {
     const hiveId = c.req.param("hiveId") as HiveId;
@@ -148,6 +206,7 @@ const app = new Hono<AppEnv>()
     }
 
     return makeOgResponse(
+      c,
       {
         kind: "book",
         props: {
@@ -230,6 +289,7 @@ const app = new Hono<AppEnv>()
       : null;
 
     return makeOgResponse(
+      c,
       {
         kind: "stats",
         props: {
@@ -307,6 +367,7 @@ const app = new Hono<AppEnv>()
       ]);
 
     return makeOgResponse(
+      c,
       {
         kind: "profile",
         props: {
@@ -361,6 +422,7 @@ const app = new Hono<AppEnv>()
     ]);
 
     return makeOgResponse(
+      c,
       {
         kind: "labeled-cover",
         props: {
@@ -404,6 +466,7 @@ const app = new Hono<AppEnv>()
     ]);
 
     return makeOgResponse(
+      c,
       {
         kind: "labeled-cover",
         props: {
@@ -419,7 +482,7 @@ const app = new Hono<AppEnv>()
   })
   .get("/app", (c) => {
     const origin = getOrigin(c);
-    return makeOgResponse({ kind: "app", props: { origin } }, TTL.STATIC);
+    return makeOgResponse(c, { kind: "app", props: { origin } }, TTL.STATIC);
   });
 
 export default app;

@@ -33,6 +33,7 @@ import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
 import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
+import { startEnrichmentDrain } from "./utils/enrichQueue";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
 import { updateBookRecord } from "./utils/getBook";
@@ -108,6 +109,8 @@ export type AppDeps = {
   ingester: Ingester;
   resolver: BidirectionalResolver;
   serviceAccountAgent: SessionClient | null;
+  /** Stops the primary worker's enrichment drain loop; no-op elsewhere. */
+  stopEnrichmentDrain: () => void;
 };
 
 export async function createAppDeps(): Promise<AppDeps> {
@@ -234,6 +237,11 @@ export async function createAppDeps(): Promise<AppDeps> {
     };
   }
 
+  // Goodreads enrichment is queued by every process but drained only here — one
+  // WAF token cache and one writer, instead of N processes each fanning out a
+  // scrape per search result (the 2026-08-01 OOM).
+  const stopEnrichmentDrain = isPrimaryWorker ? startEnrichmentDrain({ db, logger }) : () => {};
+
   return {
     db,
     kv,
@@ -243,6 +251,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     ingester,
     resolver,
     serviceAccountAgent,
+    stopEnrichmentDrain,
   };
 }
 
@@ -298,6 +307,62 @@ export function setCachedSessionClient(
   });
 }
 
+/**
+ * A cached SessionClient refreshes its token lazily, mid-request. When another
+ * cluster process rotated that session first, the refresh throws
+ * "session was deleted by another process" and the user got a 500 on an
+ * otherwise fine page load.
+ *
+ * Treat it as retryable: drop the stale cache entry, restore the session once,
+ * and replay the call against the fresh client. If that fails too, surface the
+ * original error to the caller (which will handle it as an auth failure).
+ */
+const SESSION_DELETED_PATTERN = /session was deleted by another process/i;
+
+function withSessionRefreshRetry(
+  did: string,
+  client: SessionClient,
+  restore: () => Promise<SessionClient | null>,
+): SessionClient {
+  const wrap = <M extends "get" | "post">(method: M): SessionClient[M] =>
+    (async (name: string, opts?: Record<string, unknown>) => {
+      try {
+        return await client[method](name, opts);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!SESSION_DELETED_PATTERN.test(message)) throw err;
+
+        sessionClientCache.delete(did);
+        const fresh = await restore().catch(() => null);
+        if (!fresh) throw err;
+        return await fresh[method](name, opts);
+      }
+    }) as SessionClient[M];
+
+  return {
+    get did() {
+      return client.did;
+    },
+    get: wrap("get"),
+    post: wrap("post"),
+  };
+}
+
+/** Restore a session client for a DID, bypassing the process cache. */
+async function restoreSessionClient(ctx: AppContext, did: string): Promise<SessionClient | null> {
+  try {
+    const oauthSession = await ctx.oauthClient.restore(did as Did, { refresh: "auto" });
+    const tokenInfo = await oauthSession.getTokenInfo(false);
+    const client = withSessionRefreshRetry(did, sessionClientFromOAuthSession(oauthSession), () =>
+      Promise.resolve(null),
+    );
+    setCachedSessionClient(did, client, tokenInfo.expiresAt?.getTime());
+    return client;
+  } catch {
+    return null;
+  }
+}
+
 // Helper function to get the session client for the active session
 export async function getSessionAgent(
   req: Request,
@@ -348,8 +413,11 @@ export async function getSessionAgent(
     await session.save();
     timing?.end("session_save");
 
-    const client = sessionClientFromOAuthSession(oauthSession);
-    setCachedSessionClient(session.did, client, tokenExpiresAt);
+    const did = session.did;
+    const client = withSessionRefreshRetry(did, sessionClientFromOAuthSession(oauthSession), () =>
+      restoreSessionClient(ctx, did),
+    );
+    setCachedSessionClient(did, client, tokenExpiresAt);
     return client;
   } catch (err) {
     ctx.addWideEventContext({

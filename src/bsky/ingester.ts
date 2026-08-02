@@ -13,6 +13,7 @@ import { searchBooks } from "../routes/lib";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
 import { serializeUserBook } from "../utils/bookProgress";
 import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
+import { Semaphore } from "../utils/semaphore";
 import type { SessionClient } from "../auth/client";
 import {
   createActorResolver,
@@ -323,32 +324,17 @@ export function createIngester(
 
   // Concurrency limiter for backfill operations
   const BACKFILL_CONCURRENCY = 3;
-  let activeBackfills = 0;
-  const backfillQueue: Array<() => void> = [];
+  const backfillSemaphore = new Semaphore(BACKFILL_CONCURRENCY, {
+    label: "ingester_backfill",
+    onChange: ({ active, pending }) => {
+      ingesterBackfillActive.set(active);
+      ingesterBackfillQueueDepth.set(pending);
+    },
+  });
 
   function enqueueBackfill(did: string) {
     if (destroyed) return;
-    const run = async () => {
-      activeBackfills++;
-      ingesterBackfillActive.set(activeBackfills);
-      try {
-        await backfillUserRepo(did, db, kv, emitWideEvent);
-      } finally {
-        activeBackfills--;
-        ingesterBackfillActive.set(activeBackfills);
-        const next = backfillQueue.shift();
-        ingesterBackfillQueueDepth.set(backfillQueue.length);
-        if (next) next();
-      }
-    };
-    if (activeBackfills < BACKFILL_CONCURRENCY) {
-      run().catch(() => {});
-    } else {
-      backfillQueue.push(() => {
-        run().catch(() => {});
-      });
-      ingesterBackfillQueueDepth.set(backfillQueue.length);
-    }
+    backfillSemaphore.run(() => backfillUserRepo(did, db, kv, emitWideEvent)).catch(() => {});
   }
 
   // Log errors from fire-and-forget background operations
@@ -775,7 +761,7 @@ export function createIngester(
     async destroy() {
       destroyed = true;
       abortController?.abort();
-      backfillQueue.length = 0;
+      backfillSemaphore.clearPending("ingester destroyed");
       subscription = null;
       abortController = null;
     },

@@ -199,7 +199,8 @@ export const EditableLibraryTable: FC<{
               <tr
                 key={book.hiveId}
                 class="cursor-pointer transition-colors duration-150 hover:bg-muted/60"
-                onclick={`window.location.href='/books/${book.hiveId}'`}
+                // Guarded: an unset hiveId used to navigate to literal /books/null
+                onclick={book.hiveId ? `window.location.href='/books/${book.hiveId}'` : undefined}
               >
                 <td class="overflow-hidden px-4 py-2">
                   <div class="flex items-center space-x-3">

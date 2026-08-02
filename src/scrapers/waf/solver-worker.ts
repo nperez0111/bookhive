@@ -429,6 +429,49 @@ function buildMetrics(hasToken: boolean): any[] {
 
 // ─── Page fetch + challenge discovery ────────────────────────────────────────
 
+/** Page bodies we're willing to buffer. A WAF interstitial or error page is
+ *  small; anything huge is a bug or an attack, and buffering it 4,000× is how
+ *  the 2026-08-01 OOM happened. */
+const MAX_PAGE_BYTES = 3_000_000;
+/** challenge.js is ~1.3 MB (see README) — leave real headroom. */
+const MAX_CHALLENGE_SCRIPT_BYTES = 4_000_000;
+
+/**
+ * `resp.text()` with a hard byte ceiling. Streams so an oversized body is never
+ * fully materialized, and cancels the underlying connection on trip.
+ */
+async function boundedText(resp: Response, maxBytes: number, label: string): Promise<string> {
+  const declared = Number(resp.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await resp.body?.cancel();
+    throw new Error(`${label} body too large: ${declared} > ${maxBytes} bytes`);
+  }
+
+  if (!resp.body) return "";
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let total = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        throw new Error(`${label} body too large: exceeded ${maxBytes} bytes`);
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+
+  chunks.push(decoder.decode());
+  return chunks.join("");
+}
+
 function fetchPage(url: string, token: string | null): Promise<Response> {
   const headers = navHeaders(UA);
   if (token) headers["cookie"] = `aws-waf-token=${token}`;
@@ -460,7 +503,7 @@ async function fetchChallengeScript(challengeBaseUrl: string, site: string): Pro
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`Failed to fetch challenge.js: ${resp.status}`);
-  return resp.text();
+  return boundedText(resp, MAX_CHALLENGE_SCRIPT_BYTES, "challenge_js");
 }
 
 // ─── Solve one round ────────────────────────────────────────────────────────
@@ -550,7 +593,7 @@ async function solveRound(
 
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
-async function handle(req: WafRequest): Promise<WafResult> {
+async function handle(req: WafRequest): Promise<Omit<WafResult, "id">> {
   const { url } = req;
   let config: CryptoConfig | null = req.config ? deserializeConfig(req.config) : null;
   let challengeJsUrl = req.challengeJsUrl;
@@ -561,7 +604,7 @@ async function handle(req: WafRequest): Promise<WafResult> {
 
   // 1. Try the page with whatever token we already have (or none at all).
   const first = await fetchPage(url, req.token);
-  const firstHtml = await first.text();
+  const firstHtml = await boundedText(first, MAX_PAGE_BYTES, "initial_fetch");
   if (firstHtml.includes(NEXT_DATA_MARKER)) {
     return {
       html: firstHtml,
@@ -605,7 +648,7 @@ async function handle(req: WafRequest): Promise<WafResult> {
     }
 
     const resp = await fetchPage(url, token);
-    const html = await resp.text();
+    const html = await boundedText(resp, MAX_PAGE_BYTES, "token_fetch");
     if (html.includes(NEXT_DATA_MARKER)) {
       return {
         html,
@@ -629,12 +672,16 @@ async function handle(req: WafRequest): Promise<WafResult> {
   };
 }
 
+// Workers are pooled and reused (see solver.ts), so every reply carries the
+// request id — a late reply from an abandoned request must not be mistaken for
+// the answer to the next one.
 self.onmessage = async (event: MessageEvent<WafRequest>) => {
   const req = event.data;
   try {
-    self.postMessage(await handle(req));
+    self.postMessage({ ...(await handle(req)), id: req.id } satisfies WafResult);
   } catch (error) {
     self.postMessage({
+      id: req.id,
       html: null,
       token: null,
       config: req.config,

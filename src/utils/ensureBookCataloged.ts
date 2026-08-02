@@ -2,18 +2,12 @@ import type { BookUtilContext } from "../context";
 import type { HiveId } from "../types";
 import { enrichBookWithDetailedData } from "./enrichBookData";
 import { writeCatalogBookIfNeeded } from "./catalogBookService";
+import { withTimeout } from "./semaphore";
 
-const ENRICH_TIMEOUT_MS = 30_000;
+// Bounds how long a user's book-save waits on the fallback scrape. The 45s
+// deadline inside enrichBookWithDetailedData is the real ceiling.
+const ENRICH_TIMEOUT_MS = 10_000;
 const CATALOG_TIMEOUT_MS = 10_000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
-    ),
-  ]);
-}
 
 /**
  * Safety net called immediately before writing a book to a user's PDS.

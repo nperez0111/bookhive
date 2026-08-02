@@ -56,6 +56,18 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 
 **Production is multi-process**: the Docker CMD is `server/cluster.ts`, a supervisor that spawns `WEB_CONCURRENCY` (default 4) copies of `.output/server/index.mjs`, all sharing port 8080 via SO_REUSEPORT (`reusePort: true` in the custom Nitro entry `server/entry.bun.mjs`). Worker 0 is the **primary** (`isPrimaryWorker` in `src/context.ts`, from `WORKER_INDEX`): only it runs DB migrations + VACUUM and the Jetstream ingester. The supervisor starts worker 0 alone, waits for `/healthcheck`, then spawns the rest — that ordering is the migration barrier. `WORKER_INDEX` unset (dev/tests/bare run) behaves as primary.
 
+**Goodreads enrichment is queued, never inline**: routes call
+`enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`) — one
+`INSERT OR IGNORE` into `enrich_queue`, keyed by `hiveId` so re-queueing is free.
+The **primary worker only** drains it every 5s at `ENRICH_CONCURRENCY` (3), with
+exponential backoff (1m/5m/30m, 4 attempts) and stale-claim reclaim. Each item
+emits exactly one terminal `msg: "enrichment"` pino event — `addWideEventContext`
+is useless for detached work because the request's wide event has already
+flushed. `enrichBookWithDetailedData` additionally holds its own semaphore (4)
+and a 45s deadline so no call site can reintroduce an unbounded fan-out. This
+replaced a 20-way-per-search fan-out of solver Workers that OOM-killed workers
+every 5–7 minutes on 2026-08-01.
+
 **Anonymous page cache**: `src/middleware/anon-page-cache.ts` serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from the shared KV (`page:` mount, gzipped HTML, 1h TTL, query-param allowlist `page`/`sort`/`lang`/`review-id`; other params bypass). Prod-only. The primary worker sweeps expired `page_cache` rows every 15 min. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML on these routes (anon → `public, max-age=3600`; `sid` cookie → `private`) — it runs on the final response because Hono-set headers can be replaced by nitro's route-rule header middleware (the static-asset globs in `vite.config.ts` routeRules leak onto app routes).
 
 ## Entry Points
@@ -94,7 +106,7 @@ anon page cache (prod, `/books/*`, `/explore*`, `/authors/*`).
 - `/legal` → `src/pages/terms.tsx` — terms of service
 - `/pds` → `src/pages/pds.tsx` — PDS info (redirects to `/` if PDS disabled)
 - `/` → `src/pages/marketing.tsx` — marketing landing; redirects to `/app` for the iOS host/`?app`, to `/home` when logged in; trending books + recent activity, cached 1h via `readThroughCache`
-- `/images/*` → signing reverse-proxy to **imgproxy** (remote sources only; allowed hosts `i.gr-assets.com`, `cdn.bsky.app` via `src/utils/imageProxy.ts`; URL modifiers like `w_440` / `s_300x500,fit_cover` translated to imgproxy options and signed server-side with `IMGPROXY_KEY`/`IMGPROXY_SALT`; SVG fallback on forbidden/failed source; meant to be edge-cached by Cloudflare). If `IMGPROXY_URL` is unset, redirects to the source URL. **Replaced the Bun.Image proxy.** Three route shapes share one proxy helper (`proxyImageResponse` in `src/utils/imageProxy.ts`):
+- `/images/*` → signing reverse-proxy to **imgproxy** (remote sources only; allowed hosts `i.gr-assets.com`, `cdn.bsky.app`, `images.isbndb.com` via `src/utils/imageProxy.ts` — keep this set in sync with `IMGPROXY_ALLOWED_SOURCES` in `compose.yaml`; the upstream fetch has a 10s timeout; URL modifiers like `w_440` / `s_300x500,fit_cover` translated to imgproxy options and signed server-side with `IMGPROXY_KEY`/`IMGPROXY_SALT`; SVG fallback on forbidden/failed source; meant to be edge-cached by Cloudflare). If `IMGPROXY_URL` is unset, redirects to the source URL. **Replaced the Bun.Image proxy.** Three route shapes share one proxy helper (`proxyImageResponse` in `src/utils/imageProxy.ts`):
   - **ID-keyed canonical (preferred for web)** — `GET /images/books/:hiveId?w=440` resolves the current cover from `hive_book`; `GET /images/avatars/:did?s=120` resolves the current avatar via `getProfile`. These URLs are permanently stable and never leak the upstream provider; size is a query param (`w`/`h`/`s`/`q`/`fit`). Built by helpers `coverImageUrl(hiveId, {width})` → `/images/books/{hiveId}?w=N` and `avatarImageUrl(did, {size})` → `/images/avatars/{did}?s=N` (both `undefined` for falsy id). Registered **before** the catch-all (Hono order).
   - **Source-embedded (stateless)** — the catch-all `/images/{modifiers}/{source}` proxies a raw upstream URL directly. Used by OG render (`src/routes/og.tsx`, inline `${origin}/images/w_N/{url}`) and the iOS app (`s_300x500,fit_cover…`). Built by helpers `sourceCoverImageUrl(source, {width})` / `sourceAvatarImageUrl(source, {size})` for callers that only have a raw source URL (author thumbnails, `UserBlock`). `parseImagePath` repairs the protocol slash browsers collapse (`https:/…` → `https://…`).
 - `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx` — OAuth flows (`loginRouter`)
@@ -125,7 +137,7 @@ anon page cache (prod, `/books/*`, `/explore*`, `/authors/*`).
 
 ### `src/routes/books.tsx` (mounted at `/books`)
 
-- GET `/:hiveId` → `src/pages/bookInfo.tsx` — book detail; re-enriches if stale (>30d) or `force-refresh`
+- GET `/:hiveId` → `src/pages/bookInfo.tsx` — book detail. `hiveId` must match `^bk_[A-Za-z0-9]+$` (else 400 + a `bad_hive_id` wide-event field). Stale books (>30d) are **queued** for enrichment, never scraped inline; `?force-refresh=true` still enriches inline but with a 15s ceiling and falls back to existing data
 - DELETE `/:hiveId` → delete book record from PDS + DB
 - POST `/` → add/update book (zValidator form incl. `bookProgress`); per-DID `book_lock` KV, 429 if locked
 - GET `/:hiveId/comments` → `src/pages/comments.tsx` — comments/reviews section
@@ -214,6 +226,15 @@ Tests: `src/routes/opds.test.ts`.
 ### `src/routes/og.tsx` (mounted at `/og`) — OG images (offloaded to og-render worker)
 
 - `/marketing`, `/book/:hiveId`, `/profile/:handle`, `/profile/:handle/stats/:year`, `/author/:author`, `/genre/:genre`, `/app` → `image/webp`, cached per-TTL
+
+A failed render **never 500s**: `makeOgResponse` serves `public/og-fallback.png`
+at 200 with `max-age=300` and records the cause on the wide event. Crawlers cache
+a failed preview, so a 500 here breaks a book's link previews indefinitely.
+`src/workers/og-render/client.ts` holds one worker per process; a timeout rejects
+only that render (recycling the worker after 3 consecutive timeouts) and the
+queue is capped at 32 pending. `OG_RENDER_OPTIONS.onError` suppresses takumi's
+`defaultErrorHandler`, which wrote unstructured `Failed to render image.` +
+raw DOMException dumps to stdout.
 
 ### `src/routes/sync/kosync.ts` (mounted at `/kosync`) — KOReader sync (KOSync protocol)
 
@@ -371,7 +392,11 @@ sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
 
 Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`. Its
 `isReaderStatement()` must return true for anything that produces rows —
-`SELECT` and `... RETURNING` — or those queries silently come back empty. See
+`SELECT` and `... RETURNING` — or those queries silently come back empty. It also
+rewrites Kysely's bare `begin` to **`BEGIN IMMEDIATE`** (`toImmediateTransaction`):
+a deferred transaction that later upgrades to a write fails with
+`SQLITE_BUSY_SNAPSHOT`, and the busy handler is never consulted for that case, so
+`PRAGMA busy_timeout` alone cannot cover it across cluster processes. See
 `src/bun-sqlite-kysely.test.ts`.
 
 | Table             | Purpose                   | Key columns                                                                                                                                                              |
@@ -385,6 +410,7 @@ Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`. Its
 | `book_list`       | User-created book lists   | **uri (PK, AT URI)**, cid, userDid, name, description, ordered, tags, createdAt                                                                                          |
 | `book_list_item`  | Items in a book list      | **uri (PK, AT URI)**, cid, userDid, **listUri**, hiveId, position, embeddedTitle/Author/CoverUrl, identifiers                                                            |
 | `sync_document`   | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, title, authors, progressData (JSON), createdAt, updatedAt              |
+| `enrich_queue`    | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, enqueuedAt, attempts, nextAttemptAt, claimedAt, lastError                                                                                  |
 
 Notes: `user_book` has no `rating` column (it's `stars`); `owned` is a boolean
 column, **not** a status (legacy `…#owned` status migrated to `owned=1`).
@@ -413,7 +439,10 @@ SQLite-backed unstorage for: profiles, identity resolution, search results, auth
 | `src/utils/getBook.ts`                                                                                                         | Book record CRUD against user's PDS                                          |
 | `src/utils/getProfile.ts`                                                                                                      | Profile fetching from Bluesky                                                |
 | `src/utils/getFollows.ts`                                                                                                      | Follow graph sync                                                            |
-| `src/utils/enrichBookData.ts`                                                                                                  | Background Goodreads enrichment                                              |
+| `src/utils/enrichBookData.ts`                                                                                                  | Goodreads enrichment (semaphore-bounded, 45s deadline)                       |
+| `src/utils/enrichQueue.ts`                                                                                                     | `enrich_queue` producer + primary-worker drain (see below)                   |
+| `src/utils/semaphore.ts`                                                                                                       | Async concurrency limiter + `withTimeout`                                    |
+| `src/utils/circuitBreaker.ts`                                                                                                  | Three-state breaker (used by the WAF solver)                                 |
 | `src/utils/bookIdentifiers.ts`                                                                                                 | ISBN/ID normalization + persistence                                          |
 | `src/utils/bookProgress.ts`                                                                                                    | BookProgress serialization                                                   |
 | `src/utils/readThroughCache.ts`                                                                                                | KV read-through with TTL                                                     |
@@ -482,15 +511,26 @@ Queries: `getPersonalLibrary`, `getPersonalBook`, `getSyncProgress`,
 
 ## Scrapers (`src/scrapers/`)
 
-| File               | Purpose                                       |
-| ------------------ | --------------------------------------------- |
-| `goodreads.ts`     | Search API scraper                            |
-| `moreInfo.ts`      | Goodreads page scraper (genres, series, meta) |
-| `google.ts`        | Google Books scraper                          |
-| `isbndb.ts`        | ISBNdb scraper                                |
-| `getHiveId.ts`     | HiveId generation (hash of title+author)      |
-| `languageNames.ts` | Language name normalization                   |
-| `index.ts`         | `findBookDetails` entry point                 |
+| File               | Purpose                                        |
+| ------------------ | ---------------------------------------------- |
+| `goodreads.ts`     | Search API scraper                             |
+| `moreInfo.ts`      | Goodreads page scraper (genres, series, meta)  |
+| `google.ts`        | Google Books scraper                           |
+| `isbndb.ts`        | ISBNdb scraper                                 |
+| `getHiveId.ts`     | HiveId generation (hash of title+author)       |
+| `languageNames.ts` | Language name normalization                    |
+| `index.ts`         | `findBookDetails` entry point                  |
+| `waf/`             | AWS WAF challenge solver (see `waf/README.md`) |
+
+**WAF solver pooling**: `waf/solver.ts` keeps a **pool of `SOLVER_POOL_SIZE` (4)
+persistent** workers rather than spawning one per scrape (each spawn was a fresh
+JS VM plus a ~1.3 MB `challenge.js`). Requests carry an `id` that the worker
+echoes back, so a late reply from an abandoned request can't resolve the next
+caller. Workers are recycled after 50 solves, on error, or on a 30s timeout. A
+`CircuitBreaker` in front opens after 5 consecutive (or 10/min) failures and
+stays open 15 min, dispatching nothing — Goodreads' WAF rejected ~90% of solves
+during the 2026-08-01 incident and the app retried into it 5,000+ times/day.
+Body reads are capped (`boundedText`: 3 MB pages, 4 MB `challenge.js`).
 
 ## Auth (`src/auth/`)
 
@@ -535,7 +575,12 @@ otel/request-tracing plugins. Production builds swap the preset's runtime entry
 for `./server/entry.bun.mjs` (adds `reusePort: true`; build-only via the
 function-form `defineConfig` — dev keeps the nitro-dev entry). The Docker CMD
 is `bun run cluster.ts` (copied from `server/cluster.ts`), not the raw
-`.output/server/index.mjs`. Vite plugins: `bunRuntimeExternal()`,
+`.output/server/index.mjs`, under `ENTRYPOINT ["/sbin/tini", "--"]` — the
+supervisor is PID 1 and Bun has no `waitpid`, so without an init shim every
+HEALTHCHECK `wget` leaks a zombie (`init: true` in `compose.yaml` is the same
+fix from the other direction). `cluster.ts` logs a JSON `worker_exit` line with
+`signal`/`likely_oom`, which is how a cgroup OOM kill becomes visible in app
+logs at all. Vite plugins: `bunRuntimeExternal()`,
 `devImageProxyPassthrough()`, `tailwindcss()`, `standaloneBundles()`, `nitro()`.
 The client bundle entry is `src/client/index.tsx`; assets emitted to
 `assets/[name]-[hash]` with a build manifest (read via `src/utils/manifest.ts`).
@@ -601,8 +646,12 @@ processes; readers treat rows >60s old as stale), `sync_pending:` /
 `sync_token:` (SQLite — KOSync deferred PDS writes + per-user token rotation
 counter), `page:` (SQLite — anon page
 cache)), OAuth client, caching ID resolvers, and (primary only) spawns the
-ingester worker. Sessions use
+ingester worker and starts the enrichment drain (`stopEnrichmentDrain` on the
+deps is called from `src/server.ts`'s shutdown). Sessions use
 `iron-session` (180-day cookie) with an in-memory `SessionClient` cache and
-auto token refresh. `getProfile` is read-through cached (`profile:` + did, 24h
+auto token refresh; cached clients are wrapped so a
+"session was deleted by another process" refresh failure (another cluster
+process rotated it first) evicts the entry, re-restores once and retries instead
+of 500ing. `getProfile` is read-through cached (`profile:` + did, 24h
 revalidate / 30d TTL). `createContextMiddleware(deps)` wires per-request `ctx`
 with lazy session/DID/profile resolution.

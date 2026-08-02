@@ -4,9 +4,33 @@ import { Kysely, SqliteDialect } from "kysely";
 import { Database as DatabaseSync } from "bun:sqlite";
 
 function applyStandardPragmas(sqlite: DatabaseSync) {
-  sqlite.exec("PRAGMA busy_timeout = 5000");
+  // 10s: four cluster processes share this file, and a write can queue behind
+  // another process's checkpoint.
+  sqlite.exec("PRAGMA busy_timeout = 10000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL");
+}
+
+/** SQLITE_BUSY that survived busy_timeout — retry a whole transaction. */
+function isBusyError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return (
+    code === "SQLITE_BUSY" ||
+    code === "SQLITE_BUSY_SNAPSHOT" ||
+    /database is locked/i.test((err as Error)?.message ?? "")
+  );
+}
+
+async function withBusyRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= attempts || !isBusyError(err)) throw err;
+      const backoff = 25 * 2 ** (attempt - 1) + Math.floor(Math.random() * 25);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
+  }
 }
 
 interface TableSchema {
@@ -126,29 +150,31 @@ export default defineDriver<
     async setItems(items) {
       const now = new Date().toISOString();
 
-      await getDb()
-        .transaction()
-        .execute(async (trx) => {
-          await Promise.all(
-            items.map(({ key, value }) => {
-              return trx
-                .insertInto(table)
-                .values({
-                  id: key,
-                  value,
-                  created_at: now,
-                  updated_at: now,
-                })
-                .onConflict((oc) =>
-                  oc.column("id").doUpdateSet({
+      await withBusyRetry(() =>
+        getDb()
+          .transaction()
+          .execute(async (trx) => {
+            await Promise.all(
+              items.map(({ key, value }) => {
+                return trx
+                  .insertInto(table)
+                  .values({
+                    id: key,
                     value,
+                    created_at: now,
                     updated_at: now,
-                  }),
-                )
-                .execute();
-            }),
-          );
-        });
+                  })
+                  .onConflict((oc) =>
+                    oc.column("id").doUpdateSet({
+                      value,
+                      updated_at: now,
+                    }),
+                  )
+                  .execute();
+              }),
+            );
+          }),
+      );
     },
 
     async removeItem(key: string) {

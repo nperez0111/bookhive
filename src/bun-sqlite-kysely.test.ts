@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect, type Generated } from "kysely";
 
-import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
+import { toImmediateTransaction, wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
 
 type Row = { id: Generated<number>; name: string; note: string | null };
 type Schema = { thing: Row };
@@ -84,5 +84,34 @@ describe("wrapBunSqliteForKysely", () => {
     const rows = await db.selectFrom("thing").selectAll().execute();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.note).toBe("n");
+  });
+
+  it("runs transactions", async () => {
+    await db.transaction().execute(async (trx) => {
+      await trx.insertInto("thing").values({ name: "in-txn", note: null }).execute();
+    });
+    const rows = await db.selectFrom("thing").selectAll().execute();
+    expect(rows.map((r) => r.name)).toEqual(["in-txn"]);
+  });
+});
+
+// A deferred BEGIN that later upgrades to a write fails with
+// SQLITE_BUSY_SNAPSHOT, which the busy handler is never consulted about — so
+// PRAGMA busy_timeout cannot rescue it. Taking the write lock up front means the
+// timeout applies.
+describe("toImmediateTransaction", () => {
+  it("upgrades Kysely's bare begin", () => {
+    expect(toImmediateTransaction("begin")).toBe("begin immediate");
+    expect(toImmediateTransaction("BEGIN")).toBe("begin immediate");
+    expect(toImmediateTransaction(" begin ")).toBe("begin immediate");
+    expect(toImmediateTransaction("begin;")).toBe("begin immediate");
+  });
+
+  it("leaves everything else alone", () => {
+    expect(toImmediateTransaction("commit")).toBe("commit");
+    expect(toImmediateTransaction("rollback")).toBe("rollback");
+    expect(toImmediateTransaction("begin deferred")).toBe("begin deferred");
+    expect(toImmediateTransaction("select * from beginnings")).toBe("select * from beginnings");
+    expect(toImmediateTransaction("savepoint s1")).toBe("savepoint s1");
   });
 });

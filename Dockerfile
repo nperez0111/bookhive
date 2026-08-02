@@ -16,6 +16,10 @@ RUN bun run build
 FROM base AS final
 ARG BUILD_SHA
 ENV BUILD_SHA=${BUILD_SHA} NODE_ENV=production PORT=8080
+# tini reaps orphans. PID 1 is the cluster supervisor (a normal process, so the
+# kernel does not auto-reap for it) and Bun has no waitpid binding, so every
+# HEALTHCHECK `wget` would otherwise leak a zombie forever.
+RUN apk add --no-cache tini
 # Own the workdir and /data as root before switching user (cheap — directories are empty)
 RUN mkdir -p /data && chown bun:bun /data /usr/src/app && chmod 755 /data
 USER bun
@@ -27,4 +31,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:8080/healthcheck || exit 1
 # Supervisor spawns WEB_CONCURRENCY workers sharing port 8080 via SO_REUSEPORT
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["bun", "run", "cluster.ts"]

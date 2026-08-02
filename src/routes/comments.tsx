@@ -217,7 +217,9 @@ const app = new Hono<AppEnv>()
     if (c.req.header()["accept"] === "application/json") {
       return c.json({ success: true, commentId, comment: comment[0] });
     }
-    return c.redirect("/books/" + comment[0]!.hiveId);
+    // A buzz can carry a null hiveId; redirecting blindly produced /books/null.
+    const deletedHiveId = comment[0]!.hiveId;
+    return c.redirect(deletedHiveId ? "/books/" + deletedHiveId : "/");
   });
 
 export default app;
