@@ -78,7 +78,7 @@ export function createSharedKvDb(location: string): { db: KvDb; sqlite: Database
 }
 
 /** Reclaim below this and it isn't worth the rewrite. */
-const VACUUM_FREELIST_RATIO = 0.25;
+export const VACUUM_FREELIST_RATIO = 0.25;
 
 /**
  * Reclaim free pages in the KV file, and switch it to incremental auto-vacuum
@@ -155,7 +155,7 @@ export function incrementalVacuumKv(
   }
 }
 
-function readPragma(sqlite: DatabaseSync, name: string): number {
+export function readPragma(sqlite: DatabaseSync, name: string): number {
   const row = sqlite.query(`PRAGMA ${name}`).get() as Record<string, number> | null;
   return row ? (Object.values(row)[0] ?? 0) : 0;
 }

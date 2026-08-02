@@ -311,7 +311,15 @@ SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` s
 
 Notes: `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface as `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
-**`hive_book_fts` is rebuilt after the startup VACUUM** (`src/context.ts`). It is
+**The main DB is VACUUMed only when there is something to reclaim**
+(`src/context.ts`), gated on the same freelist ratio as the KV. Measured against
+production (356,675 books, 1.62 GB) a VACUUM there costs **22.3s and frees
+nothing** — `freelist_count` is 0, because this file is essentially append-only.
+The delete-heavy file is the KV, which _is_ VACUUMed every startup (1.94 GB →
+34.7 MB). Don't make the main-DB VACUUM unconditional again without re-reading
+`freelist_count` first.
+
+**`hive_book_fts` is rebuilt when that VACUUM does run** (`src/context.ts`). It is
 an external-content table keyed by `hive_book`'s _implicit_ rowid — `id` is
 TEXT, so it is not an INTEGER PRIMARY KEY alias — and SQLite documents that
 VACUUM "may change the ROWIDs of entries in any tables that do not have an

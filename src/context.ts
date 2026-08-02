@@ -34,7 +34,13 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
-import sqliteKv, { createSharedKvDb, incrementalVacuumKv, vacuumKvIfBloated } from "./sqlite-kv.ts";
+import sqliteKv, {
+  createSharedKvDb,
+  incrementalVacuumKv,
+  readPragma,
+  vacuumKvIfBloated,
+  VACUUM_FREELIST_RATIO,
+} from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./utils/enrichQueue";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
@@ -142,34 +148,49 @@ export async function createAppDeps(): Promise<AppDeps> {
     if (migrationResults.length > 0) {
       logger.info(
         { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
-        "migrations applied, running VACUUM before siblings start",
+        "migrations applied",
       );
-      const vacuumStart = Date.now();
-      sqlite.exec("VACUUM");
-      // `hive_book_fts` is an external-content FTS5 table keyed by
-      // `hive_book`'s *implicit* rowid (`id` is TEXT, so it is not an alias for
-      // rowid). SQLite documents that VACUUM "may change the ROWIDs of entries
-      // in any tables that do not have an explicit INTEGER PRIMARY KEY" — and
-      // if it ever does, every search result silently points at the wrong book.
-      // Measured on SQLite 3.51 the rowids are preserved, and FTS5's own
-      // 'integrity-check' does *not* detect this class of desync (verified: it
-      // passes against a deliberately shifted content table), so there is no
-      // cheap way to notice the day that changes. A 'rebuild' is ~1s at 356k
-      // rows, once, on the primary worker inside the startup barrier where
-      // VACUUM already runs. Cheap insurance against silent corruption.
-      const rebuildStart = Date.now();
-      try {
-        sqlite.exec(`INSERT INTO hive_book_fts(hive_book_fts) VALUES('rebuild')`);
-      } catch (err) {
-        logger.error({ err }, "hive_book_fts rebuild after VACUUM failed");
+      // VACUUM only when there is actually something to reclaim. Measured
+      // against the production database (356,675 books, 1.62 GB) it takes
+      // **22.3s** and frees nothing: `freelist_count` there is 0, because the
+      // main DB is essentially append-only — the ingester and enrichment add
+      // rows, almost nothing deletes them. That is 22s of startup, on every
+      // deploy that ships a migration, for zero bytes. The delete-heavy file is
+      // the KV, which is VACUUMed unconditionally below and went 1.94 GB → 34.7
+      // MB. Same freelist-ratio gate as `vacuumKvIfBloated`, so a future
+      // migration that does free a lot still gets cleaned up.
+      const pageCount = readPragma(sqlite, "page_count");
+      const freelist = readPragma(sqlite, "freelist_count");
+      const ratio = pageCount > 0 ? freelist / pageCount : 0;
+      if (ratio < VACUUM_FREELIST_RATIO) {
+        logger.info({ pageCount, freelist, ratio }, "db VACUUM skipped — nothing to reclaim");
+      } else {
+        const vacuumStart = Date.now();
+        sqlite.exec("VACUUM");
+        // `hive_book_fts` is external-content, keyed by `hive_book`'s *implicit*
+        // rowid (`id` is TEXT, so not an INTEGER PRIMARY KEY alias). SQLite
+        // documents that VACUUM "may change the ROWIDs of entries in any tables
+        // that do not have an explicit INTEGER PRIMARY KEY"; if it ever does,
+        // every search result silently points at the wrong book. Measured on
+        // 3.45 and 3.51 the rowids survive, and FTS5's 'integrity-check' does
+        // *not* detect this desync (verified against a deliberately shifted
+        // content table) — so it would be silent. Rebuild is 3.6s at this size,
+        // and only runs on the rare VACUUM now.
+        const rebuildStart = Date.now();
+        try {
+          sqlite.exec(`INSERT INTO hive_book_fts(hive_book_fts) VALUES('rebuild')`);
+        } catch (err) {
+          logger.error({ err }, "hive_book_fts rebuild after VACUUM failed");
+        }
+        logger.info(
+          {
+            durationMs: Date.now() - vacuumStart,
+            ftsRebuildMs: Date.now() - rebuildStart,
+            freelist,
+          },
+          "db VACUUM complete",
+        );
       }
-      logger.info(
-        {
-          durationMs: Date.now() - vacuumStart,
-          ftsRebuildMs: Date.now() - rebuildStart,
-        },
-        "db VACUUM complete",
-      );
     }
   }
 
