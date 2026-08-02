@@ -393,11 +393,16 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `languageNames.ts` | Language name normalization                    |
 | `index.ts`         | `findBookDetails` entry point                  |
 | `waf/`             | AWS WAF challenge solver (see `waf/README.md`) |
+| `google.ts`        | Google Books scraper — **not wired up**        |
+| `isbndb.ts`        | ISBNdb scraper — **not wired up**              |
 
-`google.ts` and `isbndb.ts` were **deleted** (2026-08-02) — dead code behind
-commented-out imports, with no fallback branch in `findBookDetails` to reach
-them. Goodreads is the only scraper. `images.isbndb.com` stays in the
-`imageProxy` allowlist because historical `hive_book` rows still point there.
+`google.ts` and `isbndb.ts` are **tracked but not wired up** — nothing imports
+them and `findBookDetails` has no fallback branch that would reach them, so
+Goodreads is the only scraper actually running. They are kept deliberately, as
+the starting point for a fallback when Goodreads' WAF is rejecting us; treat
+them as reference material, not live code, and don't assume a Goodreads failure
+degrades to either one. `images.isbndb.com` stays in the `imageProxy` allowlist
+because historical `hive_book` rows still point there.
 
 The WAF solver's circuit breaker currently also gates the plain-HTTP fetch path. Splitting into separate breakers is the open fix.
 
