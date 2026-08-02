@@ -18,6 +18,8 @@ import {
   type SessionClient,
 } from "./auth/client";
 import { createCrossProcessLock } from "./auth/refresh-lock";
+import { guardedRestore, isSessionTerminatingError } from "./auth/restore-guard";
+import { getStoredSessionIssuerHost } from "./auth/storage";
 import { createServiceAccountAgent } from "./utils/catalogBookService";
 import { getSessionConfig } from "./auth/router";
 import {
@@ -32,7 +34,13 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
-import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
+import sqliteKv, {
+  createSharedKvDb,
+  incrementalVacuumKv,
+  readPragma,
+  vacuumKvIfBloated,
+  VACUUM_FREELIST_RATIO,
+} from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./utils/enrichQueue";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
@@ -140,16 +148,61 @@ export async function createAppDeps(): Promise<AppDeps> {
     if (migrationResults.length > 0) {
       logger.info(
         { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
-        "migrations applied, running VACUUM before siblings start",
+        "migrations applied",
       );
-      const vacuumStart = Date.now();
-      sqlite.exec("VACUUM");
-      logger.info({ durationMs: Date.now() - vacuumStart }, "db VACUUM complete");
+      // VACUUM only when there is actually something to reclaim. Measured
+      // against the production database (356,675 books, 1.62 GB) it takes
+      // **22.3s** and frees nothing: `freelist_count` there is 0, because the
+      // main DB is essentially append-only — the ingester and enrichment add
+      // rows, almost nothing deletes them. That is 22s of startup, on every
+      // deploy that ships a migration, for zero bytes. The delete-heavy file is
+      // the KV, which went 1.94 GB → 34.7 MB. Gated on *this* file's own
+      // freelist ratio, against the same threshold `vacuumKvIfBloated` uses, so
+      // a future migration that does free a lot still gets cleaned up.
+      const pageCount = readPragma(sqlite, "page_count");
+      const freelist = readPragma(sqlite, "freelist_count");
+      const ratio = pageCount > 0 ? freelist / pageCount : 0;
+      if (ratio < VACUUM_FREELIST_RATIO) {
+        logger.info({ pageCount, freelist, ratio }, "db VACUUM skipped — nothing to reclaim");
+      } else {
+        const vacuumStart = Date.now();
+        sqlite.exec("VACUUM");
+        // `hive_book_fts` is external-content, keyed by `hive_book`'s *implicit*
+        // rowid (`id` is TEXT, so not an INTEGER PRIMARY KEY alias). SQLite
+        // documents that VACUUM "may change the ROWIDs of entries in any tables
+        // that do not have an explicit INTEGER PRIMARY KEY"; if it ever does,
+        // every search result silently points at the wrong book. Measured on
+        // 3.45 and 3.51 the rowids survive, and FTS5's 'integrity-check' does
+        // *not* detect this desync (verified against a deliberately shifted
+        // content table) — so it would be silent. Rebuild is 3.6s at this size,
+        // and only runs on the rare VACUUM now.
+        const rebuildStart = Date.now();
+        try {
+          sqlite.exec(`INSERT INTO hive_book_fts(hive_book_fts) VALUES('rebuild')`);
+        } catch (err) {
+          logger.error({ err }, "hive_book_fts rebuild after VACUUM failed");
+        }
+        logger.info(
+          {
+            durationMs: Date.now() - vacuumStart,
+            ftsRebuildMs: Date.now() - rebuildStart,
+            freelist,
+          },
+          "db VACUUM complete",
+        );
+      }
     }
   }
 
   // Single shared connection for all KV tables on KV_DB_PATH.
-  const kvDb = createSharedKvDb(env.KV_DB_PATH);
+  const { db: kvDb, sqlite: kvSqlite } = createSharedKvDb(env.KV_DB_PATH);
+  if (isPrimaryWorker) {
+    // The KV is delete-heavy (the page cache, auth state, the sweep below)
+    // and had never been VACUUMed: 1.94 GB on disk for 34.7 MB of live rows,
+    // 98.1% free pages. Runs before the siblings spawn, and only when the file
+    // is actually bloated — deploys are frequent enough to keep it in check.
+    vacuumKvIfBloated(kvSqlite, (fields, msg) => logger.info(fields, msg));
+  }
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });
@@ -162,7 +215,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
 
   // Auth tables: in development use a separate file; in production share the main KV connection.
-  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
+  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite").db : kvDb;
   kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
   kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
   // Shared (not in-memory) so the main process and the ingester/import
@@ -182,6 +235,15 @@ export async function createAppDeps(): Promise<AppDeps> {
         const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
         void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
           .execute(kvDb)
+          .then(() => {
+            // Awaited: this hands back the pages *that DELETE just freed*, and
+            // firing it alongside an un-awaited DELETE only ever reclaimed the
+            // previous cycle's. Bounded, so it can never become the
+            // multi-second stall a full VACUUM would be on this timer. The
+            // logger is passed so a SQLITE_BUSY or a full disk here is visible
+            // rather than swallowed on a 15-minute timer nobody watches.
+            incrementalVacuumKv(kvSqlite, 1000, (fields, msg) => logger.warn(fields, msg));
+          })
           .catch((e: any) => {
             if (String(e?.message).includes("no such table")) return;
             logger.error({ err: e }, "page_cache cleanup failed");
@@ -358,10 +420,22 @@ function withSessionRefreshRetry(
   };
 }
 
+/**
+ * Breaker key for a DID: the authorization-server host when we have a stored
+ * session, else the DID itself. Falling back to the DID keeps a first-ever
+ * restore guarded instead of unguarded.
+ */
+async function restoreGuardKey(ctx: { kv: Storage }, did: string): Promise<string> {
+  return (await getStoredSessionIssuerHost(ctx.kv, did)) ?? did;
+}
+
 /** Restore a session client for a DID, bypassing the process cache. */
 async function restoreSessionClient(ctx: AppContext, did: string): Promise<SessionClient | null> {
   try {
-    const oauthSession = await ctx.oauthClient.restore(did as Did, { refresh: "auto" });
+    const key = await restoreGuardKey(ctx, did);
+    const oauthSession = await guardedRestore(key, () =>
+      ctx.oauthClient.restore(did as Did, { refresh: "auto" }),
+    );
     const tokenInfo = await oauthSession.getTokenInfo(false);
     // Same factory as the primary path, so a client that gets cached here can
     // still recover from a later rotation by another process.
@@ -403,11 +477,20 @@ export async function getSessionAgent(
     return cached.client;
   }
 
+  const guardKey = await restoreGuardKey(ctx, session.did);
+
   try {
     timing?.start("session_restore");
-    const oauthSession = await ctx.oauthClient.restore(session.did as Did, {
-      refresh: "auto",
-    });
+    const oauthSession = await guardedRestore(
+      guardKey,
+      () => ctx.oauthClient.restore(session.did as Did, { refresh: "auto" }),
+      (outcome) =>
+        ctx.addWideEventContext({
+          pds_host: outcome.key,
+          pds_breaker: outcome.state,
+          oauth_restore_ms: outcome.durationMs,
+        }),
+    );
     timing?.end("session_restore");
 
     // Get token expiration so we can cache until just before it expires.
@@ -432,11 +515,19 @@ export async function getSessionAgent(
     setCachedSessionClient(did, client, tokenExpiresAt);
     return client;
   } catch (err) {
+    // Only tear the session down when the PDS has actually rejected our
+    // credentials. A timeout or an unreachable host says nothing about whether
+    // the user is still logged in, and destroying on those silently signed
+    // people out for the duration of their server's downtime (7 × 302 on
+    // /library in 6h on 2026-08-02).
+    const terminal = isSessionTerminatingError(err);
     ctx.addWideEventContext({
       oauth_restore: "failed",
+      oauth_restore_terminal: terminal,
+      pds_host: guardKey,
       error: err instanceof Error ? err.message : String(err),
     });
-    session.destroy();
+    if (terminal) session.destroy();
     return null;
   }
 }

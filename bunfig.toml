@@ -1,2 +1,6 @@
 [test]
-root = "src"
+# Was "src", which silently made server/ untestable — server/worker-exit.ts
+# shipped a bug that mislabelled every OOM kill for a month. Scripts pass the
+# directories explicitly (`bun test src server`) so app/'s React Native suites,
+# which use the jest preset rather than bun's runner, stay out of the way.
+root = "."

@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
@@ -20,11 +21,12 @@ import {
   bookFilePath,
   coverFilePath,
   streamPersonalBook,
+  MAX_PERSONAL_BOOK_BYTES,
 } from "../utils/personalLibrary";
 import { NO_HIVE_MATCH } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
 
 const app = new Hono<AppEnv>()
   .get("/", async (c) => {
@@ -59,132 +61,152 @@ const app = new Hono<AppEnv>()
       { title: "Personal Library" },
     );
   })
-  .post("/upload", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+  .post(
+    "/upload",
+    // Rejects on Content-Length, and aborts the stream once the cap is passed
+    // when there is none. This has to run *before* the handler because
+    // `c.req.formData()` materialises the entire multipart body in native
+    // memory — the `file.size` check below cannot fire until after that has
+    // already happened, so on its own it bounds what we store, not what we
+    // allocate.
+    bodyLimit({
+      maxSize: MAX_FILE_SIZE,
+      onError: (c) => c.json({ error: "File exceeds 100 MB limit" }, 413),
+    }),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) return c.json({ error: "Unauthorized" }, 401);
 
-    // The browser posts a plain <form> and wants to land back on the library;
-    // the mobile app posts the same multipart body but needs the created record
-    // (and a real status on duplicates) rather than a redirect to HTML.
-    const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
+      // The browser posts a plain <form> and wants to land back on the library;
+      // the mobile app posts the same multipart body but needs the created record
+      // (and a real status on duplicates) rather than a redirect to HTML.
+      const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
 
-    const formData = await c.req.formData();
-    const file = formData.get("file");
-    if (!file || !(file instanceof File)) {
-      return c.json({ error: "No file provided" }, 400);
-    }
-
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    if (bytes.length > MAX_FILE_SIZE) {
-      return c.json({ error: "File exceeds 100 MB limit" }, 413);
-    }
-
-    const formatInfo = detectFormat(bytes, file.name);
-    if (formatInfo.format === "unknown") {
-      return c.json({ error: "Unsupported file format" }, 400);
-    }
-
-    const contentHash = koreaderPartialMD5(bytes);
-
-    const { db } = c.get("ctx");
-
-    // Check for duplicate
-    const existing = await db
-      .selectFrom("personal_book")
-      .select("id")
-      .where("userDid", "=", agent.did)
-      .where("contentHash", "=", contentHash)
-      .executeTakeFirst();
-    if (existing) {
-      if (wantsJson) {
-        return c.json({ error: "This book is already in your library" }, 409);
+      const formData = await c.req.formData();
+      const file = formData.get("file");
+      if (!file || !(file instanceof File)) {
+        return c.json({ error: "No file provided" }, 400);
       }
-      return c.redirect("/library");
-    }
 
-    const metadata = parseBook(bytes, file.name);
+      // Check the declared size *before* materialising the file. The check used
+      // to run after `arrayBuffer()`, so rejecting an oversized upload still cost
+      // a full copy of it in native memory first.
+      if (file.size > MAX_FILE_SIZE) {
+        return c.json({ error: "File exceeds 100 MB limit" }, 413);
+      }
 
-    await ensureDir(personalBookDir(agent.did, contentHash));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (bytes.length > MAX_FILE_SIZE) {
+        return c.json({ error: "File exceeds 100 MB limit" }, 413);
+      }
 
-    const filePath = bookFilePath(agent.did, contentHash, formatInfo.ext);
-    await Bun.write(filePath, bytes);
+      const formatInfo = detectFormat(bytes, file.name);
+      if (formatInfo.format === "unknown") {
+        return c.json({ error: "Unsupported file format" }, 400);
+      }
 
-    let coverPath: string | null = null;
-    let coverMime: string | null = null;
-    if (metadata.cover && (await isUsableCover(metadata.cover.bytes))) {
-      const cp = coverFilePath(agent.did, contentHash, metadata.cover.ext);
-      await Bun.write(cp, metadata.cover.bytes);
-      coverPath = cp;
-      coverMime = metadata.cover.mime;
-    }
+      const contentHash = koreaderPartialMD5(bytes);
 
-    // Try to match an existing sync_document (contentHash is the KOReader partial MD5)
-    let matchedHiveId: HiveId | null = null;
-    const syncDoc = await db
-      .selectFrom("sync_document")
-      .select(["hiveId"])
-      .where("userDid", "=", agent.did)
-      .where("documentHash", "=", contentHash)
-      .executeTakeFirst();
-    if (syncDoc?.hiveId) {
-      matchedHiveId = syncDoc.hiveId;
-    }
+      const { db } = c.get("ctx");
 
-    const now = new Date().toISOString();
-    await db
-      .insertInto("personal_book")
-      .values({
-        userDid: agent.did,
-        contentHash,
-        hiveId: matchedHiveId,
-        filename: file.name,
-        title: metadata.title,
-        authors: metadata.authors,
-        language: metadata.language || null,
-        format: formatInfo.format,
-        mime: formatInfo.mime,
-        filePath,
-        coverPath,
-        coverMime,
-        sizeBytes: bytes.length,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
-
-    // Mark the book as owned if auto-linked and user has it in their library
-    if (matchedHiveId) {
-      await db
-        .updateTable("user_book")
-        .set({ owned: 1 })
+      // Check for duplicate
+      const existing = await db
+        .selectFrom("personal_book")
+        .select("id")
         .where("userDid", "=", agent.did)
-        .where("hiveId", "=", matchedHiveId)
-        .where("owned", "=", 0)
-        .execute();
-    }
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+      if (existing) {
+        if (wantsJson) {
+          return c.json({ error: "This book is already in your library" }, 409);
+        }
+        return c.redirect("/library");
+      }
 
-    if (wantsJson) {
-      // Same shape as getPersonalLibrary#personalBookView so clients have one
-      // book type for both the list and the upload response.
-      return c.json({
-        book: {
+      const metadata = parseBook(bytes, file.name);
+
+      await ensureDir(personalBookDir(agent.did, contentHash));
+
+      const filePath = bookFilePath(agent.did, contentHash, formatInfo.ext);
+      await Bun.write(filePath, bytes);
+
+      let coverPath: string | null = null;
+      let coverMime: string | null = null;
+      if (metadata.cover && (await isUsableCover(metadata.cover.bytes))) {
+        const cp = coverFilePath(agent.did, contentHash, metadata.cover.ext);
+        await Bun.write(cp, metadata.cover.bytes);
+        coverPath = cp;
+        coverMime = metadata.cover.mime;
+      }
+
+      // Try to match an existing sync_document (contentHash is the KOReader partial MD5)
+      let matchedHiveId: HiveId | null = null;
+      const syncDoc = await db
+        .selectFrom("sync_document")
+        .select(["hiveId"])
+        .where("userDid", "=", agent.did)
+        .where("documentHash", "=", contentHash)
+        .executeTakeFirst();
+      if (syncDoc?.hiveId) {
+        matchedHiveId = syncDoc.hiveId;
+      }
+
+      const now = new Date().toISOString();
+      await db
+        .insertInto("personal_book")
+        .values({
+          userDid: agent.did,
           contentHash,
+          hiveId: matchedHiveId,
+          filename: file.name,
           title: metadata.title,
-          authors: metadata.authors || undefined,
-          language: metadata.language || undefined,
+          authors: metadata.authors,
+          language: metadata.language || null,
           format: formatInfo.format,
           mime: formatInfo.mime,
+          filePath,
+          coverPath,
+          coverMime,
           sizeBytes: bytes.length,
           createdAt: now,
           updatedAt: now,
-          hiveId: matchedHiveId ?? undefined,
-          coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
-        },
-      });
-    }
+        })
+        .execute();
 
-    return c.redirect("/library");
-  });
+      // Mark the book as owned if auto-linked and user has it in their library
+      if (matchedHiveId) {
+        await db
+          .updateTable("user_book")
+          .set({ owned: 1 })
+          .where("userDid", "=", agent.did)
+          .where("hiveId", "=", matchedHiveId)
+          .where("owned", "=", 0)
+          .execute();
+      }
+
+      if (wantsJson) {
+        // Same shape as getPersonalLibrary#personalBookView so clients have one
+        // book type for both the list and the upload response.
+        return c.json({
+          book: {
+            contentHash,
+            title: metadata.title,
+            authors: metadata.authors || undefined,
+            language: metadata.language || undefined,
+            format: formatInfo.format,
+            mime: formatInfo.mime,
+            sizeBytes: bytes.length,
+            createdAt: now,
+            updatedAt: now,
+            hiveId: matchedHiveId ?? undefined,
+            coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
+          },
+        });
+      }
+
+      return c.redirect("/library");
+    },
+  );
 
 // Serve cover images for personal library books
 app.get("/covers/:hash", async (c) => {
@@ -222,8 +244,14 @@ app.get("/books/:hash/download", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();
   if (!userDid) return c.json({ error: "Unauthorized" }, 401);
 
-  const download = await streamPersonalBook(c.get("ctx").db, userDid, c.req.param("hash"));
+  const download = await streamPersonalBook(
+    c.get("ctx").db,
+    userDid,
+    c.req.param("hash"),
+    c.req.header("if-none-match"),
+  );
   if (!download) return c.notFound();
+  if (download.notModified) return c.body(null, 304, download.headers);
 
   return c.body(download.stream, 200, download.headers);
 });

@@ -25,11 +25,11 @@ export const env = cleanEnv(process.env, {
   }),
   DB_CACHE_KB: num({
     default: 16384,
-    desc: "SQLite page cache per connection, in KB. Kept small because each worker process (and its ingester/import worker threads) gets its own; the shared mmap serves most reads.",
+    desc: "SQLite page cache per connection, in KB. Kept small because each worker process (and its ingester/import worker threads) gets its own.",
   }),
   DB_MMAP_SIZE: num({
-    default: 1073741824,
-    desc: "SQLite mmap_size in bytes. mmap'd pages are file-backed and shared across all processes, so this does not multiply with WEB_CONCURRENCY.",
+    default: 0,
+    desc: "SQLite mmap_size in bytes; 0 disables mmap and reads via pread. Was 1 GiB, on the theory that file-backed pages are shared and therefore free. Measured on production 2026-08-02: they are charged to the cgroup, each process faults in its own working set, and one full-table search moved RSS by 971 MB with mmap on versus 20 MB with it off (347ms vs 736ms). Against a 1.6 GB db.sqlite in a memory-limited container that bought ~390ms per scan in exchange for ~1 GB of budget plus constant reclaim and swap thrash (1.36 GB swapped in the OOM dumps). Raise only if the DB comfortably fits the cgroup alongside every worker's anonymous memory.",
   }),
   EXPORT_SHARED_SECRET: str({
     default: "",

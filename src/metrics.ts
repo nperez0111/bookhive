@@ -35,13 +35,14 @@ export class Counter {
   }
 
   toString(): string {
+    // A bare `name 0` for the empty case would publish an *unlabelled* sample
+    // for a metric whose real samples all carry labels. Prometheus rejects
+    // inconsistent label sets on one metric name, so emit the family header
+    // with no samples instead — which is exactly what "nothing observed yet"
+    // means.
     let output = `# HELP ${this.name} ${this.help}\n# TYPE ${this.name} counter\n`;
-    if (this.values.size === 0) {
-      output += `${this.name} 0\n`;
-    } else {
-      for (const [key, value] of this.values) {
-        output += `${this.name}${key} ${value}\n`;
-      }
+    for (const [key, value] of this.values) {
+      output += `${this.name}${key} ${value}\n`;
     }
     return output;
   }
@@ -72,13 +73,10 @@ export class Gauge {
   }
 
   toString(): string {
+    // See Counter.toString — no unlabelled `name 0` placeholder.
     let output = `# HELP ${this.name} ${this.help}\n# TYPE ${this.name} gauge\n`;
-    if (this.values.size === 0) {
-      output += `${this.name} 0\n`;
-    } else {
-      for (const [key, value] of this.values) {
-        output += `${this.name}${key} ${value}\n`;
-      }
+    for (const [key, value] of this.values) {
+      output += `${this.name}${key} ${value}\n`;
     }
     return output;
   }
@@ -253,6 +251,24 @@ export const scraperRequestsTotal = registry.register(
   new Counter("bookhive_scraper_requests_total", "Total scraper requests"),
 );
 
+/**
+ * OG renders rejected because the worker queue was full. This was a silent
+ * `Promise.reject` — shed load was indistinguishable from a render that never
+ * happened.
+ */
+export const ogRenderShedTotal = registry.register(
+  new Counter("bookhive_og_render_shed_total", "OG renders rejected because the queue was full"),
+);
+
+// ─── Cluster-wide gauges (primary worker only) ──────────────────────────────
+// Deliberately unlabelled by worker: these describe shared SQLite state, not
+// this process. Only the primary publishes them, so a scrape landing on
+// another worker reports nothing rather than a third of the truth.
+
+export const enrichQueueDepth = registry.register(
+  new Gauge("bookhive_enrich_queue_depth", "Rows in enrich_queue by state"),
+);
+
 // ─── Runtime gauges ─────────────────────────────────────────────────────────
 
 export const processMemoryBytes = registry.register(
@@ -270,6 +286,30 @@ export const eventLoopLag = registry.register(
     [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
   ),
 );
+
+// ─── Per-worker identity ────────────────────────────────────────────────────
+
+/**
+ * Production runs WEB_CONCURRENCY processes sharing port 8080 via SO_REUSEPORT,
+ * so each `/metrics` scrape is answered by whichever worker the kernel picks.
+ * Without a worker label all three collapse into one time series that silently
+ * alternates between processes — gauges flap, counters look like they reset,
+ * and a worker that dies just vanishes from the graph. That is why a per-worker
+ * memory leak stayed invisible for a month.
+ *
+ * Deliberately `worker` and not `pid`: with workers being OOM-killed every few
+ * minutes, a pid label would mint a new time series on every restart. The pid
+ * is available on /debug/memory instead, where cardinality doesn't matter.
+ */
+const WORKER_INDEX = process.env["WORKER_INDEX"] || "solo";
+
+function workerLabels(): Record<string, string> {
+  return { worker: WORKER_INDEX };
+}
+
+function memLabel(type: string): string {
+  return labelKey({ type, ...workerLabels() });
+}
 
 // ─── Pre-computed label keys (used by call sites) ───────────────────────────
 // These are computed once at module load. Hot paths just pass the string.
@@ -305,13 +345,29 @@ export const LABEL = {
     incremental: labelKey({ sync_type: "incremental" }),
   },
   mem: {
-    rss: labelKey({ type: "rss" }),
-    heapTotal: labelKey({ type: "heap_total" }),
-    heapUsed: labelKey({ type: "heap_used" }),
+    rss: memLabel("rss"),
+    heapTotal: memLabel("heap_total"),
+    heapUsed: memLabel("heap_used"),
+    /**
+     * Native memory held outside the JS heap — decoded images, response bodies,
+     * cached buffers. This is where every unbounded allocation in this app
+     * actually lives, and it was unmeasured through 148 OOM kills. Verified in
+     * the production container: 500 MB of ArrayBuffers moves `external` by
+     * 524 MB and `heapUsed` by 189 MB.
+     */
+    external: memLabel("external"),
+    arrayBuffers: memLabel("array_buffers"),
   },
   cpu: {
-    user: labelKey({ type: "user" }),
-    system: labelKey({ type: "system" }),
+    user: memLabel("user"),
+    system: memLabel("system"),
+  },
+  /** For metrics that are per-process but carry no other dimension. */
+  worker: labelKey(workerLabels()),
+  enrichQueue: {
+    total: labelKey({ state: "total" }),
+    claimed: labelKey({ state: "claimed" }),
+    exhausted: labelKey({ state: "exhausted" }),
   },
 } as const;
 
@@ -333,8 +389,14 @@ export function startRuntimeMetricsCollection(): void {
   runtimeInterval = setInterval(() => {
     const mem = process.memoryUsage();
     processMemoryBytes.set(mem.rss, LABEL.mem.rss);
+    // NOTE: under Bun these are JSC values, not V8's. `heapTotal` is not a
+    // capacity that bounds `heapUsed` (production reports heapTotal 575 KB
+    // against heapUsed 178 KB), so heapUsed > heapTotal is expected and is not
+    // a sign of swapped labels. Read `rss` and `external` instead.
     processMemoryBytes.set(mem.heapTotal, LABEL.mem.heapTotal);
     processMemoryBytes.set(mem.heapUsed, LABEL.mem.heapUsed);
+    processMemoryBytes.set(mem.external, LABEL.mem.external);
+    processMemoryBytes.set(mem.arrayBuffers, LABEL.mem.arrayBuffers);
 
     const usage = process.resourceUsage();
     const userDelta = (usage.userCPUTime - lastCpuUser) / 1_000_000;
@@ -346,7 +408,7 @@ export function startRuntimeMetricsCollection(): void {
 
     const now = performance.now();
     const lag = Math.max(0, (now - lastCheck - 5000) / 1000);
-    eventLoopLag.observe(lag);
+    eventLoopLag.observe(lag, LABEL.worker);
     lastCheck = now;
   }, 5000);
 

@@ -5,7 +5,6 @@ import { BookCard, normalizeBookData } from "./components/BookCard";
 import { endTime, startTime } from "hono/timing";
 import type { AppContext } from "../context";
 import type { Context } from "hono";
-import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { buildUrl } from "./utils/buildUrl";
 import { LanguageSelect } from "./components/LanguageSelect";
 
@@ -222,23 +221,18 @@ export async function getBooksByAuthor(
   const validPage = Math.max(1, page);
   const offset = (validPage - 1) * pageSize;
 
-  // Build the author matching condition for tab-separated authors field
-  // Authors are stored as "Author1\tAuthor2\tAuthor3"
-  const patterns = buildAuthorLikePatterns(author);
-  const authorCondition = sql`(
-    authors = ${patterns.exact}
-    OR authors LIKE ${patterns.first}
-    OR authors LIKE ${patterns.middle}
-    OR authors LIKE ${patterns.last}
-  )`;
-
   startTime(c, "author-books-count-query");
   startTime(c, "author-books-data-query");
 
+  // Indexed join on hive_book_author (migration 020). This was four LIKE
+  // patterns against the tab-separated `authors` column, two of them
+  // leading-wildcard, so it planned SCAN hive_book + a temp B-tree sort over
+  // 356k rows — ~511ms per request.
   let dataQuery = ctx.db
     .selectFrom("hive_book")
-    .selectAll()
-    .where(authorCondition as any);
+    .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
+    .where("hive_book_author.author", "=", author)
+    .selectAll("hive_book");
 
   // Language is a soft preference: sort matching-language books first, don't filter
   if (language) {
@@ -254,10 +248,10 @@ export async function getBooksByAuthor(
       break;
   }
 
-  let countQuery = ctx.db
-    .selectFrom("hive_book")
+  const countQuery = ctx.db
+    .selectFrom("hive_book_author")
     .select(sql<number>`COUNT(*)`.as("count"))
-    .where(authorCondition as any);
+    .where("author", "=", author);
 
   const [totalCountResult, books] = await Promise.all([
     countQuery.executeTakeFirst().then((r) => {

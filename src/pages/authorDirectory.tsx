@@ -25,11 +25,6 @@ function formatCount(count: number): string {
   return `${Math.floor(count / 100) * 100}+`;
 }
 
-const AUTHOR_EXPR = `CASE WHEN instr(authors, char(9)) > 0
-       THEN trim(substr(authors, 1, instr(authors, char(9)) - 1))
-       ELSE trim(authors)
-  END`;
-
 const FEATURED_COUNT = 8;
 
 /**
@@ -45,16 +40,20 @@ export async function getTopAuthors(
   limit: number,
   language?: string,
 ): Promise<AuthorWithStats[]> {
-  const langCondition = language ? sql`WHERE language = ${language}` : sql``;
+  // Groups the normalized hive_book_author table (migration 020) rather than
+  // re-deriving the first author per row with instr/substr/trim over the whole
+  // of hive_book. `position = 0` is the credited first author.
+  const langCondition = language ? sql`AND b.language = ${language}` : sql``;
   const statsResult = await sql<AuthorStats>`
     SELECT
-      ${sql.raw(AUTHOR_EXPR)} as author,
-      SUM(COALESCE(ratingsCount, 0)) as totalRatings,
-      ROUND(AVG(CASE WHEN rating IS NOT NULL AND rating > 0 THEN rating END) / 1000.0, 1) as avgRating,
+      a.author as author,
+      SUM(COALESCE(b.ratingsCount, 0)) as totalRatings,
+      ROUND(AVG(CASE WHEN b.rating IS NOT NULL AND b.rating > 0 THEN b.rating END) / 1000.0, 1) as avgRating,
       COUNT(*) as bookCount
-    FROM hive_book
-    ${langCondition}
-    GROUP BY 1
+    FROM hive_book_author a
+    JOIN hive_book b ON b.id = a.hiveId
+    WHERE a.position = 0 ${langCondition}
+    GROUP BY a.author
     HAVING bookCount >= 2 AND totalRatings > 0
     ORDER BY totalRatings DESC
     LIMIT ${limit}
@@ -65,14 +64,13 @@ export async function getTopAuthors(
 
   // Resolve thumbnails with a single forward scan of the most-rated books.
   // All top-N authors' best books appear well within the first limit*150 rows.
-  const thumbLangCondition = language
-    ? sql`WHERE thumbnail IS NOT NULL AND thumbnail != '' AND language = ${language}`
-    : sql`WHERE thumbnail IS NOT NULL AND thumbnail != ''`;
+  const thumbLangCondition = language ? sql`AND b.language = ${language}` : sql``;
   const thumbResult = await sql<{ author: string; thumbnail: string }>`
-    SELECT ${sql.raw(AUTHOR_EXPR)} as author, thumbnail
-    FROM hive_book
-    ${thumbLangCondition}
-    ORDER BY ratingsCount DESC
+    SELECT a.author as author, b.thumbnail as thumbnail
+    FROM hive_book_author a
+    JOIN hive_book b ON b.id = a.hiveId
+    WHERE a.position = 0 AND b.thumbnail IS NOT NULL AND b.thumbnail != '' ${thumbLangCondition}
+    ORDER BY b.ratingsCount DESC
     LIMIT ${limit * 150}
   `.execute(db);
 
@@ -92,12 +90,14 @@ export async function getTopAuthors(
 async function getAllAuthors(db: Kysely<DatabaseSchema>): Promise<AuthorStats[]> {
   const result = await sql<AuthorStats>`
     SELECT
-      ${sql.raw(AUTHOR_EXPR)} as author,
-      SUM(COALESCE(ratingsCount, 0)) as totalRatings,
-      ROUND(AVG(CASE WHEN rating IS NOT NULL AND rating > 0 THEN rating END) / 1000.0, 1) as avgRating,
+      a.author as author,
+      SUM(COALESCE(b.ratingsCount, 0)) as totalRatings,
+      ROUND(AVG(CASE WHEN b.rating IS NOT NULL AND b.rating > 0 THEN b.rating END) / 1000.0, 1) as avgRating,
       COUNT(*) as bookCount
-    FROM hive_book
-    GROUP BY 1
+    FROM hive_book_author a
+    JOIN hive_book b ON b.id = a.hiveId
+    WHERE a.position = 0
+    GROUP BY a.author
     HAVING bookCount >= 2 AND totalRatings > 0
     ORDER BY totalRatings DESC
     LIMIT 500

@@ -107,8 +107,36 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   app.route("/debug", debugRoutes);
   app.route("/import", importRoutes);
 
-  // TODO enable etag for everything but import route
-  app.use(etag());
+  // Kept for HTML, images and OG cards, which are small and benefit from 304s.
+  //
+  // Not for ebook downloads. hono's etag does `res.clone()` and drains one tee
+  // branch through the digest while nothing reads the other, so the entire body
+  // is buffered in native memory before a single byte reaches the client —
+  // measured at 134 MB of arrayBuffers for a 120 MB download, and it defeats
+  // streaming outright. Those routes set their own ETag from the stored
+  // contentHash (see streamPersonalBook), so clients keep their 304s.
+  //
+  // `/import` is listed too, even though mounting it above this line already
+  // keeps it out. Relying on mount order alone means a future reorder silently
+  // hangs the import SSE stream forever — it never ends, so the digest never
+  // completes and no byte is ever flushed. That failure is severe and would
+  // look like "import is broken" rather than "etag is misconfigured", so it is
+  // worth being order-independent about.
+  const ETAG_EXCLUDED_PREFIXES = ["/library/books/", "/opds/books/", "/import"];
+  const isEtagExcluded = (path: string) =>
+    ETAG_EXCLUDED_PREFIXES.some(
+      (prefix) =>
+        // Exact or path-segment match, so "/importer" wouldn't be caught by
+        // "/import" if such a route were ever added.
+        path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`),
+    );
+  const etagMiddleware = etag();
+  app.use("*", async (c, next) => {
+    if (isEtagExcluded(c.req.path)) {
+      return next();
+    }
+    return etagMiddleware(c, next);
+  });
 
   // Serve anonymous traffic on bot-heavy public pages from the shared KV page
   // cache (one render per URL per hour serves all workers). Prod-only so page

@@ -4,11 +4,10 @@
  *
  * Route handlers run DB queries and build props on the main thread.
  * Rendering is offloaded to a dedicated worker thread via renderOgImage().
- * Results are cached in-memory with per-route TTLs via ocache.
+ * There is **no server-side cache** — see the note above `renderOnce` below.
  */
 import { Hono } from "hono";
 import { isDid } from "@atcute/lexicons/syntax";
-import { defineCachedFunction } from "ocache";
 
 import type { AppEnv } from "../context";
 import type { Context } from "hono";
@@ -23,7 +22,6 @@ import {
   filterFinishedBooksAllTime,
   MIN_BOOKS_FOR_YEAR_STATS,
 } from "../utils/readingStats";
-import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { BOOK_STATUS } from "../constants";
 import { sql } from "kysely";
 import { renderOgImage } from "../workers/og-render/client";
@@ -31,29 +29,37 @@ import type { OgCard } from "../workers/og-render/types";
 
 // ─── Cache + helpers ─────────────────────────────────────────────────────────
 
-function createCachedRenderOg(ttl: number) {
-  return defineCachedFunction(
-    async (card: OgCard) => {
-      const buffer = await renderOgImage(card);
-      return new Uint8Array(buffer);
-    },
-    {
-      maxAge: ttl,
-      getKey: (card) => `${card.kind}:${JSON.stringify(card.props)}`,
-    },
-  );
-}
+/**
+ * Renders are **not cached server-side**. Cloudflare is the cache: these
+ * responses carry `public, max-age=…`, and a card that gets requested twice is
+ * served from the edge without touching the origin. Measured over 48h of
+ * production traffic, the origin therefore sees an almost perfectly unique
+ * stream — 1,189 requests across 1,134 distinct cards, 1,081 of them requested
+ * exactly once, max 4 repeats. A *perfect* origin cache could have served 4% of
+ * them.
+ *
+ * That 4% was previously bought with an unbounded per-process `Map` of webp
+ * bytes (the OOM), and then with an `og_cache` KV table that cost a base64
+ * round-trip, a sweep on the 15-min timer, two gauges, and an extra writer to a
+ * file we already have to VACUUM. Rendering on demand costs ~600ms p50 on a
+ * worker thread, ~25 times an hour.
+ *
+ * `renderOnce` is all that survives: concurrent requests for the *same* cold
+ * card share one render instead of starting N. It holds promises, never bytes,
+ * and always clears in `finally`.
+ */
+const inflight = new Map<string, Promise<Uint8Array<ArrayBuffer>>>();
 
-type CachedRenderOg = ReturnType<typeof createCachedRenderOg>;
-const cachedRenderOgByTTL = new Map<number, CachedRenderOg>();
+function renderOnce(card: OgCard): Promise<Uint8Array<ArrayBuffer>> {
+  const key = `${card.kind}:${Bun.hash(JSON.stringify(card.props)).toString(36)}`;
+  const existing = inflight.get(key);
+  if (existing) return existing;
 
-function getCachedRenderOg(ttl: number): CachedRenderOg {
-  let cached = cachedRenderOgByTTL.get(ttl);
-  if (!cached) {
-    cached = createCachedRenderOg(ttl);
-    cachedRenderOgByTTL.set(ttl, cached);
-  }
-  return cached;
+  const work = renderOgImage(card).then((buf) => new Uint8Array(buf) as Uint8Array<ArrayBuffer>);
+  inflight.set(key, work);
+  return work.finally(() => {
+    inflight.delete(key);
+  });
 }
 
 // Cache TTLs in seconds
@@ -121,7 +127,7 @@ async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number):
   const end = imageProcessingDuration.startTimer(LABEL.op.og_image);
   activeOperations.inc(LABEL.op.og_image);
   try {
-    const bytes = await getCachedRenderOg(maxAge)(card);
+    const bytes = await renderOnce(card);
     return new Response(bytes, {
       headers: {
         "Content-Type": "image/webp",
@@ -393,33 +399,31 @@ const app = new Hono<AppEnv>()
     const author = decodeURIComponent(c.req.param("author"));
     const origin = getOrigin(c);
 
-    const patterns = buildAuthorLikePatterns(author);
-    const authorCondition = sql`(
-      authors = ${patterns.exact}
-      OR authors LIKE ${patterns.first}
-      OR authors LIKE ${patterns.middle}
-      OR authors LIKE ${patterns.last}
-    )`;
-
     const [totalRow, avgRow, books] = await Promise.all([
       c
         .get("ctx")
+        // Joined to hive_book like the two queries below it. Counting
+        // hive_book_author alone would report a different total than the books
+        // actually rendered if the mapping ever holds a row whose book is gone.
         .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select((eb) => eb.fn.countAll().as("count"))
-        .where(authorCondition as any)
+        .where("hive_book_author.author", "=", author)
         .executeTakeFirst(),
       c
         .get("ctx")
         .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select(sql<number>`AVG(rating)`.as("avg"))
-        .where(authorCondition as any)
+        .where("hive_book_author.author", "=", author)
         .where("rating", "is not", null)
         .executeTakeFirst(),
       c
         .get("ctx")
         .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select(["cover", "thumbnail"])
-        .where(authorCondition as any)
+        .where("hive_book_author.author", "=", author)
         .orderBy("ratingsCount", "desc")
         .limit(6)
         .execute(),

@@ -69,6 +69,10 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
           duration_ms: durationMs,
           outcome,
           timestamp: new Date().toISOString(),
+          // Which of the WEB_CONCURRENCY processes served this. Without it a
+          // per-worker problem is invisible in aggregate log queries — pino's
+          // `pid` changes on every OOM restart, so it can't be grouped on.
+          worker_index: env.WORKER_INDEX || "solo",
           env: {
             node_env: env.NODE_ENV,
             ...(env.BUILD_SHA ? { build_sha: env.BUILD_SHA } : {}),

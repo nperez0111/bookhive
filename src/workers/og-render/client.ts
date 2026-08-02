@@ -1,5 +1,6 @@
 import type { OgCard, OgRenderRequest, OgRenderResponse } from "./types";
 import { getLogger } from "../../logger/index.ts";
+import { ogRenderShedTotal } from "../../metrics.ts";
 
 // @takumi-rs/core (native NAPI-RS bindings) is loaded at runtime inside the OG
 // render worker thread. It's pulled into .output/server/node_modules/ via
@@ -60,6 +61,12 @@ export function renderOgImage(card: OgCard): Promise<ArrayBuffer> {
   const id = crypto.randomUUID();
 
   if (pending.size >= MAX_PENDING) {
+    // Shed load loudly. This used to be a bare reject with no counter and no
+    // log line, so sustained shedding looked identical to no traffic at all.
+    ogRenderShedTotal.inc();
+    // warn, not error: shedding is the backpressure working as designed. Only
+    // og_render_timeout is a genuine fault.
+    logger.warn({ msg: "og_render_shed", card_kind: card.kind, pending: pending.size });
     return Promise.reject(new Error("OG render queue is full"));
   }
 

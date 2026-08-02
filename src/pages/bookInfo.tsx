@@ -7,7 +7,6 @@ import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import { buildCrossPostText } from "../bsky/crossPost";
 import { env } from "../env";
 import type { HiveBook } from "../types";
-import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { normalizeBookMeta } from "../utils/bookMeta";
 import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
@@ -142,11 +141,17 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  const firstAuthor = book.authors.split("\t")[0] ?? "";
-  const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
-  const authorCondition = patterns
-    ? sql`(authors = ${patterns.exact} OR authors LIKE ${patterns.first} OR authors LIKE ${patterns.middle} OR authors LIKE ${patterns.last})`
-    : sql`0`;
+  // Split once, trimmed, and used for every author-keyed lookup and link on
+  // this page. `hive_book.authors` stays tab-separated as the canonical form,
+  // but mig 020's trigger stores each name through `trim(substr(...))` — so a
+  // padded segment here fails the equality filter and produces an /authors/
+  // link that matches nothing. Deriving both from one array is what keeps the
+  // first author and the rendered list from disagreeing about that.
+  const authors = book.authors
+    .split("\t")
+    .map((author) => author.trim())
+    .filter(Boolean);
+  const firstAuthor = authors[0] ?? "";
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
@@ -210,9 +215,10 @@ export const BookInfo: FC<{
           let q = c
             .get("ctx")
             .db.selectFrom("hive_book")
-            .selectAll()
-            .where("id", "!=", book.id)
-            .where(authorCondition as any);
+            .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
+            .selectAll("hive_book")
+            .where("hive_book.id", "!=", book.id)
+            .where("hive_book_author.author", "=", firstAuthor);
           if (book.language) {
             q = q.orderBy(sql`CASE WHEN language = ${book.language} THEN 0 ELSE 1 END`, "asc");
           }
@@ -287,7 +293,7 @@ export const BookInfo: FC<{
               </h1>
               <p class="mb-3 text-lg text-muted-foreground">
                 by{" "}
-                {book.authors.split("\t").map((author, index, array) => (
+                {authors.map((author, index, array) => (
                   <Fragment key={author}>
                     <a
                       href={`/authors/${encodeURIComponent(author)}`}

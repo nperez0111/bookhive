@@ -3,7 +3,13 @@
  * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import { XRPCRouter, json, XRPCError, AuthRequiredError } from "@atcute/xrpc-server";
+import {
+  XRPCRouter,
+  json,
+  XRPCError,
+  AuthRequiredError,
+  InvalidRequestError,
+} from "@atcute/xrpc-server";
 import {
   BuzzBookhiveSearchBooks,
   BuzzBookhiveListGenres,
@@ -95,6 +101,7 @@ import {
   bookFilePath,
   coverFilePath,
   ensureDir,
+  MAX_PERSONAL_BOOK_BYTES,
   personalBookDir,
   removeBookDir,
 } from "../utils/personalLibrary";
@@ -1646,7 +1653,19 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
       const userDid = agent.did;
 
+      // This path had no size limit at all, unlike POST /library/upload — an
+      // unbounded `arrayBuffer()` straight into native memory on an
+      // authenticated endpoint. Reject on the declared length first so an
+      // oversized body is never materialised.
+      const declared = Number(request.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > MAX_PERSONAL_BOOK_BYTES) {
+        throw new InvalidRequestError({ message: "File exceeds 100 MB limit" });
+      }
+
       const bytes = new Uint8Array(await request.arrayBuffer());
+      if (bytes.length > MAX_PERSONAL_BOOK_BYTES) {
+        throw new InvalidRequestError({ message: "File exceeds 100 MB limit" });
+      }
       const filename = request.headers.get("x-file-name") ?? "unknown";
 
       const result = await processBookUpload(ctx.db, ctx.kv, userDid, bytes, filename);

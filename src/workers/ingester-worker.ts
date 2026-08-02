@@ -15,7 +15,7 @@ import lruCacheDriver from "unstorage/drivers/lru-cache";
 // Open own DB connections (workers can't share DatabaseSync across threads)
 const { db } = createDb(env.DB_PATH);
 
-const kvDb = createSharedKvDb(env.KV_DB_PATH);
+const { db: kvDb } = createSharedKvDb(env.KV_DB_PATH);
 const kv = createStorage({
   driver: sqliteKv({ table: "kv", db: kvDb }),
 });

@@ -26,6 +26,8 @@ USER bun
 # Nitro bundles all JS and traces native deps (@takumi-rs/core) into .output/server/node_modules — no bun install needed
 COPY --chown=bun:bun --from=build /usr/src/app/.output ./.output
 COPY --chown=bun:bun --from=build /usr/src/app/server/cluster.ts ./cluster.ts
+# cluster.ts imports this at runtime; it must sit next to it.
+COPY --chown=bun:bun --from=build /usr/src/app/server/worker-exit.ts ./worker-exit.ts
 EXPOSE 8080
 # start-period covers migrations on worker 0 plus the staggered sibling spawn
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

@@ -47,6 +47,32 @@ self.onmessage = (event: MessageEvent) => {
   }
 };
 
+/**
+ * Bun reports a refused connection as `code: "ConnectionRefused"`; Node uses
+ * `ECONNREFUSED`. Matching only the Node spelling meant this never self-
+ * disabled — every flush fell through to the generic branch instead, and
+ * `console.error(error)` makes Bun print the error *with source context*,
+ * which for a bundled worker is the entire minified file. That is a
+ * multi-hundred-line non-JSON blob in stdout on every deploy.
+ */
+function isConnectionRefused(error: any): boolean {
+  const code = error?.cause?.code ?? error?.code;
+  return (
+    code === "ConnectionRefused" ||
+    code === "ECONNREFUSED" ||
+    /unable to connect/i.test(error?.message ?? "")
+  );
+}
+
+/**
+ * One structured line, matching pino's shape. Everything this worker writes
+ * lands in the same stdout stream as the app's logs, and ~4% of that stream
+ * being unparseable is what forced `jq -R 'fromjson?'` during the incident.
+ */
+function logLine(level: number, msg: string, fields: Record<string, unknown> = {}): void {
+  console.log(JSON.stringify({ level, time: Date.now(), name: "open-observe", msg, ...fields }));
+}
+
 function schedule() {
   if (timer) clearTimeout(timer);
   if (logs.length >= batchSize && !sending) {
@@ -75,23 +101,27 @@ async function flush() {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      console.error(
-        "OpenObserve: failed to send logs:",
-        response.status,
-        response.statusText,
-        body,
-      );
+      logLine(50, "openobserve_send_failed", {
+        status: response.status,
+        statusText: response.statusText,
+        body: body.slice(0, 500),
+      });
     }
   } catch (error: any) {
-    const code = error?.cause?.code ?? error?.code;
-    if (code === "ECONNREFUSED") {
+    if (isConnectionRefused(error)) {
       failures++;
       if (failures > 2) {
         disabled = true;
-        console.warn("OpenObserve not responding. Disabling log transport.");
+        logLine(40, "openobserve_disabled", {
+          reason: "connection refused",
+          url: apiUrl,
+          failures,
+        });
       }
     } else {
-      console.error("OpenObserve: failed to send logs:", error);
+      logLine(50, "openobserve_send_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   } finally {
     sending = false;

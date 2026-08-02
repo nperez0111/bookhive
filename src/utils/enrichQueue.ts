@@ -24,6 +24,7 @@ import type { Logger } from "pino";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { enrichBookWithDetailedData } from "./enrichBookData";
+import { enrichQueueDepth, LABEL } from "../metrics";
 
 /** Items drained at once. One slot below SOLVER_POOL_SIZE, so an interactive
  *  force-refresh always has a worker available. */
@@ -32,6 +33,14 @@ const DRAIN_INTERVAL_MS = 5_000;
 /** A claim older than this is assumed to belong to a dead process. */
 const CLAIM_STALE_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 4;
+/**
+ * How long a book that exhausted its attempts stays out of the queue.
+ *
+ * Not a permanent tombstone: most failures are Goodreads' WAF being up, which
+ * is transient on a scale of days. But it must be long enough that a crawler
+ * walking all 356k books cannot re-add the same failures on its next pass.
+ */
+export const ENRICH_RETRY_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 /** Backoff per attempt number (1-indexed); the last value repeats. */
 const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000];
 
@@ -44,17 +53,38 @@ export async function enqueueEnrichment(db: Database, hiveId: HiveId): Promise<v
   await enqueueEnrichmentBatch(db, [hiveId]);
 }
 
-/** Queue several books in one statement. Already-queued ids are left untouched
- *  so an in-progress item doesn't get its backoff reset by a page view. */
+/**
+ * Queue several books in one statement. Already-queued ids are left untouched
+ * so an in-progress item doesn't get its backoff reset by a page view.
+ *
+ * Books that exhausted their attempts inside `ENRICH_RETRY_AFTER_MS` are
+ * filtered out **here** rather than at each call site. Every caller is a read
+ * path reached by crawler traffic — a book page view, a search, an XRPC read —
+ * and each one previously re-added books that had already failed four times.
+ * One shared gate is the only version of this that cannot regress when a new
+ * call site is added.
+ */
 export async function enqueueEnrichmentBatch(db: Database, hiveIds: HiveId[]): Promise<void> {
   if (hiveIds.length === 0) return;
   const now = new Date().toISOString();
   const unique = [...new Set(hiveIds)];
 
+  const cooling = await db
+    .selectFrom("hive_book")
+    .select("id")
+    .where("id", "in", unique)
+    .where("enrichFailedAt", "is not", null)
+    .where("enrichFailedAt", ">", new Date(Date.now() - ENRICH_RETRY_AFTER_MS).toISOString())
+    .execute();
+
+  const eligible =
+    cooling.length === 0 ? unique : unique.filter((id) => !cooling.some((row) => row.id === id));
+  if (eligible.length === 0) return;
+
   await db
     .insertInto("enrich_queue")
     .values(
-      unique.map((hiveId) => ({
+      eligible.map((hiveId) => ({
         hiveId,
         enqueuedAt: now,
         attempts: 0,
@@ -148,11 +178,11 @@ async function runItem(
     }
 
     error = typeof fields["scrape_failure"] === "string" ? fields["scrape_failure"] : outcome;
-    await reschedule(db, item.hiveId, attempts, error);
+    await reschedule(db, logger, item.hiveId, attempts, error);
   } catch (err) {
     outcome = "error";
     error = err instanceof Error ? err.message : String(err);
-    await reschedule(db, item.hiveId, attempts, error).catch(() => {});
+    await reschedule(db, logger, item.hiveId, attempts, error).catch(() => {});
   } finally {
     // The one terminal event per item. Never skipped, on any path.
     logger.info({
@@ -169,14 +199,35 @@ async function runItem(
 
 async function reschedule(
   db: Database,
+  logger: Logger,
   hiveId: HiveId,
   attempts: number,
   lastError: string | undefined,
 ): Promise<void> {
   if (attempts >= MAX_ATTEMPTS) {
+    // Stamp the book before dropping the queue row. Deleting the row alone was
+    // not a terminal state: `enrichedAt` stays null on failure, so the next
+    // page view re-enqueued the book and the queue never converged.
+    await db
+      .updateTable("hive_book")
+      .set({ enrichAttempts: attempts, enrichFailedAt: new Date().toISOString() })
+      .where("id", "=", hiveId)
+      .execute();
     await db.deleteFrom("enrich_queue").where("hiveId", "=", hiveId).execute();
+    logger.info({
+      msg: "enrichment_exhausted",
+      hiveId,
+      attempts,
+      retry_after_days: ENRICH_RETRY_AFTER_MS / 86_400_000,
+      ...(lastError ? { error: lastError } : {}),
+    });
     return;
   }
+  await db
+    .updateTable("hive_book")
+    .set({ enrichAttempts: attempts })
+    .where("id", "=", hiveId)
+    .execute();
   await db
     .updateTable("enrich_queue")
     .set({
@@ -200,6 +251,59 @@ export async function drainEnrichmentQueue(
   if (items.length === 0) return 0;
   await Promise.all(items.map((item) => runItem(db, logger, item, enrich)));
   return items.length;
+}
+
+/** How often the drainer proves it is alive and republishes queue depth. */
+const HEARTBEAT_MS = 60_000;
+
+/**
+ * Publish queue depth to /metrics and emit a heartbeat.
+ *
+ * Only the primary worker drains (see `isPrimaryWorker`), which makes the
+ * drainer a silent single point of failure: with no periodic signal, a
+ * crash-looping worker 0 is indistinguishable from an idle queue — an absence
+ * of `msg: "enrichment"` events means nothing either way. The heartbeat turns
+ * that into an alertable absence.
+ */
+export async function publishEnrichQueueStats(db: Database, logger: Logger): Promise<void> {
+  const stats = await db
+    .selectFrom("enrich_queue")
+    .select((eb) => [
+      eb.fn.countAll().as("total"),
+      eb.fn.count("claimedAt").as("claimed"),
+      eb.fn.max("attempts").as("maxAttempts"),
+    ])
+    .executeTakeFirst();
+
+  // Counted on `hive_book`, not `enrich_queue`. A row that exhausts its
+  // attempts is deleted from the queue in the same call that stamps
+  // `enrichFailedAt` (see `reschedule`), so `enrich_queue.attempts >=
+  // MAX_ATTEMPTS` matches nothing and this gauge was structurally always 0 —
+  // the same "zero rows ever observed at max attempts" illusion that hid the
+  // requeue loop in the first place. What is actually worth watching is how
+  // many books are parked in the cooldown right now.
+  const exhausted = await db
+    .selectFrom("hive_book")
+    .select((eb) => eb.fn.countAll().as("count"))
+    .where("enrichFailedAt", "is not", null)
+    .where("enrichFailedAt", ">", new Date(Date.now() - ENRICH_RETRY_AFTER_MS).toISOString())
+    .executeTakeFirst();
+
+  const total = Number(stats?.total ?? 0);
+  const claimed = Number(stats?.claimed ?? 0);
+  const exhaustedCount = Number(exhausted?.count ?? 0);
+
+  enrichQueueDepth.set(total, LABEL.enrichQueue.total);
+  enrichQueueDepth.set(claimed, LABEL.enrichQueue.claimed);
+  enrichQueueDepth.set(exhaustedCount, LABEL.enrichQueue.exhausted);
+
+  logger.info({
+    msg: "enrich_drainer_heartbeat",
+    depth: total,
+    claimed,
+    exhausted: exhaustedCount,
+    max_attempts: Number(stats?.maxAttempts ?? 0),
+  });
 }
 
 /**
@@ -245,8 +349,17 @@ export function startEnrichmentDrain({
   }, intervalMs);
   timer.unref();
 
+  const heartbeat = setInterval(() => {
+    if (stopped) return;
+    void publishEnrichQueueStats(db, logger).catch((err) => {
+      logger.error({ err }, "enrich queue heartbeat failed");
+    });
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+
   return () => {
     stopped = true;
     clearInterval(timer);
+    clearInterval(heartbeat);
   };
 }

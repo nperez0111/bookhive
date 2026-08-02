@@ -10,9 +10,10 @@
  * must pass /healthcheck before the siblings spawn — that ordering is the
  * migration barrier for the non-primary workers.
  *
- * Not bundled — the Dockerfile copies this file verbatim and Bun runs the TS
- * source directly. Zero dependencies.
+ * Not bundled — the Dockerfile copies this file and ./worker-exit.ts verbatim
+ * and Bun runs the TS source directly. Zero external dependencies.
  */
+import { classifyWorkerExit, readProcessMemoryKb } from "./worker-exit.ts";
 
 const concurrency = Math.max(1, Number(process.env["WEB_CONCURRENCY"]) || 4);
 const port = process.env["PORT"] ?? "8080";
@@ -27,45 +28,46 @@ function log(message: string) {
 }
 
 /**
- * Worker deaths were invisible: the app logged 82 errors against 171,145
- * user-visible 502s on 2026-08-01 because the failure mode was process death,
- * not an exception. A cgroup OOM kill arrives as signal SIGKILL with a null
- * exit code, so emit it as a JSON line the log pipeline can count.
+ * Last memory sample per worker index. `/proc/<pid>` is gone by the time
+ * `onExit` fires, so a worker killed for using 2 GB would otherwise report no
+ * memory at all — exactly the number an OOM investigation needs.
  */
-// Bun reports signalCode as a number.
-const SIGNAL_NAMES: Record<number, string> = {
-  2: "SIGINT",
-  6: "SIGABRT",
-  9: "SIGKILL",
-  11: "SIGSEGV",
-  15: "SIGTERM",
-};
+const lastMemory = new Map<number, { rss_kb?: number; anon_kb?: number }>();
+const MEMORY_SAMPLE_MS = 15_000;
 
-function signalName(signalCode: number | null): string | null {
-  if (signalCode === null) return null;
-  return SIGNAL_NAMES[signalCode] ?? `SIG${signalCode}`;
+function sampleWorkerMemory() {
+  for (const [index, proc] of children) {
+    const sample = readProcessMemoryKb(proc.pid);
+    if (sample) lastMemory.set(index, sample);
+  }
 }
 
+/** Emits the structured line and hands the classification back, so the
+ *  human-readable restart message below reads the same `likely_oom` rather than
+ *  re-deriving it from the raw signal — that duplicate condition is how the
+ *  two logs could disagree about whether a kill was an OOM. */
 function logWorkerExit(
   index: number,
+  pid: number | null,
   exitCode: number | null,
-  signalCode: number | null,
+  signalCode: number | string | null | undefined,
   uptimeMs: number,
 ) {
-  const signal = signalName(signalCode);
-  console.error(
-    JSON.stringify({
-      level: 50,
-      time: Date.now(),
-      msg: "worker_exit",
-      worker: index,
-      code: exitCode,
-      signal,
-      // A cgroup OOM kill arrives as SIGKILL with no exit code.
-      likely_oom: signal === "SIGKILL",
-      uptime_ms: uptimeMs,
-    }),
-  );
+  const event = classifyWorkerExit({
+    index,
+    pid,
+    exitCode,
+    signalCode,
+    uptimeMs,
+    memory: lastMemory.get(index) ?? null,
+  });
+  // Drop the sample now that it has been read. Indices are reused by the
+  // restarted worker, and the next sampler tick is up to 15s away — without
+  // this, a worker that dies inside that window reports its *predecessor's*
+  // memory, which is the most misleading possible number during a crash loop.
+  lastMemory.delete(index);
+  console.error(JSON.stringify({ time: Date.now(), ...event }));
+  return event;
 }
 
 function spawnWorker(index: number) {
@@ -75,11 +77,17 @@ function spawnWorker(index: number) {
     env: { ...process.env, WORKER_INDEX: String(index) },
     stdout: "inherit",
     stderr: "inherit",
-    onExit(_proc, exitCode, signalCode) {
+    onExit(exited, exitCode, signalCode) {
       children.delete(index);
       // A SIGTERM we sent ourselves is not a failure — don't page on it.
       if (shuttingDown) return;
-      logWorkerExit(index, exitCode, signalCode, Date.now() - startedAt);
+      const exit = logWorkerExit(
+        index,
+        exited?.pid ?? null,
+        exitCode,
+        signalCode,
+        Date.now() - startedAt,
+      );
       const now = Date.now();
       const recent = (restartTimes.get(index) ?? []).filter((t) => now - t < 60_000);
       recent.push(now);
@@ -90,11 +98,11 @@ function spawnWorker(index: number) {
         return;
       }
       const backoffMs = Math.min(1000 * 2 ** (recent.length - 1), 15_000);
-      const signal = signalName(signalCode);
+      const anon = exit.anon_kb;
       log(
-        `worker ${index} exited (code ${exitCode}, signal ${signal ?? "none"}${
-          signal === "SIGKILL" ? ", likely OOM" : ""
-        }), restarting in ${backoffMs}ms`,
+        `worker ${index} exited (code ${exitCode}, signal ${exit.signal ?? "none"}${
+          exit.likely_oom ? ", likely OOM" : ""
+        }${anon ? `, last anon ${Math.round(anon / 1024)}MB` : ""}), restarting in ${backoffMs}ms`,
       );
       setTimeout(() => spawnWorker(index), backoffMs);
     },
@@ -136,6 +144,9 @@ function shutdown(code: number) {
 
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
+
+const memoryTimer = setInterval(sampleWorkerMemory, MEMORY_SAMPLE_MS);
+memoryTimer.unref?.();
 
 spawnWorker(0);
 if (concurrency > 1) {

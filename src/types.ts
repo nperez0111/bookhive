@@ -180,6 +180,17 @@ export type HiveBook = {
   meta: string | null;
   enrichedAt: string | null;
   /**
+   * Cumulative failed enrichment attempts. Lives on the book, not the queue
+   * row, so the count survives the row being deleted and re-added.
+   */
+  enrichAttempts: number;
+  /**
+   * When enrichment gave up. Acts as a cooldown (see `ENRICH_RETRY_AFTER_MS`),
+   * not a permanent tombstone — without it, a crawler re-queued every
+   * permanently-failing book on every pass and the queue never converged.
+   */
+  enrichFailedAt: string | null;
+  /**
    * External identifiers stored as JSON string
    */
   identifiers: string | null;
@@ -203,6 +214,17 @@ export type HiveBook = {
 export type HiveBookGenre = {
   hiveId: HiveId;
   genre: string;
+};
+
+/**
+ * Row shape for hive_book_author — `hive_book.authors` (tab-separated) split
+ * into one row per author, maintained by triggers (migration 020).
+ * `position` 0 is the credited first author.
+ */
+export type HiveBookAuthor = {
+  hiveId: HiveId;
+  author: string;
+  position: number;
 };
 
 /** Row shape for the book_id_map table (indexed book identifiers). */
