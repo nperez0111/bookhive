@@ -129,11 +129,13 @@ async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number):
       },
     });
   } catch (error) {
+    // No `error` field here on purpose: the bag takes precedence over
+    // requestError in the wide-event serializer, so setting a bare string would
+    // throw away the type and stack it would otherwise record.
     c.set("requestError", error);
     c.get("ctx").addWideEventContext({
       og_render: "failed",
       og_card_kind: card.kind,
-      error: error instanceof Error ? error.message : String(error),
     });
     return fallbackOgResponse();
   } finally {

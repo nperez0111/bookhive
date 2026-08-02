@@ -49,8 +49,15 @@ function rejectBadHiveId(c: Context<AppEnv>, hiveId: string) {
   );
 }
 
+/** Query params the book page understands. Both optional; unknown params are
+ *  ignored (the anon page cache bypasses on anything outside its allowlist). */
+const bookPageQuerySchema = z.object({
+  "force-refresh": z.string().optional(),
+  "review-id": z.string().optional(),
+});
+
 const app = new Hono<AppEnv>()
-  .get("/:hiveId", async (c) => {
+  .get("/:hiveId", zValidator("query", bookPageQuerySchema), async (c) => {
     c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
@@ -88,7 +95,8 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    const forceRefresh = c.req.query("force-refresh") === "true";
+    const query = c.req.valid("query");
+    const forceRefresh = query["force-refresh"] === "true";
     const needsEnrichment =
       !book.enrichedAt ||
       new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -132,7 +140,7 @@ const app = new Hono<AppEnv>()
 
     startTime(c, "render_book_page");
     const authors = book.authors.split("\t");
-    const reviewId = c.req.query("review-id") ?? undefined;
+    const reviewId = query["review-id"];
     const res = c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
       image: `${new URL(c.req.url).origin}/og/book/${hiveId}`,

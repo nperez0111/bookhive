@@ -100,7 +100,7 @@ import {
 } from "../utils/personalLibrary";
 import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
-import { truncateStack } from "../middleware/wide-event";
+import { truncateForLog } from "../middleware/wide-event";
 
 /**
  * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
@@ -323,7 +323,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
                 message: err instanceof Error ? err.message : String(err),
                 type: err instanceof Error ? err.name : "Error",
                 ...(!isIntentional && err instanceof Error && err.stack
-                  ? { stack: truncateStack(err.stack) }
+                  ? { stack: truncateForLog(err.stack) }
                   : {}),
               },
             });

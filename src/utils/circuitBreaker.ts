@@ -55,7 +55,10 @@ export class CircuitBreaker {
 
   /**
    * True if the caller may proceed. In half-open this reserves a probe slot, so
-   * every `true` must be followed by exactly one `recordSuccess`/`recordFailure`.
+   * every `true` must be followed by exactly one of `recordSuccess()`,
+   * `recordFailure()`, or — when the caller never dispatched anything upstream —
+   * `recordAbandoned()`, which returns the slot without counting either way.
+   * Skipping the call leaks a probe slot and can wedge the breaker half-open.
    */
   canRequest(): boolean {
     this.maybeHalfOpen();

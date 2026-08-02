@@ -13,9 +13,9 @@ const SKIP_PREFIXES = ["/public", "/images"];
 /** Truncated so a deep stack can't dominate the log line. */
 export const MAX_STACK_CHARS = 4000;
 
-/** Truncate a stack for inclusion in a wide event. */
-export function truncateStack(stack: string): string {
-  return stack.slice(0, MAX_STACK_CHARS);
+/** Bound any attacker- or dependency-controlled text before it lands in a log line. */
+export function truncateForLog(text: string): string {
+  return text.slice(0, MAX_STACK_CHARS);
 }
 
 function toErrorPayload(err: unknown): {
@@ -28,11 +28,11 @@ function toErrorPayload(err: unknown): {
     return {
       message: err.message,
       type: err.name,
-      ...(err.stack ? { stack: truncateStack(err.stack) } : {}),
+      ...(err.stack ? { stack: truncateForLog(err.stack) } : {}),
       ...(err.cause instanceof Error
-        ? { cause: err.cause.message }
+        ? { cause: truncateForLog(err.cause.message) }
         : typeof err.cause === "string"
-          ? { cause: err.cause }
+          ? { cause: truncateForLog(err.cause) }
           : {}),
     };
   }
