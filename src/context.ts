@@ -18,6 +18,8 @@ import {
   type SessionClient,
 } from "./auth/client";
 import { createCrossProcessLock } from "./auth/refresh-lock";
+import { guardedRestore, isSessionTerminatingError } from "./auth/restore-guard";
+import { getStoredSessionIssuerHost } from "./auth/storage";
 import { createServiceAccountAgent } from "./utils/catalogBookService";
 import { getSessionConfig } from "./auth/router";
 import {
@@ -32,7 +34,8 @@ import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
 import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
-import sqliteKv, { createSharedKvDb } from "./sqlite-kv.ts";
+import { OG_CACHE_MAX_TTL_MS, publishOgCacheStats } from "./utils/ogCache";
+import sqliteKv, { createSharedKvDb, incrementalVacuumKv, vacuumKvIfBloated } from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./utils/enrichQueue";
 import { lazy } from "./utils/lazy";
 import { readThroughCache } from "./utils/readThroughCache";
@@ -149,7 +152,14 @@ export async function createAppDeps(): Promise<AppDeps> {
   }
 
   // Single shared connection for all KV tables on KV_DB_PATH.
-  const kvDb = createSharedKvDb(env.KV_DB_PATH);
+  const { db: kvDb, sqlite: kvSqlite } = createSharedKvDb(env.KV_DB_PATH);
+  if (isPrimaryWorker) {
+    // The KV is delete-heavy (page + OG caches, auth state, the sweeps below)
+    // and had never been VACUUMed: 1.94 GB on disk for 34.7 MB of live rows,
+    // 98.1% free pages. Runs before the siblings spawn, and only when the file
+    // is actually bloated — deploys are frequent enough to keep it in check.
+    vacuumKvIfBloated(kvSqlite, (fields, msg) => logger.info(fields, msg));
+  }
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });
@@ -162,7 +172,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
 
   // Auth tables: in development use a separate file; in production share the main KV connection.
-  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite") : kvDb;
+  const authKvDb = env.isDevelopment ? createSharedKvDb("./auth.sqlite").db : kvDb;
   kv.mount("auth_session:", sqliteKv({ table: "auth_sessions", db: authKvDb }));
   kv.mount("auth_state:", sqliteKv({ table: "auth_state", db: authKvDb }));
   // Shared (not in-memory) so the main process and the ingester/import
@@ -173,6 +183,10 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
+  // Rendered OG cards (see src/routes/og.tsx). Shared so one render serves all
+  // workers — this was a per-process unbounded Map holding webp bytes for up
+  // to seven days.
+  kv.mount("og:", sqliteKv({ table: "og_cache", db: kvDb }));
   if (isPrimaryWorker) {
     // Expire old cached pages so a bot sweep of the long tail can't grow the
     // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
@@ -186,6 +200,28 @@ export async function createAppDeps(): Promise<AppDeps> {
             if (String(e?.message).includes("no such table")) return;
             logger.error({ err: e }, "page_cache cleanup failed");
           });
+
+        // Same idea for OG cards. The longest TTL is 7 days (TTL.STATIC), so
+        // anything untouched for twice that is a card nothing links to any
+        // more — a crawler sweep of the long tail must not grow the KV file
+        // without bound.
+        const ogCutoff = new Date(Date.now() - 2 * OG_CACHE_MAX_TTL_MS).toISOString();
+        void sql`DELETE FROM og_cache WHERE updated_at < ${ogCutoff}`
+          .execute(kvDb)
+          .catch((e: any) => {
+            if (String(e?.message).includes("no such table")) return;
+            logger.error({ err: e }, "og_cache cleanup failed");
+          });
+
+        void publishOgCacheStats(kvDb).catch((e: any) => {
+          if (String(e?.message).includes("no such table")) return;
+          logger.error({ err: e }, "og_cache stats failed");
+        });
+
+        // Hand the pages those two DELETEs just freed back to the filesystem.
+        // Bounded, so it can never become the multi-second stall a full VACUUM
+        // would be on this timer.
+        incrementalVacuumKv(kvSqlite);
       },
       15 * 60 * 1000,
     );
@@ -358,10 +394,22 @@ function withSessionRefreshRetry(
   };
 }
 
+/**
+ * Breaker key for a DID: the authorization-server host when we have a stored
+ * session, else the DID itself. Falling back to the DID keeps a first-ever
+ * restore guarded instead of unguarded.
+ */
+async function restoreGuardKey(ctx: { kv: Storage }, did: string): Promise<string> {
+  return (await getStoredSessionIssuerHost(ctx.kv, did)) ?? did;
+}
+
 /** Restore a session client for a DID, bypassing the process cache. */
 async function restoreSessionClient(ctx: AppContext, did: string): Promise<SessionClient | null> {
   try {
-    const oauthSession = await ctx.oauthClient.restore(did as Did, { refresh: "auto" });
+    const key = await restoreGuardKey(ctx, did);
+    const oauthSession = await guardedRestore(key, () =>
+      ctx.oauthClient.restore(did as Did, { refresh: "auto" }),
+    );
     const tokenInfo = await oauthSession.getTokenInfo(false);
     // Same factory as the primary path, so a client that gets cached here can
     // still recover from a later rotation by another process.
@@ -403,11 +451,20 @@ export async function getSessionAgent(
     return cached.client;
   }
 
+  const guardKey = await restoreGuardKey(ctx, session.did);
+
   try {
     timing?.start("session_restore");
-    const oauthSession = await ctx.oauthClient.restore(session.did as Did, {
-      refresh: "auto",
-    });
+    const oauthSession = await guardedRestore(
+      guardKey,
+      () => ctx.oauthClient.restore(session.did as Did, { refresh: "auto" }),
+      (outcome) =>
+        ctx.addWideEventContext({
+          pds_host: outcome.key,
+          pds_breaker: outcome.state,
+          oauth_restore_ms: outcome.durationMs,
+        }),
+    );
     timing?.end("session_restore");
 
     // Get token expiration so we can cache until just before it expires.
@@ -432,11 +489,19 @@ export async function getSessionAgent(
     setCachedSessionClient(did, client, tokenExpiresAt);
     return client;
   } catch (err) {
+    // Only tear the session down when the PDS has actually rejected our
+    // credentials. A timeout or an unreachable host says nothing about whether
+    // the user is still logged in, and destroying on those silently signed
+    // people out for the duration of their server's downtime (7 × 302 on
+    // /library in 6h on 2026-08-02).
+    const terminal = isSessionTerminatingError(err);
     ctx.addWideEventContext({
       oauth_restore: "failed",
+      oauth_restore_terminal: terminal,
+      pds_host: guardKey,
       error: err instanceof Error ? err.message : String(err),
     });
-    session.destroy();
+    if (terminal) session.destroy();
     return null;
   }
 }

@@ -107,8 +107,25 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   app.route("/debug", debugRoutes);
   app.route("/import", importRoutes);
 
-  // TODO enable etag for everything but import route
-  app.use(etag());
+  // Kept for HTML, images and OG cards, which are small and benefit from 304s.
+  //
+  // Not for ebook downloads. hono's etag does `res.clone()` and drains one tee
+  // branch through the digest while nothing reads the other, so the entire body
+  // is buffered in native memory before a single byte reaches the client —
+  // measured at 134 MB of arrayBuffers for a 120 MB download, and it defeats
+  // streaming outright. Those routes set their own ETag from the stored
+  // contentHash (see streamPersonalBook), so clients keep their 304s.
+  //
+  // `/import` is excluded by mounting above this line, not by prefix: its SSE
+  // stream never ends, and the digest would never complete.
+  const ETAG_EXCLUDED_PREFIXES = ["/library/books/", "/opds/books/"];
+  const etagMiddleware = etag();
+  app.use("*", async (c, next) => {
+    if (ETAG_EXCLUDED_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))) {
+      return next();
+    }
+    return etagMiddleware(c, next);
+  });
 
   // Serve anonymous traffic on bot-heavy public pages from the shared KV page
   // cache (one render per URL per hour serves all workers). Prod-only so page

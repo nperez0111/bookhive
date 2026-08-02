@@ -41,6 +41,8 @@ async function insertBook(db: Database, id: HiveId, enrichedAt: string | null = 
       source: "Goodreads",
       sourceUrl: `https://www.goodreads.com/book/show/${id}`,
       thumbnail: "",
+      enrichAttempts: 0,
+      enrichFailedAt: null,
       createdAt: now,
       updatedAt: now,
       enrichedAt,
@@ -213,5 +215,90 @@ describe("enrichQueue", () => {
       .execute();
 
     expect(await drainEnrichmentQueue(db, logger)).toBe(1);
+  });
+});
+
+describe("convergence", () => {
+  /**
+   * The queue could not converge before this. A row that hit MAX_ATTEMPTS was
+   * deleted without recording anything on hive_book, and `enrichedAt` is only
+   * set on success — so the next page view re-enqueued the same book. With a
+   * crawler walking all 356k books that was a perpetual-motion machine:
+   * 12,444 rows growing ~20/min.
+   */
+  const alwaysFails = (async (
+    _book: unknown,
+    ctx: { addWideEventContext: (f: Record<string, unknown>) => void },
+  ) => {
+    ctx.addWideEventContext({ enrichment: "failed", scrape_failure: "waf_token_rejected" });
+  }) as unknown as EnrichFn;
+
+  async function drainUntilExhausted(db: Database, logger: Logger) {
+    // 4 attempts, each with a backoff — fast-forward by clearing nextAttemptAt.
+    for (let i = 0; i < 6; i++) {
+      await drainEnrichmentQueue(db, logger, { enrich: alwaysFails });
+      await db
+        .updateTable("enrich_queue")
+        .set({ nextAttemptAt: new Date(0).toISOString(), claimedAt: null })
+        .execute();
+    }
+  }
+
+  it("stops re-queueing a book that exhausted its attempts", async () => {
+    const db = await createTestDb();
+    const { logger } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+
+    await drainUntilExhausted(db, logger);
+
+    // Terminal: the queue row is gone AND the book carries the failure.
+    expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(0);
+    const book = await db
+      .selectFrom("hive_book")
+      .select(["enrichAttempts", "enrichFailedAt"])
+      .where("id", "=", HIVE_ID)
+      .executeTakeFirstOrThrow();
+    expect(book.enrichAttempts).toBeGreaterThanOrEqual(4);
+    expect(book.enrichFailedAt).not.toBeNull();
+
+    // The crawler comes back. This is the exact step that used to refill it.
+    await enqueueEnrichment(db, HIVE_ID);
+    expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(0);
+  });
+
+  it("lets a book back in once the cooldown has passed", async () => {
+    const db = await createTestDb();
+    await insertBook(db, HIVE_ID);
+    // Failure is a cooldown, not a tombstone — Goodreads' WAF being up is
+    // transient, and those books should become eligible again eventually.
+    await db
+      .updateTable("hive_book")
+      .set({
+        enrichAttempts: 4,
+        enrichFailedAt: new Date(Date.now() - 8 * 86_400_000).toISOString(),
+      })
+      .where("id", "=", HIVE_ID)
+      .execute();
+
+    await enqueueEnrichment(db, HIVE_ID);
+    expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(1);
+  });
+
+  it("filters only the cooling books out of a mixed batch", async () => {
+    const db = await createTestDb();
+    const cooled = "bk_cooled" as HiveId;
+    const fresh = "bk_fresh" as HiveId;
+    await insertBook(db, cooled);
+    await insertBook(db, fresh);
+    await db
+      .updateTable("hive_book")
+      .set({ enrichAttempts: 4, enrichFailedAt: new Date().toISOString() })
+      .where("id", "=", cooled)
+      .execute();
+
+    await enqueueEnrichmentBatch(db, [cooled, fresh]);
+    const rows = await db.selectFrom("enrich_queue").select("hiveId").execute();
+    expect(rows.map((r) => r.hiveId)).toEqual([fresh]);
   });
 });

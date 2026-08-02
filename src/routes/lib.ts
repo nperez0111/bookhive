@@ -20,6 +20,17 @@ import { findBookDetails } from "../scrapers";
 import { enqueueEnrichment, enqueueEnrichmentBatch } from "../utils/enrichQueue";
 import { serializeUserBook } from "../utils/bookProgress";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
+import { Semaphore } from "../utils/semaphore";
+import { ftsMatchQuery, isUsefulFtsQuery } from "../utils/ftsQuery";
+import { sql } from "kysely";
+
+/**
+ * Concurrency ceiling for the per-book searches a library re-sync fans out.
+ * Matches SEARCH_CONCURRENCY in src/workers/import/logic.ts, which already got
+ * this right — the import worker chunks the identical work at 3.
+ */
+const REFETCH_SEARCH_CONCURRENCY = 3;
+const searchSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, { label: "refetch_search" });
 
 /** Sets Cache-Control header on successful responses. Won't override if already set by the handler. */
 export const cacheControl = (directive: string) =>
@@ -91,22 +102,25 @@ export async function searchBooks({
         }
       }
 
-      // Backfill from local DB with ILIKE to reach up to 20 results
-      const pattern = `%${query}%`;
-      const dbRows = await ctx.db
-        .selectFrom("hive_book")
-        .select("id")
-        .where((eb) =>
-          eb.or([
-            eb("rawTitle", "like", pattern),
-            eb("title", "like", pattern),
-            eb("authors", "like", pattern),
-          ]),
-        )
-        .orderBy("ratingsCount", "desc")
-        .orderBy("rating", "desc")
-        .limit(20)
-        .execute();
+      // Backfill from the local DB to reach up to 20 results.
+      //
+      // This was `LIKE '%…%'` across three columns, which planned
+      // `SCAN hive_book` + a temp B-tree sort over 356k rows — 633-725ms per
+      // call, and `refetchBooks` fires one per book in the library. The FTS5
+      // index (migration 019) serves the same query in 0-7ms.
+      const match = isUsefulFtsQuery(query) ? ftsMatchQuery(query) : null;
+      const dbRows = match
+        ? (
+            await sql<{ id: HiveId }>`
+              SELECT b.id
+              FROM hive_book_fts f
+              JOIN hive_book b ON b.rowid = f.rowid
+              WHERE hive_book_fts MATCH ${match}
+              ORDER BY b.ratingsCount DESC, b.rating DESC
+              LIMIT 20
+            `.execute(ctx.db)
+          ).rows
+        : [];
 
       const combined = [...goodreadsIds];
       for (const { id } of dbRows) {
@@ -375,7 +389,11 @@ export async function refetchBooks({
   const rowsToUpsert = bookRecords.map((record) => {
     const book = record.value;
 
-    promises.push(searchBooks({ query: book.title, ctx }));
+    // Bounded, not pushed straight onto `promises`. Each searchBooks is an
+    // outbound Goodreads fetch *and* a `LIKE '%…%'` scan of all 356k hive_book
+    // rows sorting into a temp B-tree; firing 100 at once per page, recursing
+    // over the whole library, was the largest uncapped fan-out in the app.
+    promises.push(searchSlots.run(() => searchBooks({ query: book.title, ctx })));
     uris.push(record.uri);
 
     if (!book.hiveBookUri) {

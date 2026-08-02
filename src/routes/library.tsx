@@ -20,11 +20,12 @@ import {
   bookFilePath,
   coverFilePath,
   streamPersonalBook,
+  MAX_PERSONAL_BOOK_BYTES,
 } from "../utils/personalLibrary";
 import { NO_HIVE_MATCH } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
 
 const app = new Hono<AppEnv>()
   .get("/", async (c) => {
@@ -72,6 +73,13 @@ const app = new Hono<AppEnv>()
     const file = formData.get("file");
     if (!file || !(file instanceof File)) {
       return c.json({ error: "No file provided" }, 400);
+    }
+
+    // Check the declared size *before* materialising the file. The check used
+    // to run after `arrayBuffer()`, so rejecting an oversized upload still cost
+    // a full copy of it in native memory first.
+    if (file.size > MAX_FILE_SIZE) {
+      return c.json({ error: "File exceeds 100 MB limit" }, 413);
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());

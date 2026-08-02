@@ -1,8 +1,5 @@
 import { scraperDuration, scraperRequestsTotal, activeOperations, LABEL } from "../metrics";
 import Goodreads from "./goodreads.ts";
-// import IsbnDb from "./isbndb.ts";
-// import Google from "./google.ts";
-// import { env } from "../env.ts";
 
 export async function findBookDetails(
   query: string,

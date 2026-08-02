@@ -63,7 +63,7 @@ export async function createWorkerContext({
   const { db } = createDb(dbPath);
 
   // Own KV storage with same mount structure as main server
-  const kvDb = createSharedKvDb(kvPath);
+  const { db: kvDb } = createSharedKvDb(kvPath);
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });

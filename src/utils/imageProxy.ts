@@ -12,7 +12,7 @@
 import { env } from "../env";
 
 /** Remote hosts we are willing to proxy. */
-// images.isbndb.com: the ISBNdb scraper is currently disabled, but rows written
+// images.isbndb.com: the ISBNdb scraper was deleted, but rows written
 // while it was active still carry those cover URLs — without it we reject our
 // own data as a forbidden source.
 export const ALLOWED_IMAGE_HOSTS = new Set([

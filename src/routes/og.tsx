@@ -4,15 +4,16 @@
  *
  * Route handlers run DB queries and build props on the main thread.
  * Rendering is offloaded to a dedicated worker thread via renderOgImage().
- * Results are cached in-memory with per-route TTLs via ocache.
+ * Results are cached in the shared SQLite KV (`og:` mount) with per-route TTLs.
  */
 import { Hono } from "hono";
 import { isDid } from "@atcute/lexicons/syntax";
-import { defineCachedFunction } from "ocache";
+import type { Storage } from "unstorage";
 
 import type { AppEnv } from "../context";
 import type { Context } from "hono";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
+import { cachedOgRender, ogCacheKey } from "../utils/ogCache";
 import { BookFields } from "../db";
 import type { Book, HiveId } from "../types";
 import { getProfile } from "../utils/getProfile";
@@ -23,7 +24,6 @@ import {
   filterFinishedBooksAllTime,
   MIN_BOOKS_FOR_YEAR_STATS,
 } from "../utils/readingStats";
-import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { BOOK_STATUS } from "../constants";
 import { sql } from "kysely";
 import { renderOgImage } from "../workers/og-render/client";
@@ -31,29 +31,16 @@ import type { OgCard } from "../workers/og-render/types";
 
 // ─── Cache + helpers ─────────────────────────────────────────────────────────
 
-function createCachedRenderOg(ttl: number) {
-  return defineCachedFunction(
-    async (card: OgCard) => {
-      const buffer = await renderOgImage(card);
-      return new Uint8Array(buffer);
-    },
-    {
-      maxAge: ttl,
-      getKey: (card) => `${card.kind}:${JSON.stringify(card.props)}`,
-    },
+/**
+ * Rendered cards live in the shared SQLite KV, not in process memory — see
+ * src/utils/ogCache.ts for why. The plumbing lives there rather than here so
+ * src/context.ts can run the sweep without importing this module (which would
+ * cycle back through the render worker's module-scope logger).
+ */
+function cachedRenderOg(kv: Storage, card: OgCard, ttlSeconds: number) {
+  return cachedOgRender(kv, ogCacheKey(card.kind, card.props), ttlSeconds, () =>
+    renderOgImage(card),
   );
-}
-
-type CachedRenderOg = ReturnType<typeof createCachedRenderOg>;
-const cachedRenderOgByTTL = new Map<number, CachedRenderOg>();
-
-function getCachedRenderOg(ttl: number): CachedRenderOg {
-  let cached = cachedRenderOgByTTL.get(ttl);
-  if (!cached) {
-    cached = createCachedRenderOg(ttl);
-    cachedRenderOgByTTL.set(ttl, cached);
-  }
-  return cached;
 }
 
 // Cache TTLs in seconds
@@ -121,7 +108,7 @@ async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number):
   const end = imageProcessingDuration.startTimer(LABEL.op.og_image);
   activeOperations.inc(LABEL.op.og_image);
   try {
-    const bytes = await getCachedRenderOg(maxAge)(card);
+    const bytes = await cachedRenderOg(c.get("ctx").kv, card, maxAge);
     return new Response(bytes, {
       headers: {
         "Content-Type": "image/webp",
@@ -393,33 +380,27 @@ const app = new Hono<AppEnv>()
     const author = decodeURIComponent(c.req.param("author"));
     const origin = getOrigin(c);
 
-    const patterns = buildAuthorLikePatterns(author);
-    const authorCondition = sql`(
-      authors = ${patterns.exact}
-      OR authors LIKE ${patterns.first}
-      OR authors LIKE ${patterns.middle}
-      OR authors LIKE ${patterns.last}
-    )`;
-
     const [totalRow, avgRow, books] = await Promise.all([
       c
         .get("ctx")
-        .db.selectFrom("hive_book")
+        .db.selectFrom("hive_book_author")
         .select((eb) => eb.fn.countAll().as("count"))
-        .where(authorCondition as any)
+        .where("author", "=", author)
         .executeTakeFirst(),
       c
         .get("ctx")
         .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select(sql<number>`AVG(rating)`.as("avg"))
-        .where(authorCondition as any)
+        .where("hive_book_author.author", "=", author)
         .where("rating", "is not", null)
         .executeTakeFirst(),
       c
         .get("ctx")
         .db.selectFrom("hive_book")
+        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
         .select(["cover", "thumbnail"])
-        .where(authorCondition as any)
+        .where("hive_book_author.author", "=", author)
         .orderBy("ratingsCount", "desc")
         .limit(6)
         .execute(),

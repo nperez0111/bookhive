@@ -1,48 +1,7 @@
 import { describe, it, expect } from "bun:test";
-import {
-  buildAuthorLikePatterns,
-  parseAuthors,
-  formatAuthors,
-  calculatePagination,
-} from "./authorMatching";
+import { parseAuthors, formatAuthors, calculatePagination } from "./authorMatching";
 
 describe("authorMatching utilities", () => {
-  describe("buildAuthorLikePatterns", () => {
-    it("should build correct patterns for a simple author name", () => {
-      const patterns = buildAuthorLikePatterns("Brandon Sanderson");
-
-      expect(patterns.exact).toBe("Brandon Sanderson");
-      expect(patterns.first).toBe("Brandon Sanderson\t%");
-      expect(patterns.middle).toBe("%\tBrandon Sanderson\t%");
-      expect(patterns.last).toBe("%\tBrandon Sanderson");
-    });
-
-    it("should handle author names with special characters", () => {
-      const patterns = buildAuthorLikePatterns("J.R.R. Tolkien");
-
-      expect(patterns.exact).toBe("J.R.R. Tolkien");
-      expect(patterns.first).toBe("J.R.R. Tolkien\t%");
-      expect(patterns.middle).toBe("%\tJ.R.R. Tolkien\t%");
-      expect(patterns.last).toBe("%\tJ.R.R. Tolkien");
-    });
-
-    it("should handle author names with apostrophes", () => {
-      const patterns = buildAuthorLikePatterns("Tamsyn O'Flynn");
-
-      expect(patterns.exact).toBe("Tamsyn O'Flynn");
-      expect(patterns.first).toBe("Tamsyn O'Flynn\t%");
-    });
-
-    it("should handle empty string", () => {
-      const patterns = buildAuthorLikePatterns("");
-
-      expect(patterns.exact).toBe("");
-      expect(patterns.first).toBe("\t%");
-      expect(patterns.middle).toBe("%\t\t%");
-      expect(patterns.last).toBe("%\t");
-    });
-  });
-
   describe("parseAuthors", () => {
     it("should parse single author", () => {
       expect(parseAuthors("Brandon Sanderson")).toEqual(["Brandon Sanderson"]);

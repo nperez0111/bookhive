@@ -64,14 +64,90 @@ export type KvDb = Kysely<TableSchema>;
  * Pass the result to multiple sqliteKv drivers via the `db` option to share
  * a single connection to the same file.
  */
-export function createSharedKvDb(location: string): KvDb {
+/** Returns the raw handle alongside Kysely, matching `createDb` in src/db.ts —
+ *  VACUUM and PRAGMA work needs the connection, not the query builder. */
+export function createSharedKvDb(location: string): { db: KvDb; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(location);
   applyStandardPragmas(sqlite);
-  return new Kysely<TableSchema>({
+  const db = new Kysely<TableSchema>({
     dialect: new SqliteDialect({
       database: wrapBunSqliteForKysely(sqlite),
     }),
   });
+  return { db, sqlite };
+}
+
+/** Reclaim below this and it isn't worth the rewrite. */
+const VACUUM_FREELIST_RATIO = 0.25;
+
+/**
+ * Reclaim free pages in the KV file, and switch it to incremental auto-vacuum
+ * so this stops being necessary.
+ *
+ * The KV is a delete-heavy workload — the page and OG caches churn constantly
+ * and the primary worker sweeps both every 15 minutes — but nothing ever
+ * VACUUMed it and `auto_vacuum` was never set. Measured on production
+ * 2026-08-02: **1.94 GB on disk holding 34.7 MB of live data, 98.1% free
+ * pages.** That is 1.9 GB of page-cache pressure inside a memory-limited
+ * cgroup, for nothing.
+ *
+ * A full VACUUM of that file took 1.36s. Cheap enough to do on every deploy,
+ * but gated on the ratio so a healthy file isn't rewritten for no reason.
+ * `auto_vacuum = INCREMENTAL` only takes effect after a VACUUM, which is why
+ * the pragma is set first and the two always run together.
+ */
+export function vacuumKvIfBloated(
+  sqlite: DatabaseSync,
+  log: (fields: Record<string, unknown>, msg: string) => void,
+): void {
+  const pageCount = readPragma(sqlite, "page_count");
+  const freelist = readPragma(sqlite, "freelist_count");
+  const pageSize = readPragma(sqlite, "page_size");
+  const autoVacuum = readPragma(sqlite, "auto_vacuum");
+  if (pageCount === 0) return;
+
+  const ratio = freelist / pageCount;
+  // 0 = NONE, 1 = FULL, 2 = INCREMENTAL.
+  if (ratio < VACUUM_FREELIST_RATIO && autoVacuum === 2) return;
+
+  const startedAt = Date.now();
+  const beforeBytes = pageCount * pageSize;
+  try {
+    if (autoVacuum !== 2) sqlite.exec("PRAGMA auto_vacuum = INCREMENTAL");
+    sqlite.exec("VACUUM");
+  } catch (err) {
+    // A crowded disk or a concurrent reader is not worth failing startup over.
+    log({ err, freelist_ratio: ratio }, "kv VACUUM failed");
+    return;
+  }
+
+  log(
+    {
+      durationMs: Date.now() - startedAt,
+      freelist_ratio: Number(ratio.toFixed(3)),
+      before_bytes: beforeBytes,
+      after_bytes: readPragma(sqlite, "page_count") * pageSize,
+    },
+    "kv VACUUM complete",
+  );
+}
+
+/**
+ * Reclaim whatever the sweeps just freed. Bounded by `pages` so it can sit on a
+ * periodic timer without ever becoming a long synchronous stall — unlike a full
+ * VACUUM, which rewrites the file.
+ */
+export function incrementalVacuumKv(sqlite: DatabaseSync, pages = 1000): void {
+  try {
+    sqlite.exec(`PRAGMA incremental_vacuum(${pages})`);
+  } catch {
+    // No-op when auto_vacuum isn't INCREMENTAL yet.
+  }
+}
+
+function readPragma(sqlite: DatabaseSync, name: string): number {
+  const row = sqlite.query(`PRAGMA ${name}`).get() as Record<string, number> | null;
+  return row ? (Object.values(row)[0] ?? 0) : 0;
 }
 
 const DRIVER_NAME = "sqlite";

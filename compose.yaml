@@ -94,7 +94,11 @@ services:
       PDS_ADMIN_PASSWORD: "CHANGE_ME_admin_password"
       OPEN_OBSERVE_USER: "user@bookhive.buzz"
       OPEN_OBSERVE_PASSWORD: "password"
-      OPEN_OBSERVE_URL: "http://localhost:5080"
+      # Must be container-reachable: inside this container `localhost` is the
+      # app itself, not OpenObserve. Both the logs transport and the OTLP trace
+      # exporter derive their endpoints from this, so a wrong value silently
+      # disables observability rather than failing loudly.
+      OPEN_OBSERVE_URL: "http://openobserve:5080"
       IMGPROXY_URL: "http://imgproxy:8080"
       IMGPROXY_KEY: "CHANGE_ME_imgproxy_key_hex"
       IMGPROXY_SALT: "CHANGE_ME_imgproxy_salt_hex"
@@ -104,7 +108,8 @@ services:
       - data:/data
     # Leave the other ~4 host CPUs for pds/imgproxy/openobserve and future services.
     cpus: "4"
-    # ~1GB shared SQLite mmap page cache + ~300MB private per worker.
+    # ~300-400MB anonymous per worker. The old budget assumed a ~1GB SQLite
+    # mmap on top; DB_MMAP_SIZE now defaults to 0, so that term is gone.
     mem_limit: 3g
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to

@@ -12,8 +12,30 @@ const OWNER = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 
 const STALE_LOCK_MS = 30_000;
 const HEARTBEAT_MS = STALE_LOCK_MS / 3;
-const POLL_INTERVAL_MS = 150;
-const MAX_ATTEMPTS = 250;
+
+/**
+ * Total time a request will wait for another process to finish refreshing.
+ *
+ * This was 250 attempts × a flat 150 ms = 37.5 s. On 2026-08-02 that was the
+ * single worst thing in the codebase: when one user's PDS started blackholing
+ * packets, the lock holder hung indefinitely (its heartbeat kept renewing the
+ * row, so it was never evicted as stale) and every other request for that DID
+ * — across all three worker processes — sat in this loop for the full 37.5 s.
+ * Production showed a 38,000–39,600 ms plateau, an exact match.
+ *
+ * Worse than the wait was its cost: each attempt issues three SQLite statements
+ * and `bun:sqlite` is synchronous, so a single waiter ran 750 blocking
+ * statements on the event loop. Enough concurrent waiters and the worker stops
+ * calling `accept()` entirely — Caddy's 166,450 `dial tcp: i/o timeout` 502s.
+ *
+ * The holder is now bounded independently (`restore-guard.ts` caps a restore at
+ * 5 s), so a waiter that gets nowhere in 3 s is waiting on something already
+ * known to be broken. Exponential backoff takes the statement count for a full
+ * wait from 750 down to ~21.
+ */
+const MAX_WAIT_MS = 3_000;
+const INITIAL_POLL_MS = 25;
+const MAX_POLL_MS = 400;
 
 export function createCrossProcessLock(
   db: KvDb,
@@ -25,7 +47,10 @@ export function createCrossProcessLock(
   )`.execute(db);
 
   return async function crossProcessLock<T>(key: string, cb: () => Promise<T>): Promise<T> {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const deadline = Date.now() + MAX_WAIT_MS;
+    let pollMs = INITIAL_POLL_MS;
+
+    for (;;) {
       const now = Date.now();
 
       // Evict stale locks from crashed processes before attempting acquisition.
@@ -64,7 +89,11 @@ export function createCrossProcessLock(
         }
       }
 
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+
+      await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+      pollMs = Math.min(pollMs * 2, MAX_POLL_MS);
     }
 
     // Only clean up our own lock (defensive no-op — we never acquired one).

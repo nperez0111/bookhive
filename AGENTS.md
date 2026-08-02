@@ -66,7 +66,30 @@ is useless for detached work because the request's wide event has already
 flushed. `enrichBookWithDetailedData` additionally holds its own semaphore (4)
 and a 45s deadline so no call site can reintroduce an unbounded fan-out. This
 replaced a 20-way-per-search fan-out of solver Workers that OOM-killed workers
-every 5–7 minutes on 2026-08-01.
+every 5–7 minutes on 2026-08-01. Because the drainer is primary-only it is a
+silent SPOF, so `publishEnrichQueueStats` emits `msg:
+"enrich_drainer_heartbeat"` every 60s and sets `bookhive_enrich_queue_depth` —
+without it, a crash-looping worker 0 is indistinguishable from an idle queue.
+
+**Author lookups go through `hive_book_author`, not `LIKE`** (mig 020).
+`authors` is tab-separated, so "books by X" used to be four LIKE patterns
+(sole/first/middle/last), two of them leading-wildcard and therefore
+unindexable: `/authors/:author` planned `SCAN hive_book` + a temp B-tree over
+356k rows at ~511ms, and the author directory had to `GROUP BY` a
+`CASE/instr/substr/trim` expression to recover the first author. Verified
+against production, the join returns identical counts at 1ms vs 65ms.
+Deliberately **not** FTS5 — this is exact identity, not text search; "Stephen
+King" must not also match "Stephen Kingsley". Triggers rather than a
+`syncHiveBookGenres`-style helper because `hive_book.authors` is written from
+the ingester, importer, enrichment and catalog service, and a helper only has
+to be forgotten once to desynchronize silently.
+
+**Library re-sync fans out at most `REFETCH_SEARCH_CONCURRENCY` (3) searches**
+(`src/routes/lib.ts`). `refetchBooks` used to push one `searchBooks` per record
+straight into a `Promise.all`, 100 per page, recursing over the whole library —
+each one an outbound Goodreads fetch _and_ a `LIKE '%…%'` scan of all 356k
+`hive_book` rows sorting into a temp B-tree. `src/workers/import/logic.ts`
+already chunked the identical work at 3.
 
 **Anonymous page cache**: `src/middleware/anon-page-cache.ts` serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from the shared KV (`page:` mount, gzipped HTML, 1h TTL, query-param allowlist `page`/`sort`/`lang`/`review-id`; other params bypass). Prod-only. The primary worker sweeps expired `page_cache` rows every 15 min. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML on these routes (anon → `public, max-age=3600`; `sid` cookie → `private`) — it runs on the final response because Hono-set headers can be replaced by nitro's route-rule header middleware (the static-asset globs in `vite.config.ts` routeRules leak onto app routes).
 
@@ -90,13 +113,22 @@ context → wide-event logging → error capture → asset URLs (Vite manifest) 
 `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → `etag` →
 anon page cache (prod, `/books/*`, `/explore*`, `/authors/*`).
 
+**`etag()` must never see a large or streamed body.** It does `res.clone()` and
+drains one tee branch through the digest while nothing reads the other, so the
+whole body is buffered in native memory before a single byte reaches the client
+— measured at 134 MB of `arrayBuffers` for a 120 MB download — and streaming is
+defeated outright. `/library/books/*` and `/opds/books/*` are excluded by prefix
+and set their own strong ETag from the stored `contentHash`, so e-readers keep
+their 304s; `/import` is excluded by being mounted _above_ the middleware, since
+its SSE stream never ends and the digest would never complete.
+
 ### Mounted in `src/app.ts` (infra/admin, before `mainRouter`)
 
 - `/healthcheck` → JSON status + git sha + startedAt
 - `/metrics` → Prometheus (`@hono/prometheus` defaults + custom registry)
 - `/sitemap.xml` → static sitemap (`/`, `/app`, `/privacy-policy`)
 - `/admin/*` → `src/routes/admin.ts` (gated by `EXPORT_SHARED_SECRET`)
-- `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`)
+- `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`). `GET /debug/memory` returns `process.memoryUsage()`, parsed `/proc/self/smaps_rollup`, the resident mappings over 20 MB, and any open PDS breakers — the breakdown needed to tell an anonymous leak from the reclaimable SQLite mmap
 - `/import` (POST `/goodreads`, `/storygraph`) → `src/routes/import.ts` — CSV import handler
 - `app.notFound` → JSON 404
 
@@ -170,7 +202,7 @@ User book lists ("shelves"). Lists use the **shared popfeed lexicons**
 Personal library: ebook uploads (= the OPDS catalog, served by `src/routes/opds.ts`), e-reader credentials, sync documents. All routes require session auth.
 
 - GET `/` → `src/pages/library.tsx` (auth). With no books _and_ no synced documents it renders an explainer with the credentials block and upload dropzone inline; otherwise a header with two `<dialog>` triggers plus the `LibraryManager` island.
-- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash). Content-negotiated: `Accept: application/json` (the mobile app) gets `{ book }` in the `personalBookView` shape, or 409 on a duplicate; the browser form gets a 302 back to `/library`.
+- POST `/upload` → multipart file upload handler (validates format via `detectFormat`, computes the KOReader partial MD5 as `contentHash`, parses metadata via `parseBook`, writes to disk, inserts `personal_book`, auto-links from a `sync_document` with the same hash). Content-negotiated: `Accept: application/json` (the mobile app) gets `{ book }` in the `personalBookView` shape, or 409 on a duplicate; the browser form gets a 302 back to `/library`. Size is checked against `file.size` **before** `arrayBuffer()` — the check used to run after, so rejecting an oversized upload still cost a full copy of it in native memory. The XRPC `uploadPersonalBook` procedure enforces the same `MAX_PERSONAL_BOOK_BYTES` (it previously had no limit at all).
 - GET `/covers/:hash` → extracted cover image for a personal book
 - GET `/books/:hash/download` → session-authenticated file download; shares `streamPersonalBook` (`src/utils/personalLibrary.ts`) with the Basic-auth OPDS route.
 - GET `/shelves` → JSON list of user's personal shelves with book counts (`{ shelves: [{ id, name, description, bookCount, createdAt, updatedAt }] }`)
@@ -232,9 +264,24 @@ at 200 with `max-age=300` and records the cause on the wide event. Crawlers cach
 a failed preview, so a 500 here breaks a book's link previews indefinitely.
 `src/workers/og-render/client.ts` holds one worker per process; a timeout rejects
 only that render (recycling the worker after 3 consecutive timeouts) and the
-queue is capped at 32 pending. `OG_RENDER_OPTIONS.onError` suppresses takumi's
+queue is capped at 32 pending — shed renders increment
+`bookhive_og_render_shed_total` and log `og_render_shed`, because that rejection
+used to be silent. `OG_RENDER_OPTIONS.onError` suppresses takumi's
 `defaultErrorHandler`, which wrote unstructured `Failed to render image.` +
 raw DOMException dumps to stdout.
+
+**Rendered cards are cached in the shared KV**, not in process memory —
+`src/utils/ogCache.ts` (`og:` mount → `og_cache` table), with a per-process
+in-flight map that collapses a concurrent burst on one cold card into a single
+render. This was ocache's `defineCachedFunction`, whose default store is a plain
+`Map` with **no size cap or eviction**, holding webp bytes as `Uint8Array` —
+native memory, invisible to `heapUsed`, duplicated per worker, for up to 7 days.
+Production traffic is a crawler sweeping the catalog (674 distinct cards in 3h
+at a 4.4% hit rate), so it only ever grew. The primary worker sweeps `og_cache`
+and publishes `bookhive_og_cache_entries`/`_bytes` on the same 15-min timer as
+`page_cache`. The plumbing lives in `src/utils/ogCache.ts` rather than here
+specifically so `src/context.ts` can run the sweep without an import cycle
+through the render worker's module-scope pino instance.
 
 ### `src/routes/sync/kosync.ts` (mounted at `/kosync`) — KOReader sync (KOSync protocol)
 
@@ -385,8 +432,11 @@ Client hooks/utils:
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–018) in one file. `createDb`
-sets WAL/perf PRAGMAs; migrations run with fsync disabled and a background
+SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb`
+sets WAL/perf PRAGMAs (**`mmap_size` defaults to 0** — see `DB_MMAP_SIZE` in
+`src/env.ts`; mapping a 1.6 GB database into every worker moved RSS by 971 MB
+per full-table scan and cost ~1 GB of the cgroup's budget plus reclaim thrash,
+to save ~390ms); migrations run with fsync disabled and a background
 `VACUUM` on startup. Exports `BookFields` (select list) and
 `syncHiveBookGenres()`.
 
@@ -399,18 +449,32 @@ a deferred transaction that later upgrades to a write fails with
 `PRAGMA busy_timeout` alone cannot cover it across cluster processes. See
 `src/bun-sqlite-kysely.test.ts`.
 
-| Table             | Purpose                   | Key columns                                                                                                                                                              |
-| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `user_book`       | User's book records       | uri (PK), cid, userDid, hiveId, title, authors, status, **stars**, review, startedAt, finishedAt, **owned**, bookProgress, previousReads (JSON re-read history)          |
-| `hive_book`       | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, identifiers, hiveBookAtUri, language |
-| `hive_book_genre` | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here** — the old `hive_book.genres` column was dropped (mig 011)                                                         |
-| `book_id_map`     | ISBN/Goodreads cross-refs | hiveId (PK), isbn, isbn13, goodreadsId, updatedAt                                                                                                                        |
-| `buzz`            | Comments on books         | uri (PK), cid, userDid, hiveId, **comment**, bookUri, parentUri, createdAt                                                                                               |
-| `user_follows`    | Cached follow graph       | userDid, followsDid, followedAt, syncedAt, **isActive**                                                                                                                  |
-| `book_list`       | User-created book lists   | **uri (PK, AT URI)**, cid, userDid, name, description, ordered, tags, createdAt                                                                                          |
-| `book_list_item`  | Items in a book list      | **uri (PK, AT URI)**, cid, userDid, **listUri**, hiveId, position, embeddedTitle/Author/CoverUrl, identifiers                                                            |
-| `sync_document`   | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, title, authors, progressData (JSON), createdAt, updatedAt              |
-| `enrich_queue`    | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, enqueuedAt, attempts, nextAttemptAt, claimedAt, lastError                                                                                  |
+| Table              | Purpose                   | Key columns                                                                                                                                                              |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `user_book`        | User's book records       | uri (PK), cid, userDid, hiveId, title, authors, status, **stars**, review, startedAt, finishedAt, **owned**, bookProgress, previousReads (JSON re-read history)          |
+| `hive_book`        | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, identifiers, hiveBookAtUri, language |
+| `hive_book_genre`  | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here** — the old `hive_book.genres` column was dropped (mig 011)                                                         |
+| `hive_book_fts`    | FTS5 search index         | External-content FTS5 over `hive_book(title, rawTitle, authors)`, trigger-maintained (mig 019). Never written directly                                                   |
+| `hive_book_author` | Author-to-book mapping    | hiveId, author, position (PK hiveId+author). `authors` split on tabs, trigger-maintained (mig 020). `position = 0` is the credited first author                          |
+| `book_id_map`      | ISBN/Goodreads cross-refs | hiveId (PK), isbn, isbn13, goodreadsId, updatedAt                                                                                                                        |
+| `buzz`             | Comments on books         | uri (PK), cid, userDid, hiveId, **comment**, bookUri, parentUri, createdAt                                                                                               |
+| `user_follows`     | Cached follow graph       | userDid, followsDid, followedAt, syncedAt, **isActive**                                                                                                                  |
+| `book_list`        | User-created book lists   | **uri (PK, AT URI)**, cid, userDid, name, description, ordered, tags, createdAt                                                                                          |
+| `book_list_item`   | Items in a book list      | **uri (PK, AT URI)**, cid, userDid, **listUri**, hiveId, position, embeddedTitle/Author/CoverUrl, identifiers                                                            |
+| `sync_document`    | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, title, authors, progressData (JSON), createdAt, updatedAt              |
+| `enrich_queue`     | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, enqueuedAt, attempts, nextAttemptAt, claimedAt, lastError                                                                                  |
+
+`hive_book.enrichAttempts` / `enrichFailedAt` (mig 021) are the queue's terminal
+state. **The queue could not converge before them**: a row at `MAX_ATTEMPTS` was
+deleted without recording anything on the book, and `enrichedAt` is only set on
+success — so the next page view re-enqueued it. With a crawler walking all 356k
+books that is a perpetual-motion machine (12,444 rows, +20/min, and _zero_ rows
+ever observed at max attempts because they were deleted and re-added instead).
+`enqueueEnrichmentBatch` now filters books stamped within
+`ENRICH_RETRY_AFTER_MS` (7d) **inside the function**, not at each call site —
+every caller is a crawler-reachable read path, so one shared gate is the only
+version that can't regress when a call site is added. It's a cooldown rather
+than a tombstone: most failures are Goodreads' WAF being up, which is transient.
 
 Notes: `user_book` has no `rating` column (it's `stars`); `owned` is a boolean
 column, **not** a status (legacy `…#owned` status migrated to `owned=1`).
@@ -430,7 +494,16 @@ it is the server-side re-read rotation in `updateBookRecord`
 
 ### KV Cache (`src/sqlite-kv.ts`)
 
-SQLite-backed unstorage for: profiles, identity resolution, search results, auth sessions/state, follows sync timestamps, sync pending PDS writes.
+SQLite-backed unstorage for: profiles, identity resolution, search results, auth sessions/state, follows sync timestamps, sync pending PDS writes, cached anonymous pages (`page:`), and rendered OG cards (`og:`).
+
+**The KV is VACUUMed on startup** by the primary worker (`vacuumKvIfBloated`),
+gated on a 25% free-page ratio, and switched to `auto_vacuum = INCREMENTAL` so
+the 15-minute sweep can reclaim as it goes (`incrementalVacuumKv`). It is a
+delete-heavy workload — both caches churn and both are swept — but nothing ever
+vacuumed it and `auto_vacuum` was never set: measured 2026-08-02 at **1.94 GB on
+disk holding 34.7 MB of live rows, 98.1% free pages**, i.e. 1.9 GB of page-cache
+pressure inside a memory-limited cgroup for nothing. A full VACUUM of that file
+took 1.36s, cheap enough to run on every deploy.
 
 ### Key Data Utilities
 
@@ -459,7 +532,9 @@ SQLite-backed unstorage for: profiles, identity resolution, search results, auth
 | `src/utils/generateInitialsAvatar.ts`                                                                                          | SVG initials avatar                                                          |
 | `src/utils/syncMatching.ts`                                                                                                    | KOReader document → BookHive book matching (exact); `NO_HIVE_MATCH` sentinel |
 | `src/utils/syncBridge.ts`                                                                                                      | Bridge e-reader progress → user_book + queue PDS write                       |
-| `src/utils/personalLibrary.ts`                                                                                                 | Personal library file paths + `streamPersonalBook`                           |
+| `src/utils/personalLibrary.ts`                                                                                                 | Personal library file paths, `MAX_PERSONAL_BOOK_BYTES`, `streamPersonalBook` |
+| `src/utils/ogCache.ts`                                                                                                         | Shared KV cache for rendered OG cards + sweep stats                          |
+| `src/utils/ftsQuery.ts`                                                                                                        | Builds FTS5 MATCH expressions from free-text search input                    |
 | `src/utils/htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts` | misc helpers                                                                 |
 
 ## Types (`src/types.ts`)
@@ -515,35 +590,90 @@ Queries: `getPersonalLibrary`, `getPersonalBook`, `getSyncProgress`,
 | ------------------ | ---------------------------------------------- |
 | `goodreads.ts`     | Search API scraper                             |
 | `moreInfo.ts`      | Goodreads page scraper (genres, series, meta)  |
-| `google.ts`        | Google Books scraper                           |
-| `isbndb.ts`        | ISBNdb scraper                                 |
 | `getHiveId.ts`     | HiveId generation (hash of title+author)       |
 | `languageNames.ts` | Language name normalization                    |
 | `index.ts`         | `findBookDetails` entry point                  |
 | `waf/`             | AWS WAF challenge solver (see `waf/README.md`) |
 
-**WAF solver pooling**: `waf/solver.ts` keeps a **pool of `SOLVER_POOL_SIZE` (4)
-persistent** workers rather than spawning one per scrape (each spawn was a fresh
-JS VM plus a ~1.3 MB `challenge.js`). Requests carry an `id` that the worker
-echoes back, so a late reply from an abandoned request can't resolve the next
-caller. Workers are recycled after 50 solves, on error, or on a 30s timeout. A
-`CircuitBreaker` in front opens after 5 consecutive (or 10/min) failures and
-stays open 15 min, dispatching nothing — Goodreads' WAF rejected ~90% of solves
-during the 2026-08-01 incident and the app retried into it 5,000+ times/day.
-Body reads are capped (`boundedText`: 3 MB pages, 4 MB `challenge.js`).
+**The WAF solver is load-bearing, and its breaker currently starves the path
+that works.** Over 7 days it produced 356 direct successes plus 2,023
+`cached_token` successes — a warm token only exists because a solve produced it
+— so ~24% of the 9,724 successful enrichments in that window depended on it. Do
+not remove it on the strength of a short sample: a 60-minute window on
+2026-08-02 contained zero solver successes and is not representative.
+
+It _is_ degrading, though. Over the most recent 24h: 10,654 attempts, **zero**
+successes, 10,502 `waf_token_ineffective`. And `fetchGoodreadsViaWaf`
+(`solver.ts`) accounts every one of those to the **single** breaker that also
+gates the cheap plain-HTTP attempt made first inside the worker
+(`if (result.html) recordSuccess() else recordFailure()`). With
+`consecutiveFailureThreshold: 5` and a 15-minute cooldown, a solver having a bad
+week blocks plain HTTP — which still succeeded 4,671 times in that same 24h.
+That is the 11,668 `circuit_open`. Splitting the accounting (one breaker for the
+plain fetch, one for the solve) is the open fix.
+
+`google.ts` and `isbndb.ts` were deleted (2026-08-02) — dead code behind
+commented-out imports with no fallback branch in `findBookDetails`.
+`images.isbndb.com` stays in the `imageProxy` allowlist: historical `hive_book`
+rows still point there.
 
 ## Auth (`src/auth/`)
 
-| File         | Purpose                                 |
-| ------------ | --------------------------------------- |
-| `router.tsx` | Login/logout/OAuth callback routes      |
-| `client.ts`  | OAuth client creation                   |
-| `storage.ts` | Session/state stores (unstorage-backed) |
-| `handle.ts`  | Handle validation                       |
+| File               | Purpose                                                                |
+| ------------------ | ---------------------------------------------------------------------- |
+| `router.tsx`       | Login/logout/OAuth callback routes                                     |
+| `client.ts`        | OAuth client creation                                                  |
+| `storage.ts`       | Session/state stores (unstorage-backed) + `getStoredSessionIssuerHost` |
+| `handle.ts`        | Handle validation                                                      |
+| `refresh-lock.ts`  | Cross-process token-refresh lock (SQLite `auth_refresh_lock`)          |
+| `restore-guard.ts` | Per-PDS timeout + circuit breaker around `oauthClient.restore()`       |
+
+**A dead PDS must never reach the event loop.** `oauthClient.restore()` had no
+timeout. On 2026-08-01/02 one user's PDS started blackholing packets, the
+refresh hung while holding the cross-process lock (whose heartbeat renewed it,
+so it was never evicted as stale), and every other request for that DID — in
+every worker — burned the lock's full 37.5s poll budget, three synchronous
+SQLite statements per poll. Workers stopped calling `accept()`; Caddy logged
+166,450 `dial tcp: i/o timeout`, the dominant class of the outage's 171,145
+502s. Now:
+
+- `guardedRestore` (`restore-guard.ts`) wraps every restore in a 5s
+  `withTimeout` and a `CircuitBreaker` keyed by the **authorization-server
+  host**, read from the stored session's `tokenSet.iss` via
+  `getStoredSessionIssuerHost` — a local KV read, never a network call. Once a
+  host trips, requests fail instantly instead of dispatching.
+- `refresh-lock.ts` waits `MAX_WAIT_MS` (3s) with exponential backoff rather
+  than 250 × a flat 150ms, cutting a full wait from ~750 SQLite statements to
+  ~21.
+- `getSessionAgent` only calls `session.destroy()` when
+  `isSessionTerminatingError` says the PDS actually rejected our credentials. A
+  timeout used to silently log the user out.
+- Wide events carry `pds_host`, `pds_breaker`, `oauth_restore_ms` and
+  `oauth_restore_terminal`. Regression tests: `src/auth/pds-outage.test.ts`.
 
 ## Middleware (`src/middleware/`)
 
 Applied globally in `src/app.ts`: timing, context, wide-event logging, error capture, asset URLs, secure headers, compression, JSX renderer, OpenTelemetry, Prometheus.
+
+**Tracing goes app → OpenObserve directly** (`server/plugins/otel-sdk.ts`),
+at `${OPEN_OBSERVE_URL}/api/bookhive/v1/traces`. `OPEN_OBSERVE_URL` must be
+**container-reachable** (`http://openobserve:5080` on the `backbone` network) —
+inside the server container `localhost` is the app itself. compose.yaml carried
+`localhost` while the deployment used `openobserve`, and that mismatch is how
+the pipeline was once wrongly written off as dead; it is live, with 13.7M spans
+in `traces/default`. The otel-collector handles **metrics only** (a prometheus
+receiver scraping `bookhive:8080`), so it is not in the trace path.
+
+Two spans per request: a nitro root span (`server/plugins/request-tracing.ts`,
+which also emits `Server-Timing: root;dur=…`) and a hono route span
+(`src/middleware/otel-middleware.ts`). The route span is renamed **after**
+`next()` to `METHOD /matched/:route` — it used to be literally
+`"hono-middleware"` for every request, which made 82.6% of spans share one name
+and defeated grouping entirely. `getNodeAutoInstrumentations()` is configured
+rather than bare: `instrumentation-fs` off (a span per filesystem op) and
+inbound HTTP suppressed (the two spans above already cover it); outbound HTTP
+stays on, since a PDS that stops answering is exactly what the incidents were
+about.
 
 `src/middleware/sync-auth.ts` — KOSync auth middleware (validates `x-auth-user`/`x-auth-key` headers, resolves handle → DID, verifies `md5(derived password)`). Also exports `deriveSyncPassword()`, `currentSyncPassword()`, `getSyncTokenVersion()`, and `rotateSyncToken()` used by the Settings page.
 
@@ -562,7 +692,7 @@ Applied globally in `src/app.ts`: timing, context, wide-event logging, error cap
 | `bun run dev`       | Dev server (`vp dev`)                                        |
 | `bun run build`     | Production build (`lexgen` + `vp build`) → `.output/server/` |
 | `bun run start`     | Run built server (`bun run .output/server/index.mjs`)        |
-| `bun test`          | Run tests (`bun test src`)                                   |
+| `bun test`          | Run tests (`bun test src server`)                            |
 | `bun run typecheck` | `vp lint --type-aware --type-check` + `vp fmt --write`       |
 | `bun run lint`      | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)         |
 | `bun run format`    | `vp fmt`                                                     |
@@ -574,19 +704,29 @@ Build pipeline: **Vite+ (vite-plus)** wrapping Vite 8 + Rolldown + Nitro
 otel/request-tracing plugins. Production builds swap the preset's runtime entry
 for `./server/entry.bun.mjs` (adds `reusePort: true`; build-only via the
 function-form `defineConfig` — dev keeps the nitro-dev entry). The Docker CMD
-is `bun run cluster.ts` (copied from `server/cluster.ts`), not the raw
+is `bun run cluster.ts` (copied from `server/cluster.ts`, **with
+`server/worker-exit.ts` alongside it** — cluster.ts imports it at runtime), not the raw
 `.output/server/index.mjs`, under `ENTRYPOINT ["/sbin/tini", "--"]` — the
 supervisor is PID 1 and Bun has no `waitpid`, so without an init shim every
 HEALTHCHECK `wget` leaks a zombie (`init: true` in `compose.yaml` is the same
 fix from the other direction). `cluster.ts` logs a JSON `worker_exit` line with
-`signal`/`likely_oom`, which is how a cgroup OOM kill becomes visible in app
-logs at all. Vite plugins: `bunRuntimeExternal()`,
+`signal`/`likely_oom`/`pid` plus the worker's last `rss_kb`/`anon_kb`, which is
+how a cgroup OOM kill becomes visible in app logs at all — the container's
+`RestartCount` stays 0 through every one of them.
+`classifyWorkerExit` lives in `server/worker-exit.ts` so it can be tested
+(`bun test src server`; `bunfig.toml`'s test root used to be `src`, which made
+`server/` untestable — that is how `signalName` shipped a number-keyed lookup
+against Bun's _string_ `signalCode`, emitting `"SIGSIGKILL"` and a permanently
+false `likely_oom` through ~148 OOM kills). Memory is sampled from
+`/proc/<pid>/smaps_rollup` every 15s while workers are alive, because procfs is
+already gone by the time `onExit` fires. Vite plugins: `bunRuntimeExternal()`,
 `devImageProxyPassthrough()`, `tailwindcss()`, `standaloneBundles()`, `nitro()`.
 The client bundle entry is `src/client/index.tsx`; assets emitted to
 `assets/[name]-[hash]` with a build manifest (read via `src/utils/manifest.ts`).
 The `standaloneBundles()` plugin shells out to `bun build` for 4 worker entry
 points into `.output/server/workers/`: `ingester-worker.js`,
-`open-observe-worker.js`, `og-render-worker.js`, `import-worker.js`. Path alias
+`open-observe-worker.js`, `og-render-worker.js`, `import-worker.js`. (There were
+5; the WAF solver worker was deleted — see Scrapers.) Path alias
 `@` → `./src`. Runtime requires `bun >= 1.3.14`. TypeScript type checking via
 **tsgo** (TypeScript 6.x / Go-native compiler); linting via **oxlint** and
 formatting via **oxfmt**, both accessed through the `vp` CLI. Pre-commit hook
@@ -610,22 +750,49 @@ The app consumes the personal-library and KOSync surfaces: the XRPC
 
 ## Workers, Logging & Observability
 
-| Path                                 | Purpose                                                                                                            |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `src/workers/ingester-worker.ts`     | Wraps `src/bsky/ingester.ts`; runs Jetstream ingest off-thread                                                     |
-| `src/workers/og-render/`             | OG image render worker (React + `@takumi-rs/image-response`)                                                       |
-| `src/workers/open-observe-worker.ts` | pino transport → OpenObserve log shipping                                                                          |
-| `src/workers/import/`                | CSV import processing worker (`index.ts`, `logic.ts`, tests)                                                       |
-| `src/logger/index.ts`                | pino logger (`getLogger`/`destroyLogger`); redacts cookies                                                         |
-| `src/metrics.ts`                     | prom-client metrics (image processing duration, active ops)                                                        |
-| `src/pds/client.ts`                  | Self-hosted PDS support                                                                                            |
-| `./server/`                          | Nitro server entry + plugins (`otel-sdk.ts`, `request-tracing.ts`, `html-cache-headers.ts`) — separate from `src/` |
-| `./server/entry.bun.mjs`             | Custom Nitro bun runtime entry (adds SO_REUSEPORT); prod builds only                                               |
-| `./server/cluster.ts`                | Multi-process supervisor (Docker CMD) — spawns `WEB_CONCURRENCY` workers                                           |
+| Path                                 | Purpose                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `src/workers/ingester-worker.ts`     | Wraps `src/bsky/ingester.ts`; runs Jetstream ingest off-thread                                        |
+| `src/workers/og-render/`             | OG image render worker (React + `@takumi-rs/image-response`)                                          |
+| `src/workers/open-observe-worker.ts` | pino transport → OpenObserve log shipping                                                             |
+| `src/workers/import/`                | CSV import processing worker (`index.ts`, `logic.ts`, tests)                                          |
+| `src/logger/index.ts`                | pino logger (`getLogger`/`destroyLogger`); redacts cookies                                            |
+| `src/metrics.ts`                     | Prometheus metrics (durations, active ops, per-worker memory) — see below                             |
+| `src/pds/client.ts`                  | Self-hosted PDS support                                                                               |
+| `./server/`                          | Nitro server entry + plugins (`request-tracing.ts`, `html-cache-headers.ts`) — separate from `src/`   |
+| `./server/entry.bun.mjs`             | Custom Nitro bun runtime entry (adds SO_REUSEPORT); prod builds only                                  |
+| `./server/cluster.ts`                | Multi-process supervisor (Docker CMD) — spawns `WEB_CONCURRENCY` workers                              |
+| `./server/worker-exit.ts`            | Pure exit classification + procfs memory read, used by `cluster.ts` (copied into the image beside it) |
 
 Each worker is bundled standalone into `.output/server/workers/` (see Build &
 Dev). The ingester worker posts `wideEvent`/`ready` messages back to the main
 thread's pino logger.
+
+**Measure `Anonymous`, not `Rss`.** Every per-worker RSS reading includes the
+clean, shared, file-backed SQLite mmap (`PRAGMA mmap_size`, `src/db.ts`), which
+is reclaimable and can swing ~1 GB as a full-table scan faults it in — that term
+is what made the 2026-08 investigation chase a "balloon rotating between
+workers" that was never the leak. `/debug/memory` separates them.
+
+Metrics conventions in `src/metrics.ts`:
+
+- Per-process series (memory, CPU, event-loop lag) carry a `worker` label from
+  `WORKER_INDEX`. Without it the SO_REUSEPORT workers alias into one time series
+  that silently alternates between processes. Deliberately **not** `pid` — with
+  workers restarting, a pid label would mint a new series each time; the pid is
+  on `/debug/memory` instead.
+- `bookhive_process_memory_bytes` exports `external` and `array_buffers`
+  alongside `rss`/`heap_*`. Native, off-heap bytes are where this app's
+  unbounded allocations actually live, and they were unmeasured through the
+  whole incident. Under Bun `heap_total`/`heap_used` are JSC values —
+  `heap_used > heap_total` is normal and is **not** a labelling bug.
+- Cluster-wide gauges (`bookhive_enrich_queue_depth`, `bookhive_og_cache_*`)
+  describe shared SQLite state and are published by the primary worker only, so
+  they are never triple-counted.
+- An empty metric family emits its `# HELP`/`# TYPE` header and no samples.
+  The old `name 0` placeholder published an unlabelled sample for metrics whose
+  real samples are labelled, which Prometheus rejects as an inconsistent label
+  set.
 
 ## Context & Session (`src/context.ts`)
 

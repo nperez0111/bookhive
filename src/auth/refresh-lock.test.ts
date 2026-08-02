@@ -6,7 +6,7 @@ import { createCrossProcessLock } from "./refresh-lock";
 let db: KvDb;
 
 beforeEach(() => {
-  db = createSharedKvDb(":memory:");
+  db = createSharedKvDb(":memory:").db;
 });
 
 afterEach(async () => {
@@ -128,5 +128,51 @@ describe("createCrossProcessLock", () => {
     clearTimeout(releaseTimer);
     expect(result).toBe("acquired");
     expect(elapsed).toBeGreaterThanOrEqual(200);
+  });
+
+  // Regression for 2026-08-02: a holder wedged on an unreachable PDS kept its
+  // lock alive via the heartbeat, and waiters spun for 37.5s issuing 750
+  // synchronous SQLite statements each — enough concurrent waiters and the
+  // worker stopped servicing its event loop at all.
+  it("gives up on a permanently held lock within a few seconds", async () => {
+    const lock = createCrossProcessLock(db);
+    await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('wedged', 'other-pid-999', ${Date.now()})`.execute(
+      db,
+    );
+
+    const start = Date.now();
+    await expect(lock("wedged", async () => "never")).rejects.toThrow(
+      "Cross-process lock timeout for wedged",
+    );
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(6_000);
+    // The other owner's lock must survive — we only ever delete our own.
+    const rows = await sql`SELECT * FROM auth_refresh_lock WHERE id = 'wedged'`.execute(db);
+    expect(rows.rows).toHaveLength(1);
+  });
+
+  it("backs off exponentially rather than polling at a fixed interval", async () => {
+    const lock = createCrossProcessLock(db);
+    await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('counted', 'other-pid-999', ${Date.now()})`.execute(
+      db,
+    );
+
+    let selects = 0;
+    const originalExecuteQuery = db.executeQuery.bind(db);
+    db.executeQuery = ((compiled: { sql: string }) => {
+      if (compiled.sql.trimStart().toUpperCase().startsWith("SELECT")) selects++;
+      return originalExecuteQuery(compiled as never);
+    }) as typeof db.executeQuery;
+
+    try {
+      await expect(lock("counted", async () => "never")).rejects.toThrow("Cross-process lock");
+    } finally {
+      db.executeQuery = originalExecuteQuery;
+    }
+
+    // A flat 150ms poll over this budget would be ~20 attempts; the old 37.5s
+    // budget was 250. Backoff must keep it to a handful.
+    expect(selects).toBeLessThan(15);
   });
 });

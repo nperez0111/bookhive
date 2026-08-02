@@ -6,28 +6,6 @@
 const TAB = "\t";
 
 /**
- * Builds SQL LIKE patterns for matching an author in a tab-separated string.
- * Returns the patterns needed to match an author in any position:
- * - Exact match (sole author)
- * - First author (followed by tab)
- * - Middle author (surrounded by tabs)
- * - Last author (preceded by tab)
- */
-export function buildAuthorLikePatterns(author: string): {
-  exact: string;
-  first: string;
-  middle: string;
-  last: string;
-} {
-  return {
-    exact: author,
-    first: author + TAB + "%",
-    middle: "%" + TAB + author + TAB + "%",
-    last: "%" + TAB + author,
-  };
-}
-
-/**
  * Splits a tab-separated authors string into an array of individual authors.
  */
 export function parseAuthors(authorsString: string): string[] {

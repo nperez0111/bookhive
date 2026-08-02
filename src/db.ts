@@ -10,6 +10,7 @@ import type {
   Buzz,
   HiveBook,
   HiveBookGenre,
+  HiveBookAuthor,
   HiveId,
   PersonalBookRow,
   PersonalShelfRow,
@@ -24,6 +25,7 @@ import { deriveBookIdentifiers } from "./utils/bookIdentifiers.js";
 export type DatabaseSchema = {
   hive_book: HiveBook;
   hive_book_genre: HiveBookGenre;
+  hive_book_author: HiveBookAuthor;
   book_id_map: BookIdentifiersRow;
   user_book: UserBookRow;
   buzz: Buzz;
@@ -684,6 +686,228 @@ migrations["018"] = {
   },
 };
 
+/**
+ * Full-text index over the columns search and the author pages filter on.
+ *
+ * Those queries were `LIKE '%…%'`, which no index can serve: both planned
+ * `SCAN hive_book` + `USE TEMP B-TREE FOR ORDER BY` over 356k rows. Measured on
+ * production: 633–725ms each, on routes that are ~82% of all traffic
+ * (/og 705, /books 704, /authors 460 in a 3h sample), and `refetchBooks` used
+ * to fire 100 of them concurrently.
+ *
+ * External-content FTS5, so the text is not duplicated — the index is ~36 MB
+ * against a 1.6 GB database and backfills in ~2.7s, well inside the
+ * supervisor's healthcheck barrier. Queries drop to 0–7ms.
+ *
+ * `unicode61` rather than `trigram`: trigram would preserve `LIKE`'s exact
+ * substring semantics but costs 210 MB and 10.5s. Compared against LIKE on
+ * production data with phrase queries (see `ftsMatchQuery`), unicode61 returns
+ * identical top-20 results for realistic searches, and the cases where it
+ * differs are ones where it is better — `stephen king` returns actual King
+ * novels instead of junk whose *title* contains "by Stephen King", and
+ * `the "great" gatsby` returns The Great Gatsby where LIKE returned nothing.
+ */
+migrations["019"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`
+      CREATE VIRTUAL TABLE hive_book_fts USING fts5(
+        title,
+        rawTitle,
+        authors,
+        content='hive_book',
+        content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      )
+    `.execute(db);
+
+    await sql`
+      INSERT INTO hive_book_fts(rowid, title, rawTitle, authors)
+      SELECT rowid, title, rawTitle, authors FROM hive_book
+    `.execute(db);
+
+    // External-content tables need the source table's writes mirrored by hand.
+    // The 'delete' command replays the *old* row so its terms are removed;
+    // getting this wrong leaves orphaned terms that match forever.
+    await sql`
+      CREATE TRIGGER hive_book_fts_ai AFTER INSERT ON hive_book BEGIN
+        INSERT INTO hive_book_fts(rowid, title, rawTitle, authors)
+        VALUES (new.rowid, new.title, new.rawTitle, new.authors);
+      END
+    `.execute(db);
+
+    await sql`
+      CREATE TRIGGER hive_book_fts_ad AFTER DELETE ON hive_book BEGIN
+        INSERT INTO hive_book_fts(hive_book_fts, rowid, title, rawTitle, authors)
+        VALUES ('delete', old.rowid, old.title, old.rawTitle, old.authors);
+      END
+    `.execute(db);
+
+    await sql`
+      CREATE TRIGGER hive_book_fts_au AFTER UPDATE ON hive_book BEGIN
+        INSERT INTO hive_book_fts(hive_book_fts, rowid, title, rawTitle, authors)
+        VALUES ('delete', old.rowid, old.title, old.rawTitle, old.authors);
+        INSERT INTO hive_book_fts(rowid, title, rawTitle, authors)
+        VALUES (new.rowid, new.title, new.rawTitle, new.authors);
+      END
+    `.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP TRIGGER IF EXISTS hive_book_fts_au`.execute(db);
+    await sql`DROP TRIGGER IF EXISTS hive_book_fts_ad`.execute(db);
+    await sql`DROP TRIGGER IF EXISTS hive_book_fts_ai`.execute(db);
+    await sql`DROP TABLE IF EXISTS hive_book_fts`.execute(db);
+  },
+};
+
+/**
+ * Authors normalized out of the tab-separated `hive_book.authors` column, the
+ * same shape `hive_book_genre` already uses for genres (migration 011).
+ *
+ * `authors` stores "Author1\tAuthor2\tAuthor3", so "books by this author" was
+ * four LIKE patterns per query (`buildAuthorLikePatterns`) covering the sole /
+ * first / middle / last positions. Two of those are leading-wildcard, so no
+ * index could ever serve them: `/authors/:author` planned `SCAN hive_book` +
+ * a temp B-tree sort over 356k rows at ~511ms, on ~460 requests per 3h, and
+ * the author directory had to `GROUP BY` a `CASE/instr/substr/trim` expression
+ * to recover the first author.
+ *
+ * Deliberately not FTS5: this is an exact-identity lookup, not a text search.
+ * Matching "Stephen King" must not also return "Stephen Kingsley".
+ *
+ * Maintained by triggers rather than an application helper (the way
+ * `syncHiveBookGenres` is) because `hive_book.authors` is written from the
+ * ingester, the importer, enrichment and the catalog service — a helper only
+ * has to be forgotten at one call site to silently desynchronize the table.
+ */
+/**
+ * Recursive split of a tab-separated author string into (part, pos) rows.
+ * `source` is the SQL expression holding the string — inside a trigger body
+ * that has to be `new.authors`; a bare `authors` is not in scope there.
+ */
+const splitAuthorsCte = (source: string) =>
+  sql.raw(`
+  WITH RECURSIVE split(rest, part, pos) AS (
+    SELECT ${source} || char(9), NULL, -1
+    UNION ALL
+    SELECT substr(rest, instr(rest, char(9)) + 1),
+           trim(substr(rest, 1, instr(rest, char(9)) - 1)),
+           pos + 1
+    FROM split WHERE rest <> ''
+  )
+`);
+
+migrations["020"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .createTable("hive_book_author")
+      .addColumn("hiveId", "text", (col) => col.notNull())
+      .addColumn("author", "text", (col) => col.notNull())
+      // 0 = the credited first author, which is what the directory groups by.
+      .addColumn("position", "integer", (col) => col.notNull())
+      .addPrimaryKeyConstraint("hive_book_author_pk", ["hiveId", "author"])
+      .execute();
+
+    await sql`CREATE INDEX idx_hive_book_author_author ON hive_book_author(author)`.execute(db);
+    await sql`CREATE INDEX idx_hive_book_author_first ON hive_book_author(position, author)`.execute(
+      db,
+    );
+
+    await sql`
+      INSERT OR IGNORE INTO hive_book_author(hiveId, author, position)
+      SELECT b.id, s.part, s.pos
+      FROM hive_book b
+      JOIN (
+        WITH RECURSIVE split(id, rest, part, pos) AS (
+          SELECT id, authors || char(9), NULL, -1 FROM hive_book
+          UNION ALL
+          SELECT id,
+                 substr(rest, instr(rest, char(9)) + 1),
+                 trim(substr(rest, 1, instr(rest, char(9)) - 1)),
+                 pos + 1
+          FROM split WHERE rest <> ''
+        )
+        SELECT id, part, pos FROM split WHERE part IS NOT NULL AND part <> ''
+      ) s ON s.id = b.id
+    `.execute(db);
+
+    await sql`
+      CREATE TRIGGER hive_book_author_ai AFTER INSERT ON hive_book BEGIN
+        INSERT OR IGNORE INTO hive_book_author(hiveId, author, position)
+        ${splitAuthorsCte("new.authors")}
+        SELECT new.id, part, pos FROM split WHERE part IS NOT NULL AND part <> '';
+      END
+    `.execute(db);
+
+    await sql`
+      CREATE TRIGGER hive_book_author_ad AFTER DELETE ON hive_book BEGIN
+        DELETE FROM hive_book_author WHERE hiveId = old.id;
+      END
+    `.execute(db);
+
+    // `WHEN old.authors IS NOT new.authors` rather than `AFTER UPDATE OF
+    // authors`: the latter fires whenever the column appears in a SET clause
+    // even if the value is unchanged, and enrichment rewrites whole rows often.
+    await sql`
+      CREATE TRIGGER hive_book_author_au AFTER UPDATE ON hive_book
+      WHEN old.authors IS NOT new.authors BEGIN
+        DELETE FROM hive_book_author WHERE hiveId = old.id;
+        INSERT OR IGNORE INTO hive_book_author(hiveId, author, position)
+        ${splitAuthorsCte("new.authors")}
+        SELECT new.id, part, pos FROM split WHERE part IS NOT NULL AND part <> '';
+      END
+    `.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP TRIGGER IF EXISTS hive_book_author_au`.execute(db);
+    await sql`DROP TRIGGER IF EXISTS hive_book_author_ad`.execute(db);
+    await sql`DROP TRIGGER IF EXISTS hive_book_author_ai`.execute(db);
+    await db.schema.dropTable("hive_book_author").execute();
+  },
+};
+
+/**
+ * Durable record of enrichment failure, on the book rather than the queue.
+ *
+ * `enrich_queue` could not converge. A row that exhausted its attempts was
+ * deleted (`enrichQueue.ts`) without recording anything on `hive_book`, and
+ * `enrichedAt` is only ever set on success — so the very next page view hit
+ * `!book.enrichedAt` and re-enqueued it. With a crawler systematically walking
+ * all 356k books, that is a perpetual-motion machine: the queue sat at 12,444
+ * rows growing ~20/min, and the drainer stayed at full concurrency forever
+ * scraping books that had already failed four times.
+ *
+ * `enrichAttempts` is cumulative across queue rows, so the count survives the
+ * row being deleted and re-added. `enrichFailedAt` is a cooldown stamp rather
+ * than a permanent tombstone — a book that failed while Goodreads' WAF was up
+ * should become eligible again later, just not on the next page view.
+ */
+migrations["021"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema
+      .alterTable("hive_book")
+      .addColumn("enrichAttempts", "integer", (col) => col.notNull().defaultTo(0))
+      .execute();
+    await db.schema.alterTable("hive_book").addColumn("enrichFailedAt", "text").execute();
+
+    // Books already past the attempt ceiling are in the loop right now; stamp
+    // them so the queue can actually drain instead of immediately refilling.
+    await sql`
+      UPDATE hive_book
+      SET enrichAttempts = (
+            SELECT attempts FROM enrich_queue q WHERE q.hiveId = hive_book.id
+          ),
+          enrichFailedAt = datetime('now')
+      WHERE id IN (SELECT hiveId FROM enrich_queue WHERE attempts >= 4)
+    `.execute(db);
+
+    await sql`DELETE FROM enrich_queue WHERE attempts >= 4`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("hive_book").dropColumn("enrichFailedAt").execute();
+    await db.schema.alterTable("hive_book").dropColumn("enrichAttempts").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
@@ -692,11 +916,14 @@ export const createDb = (location: string): { db: Database; sqlite: DatabaseSync
   sqlite.exec("PRAGMA busy_timeout = 10000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
-  // Private page cache is per connection and multiplies across worker
-  // processes — keep it small and let the (process-shared) mmap serve reads.
+  // Private page cache is per connection and multiplies across worker processes
+  // — keep it small.
   sqlite.exec(`PRAGMA cache_size = -${env.DB_CACHE_KB}`); // default 16 MB
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  sqlite.exec(`PRAGMA mmap_size = ${env.DB_MMAP_SIZE}`); // default 1 GB — keep full DB memory-mapped
+  // Default 0 (off). See DB_MMAP_SIZE in src/env.ts for the measurements —
+  // mapping a 1.6 GB database into every worker cost ~1 GB of the cgroup's
+  // budget and caused the reclaim thrash behind the 2026-08 stalls.
+  sqlite.exec(`PRAGMA mmap_size = ${env.DB_MMAP_SIZE}`);
 
   const db = new Kysely<DatabaseSchema>({
     dialect: new SqliteDialect({

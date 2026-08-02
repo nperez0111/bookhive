@@ -7,7 +7,6 @@ import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import { buildCrossPostText } from "../bsky/crossPost";
 import { env } from "../env";
 import type { HiveBook } from "../types";
-import { buildAuthorLikePatterns } from "../utils/authorMatching";
 import { normalizeBookMeta } from "../utils/bookMeta";
 import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
@@ -143,10 +142,6 @@ export const BookInfo: FC<{
   endTime(c, "get_session");
 
   const firstAuthor = book.authors.split("\t")[0] ?? "";
-  const patterns = firstAuthor ? buildAuthorLikePatterns(firstAuthor) : null;
-  const authorCondition = patterns
-    ? sql`(authors = ${patterns.exact} OR authors LIKE ${patterns.first} OR authors LIKE ${patterns.middle} OR authors LIKE ${patterns.last})`
-    : sql`0`;
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
@@ -210,9 +205,10 @@ export const BookInfo: FC<{
           let q = c
             .get("ctx")
             .db.selectFrom("hive_book")
-            .selectAll()
-            .where("id", "!=", book.id)
-            .where(authorCondition as any);
+            .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
+            .selectAll("hive_book")
+            .where("hive_book.id", "!=", book.id)
+            .where("hive_book_author.author", "=", firstAuthor);
           if (book.language) {
             q = q.orderBy(sql`CASE WHEN language = ${book.language} THEN 0 ELSE 1 END`, "asc");
           }

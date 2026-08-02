@@ -90,6 +90,8 @@ class Goodreads {
 
     return {
       id: hiveId,
+      enrichAttempts: 0,
+      enrichFailedAt: null,
       title: result.bookTitleBare,
       rawTitle: result.title,
       authors,

@@ -7,6 +7,14 @@ import type { Database } from "../db";
 /** Number of items per page in OPDS catalog responses. */
 export const OPDS_PAGE_SIZE = 24;
 
+/**
+ * Largest accepted ebook upload. Every upload path materialises the whole file
+ * as a `Uint8Array` (the KOReader partial MD5 and the format parsers both need
+ * random access), so this is a direct per-request ceiling on native memory —
+ * enforce it against the *declared* size before reading the body.
+ */
+export const MAX_PERSONAL_BOOK_BYTES = 100 * 1024 * 1024;
+
 /** Root directory for all personal library files, adjacent to the DB. */
 export function getLibraryDir(): string {
   return path.join(path.dirname(env.DB_PATH), "library");
@@ -73,6 +81,14 @@ export async function streamPersonalBook(
     headers: {
       "Content-Type": book.mime || "application/epub+zip",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
+      // The content hash *is* a strong validator, so e-readers still get their
+      // 304s. Setting it here also means hono's etag middleware would short out
+      // rather than digest the body — belt and braces alongside the path
+      // exclusion in src/app.ts, since digesting a 100 MB epub buffers the
+      // whole thing in native memory before any of it ships.
+      ETag: `"${contentHash}"`,
+      "Content-Length": String(file.size),
+      "Cache-Control": "private, max-age=0, must-revalidate",
     },
   };
 }
