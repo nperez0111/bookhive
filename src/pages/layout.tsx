@@ -55,9 +55,24 @@ export const Layout: FC<
   // og:image and twitter:image must be absolute — crawlers do not resolve them against the page.
   // Callers pass either a root-relative path ("/full_logo.jpg") or an already-absolute OG route.
   const absoluteImage = image.startsWith("http") ? image : new URL(image, url).toString();
+  // Never put the raw request URL in crawler-facing metadata. `/oauth/callback` renders a Layout
+  // on its invalid-redirect_uri branch (src/auth/router.tsx) with `url={c.req.url}`, so the
+  // OAuth authorization `code` and `state` were being written straight into <link rel="canonical">,
+  // og:url and twitter:url — a live credential in a tag built to be scraped, cached and shared.
+  const metaUrl = (() => {
+    try {
+      const u = new URL(url);
+      for (const k of ["code", "state", "redirect_uri", "iss", "error", "error_description"]) {
+        u.searchParams.delete(k);
+      }
+      return u.toString();
+    } catch {
+      return url;
+    }
+  })();
   // The JSON-LD below describes the *site*, not this page. `url` is `c.req.url`, so building the
   // SearchAction target from it produced e.g. `/books/bk_abc/search?q={search_term_string}`.
-  const origin = new URL(url).origin;
+  const origin = new URL(metaUrl).origin;
 
   // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
@@ -103,7 +118,7 @@ export const Layout: FC<
         </style>
         ${!isDevVite && jsUrls.map((src) => html`<link rel="modulepreload" href="${src}" />`)}
         ${jsUrls.map((src) => html`<script type="module" src="${src}"></script>`)}
-        <meta property="og:url" content="${url}" />
+        <meta property="og:url" content="${metaUrl}" />
         <meta property="og:type" content="${ogType}" />
         <meta property="og:title" content="${title}" />
         <meta property="og:site_name" content="BookHive" />
@@ -115,7 +130,7 @@ export const Layout: FC<
         ${AtTags(atTags ?? {})}
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="bookhive.buzz" />
-        <meta property="twitter:url" content="${url}" />
+        <meta property="twitter:url" content="${metaUrl}" />
         <meta name="twitter:title" content="${title}" />
         <meta name="twitter:description" content="${description}" />
         <meta name="twitter:image" content="${absoluteImage}" />
@@ -131,7 +146,7 @@ export const Layout: FC<
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <link rel="canonical" href="${url}" />
+        <link rel="canonical" href="${metaUrl}" />
         <title>${title}</title>
         <script type="application/ld+json">
           {

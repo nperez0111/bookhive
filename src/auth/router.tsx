@@ -123,10 +123,11 @@ export function loginRouter(
         }
       }
 
-      // Redirect to /home instead of / — the marketing page at / is cached by the browser
-      // (Cache-Control: public, max-age=3600), so a redirect there after login would serve
-      // the stale signed-out page. /home is never cached and handles unauthenticated users
-      // by redirecting to / itself.
+      // Straight to /home rather than bouncing through /. Both work — `/` is
+      // `Vary: Cookie`, so the newly-set session cookie misses the stored
+      // marketing page and the `/` → `/home` redirect fires — but landing on
+      // /home directly saves the extra round trip on the one request where the
+      // user is already waiting.
       return c.redirect("/home");
     } catch (err: unknown) {
       const errMsg =

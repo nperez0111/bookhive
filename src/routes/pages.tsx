@@ -27,11 +27,15 @@ import { AuthorDirectory } from "../pages/authorDirectory";
 import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
 import { searchBooks, cacheControl } from "./lib";
+import { NO_STORE } from "../utils/cacheHeaders";
 import { getAvailableLanguages } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
-    c.header("Cache-Control", "private, no-cache");
+    // Personalized: never stored, not even for revalidation. `no-cache` would
+    // still let the browser write the page to disk, which is how a previous
+    // account's /home survived an account switch.
+    c.header("Cache-Control", NO_STORE);
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
       return c.redirect("/login", 302);

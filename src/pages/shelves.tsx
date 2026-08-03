@@ -204,7 +204,7 @@ export const ShelfViewPage: FC<{
                         <input type="hidden" name="itemUri" value={item.uri} />
                         <button
                           type="submit"
-                          class="min-h-[32px] min-w-10 rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
+                          class="min-h-10 min-w-10 rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
                           title="Remove from shelf"
                         >
                           Remove

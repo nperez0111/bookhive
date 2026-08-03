@@ -11,9 +11,7 @@ import { createMiddleware } from "hono/factory";
 import type { Storage } from "unstorage";
 
 import type { AppEnv } from "../context";
-
-/** iron-session cookie (see getSessionConfig in src/auth/router.tsx). */
-const SESSION_COOKIE_RE = /(^|;\s*)sid=/;
+import { NO_STORE, hasSessionCookie } from "../utils/cacheHeaders";
 
 /**
  * Query params that may vary the cached page. Requests with any other param
@@ -53,10 +51,6 @@ const inflight = new Map<string, Promise<CachedPage | null>>();
  * would await the outer's in-flight promise and deadlock.
  */
 const activeRequests = new WeakSet<Request>();
-
-function hasSessionCookie(cookieHeader: string | undefined): boolean {
-  return SESSION_COOKIE_RE.test(cookieHeader ?? "");
-}
 
 function serveCached(page: CachedPage): Response | null {
   try {
@@ -98,7 +92,7 @@ export function anonPageCache(kv: Storage) {
       // response advertise itself as publicly cacheable. Unconditional because
       // headers set via the cacheControl helper don't reliably reach the final
       // response (nitro route-rule headers fill the gap with a public value).
-      c.res.headers.set("cache-control", "private, max-age=0, must-revalidate");
+      c.res.headers.set("cache-control", NO_STORE);
       return;
     }
 

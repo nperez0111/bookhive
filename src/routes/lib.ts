@@ -2,6 +2,7 @@
  * Shared route helpers: search, refetch, sync, ensure book identifiers.
  * Used by main router, import routes, and xrpc.
  */
+import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 
 import type { SessionClient } from "../auth/client";
@@ -16,6 +17,7 @@ import {
 import type { HiveBook, HiveId } from "../types";
 import { syncUserFollows, shouldSyncFollows } from "../utils/getFollows";
 import { readThroughCache } from "../utils/readThroughCache";
+import { NO_STORE, hasSessionCookie } from "../utils/cacheHeaders";
 import { findBookDetails } from "../scrapers";
 import { enqueueEnrichment, enqueueEnrichmentBatch } from "../utils/enrichQueue";
 import { serializeUserBook } from "../utils/bookProgress";
@@ -43,14 +45,37 @@ const searchSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, {
   acquireTimeoutMs: 60_000,
 });
 
-/** Sets Cache-Control header on successful responses. Won't override if already set by the handler. */
+/**
+ * Sets Cache-Control on successful responses. Won't override a header the
+ * handler already set.
+ *
+ * `directive` applies to **anonymous** requests only. A request carrying the
+ * session cookie is personalized — its HTML embeds the navbar, sidebar and
+ * avatar of whoever is signed in — so it always gets `private, no-store`
+ * regardless of what the route asked for. server/plugins/cache-headers.ts
+ * enforces the same rule on the way out; doing it here too keeps the app correct
+ * on the bare `bun run src/server.ts` path, where no nitro plugin runs.
+ */
 export const cacheControl = (directive: string) =>
   createMiddleware<AppEnv>(async (c, next) => {
     await next();
+    if (hasSessionCookie(c.req.header("cookie"))) {
+      c.header("Cache-Control", NO_STORE);
+      return;
+    }
     if (!c.res.headers.has("Cache-Control") && c.res.status < 400) {
       c.header("Cache-Control", directive);
     }
   });
+
+/**
+ * In-handler form of {@link cacheControl}, for routes that set their header up
+ * front rather than through middleware. Same rule: `directive` is the anonymous
+ * value, a signed-in request gets `private, no-store`.
+ */
+export function setCacheControl(c: Context<AppEnv>, directive: string): void {
+  c.header("Cache-Control", hasSessionCookie(c.req.header("cookie")) ? NO_STORE : directive);
+}
 
 export async function searchBooks({
   query,

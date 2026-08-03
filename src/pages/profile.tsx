@@ -314,7 +314,10 @@ export const ProfilePage: FC<{
           <div class="card-body">
             <div class="empty">
               <h2 class="empty-title">
-                {isOwnProfile ? "Your shelves are empty" : "No books yet"}
+                {/* "Shelves" means user-created lists (social.popfeed.feed.list) elsewhere in the
+                    app — this empty state is about having no books at all, which is what the
+                    description and both CTAs below actually address. */}
+                {isOwnProfile ? "Your library is empty" : "No books yet"}
               </h2>
               <p class="empty-description">
                 {isOwnProfile

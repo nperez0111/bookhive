@@ -237,6 +237,27 @@ export const Navbar: FC<{
           backdrop?.addEventListener("click", closeSidebar);
         }}
       />
+      {/* Book cover fade-in. `load` does not bubble, but it can be caught in the capture phase,
+          so one document-level listener covers every `.book-cover` on the page — including lazy
+          ones further down and the covers the client islands render after hydration. The sweep
+          afterwards catches anything already decoded before this ran (cached covers, the eager
+          hero cover on /books/:id). See `.book-cover.is-loaded` in src/index.css. */}
+      <Script
+        script={(document) => {
+          const isCover = (el: EventTarget | null): el is HTMLImageElement =>
+            el instanceof HTMLImageElement && el.classList.contains("book-cover");
+          document.addEventListener(
+            "load",
+            (e) => {
+              if (isCover(e.target)) e.target.classList.add("is-loaded");
+            },
+            true,
+          );
+          document.querySelectorAll("img.book-cover").forEach((img) => {
+            if ((img as HTMLImageElement).complete) img.classList.add("is-loaded");
+          });
+        }}
+      />
       {/* Theme toggle — handles all .theme-toggle buttons (navbar + sidebar) */}
       <Script
         script={(document) => {

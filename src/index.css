@@ -108,7 +108,18 @@ body {
   background-color: var(--muted);
 }
 
-.book-cover {
+/*
+  Keyed off `.is-loaded`, which the cover-fade script in src/pages/navbar.tsx adds once the image
+  actually fires `load`. This used to animate on insertion, which meant the 200ms had almost
+  always elapsed before a `loading="lazy"` cover finished downloading — so the fade only ever
+  played for covers that were already in cache, and every cover that actually needed it snapped
+  in at full opacity instead.
+
+  Deliberately no `opacity: 0` default: with JS off nothing ever adds `.is-loaded`, and hiding
+  covers until a script rescues them would break the no-JS rendering the rest of the app keeps
+  working. Without JS the covers simply appear unanimated.
+*/
+.book-cover.is-loaded {
   animation: bookCoverIn 200ms ease-out;
 }
 
@@ -122,7 +133,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .book-cover {
+  /* Must match `.book-cover.is-loaded`'s specificity — a media query adds none. */
+  .book-cover,
+  .book-cover.is-loaded {
     animation: none;
   }
 }

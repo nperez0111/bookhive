@@ -144,13 +144,24 @@ export function mainRouter(deps: AppDeps): HonoServer {
   });
 
   // Marketing landing page — standalone, no Navbar/Sidebar.
-  // Always renders the marketing page regardless of auth state. Logged-in users
-  // navigate via the sidebar to /home; keeping / auth-free means the response is
-  // safely cacheable (no Vary-by-cookie footgun).
+  //
+  // `/` answers two different things under one URL: a 302 to /home when signed
+  // in, the marketing page otherwise. That's only safe because the anonymous
+  // render carries `Vary: Cookie` (added for all HTML in
+  // server/plugins/cache-headers.ts). Without it a browser replays the stored
+  // marketing page after you sign in and the redirect never fires — which is
+  // exactly what used to happen. The 302 itself is `private, no-store`.
   app.get("/", async (c) => {
     const url = new URL(c.req.raw.url);
     if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
       return c.redirect("/app");
+    }
+    // Cookie-only session read — no OAuth restore, so this costs nothing.
+    startTime(c, "marketing_session_check");
+    const did = await c.get("ctx").getSessionDid();
+    endTime(c, "marketing_session_check");
+    if (did) {
+      return c.redirect("/home");
     }
     const signupUrl = isPdsEnabled() ? "/pds/signup" : "https://bsky.app";
 
@@ -261,6 +272,10 @@ export function mainRouter(deps: AppDeps): HonoServer {
       </Layout>
     );
     c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
+    // Belt and braces: the nitro plugin adds this to all HTML, but this is the
+    // one route whose correctness depends on it, and the bare
+    // `bun run src/server.ts` path has no nitro.
+    c.header("Vary", "Cookie");
     const response = c.html(html);
     endTime(c, "marketing_render");
     return response;

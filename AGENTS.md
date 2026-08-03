@@ -118,7 +118,29 @@ the header alone does nothing. `streamPersonalBook`
 `{ notModified: true }` before it opens the file; both download routes turn that
 into a 304. Without it an e-reader re-downloads every book on every sync.
 
-**Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML.
+**Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only.
+
+**Caching policy** lives in one place: `src/utils/cacheHeaders.ts`. One rule —
+**signed in (`sid` cookie) → `private, no-store` on every path; signed out →
+cache aggressively** so Cloudflare absorbs the scraper load. Three layers apply
+it: `cacheControl()`/`setCacheControl()` (`src/routes/lib.ts`), the anon page
+cache's bypass, and `server/plugins/cache-headers.ts` — the nitro `response`
+hook, which is authoritative because it runs on the final Response. It also adds
+`Vary: Cookie` to all HTML and owns the long TTL for files under `public/`.
+
+Two traps this encodes, both of which caused real bugs:
+
+- **Never put an extension glob in `routeRules`.** rou3 truncates a pattern at
+  the first `**`, so `/**/*.png` is really `/**` and matches every route — and
+  nitro's route-rule header middleware overwrites the Hono-set `Cache-Control`
+  on any 2xx. That is how `/home` and `/profile/*` came to be sent as
+  `public, max-age=2592000`, letting a browser replay the previous account's page
+  after an account switch. Prefix globs (`/assets/**`) are fine.
+- **`Vary: Cookie` is load-bearing for `/`**, which answers a 302 to `/home` when
+  signed in and marketing HTML otherwise. Without it a browser replays the stored
+  marketing page and the redirect never fires. Cloudflare ignores `Vary` except
+  `Accept-Encoding`, so the edge needs a _bypass cache when `http.cookie contains
+"sid="`_ rule to get the same guarantee.
 
 ### Mounted in `src/app.ts` (infra/admin, before `mainRouter`)
 
@@ -319,19 +341,19 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                                                   |
-| -------------------------- | ---------------------------------------------------------------------- |
-| `book.tsx`                 | Book card component                                                    |
+| File                       | What                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `book.tsx`                 | Book card component                                                      |
 | `BookCard.tsx`             | Composable book card (`dense` takes `showAuthor` for search/genre grids) |
-| `buzz.tsx`                 | Buzz/comment display                                                   |
-| `BookReview.tsx`           | Book review form/display                                               |
-| `EditableLibraryTable.tsx` | Library table with inline editing                                      |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                                       |
-| `LanguageSelect.tsx`       | Language picker                                                        |
-| `modal.tsx`                | Modal dialog (CSS-based)                                               |
-| `fallbackCover.tsx`        | Placeholder book cover                                                 |
-| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                 |
-| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                      |
+| `buzz.tsx`                 | Buzz/comment display                                                     |
+| `BookReview.tsx`           | Book review form/display                                                 |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                        |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                         |
+| `LanguageSelect.tsx`       | Language picker                                                          |
+| `modal.tsx`                | Modal dialog (CSS-based)                                                 |
+| `fallbackCover.tsx`        | Placeholder book cover                                                   |
+| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                   |
+| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                        |
 
 **AT Tags** (`AtTags.tsx`): emits `<meta>` tags declaring ATProto records/identities a page maps to. Built with hono's `html` template (not JSX `<meta>`) because hono/jsx dedupes by `name`. Routes pass tags via `c.render(..., { atTags })`.
 
@@ -538,12 +560,22 @@ used in markup before they existed, so that markup silently rendered unstyled):
 | `.empty` / `.empty-title` / `.empty-description` | The one empty-state treatment — prefer it over another hand-rolled `py-12 text-center` block                                 |
 | `.focus-ring`                                    | The one focus recipe (`focus-visible` outline on `--ring`). Use instead of `focus:outline-none` plus a hardcoded ring colour |
 | `.book-cover-frame`                              | Tinted placeholder on a cover box so lazy-loaded grids don't flash empty                                                     |
+| `.book-cover` + `.is-loaded`                     | Cover fade-in. `.is-loaded` is added by the capture-phase `load` listener in `navbar.tsx` — see below                        |
 | `.sidebar`, `.tab-label`                         | Pre-existing component classes                                                                                               |
 
 Form controls get a low-alpha white overlay in dark mode rather than `var(--input)` — `--input` is
 a saturated amber here, which made every input and outline button look like a filled control.
 
 Tap targets are `min-h-10` / `min-w-10` (not the `min-h-[40px]` bracket form).
+
+**The cover fade is decode-triggered, not insertion-triggered.** `.book-cover` only animates once
+it also has `.is-loaded`, which a document-level **capture-phase** `load` listener in
+`src/pages/navbar.tsx` adds (`load` doesn't bubble, so capture is what makes one listener cover
+every cover on the page, including lazy ones and the covers client islands render after
+hydration). Animating on insertion meant the 200ms elapsed before a lazy cover had downloaded, so
+the fade only ever played for already-cached covers. Do **not** add an `opacity: 0` default to
+`.book-cover` to smooth this — with JS off nothing adds `.is-loaded` and every cover would be
+permanently invisible.
 
 **The solid `bg-primary` fill means "call to action", not "you are here".** The sidebar's
 `a[aria-current="page"]` rules (nav list and footer, `src/index.css`) use a `bg-primary/15
@@ -576,19 +608,19 @@ Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes per
 
 ## Workers, Logging & Observability
 
-| Path                                 | Purpose                                                      |
-| ------------------------------------ | ------------------------------------------------------------ |
-| `src/workers/ingester-worker.ts`     | Jetstream ingest (off-thread)                                |
-| `src/workers/og-render/`             | OG image render (React + takumi)                             |
-| `src/workers/open-observe-worker.ts` | pino → OpenObserve log shipping                              |
-| `src/workers/import/`                | CSV import processing                                        |
-| `src/logger/index.ts`                | pino logger; redacts cookies                                 |
-| `src/metrics.ts`                     | Prometheus metrics                                           |
-| `src/pds/client.ts`                  | Self-hosted PDS support                                      |
-| `server/cluster.ts`                  | Multi-process supervisor (Docker CMD)                        |
-| `server/worker-exit.ts`              | Exit classification + procfs memory read                     |
-| `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                            |
-| `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `html-cache-headers.ts` |
+| Path                                 | Purpose                                                 |
+| ------------------------------------ | ------------------------------------------------------- |
+| `src/workers/ingester-worker.ts`     | Jetstream ingest (off-thread)                           |
+| `src/workers/og-render/`             | OG image render (React + takumi)                        |
+| `src/workers/open-observe-worker.ts` | pino → OpenObserve log shipping                         |
+| `src/workers/import/`                | CSV import processing                                   |
+| `src/logger/index.ts`                | pino logger; redacts cookies                            |
+| `src/metrics.ts`                     | Prometheus metrics                                      |
+| `src/pds/client.ts`                  | Self-hosted PDS support                                 |
+| `server/cluster.ts`                  | Multi-process supervisor (Docker CMD)                   |
+| `server/worker-exit.ts`              | Exit classification + procfs memory read                |
+| `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                       |
+| `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `cache-headers.ts` |
 
 Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them.
 
