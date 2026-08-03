@@ -5,12 +5,6 @@ import forms from "@tailwindcss/forms";
 export default {
   darkMode: "class",
   content: ["./src/**/*.{js,ts,jsx,tsx}"],
-  theme: {
-    extend: {
-      colors: {
-        yello: "#f9eabc",
-      },
-    },
-  },
+  theme: {},
   plugins: [tailwindAnimated, forms],
 };

@@ -81,6 +81,9 @@ export const ProfilePage: FC<{
     return sum;
   }, 0);
   const totalBooksForGenre = genreStats.reduce((s, g) => s + g.count, 0);
+  // Bars are scaled against the top genre, not the sum. A book carries several genres, so the sum
+  // is much larger than any one count and every bar rendered as a stub against a full-width track.
+  const maxGenreCount = genreStats.reduce((m, g) => Math.max(m, g.count), 0);
 
   return (
     <div class="space-y-6 px-4 lg:px-8">
@@ -132,15 +135,23 @@ export const ProfilePage: FC<{
                   </h3>
                   <div class="space-y-1">
                     {genreStats.map((g) => (
-                      <div key={g.genre} class="flex items-center gap-2">
-                        <span class="text-foreground w-24 truncate text-sm">{g.genre}</span>
-                        <div class="bg-muted h-4 flex-1 rounded">
+                      <div key={g.genre} class="flex items-center gap-3">
+                        <a
+                          href={`/explore/genres/${encodeURIComponent(g.genre)}`}
+                          class="text-foreground hover:text-primary w-36 shrink-0 truncate text-sm transition-[color] duration-150"
+                          title={g.genre}
+                        >
+                          {g.genre}
+                        </a>
+                        <div class="bg-muted h-2 min-w-0 flex-1 overflow-hidden rounded-full">
                           <div
-                            class="bg-primary h-4 rounded"
-                            style={`width: ${(g.count / totalBooksForGenre) * 100}%`}
+                            class="bg-primary h-full rounded-full"
+                            style={`width: ${Math.max(2, (g.count / maxGenreCount) * 100)}%`}
                           />
                         </div>
-                        <span class="text-muted-foreground tabular-nums text-sm">{g.count}</span>
+                        <span class="text-muted-foreground w-8 shrink-0 text-right tabular-nums text-sm">
+                          {g.count}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -150,7 +161,7 @@ export const ProfilePage: FC<{
               <p class="mt-4">
                 <a
                   href={`/profile/${handle}/stats/${year}`}
-                  class="text-primary hover:underline text-sm font-medium min-h-[40px] inline-flex items-center"
+                  class="text-primary hover:underline text-sm font-medium min-h-10 inline-flex items-center"
                 >
                   See your Year in Books →
                 </a>
@@ -299,7 +310,33 @@ export const ProfilePage: FC<{
           )}
         </>
       ) : (
-        <div class="text-muted-foreground text-center">This user has no books on BookHive yet.</div>
+        <div class="card">
+          <div class="card-body">
+            <div class="empty">
+              <h2 class="empty-title">
+                {/* "Shelves" means user-created lists (social.popfeed.feed.list) elsewhere in the
+                    app — this empty state is about having no books at all, which is what the
+                    description and both CTAs below actually address. */}
+                {isOwnProfile ? "Your library is empty" : "No books yet"}
+              </h2>
+              <p class="empty-description">
+                {isOwnProfile
+                  ? "Search for a book to add your first read, or bring your history over from Goodreads or StoryGraph."
+                  : `@${handle} hasn't added any books to BookHive yet.`}
+              </p>
+              {isOwnProfile && (
+                <div class="mt-4 flex flex-wrap justify-center gap-2">
+                  <a href="/explore" class="btn btn-primary min-h-10">
+                    Find a book
+                  </a>
+                  <a href="/import" class="btn btn-outline min-h-10">
+                    Import your library
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

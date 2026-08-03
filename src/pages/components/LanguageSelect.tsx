@@ -35,7 +35,10 @@ export const LanguageSelect: FC<LanguageSelectProps> = ({
     <div class="flex items-center">
       <select
         id="lang-filter"
-        class="btn btn-ghost cursor-pointer appearance-none bg-[length:16px_16px] bg-[right_0.5rem_center] bg-no-repeat pr-7 text-sm"
+        // `btn-outline`, not `btn`/`btn-ghost`: this is a filter, not a call to action. It used to
+        // render as a filled amber pill (see the `.btn.btn-ghost` note in index.css) and was the
+        // loudest element on /explore and /search.
+        class="btn btn-outline cursor-pointer appearance-none bg-[length:16px_16px] bg-[right_0.5rem_center] bg-no-repeat pr-7 text-sm"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z'/%3E%3C/svg%3E")`,
         }}

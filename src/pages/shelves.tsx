@@ -39,7 +39,7 @@ export const ShelfViewPage: FC<{
           <div class="flex items-center gap-2">
             <a
               href={`/shelves/${handle}`}
-              class="inline-flex min-h-[40px] items-center text-sm text-muted-foreground hover:text-primary"
+              class="inline-flex min-h-10 items-center text-sm text-muted-foreground hover:text-primary"
             >
               Shelves
             </a>
@@ -50,7 +50,7 @@ export const ShelfViewPage: FC<{
           <div class="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
             <a
               href={`/profile/${handle}`}
-              class="inline-flex min-h-[40px] items-center hover:text-primary"
+              class="inline-flex min-h-10 items-center hover:text-primary"
             >
               @{handle}
             </a>
@@ -204,7 +204,7 @@ export const ShelfViewPage: FC<{
                         <input type="hidden" name="itemUri" value={item.uri} />
                         <button
                           type="submit"
-                          class="min-h-[32px] min-w-[40px] rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
+                          class="min-h-10 min-w-10 rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
                           title="Remove from shelf"
                         >
                           Remove

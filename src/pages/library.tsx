@@ -351,14 +351,14 @@ export const LibraryPage: FC<{
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            class="btn btn-secondary min-h-[40px]"
+            class="btn btn-secondary min-h-10"
             onclick="document.getElementById('ereader-dialog').showModal()"
           >
             Connect e-reader
           </button>
           <button
             type="button"
-            class="btn btn-primary min-h-[40px]"
+            class="btn btn-primary min-h-10"
             onclick="document.getElementById('upload-dialog').showModal()"
           >
             Upload books

@@ -121,7 +121,7 @@ export const SettingsPage: FC<{
                 >
                   Permanently delete my data
                 </button>
-                <button type="button" id="cancel-delete-btn" class="btn btn-ghost min-h-[40px]">
+                <button type="button" id="cancel-delete-btn" class="btn btn-ghost min-h-10">
                   Cancel
                 </button>
               </div>

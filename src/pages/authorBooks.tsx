@@ -49,10 +49,13 @@ const ChevronRight = () => (
 
 const NO_BOOKS_FOUND = (author: string) => (
   <div class="card">
-    <section class="py-12 text-center">
-      <h3 class="text-xl font-semibold text-foreground">No books found</h3>
-      <p class="text-muted-foreground mt-2">No books found by "{author}" yet.</p>
-    </section>
+    <div class="empty">
+      <h3 class="empty-title">No books found</h3>
+      <p class="empty-description">No books found by "{author}" yet.</p>
+      <a href="/explore/authors" class="btn btn-outline mt-4 min-h-10">
+        Browse all authors
+      </a>
+    </div>
   </div>
 );
 
@@ -121,7 +124,8 @@ export const AuthorBooks: FC<AuthorBooksProps> = ({
         ) : (
           <>
             <p class="text-muted-foreground tabular-nums text-sm">
-              Showing {start}-{end} of {totalBooks} books
+              Showing {start.toLocaleString()}–{end.toLocaleString()} of{" "}
+              {totalBooks.toLocaleString()} books
             </p>
 
             <div class="card">

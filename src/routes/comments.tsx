@@ -219,7 +219,7 @@ const app = new Hono<AppEnv>()
     }
     // A buzz can carry a null hiveId; redirecting blindly produced /books/null.
     const deletedHiveId = comment[0]!.hiveId;
-    return c.redirect(deletedHiveId ? "/books/" + deletedHiveId : "/");
+    return c.redirect(deletedHiveId ? "/books/" + deletedHiveId : "/home");
   });
 
 export default app;

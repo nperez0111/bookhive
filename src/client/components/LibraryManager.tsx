@@ -452,7 +452,7 @@ export const LibraryManager: FC = () => {
             <div class="mt-6 flex justify-center">
               <button
                 type="button"
-                class="btn btn-secondary min-h-[40px]"
+                class="btn btn-secondary min-h-10"
                 disabled={loadingMore}
                 onClick={loadMore}
               >

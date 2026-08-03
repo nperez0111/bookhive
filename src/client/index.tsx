@@ -105,28 +105,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Update page title based on active tab on home page
-  const tabInputs = document.querySelectorAll('input[name="tabs"]');
-  if (tabInputs.length > 0) {
-    const updateTitle = () => {
-      const activeTab = document.querySelector('input[name="tabs"]:checked') as HTMLInputElement;
-      if (!activeTab) return;
-
-      const baseTitle = "BookHive";
-
-      // Find the corresponding label for this tab input
-      const tabLabel = document.querySelector(`label[for="${activeTab.id}"]`) as HTMLLabelElement;
-      const tabTitle = tabLabel ? tabLabel.textContent?.trim() || "Home" : "Home";
-
-      document.title = `${baseTitle} | ${tabTitle}`;
-    };
-
-    // Set initial title based on checked tab
-    updateTitle();
-
-    // Listen for tab changes
-    tabInputs.forEach((input) => {
-      input.addEventListener("change", updateTitle);
-    });
-  }
+  // NOTE: there used to be a block here that rewrote document.title from the checked
+  // `input[name="tabs"]` label, commented "on home page". The home page has no such tabs — the
+  // only thing that renders them is BookList (src/pages/components/book.tsx), used solely by
+  // the profile page. So it only ever ran where it was wrong, replacing the server-rendered
+  // "BookHive | @handle" with a shelf label on load: every profile page retitled itself
+  // "BookHive | Want to Read 90". The tabs are a CSS-only toggle that never changes the URL,
+  // so there is nothing for a title to track. Removed rather than rescoped.
 });

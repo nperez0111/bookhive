@@ -43,7 +43,12 @@ export const ProfileHeader: FC<{
           <img
             src={avatarImageUrl(did, { size: 160 })}
             alt=""
-            loading="lazy"
+            width="80"
+            height="80"
+            decoding="async"
+            fetchpriority="high"
+            /* Not `loading="lazy"`: this avatar is always above the fold, so deferring it just
+               delays the page's visual anchor and flashes an empty circle first. */
             class="h-20 w-20 flex-shrink-0 rounded-full object-cover outline outline-1 outline-black/10 dark:outline-white/10"
           />
         )}
@@ -89,7 +94,7 @@ export const ProfileHeader: FC<{
             <button
               type="button"
               id="profile-share-btn"
-              class="btn btn-ghost min-h-[40px] min-w-[40px]"
+              class="btn btn-ghost min-h-10 min-w-10"
               aria-haspopup="true"
               aria-expanded="false"
             >
@@ -210,7 +215,7 @@ export const ProfileHeader: FC<{
             />
           </div>
           {isOwnProfile ? (
-            <a href="/settings" class="btn btn-ghost min-h-[40px] items-center flex">
+            <a href="/settings" class="btn btn-ghost min-h-10 items-center flex">
               Settings
             </a>
           ) : (

@@ -1,14 +1,16 @@
 /// AWS WAF solver — runs entirely off the main thread as a Bun Worker.
 ///
-/// Given a target URL (and optionally a cached token + crypto config), it fetches
-/// the page; if AWS WAF is active it solves the challenge (deobfuscation, browser
-/// fingerprint, proof-of-work) and re-fetches, then returns the page HTML plus
-/// the token/config that worked so the caller can cache them. All network I/O and
-/// CPU-bound proof-of-work happen here, never on the main event loop.
+/// It does exactly one thing: given a challenge interstitial the main thread
+/// already fetched, produce an `aws-waf-token` (deobfuscation, browser
+/// fingerprint, proof-of-work). It does **not** fetch Goodreads pages. Keeping
+/// the page fetch on the main thread is what makes it impossible for a solver
+/// problem to stop a page from being requested — see `solver.ts`.
+///
+/// The CPU-bound proof-of-work is why this is a Worker at all.
 
 import { createCipheriv, randomBytes, createHash, scryptSync } from "crypto";
 import { doExtract } from "./deobfuscate";
-import { NEXT_DATA_MARKER } from "./pageMarker";
+import { apiHeaders, boundedText, MAX_CHALLENGE_SCRIPT_BYTES } from "./http";
 import type { SerializedConfig, WafRequest, WafResult } from "./messages";
 
 declare var self: Worker;
@@ -61,13 +63,6 @@ const BWDTH_SIZES: Record<number, number> = {
   5: 10485760,
 };
 
-const BRANDS: Record<number, string> = {
-  0: '"Not/A)Brand";v="8", "Chromium";v="{v}", "Google Chrome";v="{v}"',
-  1: '"Not A(Brand";v="24", "Chromium";v="{v}", "Google Chrome";v="{v}"',
-  2: '"Chromium";v="{v}", "Not(A:Brand";v="24", "Google Chrome";v="{v}"',
-  3: '"Not:A-Brand";v="8", "Chromium";v="{v}", "Google Chrome";v="{v}"',
-};
-
 const GPUS = [
   {
     vendor: "Google Inc. (NVIDIA)",
@@ -98,60 +93,7 @@ const SCREENS = [
   [1600, 900],
 ];
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-
 // ─── Utility ────────────────────────────────────────────────────────────────
-
-function parseUA(ua: string): { brand: string; platform: string; ver: string } {
-  const m = ua.match(/Chrome\/(\d+)/);
-  const ver = m?.[1] ?? "137";
-  const platform = ua.toLowerCase().includes("windows")
-    ? "Windows"
-    : ua.toLowerCase().includes("mac")
-      ? "macOS"
-      : "Linux";
-  const brand = BRANDS[parseInt(ver) % 4]!.replace(/\{v\}/g, ver);
-  return { brand, platform, ver };
-}
-
-function navHeaders(ua: string): Record<string, string> {
-  const { brand, platform } = parseUA(ua);
-  return {
-    accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "accept-language": "en-US,en;q=0.9",
-    "sec-ch-ua": brand,
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": `"${platform}"`,
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "upgrade-insecure-requests": "1",
-    "user-agent": ua,
-  };
-}
-
-function apiHeaders(site: string, ua: string, sameOrigin: boolean): Record<string, string> {
-  const { brand, platform } = parseUA(ua);
-  return {
-    accept: "*/*",
-    "accept-language": "en-US,en;q=0.9",
-    "cache-control": "no-cache",
-    origin: site,
-    pragma: "no-cache",
-    priority: "u=1, i",
-    referer: `${site}/`,
-    "sec-ch-ua": brand,
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": `"${platform}"`,
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": sameOrigin ? "same-origin" : "cross-site",
-    "user-agent": ua,
-  };
-}
 
 function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -427,90 +369,15 @@ function buildMetrics(hasToken: boolean): any[] {
   return m;
 }
 
-// ─── Page fetch + challenge discovery ────────────────────────────────────────
+// ─── Challenge discovery ─────────────────────────────────────────────────────
 
-/** Page bodies we're willing to buffer. A WAF interstitial or error page is
- *  small; anything huge is a bug or an attack, and buffering it 4,000× is how
- *  the 2026-08-01 OOM happened. */
-const MAX_PAGE_BYTES = 3_000_000;
-/** challenge.js is ~1.3 MB (see README) — leave real headroom. */
-const MAX_CHALLENGE_SCRIPT_BYTES = 4_000_000;
-
-/**
- * `resp.text()` with a hard byte ceiling. Streams so an oversized body is never
- * fully materialized, and cancels the underlying connection on trip.
- */
-async function boundedText(resp: Response, maxBytes: number, label: string): Promise<string> {
-  const declared = Number(resp.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    await resp.body?.cancel();
-    throw new Error(`${label} body too large: ${declared} > ${maxBytes} bytes`);
-  }
-
-  if (!resp.body) return "";
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
-  let total = 0;
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        throw new Error(`${label} body too large: exceeded ${maxBytes} bytes`);
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } finally {
-    reader.cancel().catch(() => {});
-  }
-
-  chunks.push(decoder.decode());
-  return chunks.join("");
-}
-
-function fetchPage(url: string, token: string | null, ua: string = UA): Promise<Response> {
-  const headers = navHeaders(ua);
-  if (token) headers["cookie"] = `aws-waf-token=${token}`;
-  return fetch(url, { headers, redirect: "follow", signal: AbortSignal.timeout(15_000) });
-}
-
-/** AWS WAF stamps every response it generates itself with this header
- *  (`challenge`, `captcha`, `block`). Its presence is the only reliable way to
- *  tell "the WAF is still stopping us" from "we got through the WAF and the
- *  origin said no" — the bodies of both are short non-`__NEXT_DATA__` HTML. */
-const WAF_ACTION_HEADER = "x-amzn-waf-action";
-
-export type TokenFetchOutcome =
-  /** WAF still challenging: our token was not accepted. Re-solving may help. */
-  | "waf_token_rejected"
-  /** We cleared the WAF; Goodreads' own origin refused us (403/429/5xx).
-   *  Re-solving cannot help — the token was fine, the client is unwelcome. */
-  | "origin_blocked_after_token"
-  /** 2xx, past the WAF, but no `__NEXT_DATA__`: dead book id or page redesign. */
-  | "page_without_next_data";
-
-/**
- * Classify a page fetch made with a freshly-solved token. Previously every one
- * of these was reported as `waf_token_ineffective`, which conflated three
- * unrelated root causes with three different fixes.
- */
-export function classifyTokenFetch(status: number, wafAction: string | null): TokenFetchOutcome {
-  if (wafAction || status === 202) return "waf_token_rejected";
-  if (status >= 400) return "origin_blocked_after_token";
-  return "page_without_next_data";
-}
-
-function parseChallengePage(
-  html: string,
-  status: number,
-): { challengeBaseUrl: string; goku: Record<string, any> | null } {
+function parseChallengePage(html: string): {
+  challengeBaseUrl: string;
+  goku: Record<string, any> | null;
+} {
   const srcMatch = html.match(RE_CHAL_SRC);
   if (!srcMatch) {
-    throw new Error(`Challenge URL not found (status=${status}, ${html.length} chars)`);
+    throw new Error(`Challenge URL not found (${html.length} chars)`);
   }
   const gokuMatch = html.match(RE_GOKU);
   return {
@@ -522,7 +389,7 @@ function parseChallengePage(
 async function fetchChallengeScript(
   challengeBaseUrl: string,
   site: string,
-  ua: string = UA,
+  ua: string,
 ): Promise<string> {
   const resp = await fetch(`${challengeBaseUrl}/challenge.js`, {
     headers: {
@@ -624,8 +491,7 @@ async function solveRound(
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 async function handle(req: WafRequest): Promise<Omit<WafResult, "id">> {
-  const { url } = req;
-  const ua = req.ua ?? UA;
+  const { challengeHtml, site, domain, ua } = req;
   let config: CryptoConfig | null = req.config ? deserializeConfig(req.config) : null;
   let challengeJsUrl = req.challengeJsUrl;
   const cached = () => ({
@@ -633,91 +499,29 @@ async function handle(req: WafRequest): Promise<Omit<WafResult, "id">> {
     challengeJsUrl,
   });
 
-  // 1. Try the page with whatever token we already have (or none at all).
-  const first = await fetchPage(url, req.token, ua);
-  const firstHtml = await boundedText(first, MAX_PAGE_BYTES, "initial_fetch");
-  if (firstHtml.includes(NEXT_DATA_MARKER)) {
-    return {
-      html: firstHtml,
-      token: req.token,
-      ...cached(),
-      method: req.token ? "cached_token" : "plain_http",
-      status: first.status,
-    };
-  }
+  // 1. The main thread already has the challenge interstitial, so parse it
+  //    directly rather than re-requesting the page just to see it again.
+  const { challengeBaseUrl, goku } = parseChallengePage(challengeHtml);
 
-  // 2. WAF is active. The page we just fetched IS the challenge page, so parse
-  //    it directly instead of re-fetching the URL.
-  const { challengeBaseUrl, goku } = parseChallengePage(firstHtml, first.status);
-
-  // 3. Ensure crypto config (re-extract only when challenge.js changes).
-  const site = new URL(url).origin;
+  // 2. Ensure crypto config (re-extract only when challenge.js changes).
   if (!config || challengeJsUrl !== challengeBaseUrl) {
     const script = await fetchChallengeScript(challengeBaseUrl, site, ua);
     config = extractCryptoConfig(script, challengeBaseUrl);
     challengeJsUrl = challengeBaseUrl;
   }
 
-  // 4. Solve and re-fetch the page with the resulting token. Only a token the
-  //    WAF actually rejected is worth re-solving; if we got *through* the WAF
-  //    and Goodreads' origin refused us, another solve buys nothing and costs
-  //    three more requests to a host that is already saying no.
-  const domain = new URL(url).hostname;
-  let outcome: TokenFetchOutcome | null = null;
-  let statusWithToken: number | undefined;
-  let wafActionWithToken: string | undefined;
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let token: string | null = null;
-    for (let round = 0; round < 2; round++) {
-      token = await solveRound(config, domain, site, goku, round > 0, ua);
-      if (token) break;
-    }
-    if (!token) {
-      return {
-        html: null,
-        token: null,
-        ...cached(),
-        method: "waf_solver",
-        status: first.status,
-        failure: attempt === 0 ? "waf_solve_failed" : "waf_solve_retry_failed",
-      };
-    }
-
-    const resp = await fetchPage(url, token, ua);
-    const html = await boundedText(resp, MAX_PAGE_BYTES, "token_fetch");
-    if (html.includes(NEXT_DATA_MARKER)) {
-      return {
-        html,
-        token,
-        ...cached(),
-        method: "waf_solver",
-        status: first.status,
-        statusWithToken: resp.status,
-      };
-    }
-
-    statusWithToken = resp.status;
-    wafActionWithToken = resp.headers.get(WAF_ACTION_HEADER) ?? undefined;
-    outcome = classifyTokenFetch(resp.status, wafActionWithToken ?? null);
-    if (outcome !== "waf_token_rejected") break;
+  // 3. Solve. Two rounds: the WAF sometimes withholds a token on a first,
+  //    tokenless attempt and issues one on the retry.
+  for (let round = 0; round < 2; round++) {
+    const token = await solveRound(config, domain, site, goku, round > 0, ua);
+    if (token) return { token, ...cached() };
   }
 
-  return {
-    html: null,
-    token: null,
-    ...cached(),
-    method: "waf_solver",
-    status: first.status,
-    statusWithToken,
-    wafActionWithToken,
-    failure: outcome ?? "waf_token_ineffective",
-  };
+  return { token: null, ...cached(), failure: "waf_solve_failed" };
 }
 
-// Workers are pooled and reused (see solver.ts), so every reply carries the
-// request id — a late reply from an abandoned request must not be mistaken for
-// the answer to the next one.
+// Every reply carries the request id so a late reply from a worker the caller
+// already gave up on can never be mistaken for the answer to a new request.
 self.onmessage = async (event: MessageEvent<WafRequest>) => {
   const req = event.data;
   try {
@@ -725,7 +529,6 @@ self.onmessage = async (event: MessageEvent<WafRequest>) => {
   } catch (error) {
     self.postMessage({
       id: req.id,
-      html: null,
       token: null,
       config: req.config,
       challengeJsUrl: req.challengeJsUrl,

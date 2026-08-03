@@ -1,14 +1,19 @@
 /**
- * Three-state circuit breaker (CLOSED → OPEN → HALF_OPEN → CLOSED).
+ * Three-state circuit breaker (CLOSED → OPEN → HALF_OPEN → CLOSED). When the
+ * breaker is open the caller must not dispatch any work at all.
  *
- * Added after the 2026-08-01 outage: the Goodreads WAF solver was failing ~90%
- * of the time and the app retried into the wall 5,000+ times a day, each retry
- * spawning a Worker and a full cold solve. When the breaker is open the caller
- * must not dispatch any work at all.
+ * **The one consumer is `auth/restore-guard.ts`** — per-PDS OAuth token refresh,
+ * where the breaker is a good fit: the work is on a user's request path, an
+ * unavailable PDS stays unavailable for minutes, and refusing is *cheaper for
+ * the user* than a 5s timeout on every page load.
  *
- * The cooldown is deliberately long (minutes, not seconds). With a failure rate
- * that high, a short cooldown just reopens on every cycle and lets a burst
- * through each time.
+ * It is deliberately not used for scraping any more. A breaker refuses work
+ * before sending it, which is only ever right when the thing being refused has
+ * no other way to fail safely. `enrich_queue` does have one — it can defer a
+ * book without charging it an attempt — so `scrapers/waf/solver.ts` bounds cost
+ * with single-flight and a minimum interval instead, and every book still gets
+ * its request. Putting a breaker in front of that path cost 8,606 refusals and
+ * 2,854 seven-day tombstones in a single 6h window; see that file for the story.
  */
 
 export type CircuitState = "closed" | "open" | "half_open";

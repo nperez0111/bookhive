@@ -27,13 +27,18 @@ import { AuthorDirectory } from "../pages/authorDirectory";
 import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
 import { searchBooks, cacheControl } from "./lib";
+import { NO_STORE } from "../utils/cacheHeaders";
 import { getAvailableLanguages } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
+    // Personalized: never stored, not even for revalidation. `no-cache` would
+    // still let the browser write the page to disk, which is how a previous
+    // account's /home survived an account switch.
+    c.header("Cache-Control", NO_STORE);
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
-      return c.redirect("/", 302);
+      return c.redirect("/login", 302);
     }
     return c.render(<Home />, { title: "BookHive | Home" });
   })
@@ -114,6 +119,7 @@ const app = new Hono<AppEnv>()
     return c.html(
       <Layout
         assetUrls={c.get("assetUrls")}
+        url={c.req.url}
         title="BookHive App for iOS"
         description="The BookHive iOS app lets you manage, organize, and review your books anywhere."
         image="/og/app"

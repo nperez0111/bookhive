@@ -53,7 +53,7 @@ const app = new Hono<AppEnv>()
         .execute();
       return c.json(books);
     }
-    return c.redirect("/");
+    return c.redirect("/home");
   })
   .get("/profile", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();

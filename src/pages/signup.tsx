@@ -77,11 +77,21 @@ export const Signup: FC<{
       }}
     />
     <div class="relative w-full max-w-sm">
-      <img
-        src="/full_logo.jpg"
-        alt="BookHive"
-        class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
-      />
+      {/*
+        The JPEG stays: it is also the default og:image and the OAuth client `logo_uri`
+        (src/auth/client.ts), which third-party consumers may not decode as WebP. For the page
+        itself, the 1300px source was ~7x oversized for a 192px slot.
+      */}
+      <picture>
+        <source type="image/webp" srcset="/full_logo-384.webp" />
+        <img
+          src="/full_logo.jpg"
+          alt="BookHive"
+          width="384"
+          height="384"
+          class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
+        />
+      </picture>
       <div class="card w-full overflow-visible pt-52">
         <header class="flex flex-col items-center gap-4">
           <h2 class="text-foreground text-center text-xl font-semibold tracking-tight">
@@ -136,7 +146,7 @@ export const Signup: FC<{
               <button
                 type="button"
                 id="avatar-btn"
-                class="group relative size-20 overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-100 transition-colors hover:border-amber-500 dark:border-gray-600 dark:bg-gray-800"
+                class="group border-border bg-muted hover:border-primary relative size-20 overflow-hidden rounded-full border-2 border-dashed transition-colors"
                 aria-label="Upload profile photo"
               >
                 <img
@@ -150,7 +160,7 @@ export const Signup: FC<{
                   class="flex size-full flex-col items-center justify-center gap-1"
                 >
                   <svg
-                    class="size-7 text-gray-400 group-hover:text-amber-500"
+                    class="text-muted-foreground group-hover:text-primary size-7"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke-width="1.5"
@@ -270,10 +280,7 @@ export const Signup: FC<{
               chose. Have it ready!
             </p>
 
-            <button
-              type="submit"
-              class="btn w-full bg-amber-600 text-white shadow-xs hover:bg-amber-500 focus-visible:ring-amber-600"
-            >
+            <button type="submit" class="btn btn-primary w-full">
               Create account
             </button>
 

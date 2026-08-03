@@ -84,22 +84,23 @@ function Comment({
     <article id={`comment-${commentIdSafe}`} class="mb-4" data-review-uri={comment.uri}>
       <Card>
         <CardBody>
+          {/* The timestamp belongs to the meta row below, next to "Copy link" — passing it as a
+              UserBlock suffix too rendered "1 day ago" twice in every review card. */}
           <UserBlock
             handle={handle}
             displayName={profile?.displayName ?? null}
             avatar={profile?.avatar ?? null}
             size="sm"
-            suffix={timeAgo}
           />
-          <time pubdate datetime={comment.createdAt} class="sr-only">
-            {timeAgo}
-          </time>
-
           <div class="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{timeAgo}</span>
+            {/* One <time> doing both jobs. It used to be a visible <span> plus a duplicate
+                sr-only <time>, so screen readers announced the timestamp twice. */}
+            <time pubdate datetime={comment.createdAt}>
+              {timeAgo}
+            </time>
             <button
               type="button"
-              class="inline-flex min-h-[40px] items-center gap-1 rounded-md px-2 text-[0.7rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              class="inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-[0.7rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
               data-copy-path={reviewLinkPath}
             >
               Copy link

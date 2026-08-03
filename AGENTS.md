@@ -52,9 +52,42 @@ Worker threads (src/workers/, bundled to .output/server/workers/):
 
 - Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
 - **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` (default 4) workers sharing port 8080 via SO_REUSEPORT. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
-- **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline.
+- **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline. That drain interval × concurrency is also the **only** rate limit on requests to Goodreads — 36 fetches/min, healthy or not. Don't add a second one.
+- **`enrich_queue.attempts` counts answers from Goodreads, not failures.** A run reports `enrich_retry` in the wide-event bag: `retry` spends an attempt, `defer` costs nothing and re-queues on a decaying schedule, `dead` tombstones the book immediately. Anything the app decided on its own — a WAF challenge, a timeout, a transport error — is a `defer`. Getting this wrong is expensive: when refusals counted as attempts, one 6h window wrote off 2,854 books for 7 days apiece **without sending a single request on their behalf** (98% of everything the queue gave up on). The bound on defers is `MAX_QUEUE_AGE_MS` (7d from `enqueuedAt`, which survives re-enqueue), not the attempt counter.
 - **Author lookups use `hive_book_author` join** (mig 020), not `LIKE`. This is exact identity, not text search.
 - **Library re-sync** fans out at most `REFETCH_SEARCH_CONCURRENCY` (3) searches.
+
+**The app shell scroller — never put `overflow-*-auto` on `<main>`.** The `jsxRenderer` in
+`src/routes/main.tsx` wraps every app page in
+`<main class="flex-1 overflow-x-clip [overflow-clip-margin:5rem] flex justify-center px-4 py-4 lg:px-6 lg:py-6">`
+→ `<div class="mx-auto w-full min-w-0 max-w-5xl">`. Four constraints, each load-bearing:
+
+- **`overflow-x-clip`, not `auto`.** `overflow-x: auto` with `overflow-y: visible` forces
+  `overflow-y` to compute to `auto`, making `<main>` a scroll container on _both_ axes. Its height
+  equals its content height, so it ends up with a few px of residual scrollable overflow that the
+  mouse wheel latches onto and never chains out of — the page stopped scrolling ~26px in on
+  `/books/:id`, `/profile/:handle` and `/explore`. A clip container is not a scroll container.
+- **Not `overflow-visible` either.** `BookTooltip` is always rendered (at `opacity-0`), so its
+  `w-48` box permanently contributes horizontal overflow; removing the clip produces a
+  document-level h-scrollbar on grid pages at 768–1280px. `overflow-clip-margin` widens the clip
+  edge instead so tooltips can overhang the column. `src/pages/components/book.tsx` does the same
+  for the profile `BookList` panel.
+- **`w-full min-w-0` on the inner column, and keep `flex justify-center`.** Without `w-full` the
+  column is sized to max-content, so content-light pages silently render narrower. `min-w-0`
+  keeps the flex floor deterministic. `justify-center` is the only thing centring the column at
+  `lg`+, and `<main>`'s flex `align-items: stretch` is what makes `min-h-full` resolve for the
+  `-mx-4 … min-h-full` full-bleed pattern on `explore.tsx` / `genres.tsx` / `authorDirectory.tsx`.
+- **The gutter is `px-4 lg:px-6` PADDING on `<main>`, never a margin on the column.** It used to be
+  `m-4 lg:m-6` on the column, next to `mx-auto` — but Tailwind v4 emits `margin-inline` after
+  `margin`, so `mx-auto` won and the horizontal margin computed to **0 at every width below `lg`**.
+  Every app page's content sat flush against both screen edges on mobile, and the `-mx-4 … px-4`
+  full-bleed sections overhung the viewport by 16px per side and had their right edge clipped off
+  (the "See all genres →" arrow on `/explore` was the visible tell). Padding can't be overridden by
+  `mx-auto`, still lets the column centre itself, and keeps the negative-margin full-bleed trick
+  cancelling exactly — `-mx-4` against `px-4` lands the bleed on the viewport edge, and the
+  section's own `px-4` re-aligns its content with the rest of the page.
+
+Wide content (the library/import tables) already clips itself, so `<main>` does not need to.
 
 ## Entry Points
 
@@ -86,7 +119,29 @@ the header alone does nothing. `streamPersonalBook`
 `{ notModified: true }` before it opens the file; both download routes turn that
 into a 304. Without it an e-reader re-downloads every book on every sync.
 
-**Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only. The nitro plugin `server/plugins/html-cache-headers.ts` is the authoritative Cache-Control for HTML.
+**Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only.
+
+**Caching policy** lives in one place: `src/utils/cacheHeaders.ts`. One rule —
+**signed in (`sid` cookie) → `private, no-store` on every path; signed out →
+cache aggressively** so Cloudflare absorbs the scraper load. Three layers apply
+it: `cacheControl()`/`setCacheControl()` (`src/routes/lib.ts`), the anon page
+cache's bypass, and `server/plugins/cache-headers.ts` — the nitro `response`
+hook, which is authoritative because it runs on the final Response. It also adds
+`Vary: Cookie` to all HTML and owns the long TTL for files under `public/`.
+
+Two traps this encodes, both of which caused real bugs:
+
+- **Never put an extension glob in `routeRules`.** rou3 truncates a pattern at
+  the first `**`, so `/**/*.png` is really `/**` and matches every route — and
+  nitro's route-rule header middleware overwrites the Hono-set `Cache-Control`
+  on any 2xx. That is how `/home` and `/profile/*` came to be sent as
+  `public, max-age=2592000`, letting a browser replay the previous account's page
+  after an account switch. Prefix globs (`/assets/**`) are fine.
+- **`Vary: Cookie` is load-bearing for `/`**, which answers a 302 to `/home` when
+  signed in and marketing HTML otherwise. Without it a browser replays the stored
+  marketing page and the redirect never fires. Cloudflare ignores `Vary` except
+  `Accept-Encoding`, so the edge needs a _bypass cache when `http.cookie contains
+"sid="`_ rule to get the same guarantee.
 
 ### Mounted in `src/app.ts` (infra/admin, before `mainRouter`)
 
@@ -105,7 +160,7 @@ into a 304. Without it an e-reader re-downloads every book on every sync.
 - `/privacy-policy` → `src/pages/privacy-policy.tsx`
 - `/legal` → `src/pages/terms.tsx`
 - `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled)
-- `/` → `src/pages/marketing.tsx` — landing; redirects to `/home` when logged in
+- `/` → `src/pages/marketing.tsx` — landing for signed-out visitors; **302s to `/home` when the `sid` cookie is present** (`src/routes/main.tsx`), which is what makes `Vary: Cookie` load-bearing on this route (see Caching policy above)
 - `/images/*` → signing reverse-proxy to **imgproxy** (`src/utils/imageProxy.ts`). Three route shapes:
   - `/images/books/:hiveId?w=N` — ID-keyed canonical (preferred). Helpers: `coverImageUrl`, `avatarImageUrl`
   - `/images/avatars/:did?s=N` — ID-keyed avatar
@@ -114,7 +169,7 @@ into a 304. Without it an e-reader re-downloads every book on every sync.
 
 ### `src/routes/pages.tsx` (mounted at `/`)
 
-- `/home` → `src/pages/home.tsx` — authenticated home
+- `/home` → `src/pages/home.tsx` — authenticated home (redirects to `/login` if no profile)
 - `/feed` → `src/pages/feed.tsx` — activity feed (friends/all/tracking, paginated 25/page)
 - `/app` → `src/pages/app.tsx` — iOS app landing
 - `/import` → `src/pages/import.tsx` — CSV import page, SSE progress
@@ -213,55 +268,93 @@ Auth: `x-auth-user` (handle) + `x-auth-key` (md5 of HMAC-derived password). Prog
 
 Each file exports a Hono JSX component rendered server-side.
 
-| File                  | Renders                                           |
-| --------------------- | ------------------------------------------------- |
-| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>` |
-| `navbar.tsx`          | Top nav bar with user menu, search mount point    |
-| `simple-navbar.tsx`   | Simplified nav bar variant                        |
-| `sidebar.tsx`         | Sidebar layout component                          |
-| `home.tsx`            | Authenticated home page                           |
-| `marketing.tsx`       | Marketing landing (logged-out)                    |
-| `searchResults.tsx`   | Search results                                    |
-| `bookInfo.tsx`        | Book detail                                       |
-| `profile.tsx`         | User profile + shelves                            |
-| `shelves.tsx`         | Book shelves view                                 |
-| `comments.tsx`        | Comments/reviews                                  |
-| `feed.tsx`            | Activity feed                                     |
-| `readingStats.tsx`    | Reading stats by year                             |
-| `settings.tsx`        | Account settings                                  |
-| `explore.tsx`         | Explore hub                                       |
-| `genres.tsx`          | Genre directory                                   |
-| `genreBooks.tsx`      | Books by genre (paginated, sortable)              |
-| `genreEmoji.ts`       | Genre → emoji mapping                             |
-| `authorBooks.tsx`     | Books by author (paginated)                       |
-| `authorDirectory.tsx` | Author directory                                  |
-| `import.tsx`          | CSV import page                                   |
-| `library.tsx`         | Personal library                                  |
-| `login.tsx`           | Login form                                        |
-| `signup.tsx`          | Sign up form                                      |
-| `app.tsx`             | iOS app landing                                   |
-| `privacy-policy.tsx`  | Privacy policy                                    |
-| `terms.tsx`           | Terms of service (`/legal`)                       |
-| `pds.tsx`             | PDS info page                                     |
-| `error.tsx`           | Error page                                        |
+| File                  | Renders                                            |
+| --------------------- | -------------------------------------------------- |
+| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`  |
+| `navbar.tsx`          | Top nav bar with user menu, search mount point     |
+| `simple-navbar.tsx`   | Simplified nav bar variant                         |
+| `sidebar.tsx`         | Sidebar layout component                           |
+| `home.tsx`            | Authenticated home page                            |
+| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects) |
+| `searchResults.tsx`   | Search results                                     |
+| `bookInfo.tsx`        | Book detail                                        |
+| `profile.tsx`         | User profile + shelves                             |
+| `shelves.tsx`         | Book shelves view                                  |
+| `comments.tsx`        | Comments/reviews                                   |
+| `feed.tsx`            | Activity feed                                      |
+| `readingStats.tsx`    | Reading stats by year                              |
+| `settings.tsx`        | Account settings                                   |
+| `explore.tsx`         | Explore hub                                        |
+| `genres.tsx`          | Genre directory                                    |
+| `genreBooks.tsx`      | Books by genre (paginated, sortable)               |
+| `genreEmoji.ts`       | Genre → emoji mapping                              |
+| `authorBooks.tsx`     | Books by author (paginated)                        |
+| `authorDirectory.tsx` | Author directory                                   |
+| `import.tsx`          | CSV import page                                    |
+| `library.tsx`         | Personal library                                   |
+| `login.tsx`           | Login form                                         |
+| `signup.tsx`          | Sign up form                                       |
+| `app.tsx`             | iOS app landing                                    |
+| `privacy-policy.tsx`  | Privacy policy                                     |
+| `terms.tsx`           | Terms of service (`/legal`)                        |
+| `pds.tsx`             | PDS info page                                      |
+| `error.tsx`           | Error page                                         |
 
 Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/buildUrl.ts`.
 
+**`Layout` always needs `url={c.req.url}`.** It resolves `url` from `useRequestContext()` only as
+a fallback, and that throws for the ~14 routes that render via `c.html(<Layout …>)` instead of
+`c.render(…)` — there is no jsx-renderer context on those. When it throws, `url` silently falls
+back to the hardcoded `https://bookhive.buzz`, so `<link rel="canonical">`, `og:url` and the
+JSON-LD `SearchAction` all pointed at the site root. `/privacy-policy` and `/legal` were live in
+production telling crawlers their canonical URL was the homepage. Every direct call site now
+passes `url` explicitly; keep doing that when adding one. `og:image`/`twitter:image` are
+absolutised against `url` inside `Layout` (crawlers don't resolve relative image URLs), and the
+JSON-LD block uses `new URL(url).origin` because it describes the site, not the page.
+
+### Raster images in `public/`
+
+Page images are `<picture>` with a WebP `<source>` and the original as the `<img>` fallback.
+Regenerate with `cwebp -preset picture -q 78..82 -m 6 [-resize <w> 0] in -o out.webp` — **always
+pass `-preset picture`**; the default preset is far more conservative (it gave 419 KB where
+`picture` gave 164 KB on the same input at the same quality). Lossless (`-z 9`) is not worth
+trying on anything sourced from a JPEG: it preserves the existing compression noise and came out
+larger than the JPEG. Size the WebP to ~2x the CSS slot, not to the source's intrinsic size.
+
+| Asset                                                       | Serves                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `hive-{768,1280}.webp` + `hive.jpg`                         | Marketing hero. The LCP element — `fetchpriority="high"`, intrinsic `width`/`height`, never lazy |
+| `screenshots/{home-screen,book-info,comment}.webp` + `.png` | `/app` phone mockups                                                                             |
+| `full_logo-384.webp` + `full_logo.jpg`                      | Login/signup logo (rendered at 192px)                                                            |
+
+**Do not convert these**, each for a specific reason:
+
+- `full_logo.jpg` must stay — it is also the default `og:image` and the OAuth client `logo_uri`
+  in `src/auth/client.ts`, both consumed by third parties that may not decode WebP.
+- `og-fallback.png` — OG/Twitter card images; crawler WebP support is unreliable.
+- `android-chrome-{192,512}.png` — referenced by `public/site.webmanifest` with an explicit
+  `"type": "image/png"`; changing the format means editing the manifest and risking PWA install.
+- `apple-touch-icon.png`, `favicon*.png`, `favicon.ico` — fixed-format platform requirements.
+- `reading.png` — only used by `README.md` / `app/README.md`, never served.
+
+The other 16 `public/screenshots/*.png` (~6.6 MB) are referenced nowhere in the codebase; they
+look like App Store listing assets (light/dark and `-16` variants), so they are kept as-is.
+
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                              |
-| -------------------------- | ------------------------------------------------- |
-| `book.tsx`                 | Book card component                               |
-| `BookCard.tsx`             | Composable book card                              |
-| `buzz.tsx`                 | Buzz/comment display                              |
-| `BookReview.tsx`           | Book review form/display                          |
-| `EditableLibraryTable.tsx` | Library table with inline editing                 |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                  |
-| `LanguageSelect.tsx`       | Language picker                                   |
-| `modal.tsx`                | Modal dialog (CSS-based)                          |
-| `fallbackCover.tsx`        | Placeholder book cover                            |
-| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder            |
-| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock` |
+| File                       | What                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `book.tsx`                 | Book card component                                                      |
+| `BookCard.tsx`             | Composable book card (`dense` takes `showAuthor` for search/genre grids) |
+| `buzz.tsx`                 | Buzz/comment display                                                     |
+| `BookReview.tsx`           | Book review form/display                                                 |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                        |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                         |
+| `LanguageSelect.tsx`       | Language picker                                                          |
+| `modal.tsx`                | Modal dialog (CSS-based)                                                 |
+| `fallbackCover.tsx`        | Placeholder book cover                                                   |
+| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                   |
+| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                        |
 
 **AT Tags** (`AtTags.tsx`): emits `<meta>` tags declaring ATProto records/identities a page maps to. Built with hono's `html` template (not JSX `<meta>`) because hono/jsx dedupes by `name`. Routes pass tags via `c.render(..., { atTags })`.
 
@@ -304,7 +397,7 @@ SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` s
 | `book_list`           | User-created book lists   | **uri (PK, AT URI)**, userDid, name, description, ordered, tags, createdAt                                                                                                                               |
 | `book_list_item`      | Items in a book list      | **uri (PK, AT URI)**, userDid, **listUri**, hiveId, position                                                                                                                                             |
 | `sync_document`       | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, title, authors, progressData (JSON)                                                                    |
-| `enrich_queue`        | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, enqueuedAt, attempts, nextAttemptAt, claimedAt, lastError                                                                                                                  |
+| `enrich_queue`        | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, **enqueuedAt** (age ceiling; survives re-enqueue), attempts, nextAttemptAt, claimedAt, lastError                                                                           |
 | `personal_book`       | Uploaded ebook files      | contentHash (PK), userDid, filename, title, authors, format, hiveId (nullable), fileSize                                                                                                                 |
 | `personal_shelf`      | User's personal shelves   | id (PK, autoincrement), userDid, name, description                                                                                                                                                       |
 | `personal_shelf_item` | Books in personal shelves | shelfId, contentHash (PK pair)                                                                                                                                                                           |
@@ -343,33 +436,33 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 ### Key Utilities (`src/utils/`)
 
-| File                  | Purpose                                                                                                                                                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getBook.ts`          | Book record CRUD against user's PDS                                                                                                                                                                                                      |
-| `getProfile.ts`       | Profile fetching from Bluesky                                                                                                                                                                                                            |
-| `getFollows.ts`       | Follow graph sync                                                                                                                                                                                                                        |
-| `enrichBookData.ts`   | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                   |
-| `enrichQueue.ts`      | `enrich_queue` producer + primary-worker drain. The `exhausted` gauge/heartbeat counts `hive_book.enrichFailedAt` inside the cooldown, **not** queue rows at MAX_ATTEMPTS — those are deleted as they exhaust, so that read was always 0 |
-| `semaphore.ts`        | Async concurrency limiter + `withTimeout`                                                                                                                                                                                                |
-| `circuitBreaker.ts`   | Three-state breaker                                                                                                                                                                                                                      |
-| `bookIdentifiers.ts`  | ISBN/ID normalization + persistence                                                                                                                                                                                                      |
-| `bookProgress.ts`     | BookProgress serialization                                                                                                                                                                                                               |
-| `readThroughCache.ts` | KV read-through with TTL                                                                                                                                                                                                                 |
-| `csv.ts`              | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                         |
-| `lists.ts`            | Book list (shelf) CRUD against PDS                                                                                                                                                                                                       |
-| `readingStats.ts`     | Reading stats aggregation by year                                                                                                                                                                                                        |
-| `imageProxy.ts`       | imgproxy signing + proxy helper                                                                                                                                                                                                          |
-| `personalLibrary.ts`  | Personal library paths, `streamPersonalBook`                                                                                                                                                                                             |
-| `bookMetadata/`       | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                           |
-| `bookMeta.ts`         | Book metadata utilities                                                                                                                                                                                                                  |
-| `syncMatching.ts`     | KOReader document → BookHive book matching; `NO_HIVE_MATCH` sentinel                                                                                                                                                                     |
-| `syncBridge.ts`       | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                                   |
-| `ftsQuery.ts`         | FTS5 MATCH expression builder                                                                                                                                                                                                            |
-| `importBook.ts`       | Import a single book record                                                                                                                                                                                                              |
-| `authorMatching.ts`   | Author name matching                                                                                                                                                                                                                     |
-| `manifest.ts`         | Vite manifest → asset URLs                                                                                                                                                                                                               |
-| `xml.ts`              | XML utilities                                                                                                                                                                                                                            |
-| Other                 | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`         |
+| File                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBook.ts`          | Book record CRUD against user's PDS                                                                                                                                                                                                                                                                                                                                                                                           |
+| `getProfile.ts`       | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `getFollows.ts`       | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `enrichBookData.ts`   | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                                                                                                                                                                                                        |
+| `enrichQueue.ts`      | `enrich_queue` producer + primary-worker drain, and the `retry`/`defer`/`dead` accounting. The `exhausted` gauge/heartbeat counts `hive_book.enrichFailedAt` inside the cooldown, **not** queue rows at MAX_ATTEMPTS — those are deleted as they exhaust, so that read was always 0. `deferred` counts books parked on something that isn't their fault; it replaced `circuit_open` as the signal that fetching is in trouble |
+| `semaphore.ts`        | Async concurrency limiter + `withTimeout`                                                                                                                                                                                                                                                                                                                                                                                     |
+| `circuitBreaker.ts`   | Three-state breaker — **`auth/restore-guard.ts` only.** Right when refusing is cheaper for a waiting user than failing; wrong for scraping, where the queue can defer instead. See the note under Scrapers                                                                                                                                                                                                                    |
+| `bookIdentifiers.ts`  | ISBN/ID normalization + persistence                                                                                                                                                                                                                                                                                                                                                                                           |
+| `bookProgress.ts`     | BookProgress serialization                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `readThroughCache.ts` | KV read-through with TTL                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `csv.ts`              | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                                                                                                                                                                                                              |
+| `lists.ts`            | Book list (shelf) CRUD against PDS                                                                                                                                                                                                                                                                                                                                                                                            |
+| `readingStats.ts`     | Reading stats aggregation by year                                                                                                                                                                                                                                                                                                                                                                                             |
+| `imageProxy.ts`       | imgproxy signing + proxy helper                                                                                                                                                                                                                                                                                                                                                                                               |
+| `personalLibrary.ts`  | Personal library paths, `streamPersonalBook`                                                                                                                                                                                                                                                                                                                                                                                  |
+| `bookMetadata/`       | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                                                                                                                                                                                                                |
+| `bookMeta.ts`         | Book metadata utilities                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `syncMatching.ts`     | KOReader document → BookHive book matching; `NO_HIVE_MATCH` sentinel                                                                                                                                                                                                                                                                                                                                                          |
+| `syncBridge.ts`       | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                                                                                                                                                                                                                        |
+| `ftsQuery.ts`         | FTS5 MATCH expression builder                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `importBook.ts`       | Import a single book record                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `authorMatching.ts`   | Author name matching                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `manifest.ts`         | Vite manifest → asset URLs                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `xml.ts`              | XML utilities                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Other                 | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`                                                                                                                                                                                              |
 
 ## Types & Constants
 
@@ -419,7 +512,25 @@ them as reference material, not live code, and don't assume a Goodreads failure
 degrades to either one. `images.isbndb.com` stays in the `imageProxy` allowlist
 because historical `hive_book` rows still point there.
 
-The WAF solver's circuit breaker currently also gates the plain-HTTP fetch path. Splitting into separate breakers is the open fix.
+**`waf/` holds two operations that must never share a fate.** `solver.ts` fetches
+the page on the main thread — always, with no gate of any kind in front of it —
+and only hands a challenge off to `solver-worker.ts` if one actually comes back.
+The invariant is:
+
+> No book is ever failed without a request to Goodreads having been sent and answered.
+
+There is **no circuit breaker here, and adding one back is a regression.** There
+used to be: it was fed by solve outcomes and gated the page fetch, so when AWS
+WAF stopped honouring our tokens it sat open and refused the path that still
+worked — 8,606 refusals across 6,840 books in one 6h window, breaker open 254 of
+360 minutes, while the requests it did allow through succeeded 95.6% of the time.
+The three things it protected are each handled better elsewhere: solve cost by
+single-flight + one attempt per token lifetime (`SOLVE_MIN_INTERVAL_MS`, derived
+from the measured 300s token validity, not tuned); request rate by
+`ENRICH_CONCURRENCY`/`DRAIN_INTERVAL_MS`, which already cap us at 36 fetches/min;
+and memory by there being at most **one** solver Worker per process, terminated
+on every path. `waf/README.md` has the full account, including why solving
+currently fails from the production host but not from a residential IP.
 
 ## Auth (`src/auth/`)
 
@@ -448,8 +559,49 @@ Tracing: app → OpenObserve directly (`server/plugins/otel-sdk.ts`). Two spans 
 ## Styling
 
 - **Tailwind CSS v4** with `@tailwindcss/forms` and `tailwindcss-animated`
-- Config: `tailwind.config.js` — custom `yello` color palette
+- Config: `tailwind.config.js` — `darkMode: "class"`; theming lives in `:root`/`.dark` CSS vars in `src/index.css`
 - Entry: `src/index.css`
+
+**basecoat's button variants are standalone classes, not modifiers.** `.btn` _is_ the primary
+variant (`bg-primary text-primary-foreground`); `.btn-ghost` only declares a `:hover` state and
+`.btn-outline` overrides the background but not the text colour. The app writes `btn btn-ghost`
+in ~40 places, which rendered every one of them as a filled primary button, and `btn btn-outline`
+rendered as invisible text. `src/index.css` patches both via the higher-specificity
+`.btn.btn-ghost` / `.btn.btn-outline` selectors — keep using the compound form; don't "fix" call
+sites individually.
+
+**App-defined classes in `src/index.css`** (basecoat does not provide these; several were already
+used in markup before they existed, so that markup silently rendered unstyled):
+
+| Class                                            | What                                                                                                                         |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `.card-title`                                    | Section heading inside (or outside) a `.card`. Deliberately unscoped                                                         |
+| `.empty` / `.empty-title` / `.empty-description` | The one empty-state treatment — prefer it over another hand-rolled `py-12 text-center` block                                 |
+| `.focus-ring`                                    | The one focus recipe (`focus-visible` outline on `--ring`). Use instead of `focus:outline-none` plus a hardcoded ring colour |
+| `.book-cover-frame`                              | Tinted placeholder on a cover box so lazy-loaded grids don't flash empty                                                     |
+| `.book-cover` + `.is-loaded`                     | Cover fade-in. `.is-loaded` is added by the capture-phase `load` listener in `navbar.tsx` — see below                        |
+| `.sidebar`, `.tab-label`                         | Pre-existing component classes                                                                                               |
+
+Form controls get a low-alpha white overlay in dark mode rather than `var(--input)` — `--input` is
+a saturated amber here, which made every input and outline button look like a filled control.
+
+Tap targets are `min-h-10` / `min-w-10` (not the `min-h-[40px]` bracket form).
+
+**The cover fade is decode-triggered, not insertion-triggered.** `.book-cover` only animates once
+it also has `.is-loaded`, which a document-level **capture-phase** `load` listener in
+`src/pages/navbar.tsx` adds (`load` doesn't bubble, so capture is what makes one listener cover
+every cover on the page, including lazy ones and the covers client islands render after
+hydration). Animating on insertion meant the 200ms elapsed before a lazy cover had downloaded, so
+the fade only ever played for already-cached covers. Do **not** add an `opacity: 0` default to
+`.book-cover` to smooth this — with JS off nothing adds `.is-loaded` and every cover would be
+permanently invisible.
+
+**The solid `bg-primary` fill means "call to action", not "you are here".** The sidebar's
+`a[aria-current="page"]` rules (nav list and footer, `src/index.css`) use a `bg-primary/15
+text-primary` tinted pill for the current page. They used to use `bg-primary
+text-primary-foreground` — byte-identical to `.btn-primary` — so in the mobile drawer the active
+nav item and the "Buzz in" sign-in button rendered as two indistinguishable filled amber pills.
+Keep selected/current states tinted and leave the solid fill to real actions.
 
 ## Build & Dev
 
@@ -475,19 +627,19 @@ Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes per
 
 ## Workers, Logging & Observability
 
-| Path                                 | Purpose                                                      |
-| ------------------------------------ | ------------------------------------------------------------ |
-| `src/workers/ingester-worker.ts`     | Jetstream ingest (off-thread)                                |
-| `src/workers/og-render/`             | OG image render (React + takumi)                             |
-| `src/workers/open-observe-worker.ts` | pino → OpenObserve log shipping                              |
-| `src/workers/import/`                | CSV import processing                                        |
-| `src/logger/index.ts`                | pino logger; redacts cookies                                 |
-| `src/metrics.ts`                     | Prometheus metrics                                           |
-| `src/pds/client.ts`                  | Self-hosted PDS support                                      |
-| `server/cluster.ts`                  | Multi-process supervisor (Docker CMD)                        |
-| `server/worker-exit.ts`              | Exit classification + procfs memory read                     |
-| `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                            |
-| `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `html-cache-headers.ts` |
+| Path                                 | Purpose                                                 |
+| ------------------------------------ | ------------------------------------------------------- |
+| `src/workers/ingester-worker.ts`     | Jetstream ingest (off-thread)                           |
+| `src/workers/og-render/`             | OG image render (React + takumi)                        |
+| `src/workers/open-observe-worker.ts` | pino → OpenObserve log shipping                         |
+| `src/workers/import/`                | CSV import processing                                   |
+| `src/logger/index.ts`                | pino logger; redacts cookies                            |
+| `src/metrics.ts`                     | Prometheus metrics                                      |
+| `src/pds/client.ts`                  | Self-hosted PDS support                                 |
+| `server/cluster.ts`                  | Multi-process supervisor (Docker CMD)                   |
+| `server/worker-exit.ts`              | Exit classification + procfs memory read                |
+| `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                       |
+| `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `cache-headers.ts` |
 
 Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them.
 

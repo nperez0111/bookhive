@@ -1,14 +1,11 @@
 export const FallbackCover = ({ className, style }: { className?: string; style?: string }) => {
   return (
     <div
-      class={
-        "flex items-center justify-center rounded-lg bg-zinc-300 dark:bg-zinc-700 " +
-        (className || "")
-      }
+      class={"bg-muted flex items-center justify-center rounded-lg " + (className || "")}
       style={style}
     >
       <svg
-        class="h-10 w-10 text-gray-200 dark:text-gray-600"
+        class="text-muted-foreground/40 h-10 w-10"
         aria-hidden="true"
         xmlns="http://www.w3.org/2000/svg"
         fill="currentColor"

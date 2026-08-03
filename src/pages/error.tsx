@@ -43,7 +43,10 @@ export const Error: FC<{
         <a href="/" class="btn btn-primary min-h-10 min-w-10">
           Go back home
         </a>
-        <a href="/support" class="btn btn-ghost min-h-10 min-w-10 text-sm">
+        {/* Was `/support`, which has never been a route — so the one actionable link on the
+            error page led to another error page. This is the same address signup.tsx and the
+            privacy policy already give as the contact channel. */}
+        <a href="mailto:computers@nickthesick.com" class="btn btn-ghost min-h-10 min-w-10 text-sm">
           Contact support <span aria-hidden="true">&rarr;</span>
         </a>
       </div>

@@ -161,14 +161,14 @@ export const AuthorDirectory: FC = async () => {
         <nav class="text-muted-foreground flex items-center gap-2 text-sm" aria-label="Breadcrumb">
           <a
             href="/"
-            class="hover:text-foreground min-h-[40px] inline-flex items-center transition-[color]"
+            class="hover:text-foreground min-h-10 inline-flex items-center transition-[color]"
           >
             Home
           </a>
           <span aria-hidden="true">›</span>
           <a
             href="/explore"
-            class="hover:text-foreground min-h-[40px] inline-flex items-center transition-[color]"
+            class="hover:text-foreground min-h-10 inline-flex items-center transition-[color]"
           >
             Explore
           </a>
@@ -251,7 +251,7 @@ export const AuthorDirectory: FC = async () => {
                 <a
                   href={`/authors/${encodeURIComponent(author.author)}`}
                   data-author={author.author.toLowerCase()}
-                  class="group flex min-h-[40px] items-center gap-3 border-b border-border px-4 py-3 transition-[color,background-color] hover:bg-muted/60"
+                  class="group flex min-h-10 items-center gap-3 border-b border-border px-4 py-3 transition-[color,background-color] hover:bg-muted/60"
                 >
                   <span class="flex-1 truncate text-sm font-medium text-foreground group-hover:text-primary">
                     {author.author}

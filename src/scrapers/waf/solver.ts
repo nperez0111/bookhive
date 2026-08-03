@@ -1,22 +1,38 @@
-/// Main-thread client for the AWS WAF solver worker.
+/// Fetching Goodreads pages, with AWS WAF handled when it gets in the way.
 ///
-/// Holds the small amount of cross-request state (the working token and the
-/// extracted crypto config) and delegates all network I/O + CPU-bound solving to
-/// `solver-worker.ts` so the main event loop is never blocked.
+/// Two operations live here, and keeping them separate is the whole point of the
+/// file:
 ///
-/// Workers are **pooled and reused**. Previously every scrape spawned a fresh
-/// Worker; under load that meant an unbounded number of JS VMs, each holding a
-/// ~1.3 MB challenge.js plus fully-buffered page bodies, which is what grew
-/// worker processes to ~2 GB and got them OOM-killed on 2026-08-01. With a pool,
-/// memory is a function of pool size rather than request rate.
+///   1. **Fetch the page.** One plain GET on the main thread. Cheap (~200ms), and
+///      it succeeds ~98% of the time. It is *always* attempted — there is no
+///      breaker, no pool, no gate of any kind in front of it.
+///   2. **Solve a WAF challenge.** ~4 requests, a 1.3 MB script download, a
+///      Worker and proof-of-work. Only reached when (1) actually came back
+///      challenged, and rate-limited to one solve per token lifetime.
 ///
-/// A circuit breaker sits in front: when Goodreads' WAF is rejecting our tokens
-/// (5,297 `waf_token_ineffective` in 24h during the incident) we stop dispatching
-/// entirely for a cooldown instead of re-solving from scratch on every request.
+/// The invariant this buys:
+///
+///   > No book is ever failed without a request to Goodreads having been sent
+///   > and answered.
+///
+/// That used to be false. A single circuit breaker was fed by solve outcomes and
+/// gated the page fetch, so when Goodreads' WAF stopped honouring our tokens the
+/// breaker sat open and refused the path that still worked. Over one 6h window in
+/// production that meant 8,606 refusals across 6,840 distinct books — and because
+/// `enrich_queue` counted a refusal as an attempt, 2,854 books were written off
+/// for 7 days without a single packet leaving the box. There is no circuit
+/// breaker here now; see `README.md` for why nothing replaced it.
+///
+/// Solving is *currently* futile from this host: since 2026-08-01 AWS WAF has
+/// refused every token minted from our egress IP (202 + `x-amzn-waf-action:
+/// challenge` on the re-fetch), while the identical code from a residential IP
+/// gets through. That is a reputation problem, not a crypto problem, and it may
+/// recover — hence a cheap periodic attempt rather than deleting the solver.
 
+import { classifyFetch, WAF_ACTION_HEADER, type FetchOutcome } from "./classify";
+import { boundedText, MAX_PAGE_BYTES, navHeaders, UA } from "./http";
+import { NEXT_DATA_MARKER } from "./pageMarker";
 import type { SerializedConfig, WafRequest, WafResult } from "./messages";
-import { CircuitBreaker } from "../../utils/circuitBreaker";
-import { Semaphore, SemaphoreFullError, SemaphoreTimeoutError } from "../../utils/semaphore";
 
 /** AWS WAF's default immunity time is 300s, and Goodreads uses the default:
  *  a token measured live was still accepted at 241s and challenged again at
@@ -25,16 +41,16 @@ import { Semaphore, SemaphoreFullError, SemaphoreTimeoutError } from "../../util
  *  to discover it. */
 const TOKEN_MAX_AGE_MS = 4 * 60 * 1000;
 const WORKER_TIMEOUT_MS = 30_000;
+const PAGE_TIMEOUT_MS = 15_000;
 
-/** Concurrent solves. Memory scales with this; throughput does not need more —
- *  a cached-token fetch is ~200ms and arrivals were ~7.5/min during the outage. */
-const SOLVER_POOL_SIZE = 4;
-/** Retire a worker after this many solves so any slow heap growth is shed. */
-const MAX_SOLVES_PER_WORKER = 50;
-/** Callers queued behind a full pool before we shed load. */
-const MAX_PENDING = 32;
-/** How long a caller will wait for a free worker before giving up. */
-const ACQUIRE_TIMEOUT_MS = 30_000;
+/** Minimum gap between solve attempts.
+ *
+ *  Derived, not tuned: a token is only good for a token lifetime, so solving
+ *  more often than that cannot produce anything we don't already have. It is
+ *  also the entire rate limit on the expensive path — worst case, with every
+ *  solve failing, 15 attempts an hour. (The old breaker, open ~70% of the time,
+ *  allowed 16.) */
+const SOLVE_MIN_INTERVAL_MS = TOKEN_MAX_AGE_MS;
 
 // When running the Nitro bundle (.output/server/index.mjs), load the pre-built
 // worker. In dev, Bun runs the .ts source directly. Mirrors src/context.ts.
@@ -47,208 +63,271 @@ let cachedConfig: SerializedConfig | null = null;
 let cachedChallengeJsUrl: string | null = null;
 let cachedToken: { value: string; obtainedAt: number } | null = null;
 
-const breaker = new CircuitBreaker({
-  failureThreshold: 10,
-  consecutiveFailureThreshold: 5,
-  windowMs: 60_000,
-  cooldownMs: 15 * 60_000,
-  halfOpenMax: 2,
-  successThreshold: 2,
-});
+let lastSolveAttemptAt = 0;
+let lastSolveOutcome: string | null = null;
 
-type PooledWorker = {
-  worker: Worker;
-  solves: number;
-  /** Resolver for the request this worker is currently running, if any. */
-  inFlight: { id: string; settle: (result: WafResult | Error) => void } | null;
+/** Why we don't have a token for this challenge — or that we do. */
+type SolveResult = { token: string; reason: "solved" } | { token: null; reason: string };
+
+/** The one and only in-flight solve. Concurrent challenged fetches await this
+ *  rather than each spawning a Worker — which is also the memory bound that
+ *  replaced the old pool + semaphore. Never more than one solver Worker alive
+ *  per process; the pool allowed four plus 32 queued waiters. */
+let solveInFlight: Promise<SolveResult> | null = null;
+
+export type PageFetch = {
+  outcome: FetchOutcome;
+  html: string;
+  status: number;
 };
 
-const pool: PooledWorker[] = [];
-const idleWorkers: PooledWorker[] = [];
+/** Overrides for tests and for the bastion-vs-residential reproduction probe.
+ *  `ua` applies to the page fetch *and* the fingerprint the solver encrypts, so
+ *  the two always describe one browser. */
+export type WafFetchOptions = {
+  fetchImpl?: typeof fetch;
+  ua?: string;
+  /** Stand in for the solver Worker. Tests use this to exercise the decision
+   *  layer without spawning a VM or touching the network. */
+  solveImpl?: SolveFn;
+};
 
-const slots = new Semaphore(SOLVER_POOL_SIZE, {
-  label: "waf_solver",
-  maxPending: MAX_PENDING,
-  acquireTimeoutMs: ACQUIRE_TIMEOUT_MS,
-});
+export type SolveFn = (req: Omit<WafRequest, "id">) => Promise<WafResult>;
 
-function retire(entry: PooledWorker): void {
-  const poolIndex = pool.indexOf(entry);
-  if (poolIndex !== -1) pool.splice(poolIndex, 1);
-  const idleIndex = idleWorkers.indexOf(entry);
-  if (idleIndex !== -1) idleWorkers.splice(idleIndex, 1);
-  entry.worker.terminate();
-}
+/** Fetch a Goodreads page and say what came back. No gate, no worker, no state. */
+export async function fetchGoodreadsPage(
+  url: string,
+  token: string | null,
+  { fetchImpl = fetch, ua = UA }: WafFetchOptions = {},
+): Promise<PageFetch> {
+  const headers = navHeaders(ua);
+  if (token) headers["cookie"] = `aws-waf-token=${token}`;
 
-function createWorker(): PooledWorker {
-  const entry: PooledWorker = { worker: new Worker(WORKER_URL), solves: 0, inFlight: null };
+  const resp = await fetchImpl(url, {
+    headers,
+    redirect: "follow",
+    signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+  });
+  const html = await boundedText(resp, MAX_PAGE_BYTES, "page_fetch");
 
-  entry.worker.onmessage = (event: MessageEvent<WafResult>) => {
-    const current = entry.inFlight;
-    // Ignore replies for a request we already gave up on (timed out).
-    if (!current || current.id !== event.data.id) return;
-    entry.inFlight = null;
-    current.settle(event.data);
+  return {
+    outcome: classifyFetch(
+      resp.status,
+      resp.headers.get(WAF_ACTION_HEADER),
+      html.includes(NEXT_DATA_MARKER),
+    ),
+    html,
+    status: resp.status,
   };
-
-  entry.worker.onerror = (error) => {
-    const current = entry.inFlight;
-    entry.inFlight = null;
-    retire(entry);
-    current?.settle(new Error(`WAF worker error: ${error.message}`));
-  };
-
-  pool.push(entry);
-  return entry;
 }
 
-function checkout(): PooledWorker {
-  return idleWorkers.pop() ?? createWorker();
-}
+/** Run one solve in a throwaway Worker. The Worker is terminated on every path —
+ *  a solve that blew its deadline may still be spinning, and a fresh VM per
+ *  solve is how heap growth is shed now that workers aren't pooled. */
+function runSolveWorker(req: Omit<WafRequest, "id">): Promise<WafResult> {
+  const worker = new Worker(WORKER_URL);
+  const id = crypto.randomUUID();
 
-function checkin(entry: PooledWorker): void {
-  if (!pool.includes(entry)) return; // already retired
-  if (entry.solves >= MAX_SOLVES_PER_WORKER) {
-    retire(entry);
-    return;
-  }
-  idleWorkers.push(entry);
-}
+  return new Promise<WafResult>((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.terminate();
+      fn();
+    };
 
-function runWorker(req: Omit<WafRequest, "id">): Promise<WafResult> {
-  return slots.run(() => {
-    const entry = checkout();
-    const id = crypto.randomUUID();
-    entry.solves++;
+    const timer = setTimeout(
+      () => finish(() => reject(new Error("WAF solve timed out"))),
+      WORKER_TIMEOUT_MS,
+    );
 
-    return new Promise<WafResult>((resolve, reject) => {
-      let settled = false;
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        entry.inFlight = null;
-        // A worker that blew its deadline may still be spinning — don't reuse it.
-        retire(entry);
-        reject(new Error("WAF solve timed out"));
-      }, WORKER_TIMEOUT_MS);
+    worker.onmessage = (event: MessageEvent<WafResult>) => {
+      if (event.data.id !== id) return;
+      finish(() => resolve(event.data));
+    };
+    worker.onerror = (error) => {
+      finish(() => reject(new Error(`WAF worker error: ${error.message}`)));
+    };
 
-      entry.inFlight = {
-        id,
-        settle: (result) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          if (result instanceof Error) {
-            reject(result);
-          } else {
-            checkin(entry);
-            resolve(result);
-          }
-        },
-      };
-
-      entry.worker.postMessage({ ...req, id } satisfies WafRequest);
-    });
+    worker.postMessage({ ...req, id } satisfies WafRequest);
   });
 }
 
-/** Test/diagnostic helper: current pool occupancy. */
+/**
+ * Get a token for a challenge we just received, or null if we shouldn't try.
+ *
+ * Single-flight plus one attempt per token lifetime. Both are structural: there
+ * is no threshold to tune and no probe accounting to leak, and the first
+ * challenged fetch after Goodreads starts honouring our tokens again just works.
+ */
+function ensureWafToken(
+  challengeHtml: string,
+  url: string,
+  ua: string,
+  solve: SolveFn,
+): Promise<SolveResult> {
+  if (solveInFlight) return solveInFlight;
+  if (Date.now() - lastSolveAttemptAt < SOLVE_MIN_INTERVAL_MS) {
+    return Promise.resolve({ token: null, reason: "skipped" });
+  }
+
+  lastSolveAttemptAt = Date.now();
+  const target = new URL(url);
+
+  const inFlight: Promise<SolveResult> = solve({
+    challengeHtml,
+    site: target.origin,
+    domain: target.hostname,
+    config: cachedConfig,
+    challengeJsUrl: cachedChallengeJsUrl,
+    ua,
+  })
+    .then((result): SolveResult => {
+      if (result.config && result.challengeJsUrl) {
+        cachedConfig = result.config;
+        cachedChallengeJsUrl = result.challengeJsUrl;
+      }
+      if (result.token) return { token: result.token, reason: "solved" };
+      return { token: null, reason: result.failure ?? result.error ?? "no_token" };
+    })
+    .catch(
+      (error): SolveResult => ({
+        token: null,
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    .then((outcome) => {
+      lastSolveOutcome = outcome.reason;
+      if (solveInFlight === inFlight) solveInFlight = null;
+      return outcome;
+    });
+
+  solveInFlight = inFlight;
+  return inFlight;
+}
+
+/** Diagnostic helper: current solver state. */
 export function wafSolverStats() {
   return {
-    workers: pool.length,
-    idle: idleWorkers.length,
-    active: slots.active,
-    pending: slots.pending,
-    circuit: breaker.getState(),
+    solving: solveInFlight !== null,
+    tokenAgeMs: cachedToken ? Date.now() - cachedToken.obtainedAt : null,
+    lastSolveAt: lastSolveAttemptAt || null,
+    lastSolveOutcome,
   };
 }
 
+/** Test seam — drops all cross-request state. */
+export function __resetSolverState(): void {
+  cachedConfig = null;
+  cachedChallengeJsUrl = null;
+  cachedToken = null;
+  lastSolveAttemptAt = 0;
+  lastSolveOutcome = null;
+  solveInFlight = null;
+}
+
 /**
- * Fetch a Goodreads page, transparently solving AWS WAF if it's active. Returns
- * the page HTML, or null if it could not be obtained. `addCtx` receives
- * structured wide-event fields describing how the fetch went.
+ * Fetch a Goodreads page, solving AWS WAF if it's in the way. Returns the page
+ * HTML, or null if it could not be obtained. `addCtx` receives structured
+ * wide-event fields describing how the fetch went, including `enrich_retry`,
+ * which tells `enrich_queue` whether this counts as an answer about the book.
  */
 export async function fetchGoodreadsViaWaf(
   url: string,
   addCtx: (context: Record<string, unknown>) => void,
+  options: WafFetchOptions = {},
 ): Promise<string | null> {
-  if (!breaker.canRequest()) {
-    addCtx({
-      scrape_url: url,
-      scrape_failure: "circuit_open",
-      scrape_circuit_cooldown_ms: breaker.cooldownRemainingMs(),
-    });
-    return null;
-  }
+  addCtx({ scrape_url: url });
 
   const token =
     cachedToken && Date.now() - cachedToken.obtainedAt < TOKEN_MAX_AGE_MS
       ? cachedToken.value
       : null;
 
-  let result: WafResult;
+  let first: PageFetch;
   try {
-    result = await runWorker({
-      url,
-      token,
-      config: cachedConfig,
-      challengeJsUrl: cachedChallengeJsUrl,
-    });
+    first = await fetchGoodreadsPage(url, token, options);
   } catch (error) {
-    const overloaded =
-      error instanceof SemaphoreFullError || error instanceof SemaphoreTimeoutError;
-    // Shedding load is not evidence either way about Goodreads — we never sent
-    // the request. Hand back the probe slot without counting it as a success,
-    // which would otherwise let our own backpressure close the breaker.
-    if (overloaded) {
-      breaker.recordAbandoned();
-    } else {
-      breaker.recordFailure();
-    }
+    // Transport failure — DNS, connect, the 15s abort, an oversized body. Says
+    // nothing about this book, so it must not consume a retry attempt.
     addCtx({
-      scrape_url: url,
-      scrape_failure: overloaded ? "solver_busy" : "waf_worker_error",
+      scrape_failure: "fetch_failed",
       scrape_error: error instanceof Error ? error.message : String(error),
+      enrich_retry: "defer",
     });
     return null;
   }
 
-  // Fold the worker's results back into the cache.
-  if (result.config && result.challengeJsUrl) {
-    cachedConfig = result.config;
-    cachedChallengeJsUrl = result.challengeJsUrl;
+  addCtx({
+    scrape_status: first.status,
+    scrape_outcome: first.outcome,
+    scrape_token: token ? "cached" : "none",
+  });
+
+  if (first.outcome === "page") return first.html;
+
+  if (first.outcome !== "challenged") {
+    // Past the WAF, but not the page we wanted. `no_next_data` might be a dead
+    // book id — but only the parser, which can see that `getBookByLegacyId`
+    // resolved to null, is allowed to conclude that. Guessing it from the fetch
+    // alone would tombstone the whole catalogue the day Goodreads redesigns.
+    addCtx({ scrape_failure: first.outcome, enrich_retry: "defer" });
+    return null;
   }
-  if (result.token) {
-    // Only restamp the age when the token actually changed, so a long-lived
-    // token still expires from the cache and gets proactively re-solved.
-    if (cachedToken?.value !== result.token) {
-      cachedToken = { value: result.token, obtainedAt: Date.now() };
-    }
-  } else if (result.failure || result.error) {
+
+  // The WAF challenged us and the body we just fetched *is* the challenge page.
+  // If we sent a cached token to get here, it is dead ahead of its nominal
+  // expiry — drop it now rather than spending the rest of the window proving it.
+  if (token && cachedToken?.value === token) cachedToken = null;
+
+  const solve = await ensureWafToken(
+    first.html,
+    url,
+    options.ua ?? UA,
+    options.solveImpl ?? runSolveWorker,
+  );
+  if (!solve.token) {
+    addCtx({
+      scrape_failure: "waf_challenged",
+      scrape_solve: solve.reason,
+      enrich_retry: "defer",
+    });
+    return null;
+  }
+
+  let second: PageFetch;
+  try {
+    second = await fetchGoodreadsPage(url, solve.token, options);
+  } catch (error) {
     cachedToken = null;
+    addCtx({
+      scrape_failure: "fetch_failed",
+      scrape_error: error instanceof Error ? error.message : String(error),
+      enrich_retry: "defer",
+    });
+    return null;
   }
 
-  addCtx({ scrape_url: url });
-  if (result.status !== undefined) addCtx({ scrape_status: result.status });
-  if (result.statusWithToken !== undefined) {
-    addCtx({ scrape_status_with_token: result.statusWithToken });
-  }
-  // Present ⇒ the WAF rejected our token; absent on a 4xx ⇒ we cleared the WAF
-  // and Goodreads' origin refused us. Different problems, different fixes.
-  if (result.wafActionWithToken) {
-    addCtx({ scrape_waf_action_with_token: result.wafActionWithToken });
-  }
-  if (result.method) addCtx({ scrape_method: result.method });
-  if (result.failure) addCtx({ scrape_failure: result.failure });
-  if (result.error) {
-    addCtx({ scrape_failure: "waf_worker_error", scrape_error: result.error });
+  addCtx({
+    scrape_status_with_token: second.status,
+    scrape_outcome: second.outcome,
+    scrape_token: "fresh",
+  });
+
+  if (second.outcome === "page") {
+    cachedToken = { value: solve.token, obtainedAt: Date.now() };
+    return second.html;
   }
 
-  if (result.html) {
-    breaker.recordSuccess();
-  } else {
-    breaker.recordFailure();
-  }
-
-  return result.html;
+  // `challenged` here means the WAF refused a token it just issued us — the
+  // failure mode this host has been in since 2026-08-01. Anything else means we
+  // cleared the WAF and the origin said no. Neither is worth another solve now.
+  cachedToken = null;
+  addCtx({
+    scrape_failure: second.outcome === "challenged" ? "waf_token_rejected" : second.outcome,
+    enrich_retry: "defer",
+  });
+  return null;
 }

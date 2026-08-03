@@ -78,11 +78,21 @@ export const Login: FC<{
       }}
     />
     <div class="relative w-full max-w-sm">
-      <img
-        src="/full_logo.jpg"
-        alt="BookHive"
-        class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
-      />
+      {/*
+        The JPEG stays: it is also the default og:image and the OAuth client `logo_uri`
+        (src/auth/client.ts), which third-party consumers may not decode as WebP. For the page
+        itself, the 1300px source was ~7x oversized for a 192px slot.
+      */}
+      <picture>
+        <source type="image/webp" srcset="/full_logo-384.webp" />
+        <img
+          src="/full_logo.jpg"
+          alt="BookHive"
+          width="384"
+          height="384"
+          class="absolute top-0 left-1/2 z-10 h-48 w-auto -translate-x-1/2 -translate-y-8 rounded-xl object-contain drop-shadow-lg"
+        />
+      </picture>
       <div class="card w-full overflow-visible border-0 pt-52 shadow-md">
         <header class="flex flex-col items-center gap-4">
           <h2 class="text-foreground text-center text-xl font-semibold tracking-tight">
@@ -115,10 +125,7 @@ export const Login: FC<{
               </actor-typeahead>
             </div>
 
-            <button
-              type="submit"
-              class="btn w-full bg-amber-600 text-white shadow-xs hover:bg-amber-500 focus-visible:ring-amber-600"
-            >
+            <button type="submit" class="btn btn-primary w-full">
               Buzz in
             </button>
           </form>

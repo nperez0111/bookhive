@@ -17,6 +17,7 @@ import { updateBookRecord } from "../utils/getBook";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { enqueueEnrichment } from "../utils/enrichQueue";
 import { withTimeout } from "../utils/semaphore";
+import { setCacheControl } from "./lib";
 
 /** How long an explicit `?force-refresh=true` will wait before falling back to
  *  the data we already have. */
@@ -58,7 +59,9 @@ const bookPageQuerySchema = z.object({
 
 const app = new Hono<AppEnv>()
   .get("/:hiveId", zValidator("query", bookPageQuerySchema), async (c) => {
-    c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
+    // Anonymous only — `cacheControl` downgrades a signed-in request to
+    // no-store, because the rendered page carries that viewer's navbar/shelf state.
+    setCacheControl(c, "public, max-age=3600, stale-while-revalidate=600");
     startTime(c, "route_get_book");
     startTime(c, "db_fetch_book");
     const hiveId = c.req.param("hiveId") as HiveId;
@@ -393,7 +396,9 @@ const app = new Hono<AppEnv>()
   .get("/:hiveId/comments", async (c) => {
     // Public, viewer-independent page (CommentsSection is rendered without `did`
     // here), and it reads up to ~1000 reviews + ~3000 buzzes + batched profiles.
-    c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=120");
+    // The surrounding Layout still carries the viewer's navbar, so signed-in
+    // requests get no-store.
+    setCacheControl(c, "public, max-age=300, stale-while-revalidate=120");
     const commentsHiveId = c.req.param("hiveId") as HiveId;
     if (!HIVE_ID_PATTERN.test(commentsHiveId)) return rejectBadHiveId(c, commentsHiveId);
     startTime(c, "db_fetch_book");

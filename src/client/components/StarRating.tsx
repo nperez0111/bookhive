@@ -118,7 +118,7 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
             return (
               <svg
                 key={index}
-                className={`${baseClasses} text-gray-300`}
+                className={`${baseClasses} text-muted-foreground/35`}
                 fill="currentColor"
                 viewBox="0 0 24 24"
               >
@@ -128,7 +128,7 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
           }
         })}
       </div>
-      <div className="mt-1 w-10 text-lg dark:text-gray-100">
+      <div className="text-foreground mt-1 w-10 text-lg">
         {displayRating ? `${displayRating / 2}` : ""}
       </div>
     </div>

@@ -44,23 +44,46 @@ interface ParsedGoodreadsData {
 
 const startString = NEXT_DATA_MARKER;
 
-function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
+/**
+ * Why a page we successfully fetched didn't yield a book.
+ *
+ * The split matters because the two get opposite treatment in `enrich_queue`:
+ * `book_not_found_upstream` is definitive and tombstones the book on the first
+ * attempt, while `next_data_parse_failed` means *our* parser didn't understand
+ * the page and must keep retrying — otherwise a Goodreads redesign would write
+ * off the entire catalogue in a few days.
+ */
+export type ParseFailure = "book_not_found_upstream" | "next_data_parse_failed";
+
+export type ParseResult =
+  | { ok: true; data: ParsedGoodreadsData }
+  | { ok: false; failure: ParseFailure };
+
+const parseFailed = (failure: ParseFailure): ParseResult => ({ ok: false, failure });
+
+function parseGoodreadsData(json: any): ParseResult {
   try {
     const apolloState = json.props?.pageProps?.apolloState;
-    if (!apolloState) return null;
+    if (!apolloState?.ROOT_QUERY) return parseFailed("next_data_parse_failed");
 
     // Find the book reference
     const bookQuery = Object.keys(apolloState.ROOT_QUERY).find((key) =>
       key.startsWith("getBookByLegacyId"),
     );
-    if (!bookQuery) return null;
+    if (!bookQuery) return parseFailed("next_data_parse_failed");
 
+    // The query resolved, to nothing. Goodreads served a real page and told us
+    // this legacy id has no book behind it any more — deleted, or merged into
+    // another edition. Verified live against /book/show/12701475, whose
+    // `getBookByLegacyId({"legacyId":"12701475"})` is literally `null`.
     const bookRef = apolloState.ROOT_QUERY[bookQuery];
+    if (bookRef === null) return parseFailed("book_not_found_upstream");
+
     const bookId = bookRef?.__ref;
-    if (!bookId) return null;
+    if (!bookId) return parseFailed("next_data_parse_failed");
 
     const bookData = apolloState[bookId];
-    if (!bookData) return null;
+    if (!bookData) return parseFailed("next_data_parse_failed");
 
     // Extract work data
     const workRef = bookData.work?.__ref;
@@ -89,7 +112,7 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
     // Parse ratings distribution
     const ratingsDistribution = workData?.stats?.ratingsCountDist || [];
 
-    return {
+    const data: ParsedGoodreadsData = {
       book: {
         id: bookData.id || "",
         titleComplete: bookData.titleComplete || "",
@@ -128,19 +151,25 @@ function parseGoodreadsData(json: any): ParsedGoodreadsData | null {
         ratingsDistribution,
       },
     };
+    return { ok: true, data };
   } catch (error) {
     console.error("Error parsing Goodreads data:", error);
-    return null;
+    return parseFailed("next_data_parse_failed");
   }
 }
 
-function extractNextData(html: string): ParsedGoodreadsData | null {
+function extractNextData(html: string): ParseResult {
   const startIdx = html.indexOf(startString);
-  if (startIdx === -1) return null;
+  if (startIdx === -1) return parseFailed("next_data_parse_failed");
   const nextData = html.slice(startIdx + startString.length);
   const endIdx = nextData.indexOf("</script>");
-  if (endIdx === -1) return null;
-  const json = JSON.parse(nextData.slice(0, endIdx));
+  if (endIdx === -1) return parseFailed("next_data_parse_failed");
+  let json: unknown;
+  try {
+    json = JSON.parse(nextData.slice(0, endIdx));
+  } catch {
+    return parseFailed("next_data_parse_failed");
+  }
   return parseGoodreadsData(json);
 }
 
@@ -150,18 +179,27 @@ async function getBookDetailedInfo(
 ): Promise<ParsedGoodreadsData | null> {
   const addCtx = addWideEventContext ?? (() => {});
   try {
-    // The WAF solver worker fetches the page (solving the AWS WAF challenge
-    // off-thread if it's active) and hands back the page HTML.
+    // Fetches the page on this thread, handing a WAF challenge off to the solver
+    // worker only if one actually comes back. See scrapers/waf/solver.ts.
     const html = await fetchGoodreadsViaWaf(sourceUrl, addCtx);
     if (!html) return null;
+
     const result = extractNextData(html);
-    if (!result) addCtx({ scrape_failure: "next_data_parse_failed" });
-    return result;
+    if (result.ok) return result.data;
+
+    // Only the parser can conclude a book is gone, because only it can see that
+    // `getBookByLegacyId` resolved to null. Everything else defers.
+    addCtx({
+      scrape_failure: result.failure,
+      enrich_retry: result.failure === "book_not_found_upstream" ? "dead" : "defer",
+    });
+    return null;
   } catch (error) {
     addCtx({
       scrape_failure: "exception",
       scrape_error: error instanceof Error ? error.message : String(error),
       scrape_url: sourceUrl,
+      enrich_retry: "defer",
     });
     return null;
   }

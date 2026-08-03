@@ -122,7 +122,7 @@ export default defineConfig(({ command }): any => ({
       plugins: [
         "./server/plugins/otel-sdk.ts",
         "./server/plugins/request-tracing.ts",
-        "./server/plugins/html-cache-headers.ts",
+        "./server/plugins/cache-headers.ts",
       ],
       // The OG render worker loads @takumi-rs/core (native NAPI-RS bindings) at
       // runtime in a worker thread, so it never appears in the Rolldown bundle
@@ -131,8 +131,18 @@ export default defineConfig(({ command }): any => ({
       traceDeps: ["@takumi-rs/core*"],
       // Longer cache lifetimes for static assets (fixes Lighthouse "cache lifetime" warnings).
       // Vite emits content-hashed files under /assets/* → safe to cache immutably for 1 year.
-      // Files under public/ have stable names, so use a long TTL + stale-while-revalidate
-      // rather than immutable, so updates still propagate.
+      //
+      // ONLY prefix globs belong here. Extension globs (`/**\/*.png`) are a trap:
+      // rou3 stops parsing a pattern at the first `**` segment and throws the rest
+      // away, so `/**\/*.png` is really `/**` and matches every route — and nitro's
+      // route-rule header middleware *overwrites* the Hono-set Cache-Control on any
+      // 2xx response. That is how personalized HTML (/home, /profile/*, /library)
+      // came to advertise `public, max-age=2592000`, which let a browser replay the
+      // previous account's page after switching accounts.
+      //
+      // Files under public/ have stable names rather than content hashes, so they
+      // get a long TTL + stale-while-revalidate (not `immutable`) from
+      // staticAssetCacheControl() in server/plugins/cache-headers.ts.
       routeRules: {
         "/assets/**": {
           headers: { "Cache-Control": "public, max-age=31536000, immutable" },
@@ -141,21 +151,6 @@ export default defineConfig(({ command }): any => ({
           headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
         },
         "/screenshots/**": {
-          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
-        },
-        "/**/*.svg": {
-          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
-        },
-        "/**/*.png": {
-          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
-        },
-        "/**/*.jpg": {
-          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
-        },
-        "/**/*.ico": {
-          headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
-        },
-        "/**/*.webmanifest": {
           headers: { "Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400" },
         },
       },

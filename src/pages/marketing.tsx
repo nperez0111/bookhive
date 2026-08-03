@@ -34,10 +34,10 @@ function MarketingNav({ signupUrl }: { signupUrl: string }) {
           <span class="text-foreground text-lg font-bold">BookHive</span>
         </a>
         <div class="flex items-center gap-2">
-          <a href="/login" class="btn btn-ghost min-h-[40px] min-w-[40px] text-sm">
+          <a href="/login" class="btn btn-ghost min-h-10 min-w-10 text-sm">
             Sign in
           </a>
-          <a href={signupUrl} class="btn btn-ghost min-h-[40px] min-w-[40px] text-sm">
+          <a href={signupUrl} class="btn btn-ghost min-h-10 min-w-10 text-sm">
             Create account
           </a>
         </div>
@@ -50,7 +50,11 @@ function Hero({ signupUrl }: { signupUrl: string }) {
   return (
     <section class="px-4 py-20 sm:py-28 lg:px-8">
       <div class="mx-auto max-w-6xl">
-        <div class="flex flex-col items-center gap-12 md:flex-row md:items-start">
+        {/*
+          `md:items-center`, not `items-start`: the image column is much taller than the copy, so
+          top-aligning left ~200px of dead space under the CTAs.
+        */}
+        <div class="flex flex-col items-center gap-12 md:flex-row md:items-center">
           <div class="flex-1 text-center md:text-left">
             <div class="bg-primary text-primary-foreground mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium">
               <svg
@@ -87,12 +91,29 @@ function Hero({ signupUrl }: { signupUrl: string }) {
             </div>
           </div>
           <div class="w-full shrink-0 md:w-[45%]">
-            <img
-              src="/hive.jpg"
-              alt="Bee sitting on a stack of books"
-              decoding="async"
-              class="w-full rounded-2xl object-cover shadow-xl outline outline-1 outline-black/5 dark:outline-white/10"
-            />
+            {/*
+              This is the LCP element. `hive.jpg` is a 771 KB progressive JPEG at 1536px, but the
+              column is only ~518px wide at desktop and ~768px on mobile, so it was shipping ~4x
+              the pixels anyone sees. The WebP pair covers 2x DPR at both sizes for 164 KB, and
+              the JPEG stays as the <picture> fallback. Intrinsic width/height kill the layout
+              shift; it must never be lazy.
+            */}
+            <picture>
+              <source
+                type="image/webp"
+                srcset="/hive-768.webp 768w, /hive-1280.webp 1280w"
+                sizes="(min-width: 1152px) 518px, (min-width: 768px) 45vw, 100vw"
+              />
+              <img
+                src="/hive.jpg"
+                alt="Illustration of bees reading books in a honeycomb bookshelf"
+                width="1536"
+                height="1024"
+                decoding="async"
+                fetchpriority="high"
+                class="h-auto w-full rounded-2xl object-cover shadow-xl outline outline-1 outline-black/5 dark:outline-white/10"
+              />
+            </picture>
           </div>
         </div>
       </div>
@@ -454,7 +475,7 @@ function EReaderSection() {
 
 function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
   return (
-    <section class="bg-card px-4 py-20 lg:px-8">
+    <section class="px-4 py-20 lg:px-8">
       <div class="mx-auto max-w-6xl">
         <div class="flex flex-col items-center gap-12 lg:flex-row-reverse lg:items-center">
           <div class="flex-1">
@@ -519,7 +540,7 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
                 <a
                   key={book.id}
                   href={`/books/${book.id}`}
-                  class="flex min-h-[40px] items-center gap-3 rounded-xl transition-colors hover:bg-muted/50 p-2 -m-2"
+                  class="flex min-h-10 items-center gap-3 rounded-xl transition-colors hover:bg-muted/50 p-2 -m-2"
                 >
                   <span class="text-muted-foreground w-5 text-center text-sm font-bold tabular-nums">
                     {i + 1}
@@ -553,7 +574,7 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
 
 function OwnershipSection() {
   return (
-    <section class="px-4 py-20 lg:px-8">
+    <section class="bg-card px-4 py-20 lg:px-8">
       <div class="mx-auto max-w-6xl">
         <div class="bg-primary/5 border-primary/20 rounded-2xl border px-8 py-14">
           <div class="mx-auto max-w-3xl text-center">
@@ -647,9 +668,14 @@ function OwnershipSection() {
 
 function OpenSourceSection() {
   return (
-    <section class="bg-card px-4 py-16 lg:px-8">
+    <section class="px-4 py-20 lg:px-8">
       <div class="mx-auto max-w-6xl">
-        <div class="flex flex-col items-center gap-6 text-center sm:flex-row sm:text-left">
+        {/*
+          This one is a compact banner rather than a full section — it has no eyebrow and a much
+          smaller heading than its neighbours. Giving it its own bordered surface makes that read
+          as deliberate instead of looking like a section that lost its styling.
+        */}
+        <div class="border-border bg-card flex flex-col items-center gap-6 rounded-2xl border px-8 py-8 text-center sm:flex-row sm:text-left">
           <div class="bg-primary/10 text-primary flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -702,7 +728,7 @@ function OpenSourceSection() {
 
 function ImportSection() {
   return (
-    <section class="px-4 py-20 lg:px-8">
+    <section class="bg-card px-4 py-20 lg:px-8">
       <div class="mx-auto max-w-6xl">
         <div class="flex flex-col items-center gap-12 lg:flex-row lg:items-center">
           <div class="flex-1">
@@ -821,7 +847,7 @@ function Footer() {
               <a
                 key={link.href}
                 href={link.href}
-                class="text-muted-foreground hover:text-foreground min-h-[40px] inline-flex items-center text-sm transition-colors"
+                class="text-muted-foreground hover:text-foreground min-h-10 inline-flex items-center text-sm transition-colors"
               >
                 {link.label}
               </a>

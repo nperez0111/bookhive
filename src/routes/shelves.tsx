@@ -383,7 +383,7 @@ const app = new Hono<AppEnv>()
 
     const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
     if (!did) {
-      return c.redirect("/");
+      return c.redirect("/home");
     }
 
     const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;

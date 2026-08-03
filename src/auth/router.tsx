@@ -100,7 +100,7 @@ export function loginRouter(
           const redirectTo = new URL(redirectUri);
           if (redirectTo.protocol !== "exp:" && redirectTo.protocol !== "bookhive:") {
             return c.html(
-              <Layout assetUrls={c.get("assetUrls")}>
+              <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
                 <Error
                   message="Invalid redirect_uri"
                   description="Redirect uri must be an exp or bookhive url"
@@ -123,10 +123,11 @@ export function loginRouter(
         }
       }
 
-      // Redirect to /home instead of / — the marketing page at / is cached by the browser
-      // (Cache-Control: public, max-age=3600), so a redirect there after login would serve
-      // the stale signed-out page. /home is never cached and handles unauthenticated users
-      // by redirecting to / itself.
+      // Straight to /home rather than bouncing through /. Both work — `/` is
+      // `Vary: Cookie`, so the newly-set session cookie misses the stored
+      // marketing page and the `/` → `/home` redirect fires — but landing on
+      // /home directly saves the extra round trip on the one request where the
+      // user is already waiting.
       return c.redirect("/home");
     } catch (err: unknown) {
       const errMsg =
@@ -138,7 +139,7 @@ export function loginRouter(
         error: errMsg,
       });
       return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
+        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
           <Login
             error={`Login failed: ${errMsg}`}
             signupUrl={isPdsEnabled() ? "/pds/signup" : "https://bsky.app"}
@@ -154,13 +155,13 @@ export function loginRouter(
     try {
       const profile = await c.get("ctx").getProfile();
       if (profile) {
-        return c.redirect("/");
+        return c.redirect("/home");
       }
     } catch {
       // session restore or profile fetch failed — show login
     }
     return c.html(
-      <Layout assetUrls={c.get("assetUrls")}>
+      <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
         <Login handle={c.req.query("handle")} signupUrl={signupUrl} />
       </Layout>,
     );
@@ -170,7 +171,7 @@ export function loginRouter(
     let { handle, redirect_uri: redirectUri } = c.req.query();
     if (typeof handle !== "string" || !isValidHandle(handle)) {
       return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
+        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
           <Login error={"Handle '" + handle + "' is invalid"} />
         </Layout>,
         400,
@@ -195,7 +196,7 @@ export function loginRouter(
       });
 
       return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
+        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
           <Error message={errMsg} description="Oauth authorization failed" statusCode={400} />
         </Layout>,
         400,
@@ -234,10 +235,10 @@ export function loginRouter(
     }
     const agent = await c.get("ctx").getSessionAgent();
     if (agent) {
-      return c.redirect("/");
+      return c.redirect("/home");
     }
     return c.html(
-      <Layout assetUrls={c.get("assetUrls")}>
+      <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
         <Signup />
       </Layout>,
     );
@@ -277,7 +278,7 @@ export function loginRouter(
       if (!result.success) {
         const error = result.error.issues[0]?.message ?? "Invalid input.";
         return c.html(
-          <Layout assetUrls={c.get("assetUrls")}>
+          <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
             <Signup error={error} />
           </Layout>,
           400,
@@ -332,7 +333,7 @@ export function loginRouter(
             ? String((err as { message: unknown }).message)
             : String(err);
         return c.html(
-          <Layout assetUrls={c.get("assetUrls")}>
+          <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
             <Signup error={errMsg} email={email} handle={handle} />
           </Layout>,
           400,
@@ -346,7 +347,7 @@ export function loginRouter(
     let { handle } = await c.req.parseBody();
     if (typeof handle !== "string" || !isValidHandle(handle)) {
       return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
+        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
           <Login
             handle={typeof handle === "string" ? handle : undefined}
             error={
@@ -374,7 +375,7 @@ export function loginRouter(
         error: errMsg,
       });
       return c.html(
-        <Layout assetUrls={c.get("assetUrls")}>
+        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
           <Error message={errMsg} description="OAuth authorization failed" statusCode={400} />
         </Layout>,
         400,

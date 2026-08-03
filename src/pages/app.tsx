@@ -26,13 +26,18 @@ function Hero() {
       <div class="relative z-10 order-2 mt-8 flex w-full justify-center lg:order-1 lg:mt-0">
         {/* Phone screenshot */}
         <div class="relative aspect-[9/19] w-[80%] max-w-[260px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[300px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[420px]">
-          <img
-            src="/screenshots/home-screen.png"
-            alt="BookHive iOS — home screen"
-            class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-            loading="lazy"
-            decoding="async"
-          />
+          <picture>
+            <source type="image/webp" srcset="/screenshots/home-screen.webp" />
+            <img
+              src="/screenshots/home-screen.png"
+              alt="BookHive iOS — home screen"
+              width="750"
+              height="1334"
+              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
         </div>
       </div>
       <div class="relative z-10 order-1">
@@ -239,13 +244,18 @@ function Screenshots() {
         </div>
         <div class="order-2 flex justify-center lg:order-2">
           <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
-            <img
-              src="/screenshots/book-info.png"
-              alt="BookHive iOS — book details screen"
-              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-              loading="lazy"
-              decoding="async"
-            />
+            <picture>
+              <source type="image/webp" srcset="/screenshots/book-info.webp" />
+              <img
+                src="/screenshots/book-info.png"
+                alt="BookHive iOS — book details screen"
+                width="750"
+                height="1334"
+                class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
           </div>
         </div>
       </div>
@@ -254,13 +264,18 @@ function Screenshots() {
       <div class="grid items-center gap-8 sm:gap-10 lg:grid-cols-2">
         <div class="order-2 flex justify-center lg:order-1">
           <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
-            <img
-              src="/screenshots/comment.png"
-              alt="BookHive iOS — comments and reviews"
-              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-              loading="lazy"
-              decoding="async"
-            />
+            <picture>
+              <source type="image/webp" srcset="/screenshots/comment.webp" />
+              <img
+                src="/screenshots/comment.png"
+                alt="BookHive iOS — comments and reviews"
+                width="750"
+                height="1334"
+                class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
           </div>
         </div>
         <div class="order-1 lg:order-2">

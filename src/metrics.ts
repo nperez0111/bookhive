@@ -367,6 +367,7 @@ export const LABEL = {
   enrichQueue: {
     total: labelKey({ state: "total" }),
     claimed: labelKey({ state: "claimed" }),
+    deferred: labelKey({ state: "deferred" }),
     exhausted: labelKey({ state: "exhausted" }),
   },
 } as const;
