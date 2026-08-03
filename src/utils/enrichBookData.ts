@@ -88,6 +88,10 @@ export async function enrichBookWithDetailedData(
       enrichment: "error",
       bookId: book.id,
       error: error instanceof Error ? error.message : String(error),
+      // Blowing our own 45s deadline, or throwing on the way to the scrape, is
+      // our slowness — not Goodreads' verdict on this book. Never spend an
+      // attempt on it.
+      enrich_retry: "defer",
     });
     // Don't throw - enrichment failures shouldn't break the app
   }

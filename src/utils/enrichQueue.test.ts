@@ -325,3 +325,126 @@ describe("convergence", () => {
     expect(rows.map((r) => r.hiveId)).toEqual([fresh]);
   });
 });
+
+/**
+ * `attempts` counts answers from Goodreads, so only an answer may spend one.
+ *
+ * Before this distinction existed, every failure burned an attempt — including
+ * `circuit_open`, a refusal the app generated itself without sending a request.
+ * Measured over one 6h window on 2026-08-03: 2,914 books reached a terminal
+ * state and 2,854 of them (98%) did so on a `circuit_open`, i.e. were written
+ * off for 7 days apiece while no request was being made on their behalf.
+ */
+describe("dispositions", () => {
+  const reports = (fields: Record<string, unknown>) =>
+    (async (_book: unknown, ctx: { addWideEventContext: (f: Record<string, unknown>) => void }) => {
+      ctx.addWideEventContext({ enrichment: "failed", ...fields });
+    }) as unknown as EnrichFn;
+
+  /** Drain n times, clearing the backoff between runs so it's not the limiter. */
+  async function drain(db: Database, logger: Logger, enrich: EnrichFn, times: number) {
+    for (let i = 0; i < times; i++) {
+      await drainEnrichmentQueue(db, logger, { enrich });
+      await db
+        .updateTable("enrich_queue")
+        .set({ nextAttemptAt: new Date(0).toISOString(), claimedAt: null })
+        .execute();
+    }
+  }
+
+  async function bookState(db: Database) {
+    return db
+      .selectFrom("hive_book")
+      .select(["enrichAttempts", "enrichFailedAt"])
+      .where("id", "=", HIVE_ID)
+      .executeTakeFirstOrThrow();
+  }
+
+  it("a deferred book never spends an attempt, however long it goes on", async () => {
+    const db = await createTestDb();
+    const { logger } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+
+    await drain(
+      db,
+      logger,
+      reports({ scrape_failure: "waf_challenged", enrich_retry: "defer" }),
+      20,
+    );
+
+    // Twenty rounds, five times MAX_ATTEMPTS: still queued, still untouched.
+    const rows = await db.selectFrom("enrich_queue").select(["attempts", "lastError"]).execute();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.attempts).toBe(0);
+    expect(rows[0]!.lastError).toBe("waf_challenged");
+
+    const book = await bookState(db);
+    expect(book.enrichAttempts).toBe(0);
+    expect(book.enrichFailedAt).toBeNull();
+  });
+
+  it("gives up on a deferred book once it has been queued a week", async () => {
+    // Defers are free, so this ceiling is the only thing that bounds a queue
+    // whose blocker never clears. Without it `enqueueEnrichmentBatch`'s cooldown
+    // gate — which reads enrichFailedAt — would never get to bound anything.
+    const db = await createTestDb();
+    const { logger, events } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+    await db
+      .updateTable("enrich_queue")
+      .set({ enqueuedAt: new Date(Date.now() - 8 * 86_400_000).toISOString() })
+      .execute();
+
+    await drain(
+      db,
+      logger,
+      reports({ scrape_failure: "waf_challenged", enrich_retry: "defer" }),
+      1,
+    );
+
+    expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(0);
+    expect((await bookState(db)).enrichFailedAt).not.toBeNull();
+    const exhausted = events.find((e) => e["msg"] === "enrichment_exhausted");
+    expect(exhausted?.["reason"]).toBe("queue_age");
+  });
+
+  it("tombstones a book Goodreads has deleted on the first attempt", async () => {
+    // One request, not four. `book_not_found_upstream` is the only failure the
+    // parser can assert definitively, because only it can see that
+    // getBookByLegacyId resolved to null.
+    const db = await createTestDb();
+    const { logger, events } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+
+    await drain(
+      db,
+      logger,
+      reports({ scrape_failure: "book_not_found_upstream", enrich_retry: "dead" }),
+      1,
+    );
+
+    expect(await db.selectFrom("enrich_queue").selectAll().execute()).toHaveLength(0);
+    expect((await bookState(db)).enrichFailedAt).not.toBeNull();
+    const exhausted = events.find((e) => e["msg"] === "enrichment_exhausted");
+    expect(exhausted?.["reason"]).toBe("dead");
+  });
+
+  it("counts deferred books in the heartbeat", async () => {
+    const db = await createTestDb();
+    const { logger, events } = makeLogger();
+    await insertBook(db, HIVE_ID);
+    await enqueueEnrichment(db, HIVE_ID);
+
+    await drainEnrichmentQueue(db, logger, {
+      enrich: reports({ scrape_failure: "waf_challenged", enrich_retry: "defer" }),
+    });
+    await publishEnrichQueueStats(db, logger);
+
+    const heartbeat = events.filter((e) => e["msg"] === "enrich_drainer_heartbeat").at(-1);
+    expect(heartbeat!["deferred"]).toBe(1);
+    expect(heartbeat!["exhausted"]).toBe(0);
+  });
+});

@@ -26,10 +26,11 @@ import { withTimeout } from "../utils/semaphore";
 export const RESTORE_TIMEOUT_MS = 5_000;
 
 /**
- * Tuned much tighter than the WAF solver's breaker. That one guards a scrape
- * nobody is waiting on; this one guards a request path, so it should trip after
- * a few failures rather than a few dozen, and recover quickly enough that a PDS
- * blip doesn't lock users out for a quarter of an hour.
+ * Tuned for a path a user is waiting on: trip after a few failures rather than a
+ * few dozen, and recover quickly enough that a PDS blip doesn't lock people out
+ * for a quarter of an hour. Refusing here is cheaper for the user than eating a
+ * 5s timeout on every page load, which is what makes a breaker the right shape
+ * for this and the wrong shape for scraping (see `utils/circuitBreaker.ts`).
  */
 const BREAKER_OPTIONS = {
   failureThreshold: 8,

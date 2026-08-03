@@ -1,24 +1,65 @@
-# AWS WAF Solver for Goodreads
+# Fetching Goodreads, and the AWS WAF solver
 
-Goodreads protects book pages (`/book/show/*`) with AWS WAF bot detection.
-Server-side `fetch()` gets a **202 response** containing a JavaScript challenge
-instead of the actual page. This module solves the challenge without a browser.
+Goodreads protects book pages (`/book/show/*`) with AWS WAF bot detection. Most
+of the time a plain server-side `fetch()` gets the page; occasionally it gets a
+**202 response** containing a JavaScript challenge instead. This module fetches
+the page, and solves the challenge without a browser when one shows up.
 
-All network I/O and CPU-bound work runs inside a **Bun Worker**
-(`solver-worker.ts`), never on the main event loop. The main thread keeps a thin
-client (`solver.ts`) that owns the cached token/config and hands the worker a URL
-(plus any cached token/config); the worker fetches the page — solving the
-challenge first if WAF is active — and returns the page HTML along with the
-token/config that worked.
+## Two operations, deliberately kept apart
 
-## How it works
+|                            | Fetch the page                    | Solve a challenge                              |
+| -------------------------- | --------------------------------- | ---------------------------------------------- |
+| Cost                       | 1 request, ~200 ms                | ~4 requests, 1.3 MB script, a Worker, PoW      |
+| Where                      | main thread (`solver.ts`)         | Bun Worker (`solver-worker.ts`)                |
+| Success rate in production | ~98%                              | 0% since 2026-08-01 (see below)                |
+| Bounded by                 | the enrich drain (36 fetches/min) | single-flight + one attempt per token lifetime |
 
-1. **Fetch + discover** — The worker fetches the target URL (sending the cached
-   `aws-waf-token` cookie if it has one). If the response is the real page, it's
-   returned immediately. Otherwise the 202 body _is_ the challenge page; it
-   contains `window.gokuProps` (encrypted session params) and a `<script>` tag
-   pointing to `challenge.js` on `*.token.awswaf.com`. No second fetch is needed
-   to discover the challenge.
+Keeping them separate buys one property, and the file is arranged around it:
+
+> **No book is ever failed without a request to Goodreads having been sent and
+> answered.**
+
+`fetchGoodreadsViaWaf` has no early-return branch before the fetch. Not "the
+threshold is tuned so it rarely does" — there is no branch.
+
+## Why there is no circuit breaker here
+
+There used to be one. It was fed by _solve_ outcomes and gated the _page fetch_,
+so when the WAF stopped honouring our tokens it sat open and refused the path
+that still worked. Measured over one 6h window on 2026-08-03: **8,606 refusals
+across 6,840 distinct books**, breaker open in 254 of 360 minutes — while the
+requests it did allow through succeeded 95.6% of the time. Worse, `enrich_queue`
+counted a refusal as an attempt, so **2,854 books (98% of everything the queue
+gave up on) were tombstoned for 7 days apiece** without a packet leaving the box.
+
+Nothing replaced it, because the three things it was protecting are each handled
+better somewhere else:
+
+- **Cost of pointless solves** — single-flight plus `SOLVE_MIN_INTERVAL_MS`, which
+  is _derived_ from the token lifetime rather than tuned: solving more often than
+  a token lasts cannot produce anything we don't already have. Worst case with
+  every solve failing is 15 attempts/hour. The breaker, open 70% of the time,
+  allowed 16.
+- **Hammering Goodreads** — `ENRICH_CONCURRENCY`/`DRAIN_INTERVAL_MS` in
+  `utils/enrichQueue.ts` already cap us at 36 fetches/min whether Goodreads is
+  healthy or dead, since a failing fetch is faster than a succeeding one. The
+  breaker was a second limiter on an already-bounded path; all it changed was
+  which books got destroyed.
+- **Memory** (the 2026-08-01 OOM, ~148 cgroup kills in a month) — _tighter_ now.
+  At most **one** solver Worker per process instead of a pool of four plus 32
+  queued waiters, terminated on every path rather than retired after 50 solves,
+  and page bodies no longer cross the Worker boundary at all.
+
+A breaker is right when refusing is cheaper than failing — see
+`auth/restore-guard.ts`, where a user is waiting. Enrichment has a better option:
+`enrich_queue` can _defer_ a book without charging it an attempt.
+
+## How a solve works
+
+1. **Discover** — The main thread already fetched the challenge interstitial, and
+   hands the HTML to the worker. It contains `window.gokuProps` (encrypted
+   session params) and a `<script>` tag pointing to `challenge.js` on
+   `*.token.awswaf.com`. No fetch is needed to discover the challenge.
 
 2. **Extract crypto config** — Download `challenge.js` (~1.3 MB of obfuscated
    JS). `deobfuscate.ts` deobfuscates it by evaluating the string-rotation array
@@ -45,9 +86,9 @@ token/config that worked.
 6. **POST solution** — Send the encrypted signals, PoW solution, metrics, and
    `gokuProps` to `{challengeBase}/mp_verify`. Receive an `aws-waf-token`.
 
-7. **Re-fetch + return** — The worker re-fetches the page with
-   `Cookie: aws-waf-token=<token>` and returns the HTML plus the working token
-   and crypto config so the main thread can cache them.
+The worker's job ends there. The main thread re-fetches the page with
+`Cookie: aws-waf-token=<token>`, classifies the result the same way it classified
+the first fetch, and caches the token only if it actually worked.
 
 ## Caching
 
@@ -58,8 +99,8 @@ call; the worker returns updated values to fold back in.
   changes when Goodreads deploys a new challenge script (rare), so it's reused
   across solves.
 - **WAF token** is cached for `TOKEN_MAX_AGE_MS` (4 minutes) and reused across
-  all Goodreads pages. If a fetch with it fails, the worker re-solves and
-  returns a fresh token; if a solve fails the cached token is dropped.
+  all Goodreads pages. It is stored only after a fetch with it has succeeded, and
+  dropped the moment one fails.
 
   > **The measured token lifetime is 300 s** — AWS WAF's default challenge
   > immunity time. Probed 2026-08-02: the same token was still accepted at 241 s
@@ -69,47 +110,77 @@ call; the worker returns updated values to fold back in.
   > _use_ limit was observed — one token served 10 pages in ~30 s.
 
 - On a cold start the full solve takes ~1.5-2 s. Subsequent requests reuse the
-  cached token and are a single `fetch()` in the worker (~200 ms).
+  cached token and are a single `fetch()` (~200 ms).
 
 ## Files
 
-| File               | Purpose                                                          |
-| ------------------ | ---------------------------------------------------------------- |
-| `solver.ts`        | Main-thread client: `fetchGoodreadsViaWaf()`, token/config cache |
-| `solver-worker.ts` | Bun Worker: page fetch + full WAF solve (crypto, PoW, signals)   |
-| `deobfuscate.ts`   | Deobfuscates challenge.js (imported by worker; CLI for testing)  |
-| `messages.ts`      | Worker ⇄ client message contract                                 |
-| `pageMarker.ts`    | `__NEXT_DATA__` marker shared with `moreInfo.ts`                 |
+| File               | Purpose                                                               |
+| ------------------ | --------------------------------------------------------------------- |
+| `solver.ts`        | Page fetch, token cache, the solve decision. `fetchGoodreadsViaWaf()` |
+| `solver-worker.ts` | Bun Worker: challenge → token only (crypto, PoW, signals)             |
+| `classify.ts`      | `classifyFetch()` — what a fetch actually told us                     |
+| `http.ts`          | UA, headers and `boundedText` shared by both sides                    |
+| `deobfuscate.ts`   | Deobfuscates challenge.js (imported by worker; CLI for testing)       |
+| `messages.ts`      | Worker ⇄ client message contract                                      |
+| `pageMarker.ts`    | `__NEXT_DATA__` marker shared with `moreInfo.ts`                      |
+
+`http.ts` exists so the UA the page fetch sends and the fingerprint
+`buildSignals(ua)` encrypts always describe the same browser. When each side had
+its own copy, a change to one silently made the two disagree — exactly the sort
+of mismatch AWS WAF scores against us.
 
 The worker is bundled to `.output/server/workers/waf-solver-worker.js` by
 `standaloneBundles()` in `vite.config.ts`. `solver.ts` loads that `.js` in the
 Nitro build and the `.ts` source in dev (same pattern as `src/context.ts`).
 
-## Reading the failure reasons
+## Reading the outcomes
 
-A solve that produces a token but still doesn't yield `__NEXT_DATA__` used to be
-reported as a single `waf_token_ineffective`. That conflated three unrelated
-causes, which is why the 5,297 such events on 2026-08-01 were undiagnosable.
-`classifyTokenFetch()` now splits them using the status and the
-`x-amzn-waf-action` header of the token fetch — the header is present only on
-responses the WAF generated itself:
+Every fetch, plain or token-bearing, goes through `classifyFetch(status,
+wafAction, hasMarker)`. The `x-amzn-waf-action` header is the load-bearing input:
+it is present only on responses the WAF generated itself, which is the only
+reliable way to tell "the WAF is still stopping us" from "we got through the WAF
+and the origin said no" — the bodies of both are short non-`__NEXT_DATA__` HTML.
 
-| Failure                      | Means                                       | Fix                              |
-| ---------------------------- | ------------------------------------------- | -------------------------------- |
-| `waf_token_rejected`         | 202 / WAF action — token genuinely refused  | Solver problem; retry can help   |
-| `origin_blocked_after_token` | Cleared the WAF, Goodreads' origin said 403 | Reputation/rate; retry is futile |
-| `page_without_next_data`     | 2xx past the WAF, no marker                 | Dead book id or page redesign    |
+| `scrape_outcome` | Means                                    | What it does             |
+| ---------------- | ---------------------------------------- | ------------------------ |
+| `page`           | `__NEXT_DATA__` present                  | Done                     |
+| `challenged`     | 202, or any WAF action header            | Try to solve, else defer |
+| `origin_error`   | ≥400 with no WAF action — origin said no | Defer                    |
+| `no_next_data`   | 2xx past the WAF, no marker              | Defer                    |
 
-Only `waf_token_rejected` triggers the second solve attempt; the other two return
-immediately, saving 3 of the 7 requests the old failure path spent.
+**`no_next_data` never means "the book is gone".** Only `moreInfo.ts` may
+conclude that, because only it can see that `getBookByLegacyId` resolved to
+`null` in the page's Apollo state. If AWS ever serves a challenge as a plain 200
+without the action header, inferring "dead" from the fetch alone would tombstone
+the entire 356k-book catalogue in four days. The classifier has no `dead` case at
+all, by construction.
 
-Measured 2026-08-02 from a residential IP (~450 requests total):
-sequential fetches were never challenged (0/40); challenges appeared only under
-concurrency (4/12 at C=4, 10/20 at C=10, 7/24 at C=12) and **every one of the 21
-was solved successfully** (`statusWithToken: 200`). Forcing a challenge with a
-`HeadlessChrome` UA instead gave 202 → solve → **403 from the origin** 25/25 —
-same solver, same token mechanics, different client identity. The crypto path is
-sound; what varies is whether Goodreads wants to serve the client at all.
+## Why solves fail from production right now
+
+Solving worked from this host until 2026-07-29 — 5–30 successes/day, no token
+failures. On **2026-07-30** volume spiked ~20× (284 solves + 1,150 cached-token
+fetches) and `waf_token_ineffective` appeared the same day (2,430, then 14,397 on
+07-31). Since **2026-08-01 there have been zero solve successes**. This predates
+the code changes in #196/#197, so it is not a regression.
+
+A/B on 2026-08-03, identical code, challenge forced via the `ua` seam, 4/4 each:
+
+| From                 | initial       | after solve                                                             |
+| -------------------- | ------------- | ----------------------------------------------------------------------- |
+| Hetzner (production) | 202 challenge | **202 + `x-amzn-waf-action: challenge`** — token refused                |
+| Residential IP       | 202 challenge | **403, no waf-action** — token accepted; origin refused the headless UA |
+
+Both hosts get an identical challenge (`NetworkBandwidth`, difficulty 1) and both
+download `challenge.js` fine. Earlier, from a residential IP over ~450 requests:
+sequential fetches were never challenged (0/40), challenges appeared only under
+concurrency (4/12 at C=4, 10/20 at C=10, 7/24 at C=12), and **all 21 solved
+successfully**.
+
+So the crypto path is sound and the egress IP's standing with AWS WAF is not.
+Plain fetches from the same box remain healthy (12/12 at C=12 on 2026-08-03,
+97.9% in production), which is exactly why the two paths must not share a fate.
+Reputation may recover, so the solver stays and keeps making one cheap attempt
+per token lifetime.
 
 ## If Goodreads changes challenge.js
 
@@ -130,7 +201,7 @@ The most likely breakage scenarios and how to fix them:
    table).
 
 4. **Token format change** — The token is opaque; if the cookie name changes
-   from `aws-waf-token`, update `fetchPage()` in `solver-worker.ts`.
+   from `aws-waf-token`, update `fetchGoodreadsPage()` in `solver.ts`.
 
 ## Testing offline
 
