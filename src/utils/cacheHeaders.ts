@@ -77,7 +77,11 @@ export function cacheControlForHtml({
   // The rule. Unconditional on path, so no route can opt out of it by accident.
   if (hasSession) return NO_STORE;
   if (!isPublicallyCachedRoute(pathname)) return null;
-  return status === 200 ? PUBLIC_HTML : PUBLIC_ERROR_HTML;
+  if (status === 200) return PUBLIC_HTML;
+  // Only errors get the short error TTL. Anything else non-200 — a 3xx above
+  // all — keeps whatever the route decided: this function has no idea where a
+  // redirect points, and `PUBLIC_ERROR_HTML` is the wrong answer for one.
+  return status >= 400 ? PUBLIC_ERROR_HTML : null;
 }
 
 /**

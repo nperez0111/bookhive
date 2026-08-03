@@ -66,6 +66,22 @@ describe("cacheControlForHtml", () => {
     expect(
       cacheControlForHtml({ pathname: "/books/bk_nope", hasSession: false, status: 404 }),
     ).toBe(PUBLIC_ERROR_HTML);
+    expect(cacheControlForHtml({ pathname: "/explore", hasSession: false, status: 500 })).toBe(
+      PUBLIC_ERROR_HTML,
+    );
+  });
+
+  // A redirect is not an error, and this function cannot see where it points —
+  // stamping the error TTL on one would publicly cache a hop it knows nothing
+  // about. Today no 3xx reaches here (Hono redirects carry no content-type, so
+  // the nitro hook takes its non-HTML branch), which is exactly why this needs a
+  // test: the guard is otherwise held up by a detail of a different file.
+  it("leaves redirects to the route that issued them", () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      expect(cacheControlForHtml({ pathname: "/books/bk_moved", hasSession: false, status })).toBe(
+        null,
+      );
+    }
   });
 
   it("defers to the route's own header for anonymous requests elsewhere", () => {

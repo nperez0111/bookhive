@@ -160,7 +160,7 @@ Two traps this encodes, both of which caused real bugs:
 - `/privacy-policy` → `src/pages/privacy-policy.tsx`
 - `/legal` → `src/pages/terms.tsx`
 - `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled)
-- `/` → `src/pages/marketing.tsx` — landing; always renders regardless of auth state (logged-in users navigate to `/home` via sidebar)
+- `/` → `src/pages/marketing.tsx` — landing for signed-out visitors; **302s to `/home` when the `sid` cookie is present** (`src/routes/main.tsx`), which is what makes `Vary: Cookie` load-bearing on this route (see Caching policy above)
 - `/images/*` → signing reverse-proxy to **imgproxy** (`src/utils/imageProxy.ts`). Three route shapes:
   - `/images/books/:hiveId?w=N` — ID-keyed canonical (preferred). Helpers: `coverImageUrl`, `avatarImageUrl`
   - `/images/avatars/:did?s=N` — ID-keyed avatar
@@ -268,37 +268,37 @@ Auth: `x-auth-user` (handle) + `x-auth-key` (md5 of HMAC-derived password). Prog
 
 Each file exports a Hono JSX component rendered server-side.
 
-| File                  | Renders                                           |
-| --------------------- | ------------------------------------------------- |
-| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>` |
-| `navbar.tsx`          | Top nav bar with user menu, search mount point    |
-| `simple-navbar.tsx`   | Simplified nav bar variant                        |
-| `sidebar.tsx`         | Sidebar layout component                          |
-| `home.tsx`            | Authenticated home page                           |
-| `marketing.tsx`       | Marketing landing (auth-independent)              |
-| `searchResults.tsx`   | Search results                                    |
-| `bookInfo.tsx`        | Book detail                                       |
-| `profile.tsx`         | User profile + shelves                            |
-| `shelves.tsx`         | Book shelves view                                 |
-| `comments.tsx`        | Comments/reviews                                  |
-| `feed.tsx`            | Activity feed                                     |
-| `readingStats.tsx`    | Reading stats by year                             |
-| `settings.tsx`        | Account settings                                  |
-| `explore.tsx`         | Explore hub                                       |
-| `genres.tsx`          | Genre directory                                   |
-| `genreBooks.tsx`      | Books by genre (paginated, sortable)              |
-| `genreEmoji.ts`       | Genre → emoji mapping                             |
-| `authorBooks.tsx`     | Books by author (paginated)                       |
-| `authorDirectory.tsx` | Author directory                                  |
-| `import.tsx`          | CSV import page                                   |
-| `library.tsx`         | Personal library                                  |
-| `login.tsx`           | Login form                                        |
-| `signup.tsx`          | Sign up form                                      |
-| `app.tsx`             | iOS app landing                                   |
-| `privacy-policy.tsx`  | Privacy policy                                    |
-| `terms.tsx`           | Terms of service (`/legal`)                       |
-| `pds.tsx`             | PDS info page                                     |
-| `error.tsx`           | Error page                                        |
+| File                  | Renders                                            |
+| --------------------- | -------------------------------------------------- |
+| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`  |
+| `navbar.tsx`          | Top nav bar with user menu, search mount point     |
+| `simple-navbar.tsx`   | Simplified nav bar variant                         |
+| `sidebar.tsx`         | Sidebar layout component                           |
+| `home.tsx`            | Authenticated home page                            |
+| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects) |
+| `searchResults.tsx`   | Search results                                     |
+| `bookInfo.tsx`        | Book detail                                        |
+| `profile.tsx`         | User profile + shelves                             |
+| `shelves.tsx`         | Book shelves view                                  |
+| `comments.tsx`        | Comments/reviews                                   |
+| `feed.tsx`            | Activity feed                                      |
+| `readingStats.tsx`    | Reading stats by year                              |
+| `settings.tsx`        | Account settings                                   |
+| `explore.tsx`         | Explore hub                                        |
+| `genres.tsx`          | Genre directory                                    |
+| `genreBooks.tsx`      | Books by genre (paginated, sortable)               |
+| `genreEmoji.ts`       | Genre → emoji mapping                              |
+| `authorBooks.tsx`     | Books by author (paginated)                        |
+| `authorDirectory.tsx` | Author directory                                   |
+| `import.tsx`          | CSV import page                                    |
+| `library.tsx`         | Personal library                                   |
+| `login.tsx`           | Login form                                         |
+| `signup.tsx`          | Sign up form                                       |
+| `app.tsx`             | iOS app landing                                    |
+| `privacy-policy.tsx`  | Privacy policy                                     |
+| `terms.tsx`           | Terms of service (`/legal`)                        |
+| `pds.tsx`             | PDS info page                                      |
+| `error.tsx`           | Error page                                         |
 
 Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/buildUrl.ts`.
 
