@@ -22,6 +22,7 @@ export const ProfilePage: FC<{
   followersProfiles?: ProfileViewDetailed[];
   genreStats?: { genre: string; count: number }[];
   userLists?: Array<BookListRow & { itemCount: number | null }>;
+  wantToReadIdentifiers?: Map<string, { isbn: string | null; isbn13: string | null }>;
 }> = ({
   handle,
   did,
@@ -37,6 +38,7 @@ export const ProfilePage: FC<{
   followersProfiles = [],
   genreStats = [],
   userLists = [],
+  wantToReadIdentifiers,
 }) => {
   const year = new Date().getFullYear();
   const booksThisYear = books.reduce((sum, b) => {
@@ -171,25 +173,44 @@ export const ProfilePage: FC<{
 
           {/* Library */}
           <section>
-            <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
+            <div class="mb-4 flex items-end justify-between gap-3">
+              <h2 class="text-foreground text-2xl font-bold tracking-tight">Library</h2>
+              {isOwnProfile && books.some((b) => b.status === BOOK_STATUS.WANTTOREAD) && (
+                <a
+                  href="/libby"
+                  class="text-primary hover:underline text-sm font-medium"
+                  title="Cross-check your want-to-read shelf with Libby"
+                >
+                  Check Libby availability →
+                </a>
+              )}
+            </div>
             {isOwnProfile ? (
               <div
                 id="mount-library-table"
                 data-books={JSON.stringify(
-                  books.map((b) => ({
-                    hiveId: b.hiveId,
-                    title: b.title,
-                    authors: b.authors,
-                    cover: b.cover,
-                    thumbnail: b.thumbnail,
-                    status: b.status,
-                    stars: b.stars,
-                    startedAt: b.startedAt,
-                    finishedAt: b.finishedAt,
-                    createdAt: b.createdAt,
-                    owned: b.owned,
-                    review: b.review,
-                  })),
+                  books.map((b) => {
+                    const ids =
+                      b.status === BOOK_STATUS.WANTTOREAD
+                        ? wantToReadIdentifiers?.get(b.hiveId)
+                        : undefined;
+                    return {
+                      hiveId: b.hiveId,
+                      title: b.title,
+                      authors: b.authors,
+                      cover: b.cover,
+                      thumbnail: b.thumbnail,
+                      status: b.status,
+                      stars: b.stars,
+                      startedAt: b.startedAt,
+                      finishedAt: b.finishedAt,
+                      createdAt: b.createdAt,
+                      owned: b.owned,
+                      review: b.review,
+                      isbn: ids?.isbn ?? null,
+                      isbn13: ids?.isbn13 ?? null,
+                    };
+                  }),
                 )}
               />
             ) : (

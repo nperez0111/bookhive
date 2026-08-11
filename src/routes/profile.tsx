@@ -9,6 +9,7 @@ import { endTime, startTime } from "hono/timing";
 
 import { sql } from "kysely";
 import type { AppEnv } from "../context";
+import { BOOK_STATUS } from "../constants";
 import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { ProfilePage } from "../pages/profile";
@@ -311,6 +312,30 @@ const app = new Hono<AppEnv>()
     const parsedBooks = books.map((book) => hydrateUserBook(book));
     endTime(c, "books+session");
 
+    // Pull ISBNs for the user's want-to-read shelf so the client-side
+    // Libby badge can run a precise availability lookup. Limit to that
+    // status to avoid a needless join across the whole library.
+    startTime(c, "wantToReadIdentifiers");
+    const wantToReadIds = parsedBooks
+      .filter((b) => b.status === BOOK_STATUS.WANTTOREAD)
+      .map((b) => b.hiveId);
+    const wantToReadIdentifiersMap = new Map<
+      string,
+      { isbn: string | null; isbn13: string | null }
+    >();
+    if (wantToReadIds.length > 0) {
+      const rows = await c
+        .get("ctx")
+        .db.selectFrom("book_id_map")
+        .select(["hiveId", "isbn", "isbn13"])
+        .where("hiveId", "in", wantToReadIds)
+        .execute();
+      for (const row of rows) {
+        wantToReadIdentifiersMap.set(row.hiveId, { isbn: row.isbn, isbn13: row.isbn13 });
+      }
+    }
+    endTime(c, "wantToReadIdentifiers");
+
     startTime(c, "isFollowing");
     const isFollowing =
       sessionAgent && sessionAgent.did !== did
@@ -445,6 +470,7 @@ const app = new Hono<AppEnv>()
         followersProfiles={followersProfiles}
         genreStats={genreStats}
         userLists={userLists}
+        wantToReadIdentifiers={wantToReadIdentifiersMap}
       />,
       {
         title: "BookHive | @" + handle,

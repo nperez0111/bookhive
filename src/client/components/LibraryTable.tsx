@@ -9,6 +9,7 @@ import {
   updateBook,
   deleteBook,
 } from "./bookActions";
+import { LibbyBadge } from "./LibbyBadge";
 
 type LibraryBook = {
   hiveId: string;
@@ -23,9 +24,23 @@ type LibraryBook = {
   createdAt: string;
   owned: number;
   review: string | null;
+  isbn?: string | null;
+  isbn13?: string | null;
 };
 
 const FINISHED = "buzz.bookhive.defs#finished";
+const WANTTOREAD = "buzz.bookhive.defs#wantToRead";
+
+const renderLibbyBadge = (book: LibraryBook) =>
+  book.status === WANTTOREAD ? (
+    <LibbyBadge
+      hiveId={book.hiveId}
+      title={book.title}
+      author={book.authors.split("\t").join(", ")}
+      isbn={book.isbn ?? null}
+      isbn13={book.isbn13 ?? null}
+    />
+  ) : null;
 
 // --- Desktop row ---
 
@@ -50,6 +65,9 @@ const TableRow: FC<{
           <p className="line-clamp-1 text-xs text-muted-foreground">
             {book.authors.split("\t").join(", ")}
           </p>
+          <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+            {renderLibbyBadge(book)}
+          </div>
         </div>
       </div>
     </td>
@@ -153,6 +171,7 @@ const MobileCard: FC<{
           {book.status && (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className="badge capitalize">{STATUS_LABELS[book.status] || book.status}</span>
+              {renderLibbyBadge(book)}
             </div>
           )}
         </div>

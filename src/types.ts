@@ -233,6 +233,7 @@ export type BookIdentifiersRow = {
   isbn: string | null;
   isbn13: string | null;
   goodreadsId: string | null;
+  olWorkId: string | null;
   updatedAt: string;
 };
 

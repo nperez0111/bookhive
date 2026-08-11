@@ -25,6 +25,7 @@ import {
   buildStorygraphBookRecord,
   deduplicateUnmatchedWithDetails,
 } from "../../utils/importBook";
+import { findHiveBookMatch } from "../../utils/findHiveBookMatch";
 // Note: Worker threads get isolated metric registries, so metrics here won't appear
 // at the main /metrics endpoint. The main thread (routes/import.ts) tracks import
 // duration and active operations. Per-book counts are conveyed via SSE events.
@@ -285,12 +286,13 @@ export async function processGoodreadsImport({
       // Await this book's search (others in the chunk are already in-flight)
       await searches[j];
 
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", book.title)
-        .where("authors", "=", book.author)
-        .executeTakeFirst();
+      const hiveBook = await findHiveBookMatch(ctx.db, {
+        title: book.title,
+        author: book.author,
+        isbn: book.isbn,
+        isbn13: book.isbn13,
+        goodreadsId: book.bookId,
+      });
 
       if (!hiveBook) {
         const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
@@ -508,12 +510,13 @@ export async function processStorygraphImport({
 
       await searches[j];
 
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", book.title)
-        .where("authors", "=", book.authors)
-        .executeTakeFirst();
+      const hiveBook = await findHiveBookMatch(ctx.db, {
+        title: book.title,
+        author: book.authors,
+        // StoryGraph stores either an ISBN-10 or ISBN-13 in `isbn`; the
+        // matcher routes by length.
+        isbn: book.isbn,
+      });
 
       if (!hiveBook) {
         const key = `${normalizeStr(book.title)}::${normalizeStr(book.authors)}`;

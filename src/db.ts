@@ -908,6 +908,21 @@ migrations["021"] = {
   },
 };
 
+migrations["022"] = {
+  async up(db: Kysely<unknown>) {
+    await db.schema.alterTable("book_id_map").addColumn("olWorkId", "text").execute();
+    await db.schema
+      .createIndex("idx_book_id_map_ol_work_id")
+      .on("book_id_map")
+      .column("olWorkId")
+      .execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.dropIndex("idx_book_id_map_ol_work_id").ifExists().execute();
+    await db.schema.alterTable("book_id_map").dropColumn("olWorkId").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
