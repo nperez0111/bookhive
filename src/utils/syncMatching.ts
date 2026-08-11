@@ -203,22 +203,36 @@ export async function matchSyncDocument(
   // and their handful of books can then be compared on title in JS, where the
   // comparison can be as forgiving as it needs to be. The title search stays
   // as the only option when the filename yields no author at all.
-  const queries: string[] = [];
+  const authorQueries: string[] = [];
   for (const signal of authorSignals) {
     const q = ftsMatchQuery(normalizeAuthor(signal));
-    if (q) queries.push(q);
+    if (q) authorQueries.push(q);
   }
+  const titleQueries: string[] = [];
   const seenTitles = new Set<string>();
   for (const candidate of candidates) {
     const want = normalizeTitle(candidate.title);
     if (!want || seenTitles.has(want)) continue;
     seenTitles.add(want);
     const q = ftsMatchQuery(candidate.title);
-    if (q) queries.push(q);
+    if (q) titleQueries.push(q);
+  }
+
+  // Author queries lead — they are the ones that can reach a title we'd never
+  // tokenize our way to. But they must not consume the whole budget: an `A - B`
+  // filename contributes an author signal for *both* orderings, so four junk
+  // signals could crowd the title query out entirely and leave the pool empty
+  // when the title alone would have found the book. One slot is always held
+  // back for the first title query.
+  const deduped = dedupe([...authorQueries, ...titleQueries]);
+  const firstTitle = deduped.find((q) => titleQueries.includes(q));
+  let queries = deduped.slice(0, MAX_FTS_QUERIES);
+  if (firstTitle && !queries.includes(firstTitle)) {
+    queries = [...queries.slice(0, MAX_FTS_QUERIES - 1), firstTitle];
   }
 
   const pool = new Map<HiveId, FtsRow>();
-  for (const match of dedupe(queries).slice(0, MAX_FTS_QUERIES)) {
+  for (const match of queries) {
     const rows = (
       await sql<FtsRow>`
         SELECT b.id, b.title, b.authors, b.ratingsCount
@@ -335,8 +349,16 @@ export async function matchSyncDocumentForUser(
 
   if (hiveId && file && !file.hiveId) {
     // Keep the file and the document agreeing, and mirror the upload path's
-    // "you own a copy" flag.
-    await db.updateTable("personal_book").set({ hiveId }).where("id", "=", file.id).execute();
+    // "you own a copy" flag. The `hiveId is null` guard is enforced in the
+    // statement, not just by the `!file.hiveId` read above: two sync pushes for
+    // the same file can race between the SELECT and this UPDATE, and the loser
+    // would otherwise overwrite a link the winner just established.
+    await db
+      .updateTable("personal_book")
+      .set({ hiveId })
+      .where("id", "=", file.id)
+      .where("hiveId", "is", null)
+      .execute();
     await db
       .updateTable("user_book")
       .set({ owned: 1 })

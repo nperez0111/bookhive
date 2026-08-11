@@ -41,17 +41,18 @@ Browser ──> Bun.serve() ──> Hono app ──> Server-rendered JSX pages
                 │                              └── Worker threads (see below)
                 └── static files (public/)
 
-Worker threads (src/workers/, bundled to .output/server/workers/):
-  ingester-worker     — Jetstream firehose ingest
-  og-render-worker    — OG image generation (React + takumi)
-  open-observe-worker — pino log shipping to OpenObserve
-  import-worker       — CSV import processing
+Worker threads (bundled to .output/server/workers/):
+  ingester-worker     — Jetstream firehose ingest          (src/workers/)
+  og-render-worker    — OG image generation (React+takumi) (src/workers/)
+  open-observe-worker — pino log shipping to OpenObserve   (src/workers/)
+  import-worker       — CSV import processing              (src/workers/)
+  waf-solver-worker   — AWS WAF challenge solve            (src/scrapers/waf/)
 ```
 
 **Key patterns:**
 
 - Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
-- **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` (default 4) workers sharing port 8080 via SO_REUSEPORT. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
+- **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — the code defaults to 4, but the deployed container sets **3** (verified on the host), which is the number every memory ceiling in this document is derived from. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
 - **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline. That drain interval × concurrency is also the **only** rate limit on requests to Goodreads — 36 fetches/min, healthy or not. Don't add a second one.
 - **`enrich_queue.attempts` counts answers from Goodreads, not failures.** A run reports `enrich_retry` in the wide-event bag: `retry` spends an attempt, `defer` costs nothing and re-queues on a decaying schedule, `dead` tombstones the book immediately. Anything the app decided on its own — a WAF challenge, a timeout, a transport error — is a `defer`. Getting this wrong is expensive: when refusals counted as attempts, one 6h window wrote off 2,854 books for 7 days apiece **without sending a single request on their behalf** (98% of everything the queue gave up on). The bound on defers is `MAX_QUEUE_AGE_MS` (7d from `enqueuedAt`, which survives re-enqueue), not the attempt counter.
 - **Author lookups use `hive_book_author` join** (mig 020), not `LIKE`. This is exact identity, not text search.
@@ -407,7 +408,8 @@ larger than the JPEG. Size the WebP to ~2x the CSS slot, not to the source's int
 - `apple-touch-icon.png`, `favicon*.png`, `favicon.ico` — fixed-format platform requirements.
 - `reading.png` — only used by `README.md` / `app/README.md`, never served.
 
-The other 16 `public/screenshots/*.png` (~6.6 MB) are referenced nowhere in the codebase; they
+The other 13 `public/screenshots/*.png` (5.6 MB — the directory holds 16, three of which are the
+`<img>` fallbacks above) are referenced nowhere in the codebase; they
 look like App Store listing assets (light/dark and `-16` variants), so they are kept as-is.
 
 ### Shared Page Components (`src/pages/components/`)
@@ -468,9 +470,9 @@ SQLite via Kysely. Schema + all migrations (001–023) in one file. `createDb` s
 | `book_list_item`      | Items in a book list      | **uri (PK, AT URI)**, userDid, **listUri**, hiveId, position                                                                                                                                             |
 | `sync_document`       | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, **filenameKey**, title, authors, progressData (JSON)                                                   |
 | `enrich_queue`        | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, **enqueuedAt** (age ceiling; survives re-enqueue), attempts, nextAttemptAt, claimedAt, lastError                                                                           |
-| `personal_book`       | Uploaded ebook files      | contentHash (PK), userDid, filename, **filenameHash**, **filenameKey**, title, authors, format, hiveId (nullable), fileSize                                                                              |
+| `personal_book`       | Uploaded ebook files      | id (PK, autoincrement), UNIQUE (userDid, contentHash), filename, **filenameHash**, **filenameKey**, title, authors, format, hiveId (nullable), **sizeBytes**                                             |
 | `personal_shelf`      | User's personal shelves   | id (PK, autoincrement), userDid, name, description                                                                                                                                                       |
-| `personal_shelf_item` | Books in personal shelves | shelfId, contentHash (PK pair)                                                                                                                                                                           |
+| `personal_shelf_item` | Books in personal shelves | shelfId, **personalBookId** (UNIQUE pair) — the row id, not the content hash                                                                                                                             |
 
 Notes: `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface as `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
@@ -550,8 +552,10 @@ empty-string handling) before anyone noticed. Both routes are now thin adapters.
 for a measured reason:
 
 1. Reject on the _declared_ size and against the quota — before a byte is read.
-2. `writeCapped` streams the body to `{libraryDir}/.tmp/*.part` at **~64 KB of
-   RSS**, capping as it goes. This is what replaced `bodyLimit()`, which only
+2. `writeCapped` streams the body to `{libraryDir}/.tmp/*.part`, capping as it
+   goes. The memory bound is the sink's **1 MB `highWaterMark`** — awaiting each
+   write is the backpressure signal, so a 100 MB body costs 1 MB of buffer
+   rather than 100 MB. This is what replaced `bodyLimit()`, which only
    short-circuits on `Content-Length`: given a chunked body it drained the whole
    stream into an array and rebuilt the Request, so a compliant 100 MB chunked
    upload was buffered there **and again** by `formData()`.
@@ -568,13 +572,17 @@ for a measured reason:
    `2 × 3 × 100 MB ≈ 630 MB`, against a previously _unbounded_ ~200–400 MB per
    in-flight upload. Production baseline is ~1.05 GB RSS across the three
    workers in a 6 GB container, so that headroom fits comfortably.
-7. Cover gated on `isUsableCover`, always. `coverPath IS NOT NULL` is the only
+7. Cover gated on `prepareCover`, always (rasterizes SVG, then validates). `coverPath IS NOT NULL` is the only
    signal driving `coverUrl` on the web library, the OPDS feed and the XRPC book
    view, so an unvalidated cover is a dead URL and a blank box in all three.
 8. **The quota `SUM` is evaluated inside the INSERT's `WHERE`.** SQLite
    serialises writers, so this is exact — two concurrent uploads cannot both
    observe the pre-insert total. A per-process mutex would not have worked:
-   production is four independent processes against one file.
+   production is three independent processes against one file. The statement
+   also carries `ON CONFLICT (userDid, contentHash) DO NOTHING`, so two uploads
+   of the same file racing past the duplicate check report `duplicate` instead
+   of raising a UNIQUE violation; the two zero-row outcomes are told apart by
+   re-reading the row.
 9. `rename` into place — same filesystem, zero bytes copied. The row commits
    _before_ the bytes move, which beats writing 100 MB and then discovering a
    problem.
@@ -613,6 +621,40 @@ exactly the chosen one, gated on `MAX_COVER_BYTES`. Both parsers used to inflate
 _every_ image in the archive to keep one — a 100 MB CBZ decompressed ~100 MB of
 pages to keep page 1.
 
+**An SVG cover is a composition, not a wrapper — it must be rasterized.**
+`prepareCover` (`bookMetadata/cover.ts`) is the one gate between "the parser
+found something" and "we store a cover", and it renders SVG through
+`@resvg/resvg-js` before validating. Standard Ebooks — one of the largest
+sources of public-domain EPUBs — ships every cover as an SVG holding the artwork
+in an `<image>` element _plus_ the title and author as ~40 vector `<path>`s over
+a translucent band. Both shortcuts lose half the cover, and both were tried:
+pulling the embedded base64 raster back out drops the lettering, and rendering
+with `@takumi-rs` (already a dependency, so tempting) drops the artwork — it
+ignores the embedded `<image>` entirely.
+
+Three things hold this together:
+
+- **Dimension checks use `image-meta`, not `Bun.Image`.** Bun's pipeline rejects
+  SVG as an "unrecognised format", which is what made every Standard Ebooks
+  upload land with no cover at all. The two agree exactly on every raster
+  format; `image-meta` just knows more of them, and parses headers only.
+- **The output is JPEG, never SVG.** OPDS clients and e-readers can't be relied
+  on to render vector covers, and an SVG served from our own origin is
+  script-capable where a JPEG is inert (there is no CSP anywhere in this app).
+  Rasterizing at `SVG_RASTER_WIDTH` (700 — the largest a cover is ever displayed
+  is ~300 CSS px) then encoding to JPEG turns a 1.1 MB `resvg` PNG into ~77 KB.
+- **`@resvg/resvg-js*` is in `traceDeps`** (`vite.config.ts`) alongside
+  `@takumi-rs/core*`. Native NAPI bindings never appear in the Rolldown graph,
+  and a missing one here does **not** crash — `prepareCover` catches and returns
+  null — so an untraced build silently uploads every Standard Ebooks book with
+  no cover, which is exactly the bug it was added to fix.
+
+Rasterizing runs inside the upload core's `parseSemaphore`, next to the ZIP
+parse, so `UPLOAD_PARSE_CONCURRENCY` bounds all of an upload's native memory
+rather than just the file buffer. `resvg` renders synchronously on the calling
+thread (~0.5s at width 700, ~2.4s at 1400 — the cost scales with the square of
+the width, which is the other reason 700 is the cap).
+
 ## Types & Constants
 
 - `src/types.ts` — shared types: `HiveId`, `UserBook`, `HiveBook`, `Buzz`, `BookProgress`, `SearchResult`, `SyncDocumentRow`, etc.
@@ -627,7 +669,7 @@ pages to keep page 1.
 | `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                          |
 | `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas                |
 | `src/xrpc/router.ts`      | All `/xrpc/*` methods                                            |
-| `lexicons/*.json`         | AT Protocol lexicon definitions (~27 files)                      |
+| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                       |
 | `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                        |
 
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
@@ -637,6 +679,14 @@ pages to keep page 1.
 **XRPC list procedures**: `createList`, `updateList`, `deleteList`, `addToList`, `removeFromList`, `reorderList`.
 
 **XRPC personal library queries**: `getPersonalLibrary` (params `limit`/`cursor`/`shelfId`/`q`/`sort`; output carries `storage`), `getPersonalBook`, `getPersonalBookFile`, `getPersonalBookCover`, `listPersonalShelves`, `getSyncProgress`, `listSyncDocuments`.
+
+**Every `getPersonalLibrary` sort ends on `personal_book.id`.** None of the
+leading keys are unique: titles and authors collide routinely (a series, an
+omnibus, the same book in two formats), and `createdAt` — millisecond-precision
+ISO — collides when two uploads commit in the same millisecond. SQLite may order
+ties differently between two `LIMIT`/`OFFSET` queries, so without a unique final
+key a book appears on two consecutive pages while another never appears at all.
+Same reasoning applies to any new sort added here.
 
 **XRPC personal library procedures**: `uploadPersonalBook`, `deletePersonalBook`, `linkPersonalBook`, `unlinkPersonalBook`, `putSyncProgress`, `createPersonalShelf`, `updatePersonalShelf`, `deletePersonalShelf`, `addToPersonalShelf`, `removeFromPersonalShelf`.
 
@@ -771,7 +821,12 @@ Three things that are load-bearing and easy to get wrong:
   a real hole: a valid token proves control of _an_ atproto identity, not that
   it has ever used BookHive, so without it any DID on the network could open a
   storage quota's worth of space on our disk. OPDS/KOSync get this implicitly
-  because their password derives from `COOKIE_SECRET`.
+  because their password derives from `COOKIE_SECRET`. It is a **required**
+  field on `XrpcAuthContext`/`XrpcContext`, not an optional one — it was briefly
+  optional and called as `if (ctx.isKnownAccount && ...)`, which meant a context
+  that merely forgot to wire it opened the gate for every DID on the network
+  instead of failing. The verifier stays optional (null genuinely means "service
+  auth is off"); the gate does not.
 
 `lexicons/auth.json` carries the `rpc` permission that lets a client mint these
 tokens at all; **`GRANULAR_SCOPES` in `src/auth/client.ts` must move with it**
@@ -784,7 +839,7 @@ Replay protection (`src/xrpc/replay-store.ts`) ships **defaulted off**: it would
 force a fresh `getServiceAuth` round-trip to the user's PDS on every call, to
 close a `≤maxAge` window on a token already scoped to one `lxm` and one
 audience. The insert is `ON CONFLICT DO NOTHING ... RETURNING` rather than an
-unstorage get-then-set, which is not atomic across the four cluster processes.
+unstorage get-then-set, which is not atomic across the cluster processes.
 
 ## Middleware (`src/middleware/`)
 
@@ -856,9 +911,8 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 | `bun run lint`      | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)         |
 | `bun run format`    | `vp fmt`                                                     |
 | `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons              |
-| `bun run seed:db`   | Seed/initialize the DB (`src/initialize.ts`)                 |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 4 worker entry points into `.output/server/workers/`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. Path alias `@` → `./src`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 5 worker entry points into `.output/server/workers/` — the four under `src/workers/` plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
 
@@ -883,7 +937,7 @@ Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes per
 
 What to tell someone who wants to script against the personal library:
 
-```
+```http
 # 1. Mint a token on YOUR OWN PDS, bound to one method and one audience.
 #    exp should be short; one token per call is what Bluesky's own PDS does.
 GET  https://<your-pds>/xrpc/com.atproto.server.getServiceAuth

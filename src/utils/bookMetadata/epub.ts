@@ -131,7 +131,11 @@ function inflateCover(bytes: Uint8Array, entry: ImageEntry | undefined): BookCov
   } catch {
     return undefined;
   }
-  if (!data || data.length === 0) return undefined;
+  // `originalSize` above is the archive's own claim about the entry. Check the
+  // bytes we actually got as well: a crafted zip can understate it, and covers
+  // are written outside the storage quota, so an unchecked one is a way to put
+  // arbitrarily many bytes on our disk for free.
+  if (!data || data.length === 0 || data.length > MAX_COVER_BYTES) return undefined;
   const ext = (entry.name.split(".").pop() || "").toLowerCase();
   const normExt = ext === "jpeg" ? "jpg" : ext;
   return { bytes: data, mime: mimeForExt(normExt), ext: normExt };

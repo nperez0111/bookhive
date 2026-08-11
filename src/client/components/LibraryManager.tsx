@@ -43,12 +43,6 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
-/**
- * Storage against quota. Deliberately quiet until it matters: below 60% this is
- * just a line of text, and the bar only appears once the number is worth acting
- * on. Better for the user to see it filling up here than to push 100 MB up the
- * wire and get a 413.
- */
 const StorageMeter: FC<{ storage: { usedBytes: number; quotaBytes: number } | null }> = ({
   storage,
 }) => {
@@ -56,27 +50,29 @@ const StorageMeter: FC<{ storage: { usedBytes: number; quotaBytes: number } | nu
   const ratio = Math.min(1, storage.usedBytes / storage.quotaBytes);
   const pct = Math.round(ratio * 100);
   const full = ratio >= 1;
+  const barColor = full ? "bg-destructive" : ratio >= 0.8 ? "bg-amber-500" : "bg-primary";
 
   return (
-    <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-      <span>
-        {formatBytes(storage.usedBytes)} of {formatBytes(storage.quotaBytes)} used
-      </span>
-      {ratio >= 0.6 && (
-        <span
-          class="h-1.5 w-32 overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Library storage used"
-        >
-          <span
-            class={`block h-full rounded-full ${full ? "bg-destructive" : "bg-primary"}`}
-            style={`width: ${pct}%`}
-          />
+    <div class="mt-4 flex flex-col gap-1.5 text-xs text-muted-foreground">
+      <div class="flex items-center justify-between">
+        <span>
+          {formatBytes(storage.usedBytes)} of {formatBytes(storage.quotaBytes)} used
         </span>
-      )}
+        <span>{pct}%</span>
+      </div>
+      <span
+        class="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Library storage used"
+      >
+        <span
+          class={`block h-full rounded-full transition-all ${barColor}`}
+          style={`width: ${Math.max(pct, 1)}%`}
+        />
+      </span>
       {full && <span class="text-destructive">Library full — delete a book to upload more.</span>}
     </div>
   );
@@ -225,6 +221,11 @@ export const LibraryManager: FC = () => {
     try {
       const res = await postJson("/xrpc/buzz.bookhive.deletePersonalBook", { contentHash });
       if (!res.ok) throw new Error("Failed");
+      // Refetch rather than subtract the deleted size locally: `storage` is the
+      // server's `SUM(sizeBytes)`, and the list response carries it for free.
+      // Without this the usage bar keeps showing the freed space as used, and a
+      // user who deletes a book to get under quota still can't upload.
+      fetchBooks(activeShelfId);
       // The file is gone but its sync document may live on, so it can reappear
       // in the triage/tracking sections.
       fetchDocs();

@@ -39,9 +39,10 @@ import { env } from "../env";
 import { Semaphore, SemaphoreFullError, SemaphoreTimeoutError } from "./semaphore";
 import {
   detectFormat,
-  isUsableCover,
   koreaderPartialMD5File,
   parseBook,
+  prepareCover,
+  type BookCover,
   type BookMetadata,
   type FormatInfo,
 } from "./bookMetadata/index";
@@ -69,9 +70,9 @@ const FORMAT_HEAD_BYTES = 4096;
 
 /**
  * The parse is the only step holding a whole file (<=100 MB) in native memory,
- * so this is the memory bound on uploads. It is **per process** — with
- * `WEB_CONCURRENCY=4` the cluster-wide ceiling is `limit x 4 x 100 MB`, so 2
- * here means roughly 840 MB worst case rather than the previous unbounded
+ * so this is the memory bound on uploads. It is **per process** — at the
+ * deployed `WEB_CONCURRENCY=3` the cluster-wide ceiling is `limit x 3 x 100 MB`,
+ * so 2 here means roughly 630 MB worst case rather than the previous unbounded
  * ~300 MB *per in-flight upload*.
  *
  * `maxPending` sheds load instead of queueing waiters: each queued caller holds
@@ -179,10 +180,15 @@ async function writeCapped(dest: string, source: UploadSource, cap: number): Pro
  * The `SUM` is evaluated *inside* the statement rather than read first and
  * compared in JS. SQLite serialises writers, so this is exact: two concurrent
  * uploads cannot both observe the pre-insert total. A per-process mutex would
- * not have worked anyway — production runs four independent processes against
+ * not have worked anyway — production runs three independent processes against
  * one file (`server/cluster.ts`).
  *
- * Returns false when the quota rejected the row.
+ * `ON CONFLICT DO NOTHING` covers the other way this statement can insert
+ * nothing: two uploads of the *same* file racing past the duplicate check,
+ * which would otherwise raise a UNIQUE violation on
+ * `idx_personal_book_user_hash` and surface as a 500 instead of the duplicate
+ * the caller asked about. The two zero-row cases are told apart by re-reading
+ * the row, so "duplicate" never gets reported as "quota exceeded".
  */
 async function insertIfUnderQuota(
   db: Database,
@@ -206,7 +212,7 @@ async function insertIfUnderQuota(
     updatedAt: string;
   },
   quotaBytes: number,
-): Promise<boolean> {
+): Promise<"inserted" | "duplicate" | "over-quota"> {
   const result = await sql<unknown>`
     INSERT INTO personal_book
       (userDid, contentHash, hiveId, filename, filenameHash, filenameKey, title, authors,
@@ -219,8 +225,17 @@ async function insertIfUnderQuota(
     WHERE (
       SELECT COALESCE(SUM(sizeBytes), 0) FROM personal_book WHERE userDid = ${row.userDid}
     ) + ${row.sizeBytes} <= ${quotaBytes}
+    ON CONFLICT (userDid, contentHash) DO NOTHING
   `.execute(db);
-  return (result.numAffectedRows ?? 0n) > 0n;
+  if ((result.numAffectedRows ?? 0n) > 0n) return "inserted";
+
+  const existing = await db
+    .selectFrom("personal_book")
+    .select("id")
+    .where("userDid", "=", row.userDid)
+    .where("contentHash", "=", row.contentHash)
+    .executeTakeFirst();
+  return existing ? "duplicate" : "over-quota";
 }
 
 /**
@@ -347,26 +362,31 @@ export async function uploadPersonalBook(
       .executeTakeFirst();
     if (duplicate) return { ok: false, reason: "duplicate", contentHash };
 
-    // ── 6. Parse — the only full-buffer step ──
+    // ── 6+7. Parse and cover — the native-memory steps, bounded together ──
+    //
+    // `parseBook` is the only full-buffer step, and `prepareCover` is the only
+    // one that rasterizes (an SVG cover renders synchronously on this thread via
+    // `resvg`). Both are held under the same permit so the semaphore bounds all
+    // of the native memory an upload can hold, not just the ZIP buffer.
+    //
+    // The cover gate is not optional: `coverPath IS NOT NULL` is the only signal
+    // driving `coverUrl` on the web library, the OPDS feed and the XRPC book
+    // view, so storing an unvalidated cover produces a dead URL and a blank box
+    // in all three.
     let metadata: BookMetadata;
+    let cover: BookCover | undefined;
     try {
-      metadata = await parseSemaphore.run(async () => {
+      ({ metadata, cover } = await parseSemaphore.run(async () => {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        return parseBook(bytes, filename, formatInfo);
-      });
+        const parsed = parseBook(bytes, filename, formatInfo);
+        return { metadata: parsed, cover: (await prepareCover(parsed.cover)) ?? undefined };
+      }));
     } catch (err) {
       if (err instanceof SemaphoreFullError || err instanceof SemaphoreTimeoutError) {
         return { ok: false, reason: "busy" };
       }
       throw err;
     }
-
-    // ── 7. Cover, gated ──
-    // `coverPath IS NOT NULL` is the only signal driving `coverUrl` on the web
-    // library, the OPDS feed and the XRPC book view, so storing an unvalidated
-    // cover produces a dead URL and a blank box in all three.
-    const cover =
-      metadata.cover && (await isUsableCover(metadata.cover.bytes)) ? metadata.cover : undefined;
 
     // ── 8. Link, then insert under quota ──
     const uploadFilenameHash = koreaderFilenameHash(filename);
@@ -421,7 +441,8 @@ export async function uploadPersonalBook(
       },
       quotaBytes,
     );
-    if (!inserted) {
+    if (inserted === "duplicate") return { ok: false, reason: "duplicate", contentHash };
+    if (inserted === "over-quota") {
       const used = await getStorageUsage(db, userDid);
       return { ok: false, reason: "quota-exceeded", usedBytes: used, quotaBytes, fileBytes: size };
     }
@@ -429,7 +450,26 @@ export async function uploadPersonalBook(
     // ── 9. Commit the bytes: rename, not copy ──
     await ensureDir(personalBookDir(userDid, contentHash));
     await rename(tmp, filePath);
-    if (cover && coverPath) await Bun.write(coverPath, cover.bytes);
+
+    // The row is already committed, so a failed cover write must not fail the
+    // upload — the book itself is fine. But it must not leave `coverPath` set
+    // either: that column is the only signal driving `coverUrl` on the web
+    // library, the OPDS feed and the XRPC book view, so a path with no file
+    // behind it is a dead URL and a blank box in all three.
+    let coverStored = Boolean(cover && coverPath);
+    if (cover && coverPath) {
+      try {
+        await Bun.write(coverPath, cover.bytes);
+      } catch {
+        coverStored = false;
+        await db
+          .updateTable("personal_book")
+          .set({ coverPath: null, coverMime: null })
+          .where("userDid", "=", userDid)
+          .where("contentHash", "=", contentHash)
+          .execute();
+      }
+    }
 
     // ── 10. Propagate the link outward ──
     if (hiveId) {
@@ -491,7 +531,7 @@ export async function uploadPersonalBook(
         createdAt: now,
         updatedAt: now,
         hiveId: hiveId ?? undefined,
-        coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
+        coverUrl: coverStored ? `/library/covers/${contentHash}` : undefined,
       },
       storageUsedBytes: await getStorageUsage(db, userDid),
       storageQuotaBytes: quotaBytes,

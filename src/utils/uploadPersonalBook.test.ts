@@ -10,8 +10,9 @@ import type { Storage } from "unstorage";
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
 import type { HiveId } from "../types";
-import { koreaderPartialMD5 } from "./bookMetadata/index";
-import { makeCbz, makeEpub, makeFb2, PNG_1 } from "./bookMetadata/testFixtures";
+import { imageMeta } from "image-meta";
+import { koreaderPartialMD5, MIN_COVER_DIMENSION } from "./bookMetadata/index";
+import { makeCbz, makeEpub, makeFb2, makeSvgCover, PNG_1 } from "./bookMetadata/testFixtures";
 import { filenameKey, koreaderFilenameHash } from "./filenameMatching";
 import { getHiveId } from "../scrapers/getHiveId";
 import { NO_HIVE_MATCH } from "./syncMatching";
@@ -293,6 +294,39 @@ describe("uploadPersonalBook — cover handling", () => {
     expect(result.book.format).toBe("cbz");
     expect(await Bun.file(coverFilePath(DID, result.book.contentHash, "png")).exists()).toBe(true);
   });
+
+  it("rasterizes an SVG cover, the shape every Standard Ebooks book ships", async () => {
+    // Before this, `isUsableCover` asked Bun's image pipeline to decode the SVG,
+    // it answered "unrecognised format", and the entire Standard Ebooks corpus
+    // uploaded with no cover at all.
+    const result = await upload(
+      makeEpub({
+        cover: makeSvgCover(),
+        coverName: "cover.svg",
+        coverMediaType: "image/svg+xml",
+      }),
+      "standard-ebooks.epub",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Stored as a raster, never as SVG: OPDS clients and e-readers can't be
+    // relied on to render vector covers, and an SVG served from our own origin
+    // would be script-capable where a JPEG is inert.
+    const row = await db
+      .selectFrom("personal_book")
+      .select(["coverPath", "coverMime"])
+      .executeTakeFirstOrThrow();
+    expect(row.coverMime).toBe("image/jpeg");
+    expect(row.coverPath).toBe(coverFilePath(DID, result.book.contentHash, "jpg"));
+    expect(result.book.coverUrl).toBe(`/library/covers/${result.book.contentHash}`);
+
+    const onDisk = new Uint8Array(await Bun.file(row.coverPath!).arrayBuffer());
+    const meta = imageMeta(onDisk);
+    expect(meta.type).toBe("jpg");
+    expect(meta.width).toBeGreaterThanOrEqual(MIN_COVER_DIMENSION);
+    expect(meta.height).toBeGreaterThanOrEqual(MIN_COVER_DIMENSION);
+  });
 });
 
 describe("uploadPersonalBook — empty metadata normalisation", () => {
@@ -529,6 +563,26 @@ describe("uploadPersonalBook — rejections", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("too-large");
+    expect(await tmpEntries()).toEqual([]);
+  }, 60_000);
+
+  it("caps an in-memory byte source too", async () => {
+    // The `bytes` branch of writeCapped is its own code path — the XRPC
+    // procedure can hand the core a buffer rather than a stream, and it must
+    // hit the same ceiling rather than writing the whole thing out first.
+    const oversized = new Uint8Array(MAX_PERSONAL_BOOK_BYTES + 1);
+
+    const result = await uploadPersonalBook({
+      db,
+      kv,
+      userDid: DID,
+      filename: "huge.epub",
+      source: { kind: "bytes", bytes: oversized },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("too-large");
+    expect(await db.selectFrom("personal_book").selectAll().execute()).toHaveLength(0);
     expect(await tmpEntries()).toEqual([]);
   }, 60_000);
 });

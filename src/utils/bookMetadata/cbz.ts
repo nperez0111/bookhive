@@ -38,7 +38,10 @@ export function parseCbz(bytes: Uint8Array, fallbackTitle: string): BookMetadata
 
     // Pass 2: inflate exactly the first page.
     const data = unzipSync(bytes, { filter: (f) => f.name === first.name })[first.name];
-    if (!data || data.length === 0) return fallback;
+    // `originalSize` above is the archive's own claim; re-check the bytes we
+    // actually got, since a crafted zip can understate it and covers are
+    // written outside the storage quota.
+    if (!data || data.length === 0 || data.length > MAX_COVER_BYTES) return fallback;
 
     const ext = extOf(first.name) === "jpeg" ? "jpg" : extOf(first.name);
     const cover: BookCover = { bytes: data, mime: mimeForExt(ext), ext };

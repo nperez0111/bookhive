@@ -30,40 +30,66 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+/**
+ * The `?error=` codes the upload adapter redirects a browser back with. Closed
+ * set rather than a free string: it is the one input on this page that comes
+ * from the URL, and anything outside the list is someone hand-crafting a link
+ * to put an error banner on another user's library.
+ */
+const UPLOAD_ERROR_CODES = [
+  "TooLarge",
+  "QuotaExceeded",
+  "UnsupportedFormat",
+  "AlreadyExists",
+  "EmptyFile",
+  "NoFile",
+  "Busy",
+] as const;
+
 const app = new Hono<AppEnv>()
-  .get("/", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.redirect("/login");
-    const profile = await c.get("ctx").getProfile();
-    const handle = profile?.handle ?? agent.did;
-    const { db } = c.get("ctx");
+  .get(
+    "/",
+    // `.catch` rather than a hard 400: an unrecognised code means a stale or
+    // hand-edited link, and dropping the banner is a better answer than
+    // refusing to render the user's library.
+    zValidator(
+      "query",
+      z.object({ error: z.enum(UPLOAD_ERROR_CODES).optional().catch(undefined) }),
+    ),
+    async (c) => {
+      const agent = await c.get("ctx").getSessionAgent();
+      if (!agent) return c.redirect("/login");
+      const profile = await c.get("ctx").getProfile();
+      const handle = profile?.handle ?? agent.did;
+      const { db } = c.get("ctx");
 
-    // Drives the empty-vs-populated layout: with nothing uploaded and nothing
-    // synced there is no library to manage, so the page explains itself and
-    // puts setup inline instead of behind modals.
-    const [books, documents] = await Promise.all([
-      db
-        .selectFrom("personal_book")
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .where("userDid", "=", agent.did)
-        .executeTakeFirstOrThrow(),
-      db
-        .selectFrom("sync_document")
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .where("userDid", "=", agent.did)
-        .executeTakeFirstOrThrow(),
-    ]);
+      // Drives the empty-vs-populated layout: with nothing uploaded and nothing
+      // synced there is no library to manage, so the page explains itself and
+      // puts setup inline instead of behind modals.
+      const [books, documents] = await Promise.all([
+        db
+          .selectFrom("personal_book")
+          .select((eb) => eb.fn.countAll<number>().as("total"))
+          .where("userDid", "=", agent.did)
+          .executeTakeFirstOrThrow(),
+        db
+          .selectFrom("sync_document")
+          .select((eb) => eb.fn.countAll<number>().as("total"))
+          .where("userDid", "=", agent.did)
+          .executeTakeFirstOrThrow(),
+      ]);
 
-    return c.render(
-      <LibraryPage
-        handle={handle}
-        bookCount={Number(books.total)}
-        syncDocCount={Number(documents.total)}
-        uploadError={c.req.query("error")}
-      />,
-      { title: "Personal Library" },
-    );
-  })
+      return c.render(
+        <LibraryPage
+          handle={handle}
+          bookCount={Number(books.total)}
+          syncDocCount={Number(documents.total)}
+          uploadError={c.req.valid("query").error}
+        />,
+        { title: "Personal Library" },
+      );
+    },
+  )
   // Thin adapter over `uploadPersonalBook` — the same core the XRPC procedure
   // calls. Everything here is transport: content negotiation and the mapping
   // from the core's discriminated result to a status code.

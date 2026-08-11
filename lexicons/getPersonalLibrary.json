@@ -133,8 +133,7 @@
         },
         "description": {
           "type": "string",
-          "description": "Synopsis from the linked BookHive catalog entry",
-          "maxLength": 5000
+          "description": "Synopsis from the linked BookHive catalog entry. Deliberately unbounded: this is scraped catalog copy, not user input, and 125 of the 367k descriptions in production already exceed 5000 bytes (longest 10386). A maxLength here would be a contract the data violates, and enforcing it would mean truncating a synopsis mid-sentence."
         },
         "createdAt": {
           "type": "string",

@@ -128,5 +128,5 @@ export function parseBook(
 export { koreaderPartialMD5, koreaderPartialMD5File } from "./hash";
 export { looksLikeZip } from "./shared";
 export { parseEpub } from "./epub";
-export { isUsableCover, MAX_COVER_BYTES, MIN_COVER_DIMENSION } from "./cover";
+export { isUsableCover, prepareCover, MAX_COVER_BYTES, MIN_COVER_DIMENSION } from "./cover";
 export type { BookCover, BookMetadata, EpubCover, EpubMetadata } from "./types";

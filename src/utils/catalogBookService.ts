@@ -272,7 +272,10 @@ let backfillProgress: BackfillProgress = {
  */
 function persistProgress(kv: Storage | undefined) {
   if (!kv) return;
-  void kv.setItem(BACKFILL_KV_KEY, backfillProgress).catch(() => {});
+  // A snapshot, not the mutable module-level object: the backfill keeps
+  // mutating it while this write is in flight, and handing a driver a live
+  // reference makes what actually lands depend on when it serialises.
+  void kv.setItem(BACKFILL_KV_KEY, { ...backfillProgress }).catch(() => {});
 }
 
 /**

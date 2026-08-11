@@ -364,6 +364,36 @@ describe("XRPC getPersonalBookCover", () => {
     const res = await app.request(`/xrpc/buzz.bookhive.getPersonalBookCover?contentHash=${hash}`);
     expect(res.status).toBe(404);
   });
+
+  it("redirects to the catalog image for a linked book with no stored cover", async () => {
+    // The branch that used to be built with `Response.redirect`, whose headers
+    // are immutable — the Cache-Control middleware setting a header on it threw
+    // a TypeError and turned the 302 into a 500.
+    const app = createApp();
+    const hash = (
+      (await (
+        await uploadRequest(app, makeFb2(), "x.fb2", {
+          contentType: "application/x-fictionbook+xml",
+        })
+      ).json()) as { book: { contentHash: string } }
+    ).book.contentHash;
+
+    // Link it to a catalog entry, leaving coverPath null.
+    await db
+      .updateTable("personal_book")
+      .set({ hiveId: "bk_catalog1" })
+      .where("contentHash", "=", hash)
+      .execute();
+
+    const res = await app.request(
+      `/xrpc/buzz.bookhive.getPersonalBookCover?contentHash=${hash}&width=200`,
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("/images/books/bk_catalog1?w=200");
+
+    // The header guard is the actual regression: mutating it must not throw.
+    expect(() => res.headers.set("cache-control", "private, no-store")).not.toThrow();
+  });
 });
 
 describe("XRPC getPersonalLibrary — search, sort and storage", () => {
@@ -417,12 +447,27 @@ describe("XRPC getPersonalLibrary — search, sort and storage", () => {
   });
 
   it("defaults to newest first, and does not switch when q is set", async () => {
+    // Deterministic because every sort ends on `personal_book.id`: all three
+    // uploads land in the same whole second, so `createdAt DESC` alone leaves
+    // the order up to SQLite. Newest-first therefore means "highest id first",
+    // which is the last book seeded.
     const app = createApp();
     await seedLibrary(app);
     const res = (await (await app.request("/xrpc/buzz.bookhive.getPersonalLibrary")).json()) as {
       books: { title: string }[];
     };
-    expect(res.books[0]!.title).toBe("Ancillary Justice");
+    expect(res.books.map((b) => b.title)).toEqual(["Ancillary Justice", "Neuromancer", "Dune"]);
+
+    // OPDS switches to a title sort when searching; this deliberately does not.
+    // `q` narrows the set, it does not reorder it.
+    const searched = (await (
+      await app.request("/xrpc/buzz.bookhive.getPersonalLibrary?q=n")
+    ).json()) as { books: { title: string }[] };
+    expect(searched.books.map((b) => b.title)).toEqual([
+      "Ancillary Justice",
+      "Neuromancer",
+      "Dune",
+    ]);
   });
 
   it("reports storage usage and the extra view fields", async () => {

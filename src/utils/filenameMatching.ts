@@ -26,6 +26,20 @@
  * | `koreaderFilenameHash`  | a FILENAME-mode `sync_document.documentHash` | no    |
  * | `filenameKey`           | another file's normalized name              | a bit |
  * | `filenameBookCandidates`| a `hive_book` title/author                  | yes   |
+ *
+ * **`filenameKey` and `koreaderFilenameHash` are persisted**, in
+ * `personal_book.filenameHash`/`.filenameKey` and `sync_document.filenameKey`
+ * (migration 022 backfilled them by calling these functions). They are a stored
+ * index of a pure function, so changing either one silently splits the data:
+ * rows written before the change keep the old normalization while new writes
+ * use the new one, and `SAME_BOOK_FILE` then compares values that were never
+ * computed the same way.
+ *
+ * Any change to their output therefore needs a follow-up migration that
+ * recomputes both columns for every row. Freezing a copy inside migration 022
+ * would *not* fix this and would make it worse — a fresh install would then
+ * backfill old-normalized values into a database the app writes new-normalized
+ * values to.
  */
 
 import { contentWords } from "./bookMatching";

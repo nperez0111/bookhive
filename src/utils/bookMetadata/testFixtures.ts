@@ -7,15 +7,43 @@
  */
 
 import { zipSync, strToU8 } from "fflate";
+import { deflateSync } from "node:zlib";
 
 /**
  * A real 32x32 PNG. Has to decode for `isUsableCover` — which reads the header
  * with Bun's image pipeline — so it can't be arbitrary bytes.
  */
-export const PNG_32 = (() => {
-  // 32x32, 8-bit RGBA, single IDAT of zlib-stored zeroes.
-  const raw = new Uint8Array(32 * (32 * 4 + 1)); // filter byte per scanline
-  const idat = Bun.deflateSync(raw);
+export const PNG_32 = makeSolidPng();
+
+/**
+ * An **opaque** 32x32 PNG in a solid colour. `PNG_32` is all-zero RGBA, i.e.
+ * fully transparent — fine as "a real image" for the dimension gate, useless as
+ * artwork in a fixture that has to be visually distinguishable from the
+ * background it is composited over.
+ */
+export const PNG_32_OPAQUE = makeSolidPng([220, 20, 20, 255]);
+
+/** A 32x32 8-bit RGBA PNG filled with `rgba` (default: transparent). */
+function makeSolidPng(rgba: [number, number, number, number] = [0, 0, 0, 0]): Uint8Array {
+  // 32x32, 8-bit RGBA, single IDAT; one filter byte per scanline.
+  const raw = new Uint8Array(32 * (32 * 4 + 1));
+  for (let y = 0; y < 32; y++) {
+    const rowStart = y * (32 * 4 + 1);
+    raw[rowStart] = 0; // filter: none
+    for (let x = 0; x < 32; x++) {
+      const px = rowStart + 1 + x * 4;
+      raw[px] = rgba[0]!;
+      raw[px + 1] = rgba[1]!;
+      raw[px + 2] = rgba[2]!;
+      raw[px + 3] = rgba[3]!;
+    }
+  }
+  // `node:zlib`, not `Bun.deflateSync`: the latter emits a *raw* deflate stream
+  // (0x63 0x60...) while PNG's IDAT must hold a zlib one (0x78 ...). Bun's own
+  // image decoder accepts the raw form, so this fixture looked fine for a long
+  // time — but a strict decoder (resvg) silently renders nothing, which turns
+  // an SVG-compositing test into a false pass.
+  const idat = deflateSync(raw);
   const chunks: Uint8Array[] = [];
   const be32 = (n: number) =>
     new Uint8Array([(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]);
@@ -59,7 +87,7 @@ export const PNG_32 = (() => {
     offset += c.length;
   }
   return out;
-})();
+}
 
 /** A 1x1 PNG — decodes fine, but below MIN_COVER_DIMENSION so it must be rejected. */
 export const PNG_1 = new Uint8Array([
@@ -70,12 +98,59 @@ export const PNG_1 = new Uint8Array([
   0x42, 0x60, 0x82,
 ]);
 
+/**
+ * An SVG cover shaped like the ones Standard Ebooks ships: raster artwork in an
+ * `<image>` element with the title typeset over it as vector `<path>`s.
+ *
+ * Both layers matter, and the two ways of getting this wrong drop one each —
+ * extracting the embedded raster loses the lettering, rendering only the vector
+ * layer loses the artwork. `layers` builds the two degenerate versions so a
+ * test can assert the real render matches neither.
+ */
+export function makeSvgCover(
+  options: { width?: number; height?: number; layers?: "both" | "image" | "paths" } = {},
+): Uint8Array {
+  const { width = 200, height = 300, layers = "both" } = options;
+  // PNG_32 rather than something smaller: resvg declines to render very tiny
+  // embedded rasters (a 2x2 silently produced a blank layer), which would make
+  // this fixture assert the opposite of what it means to.
+  const artwork =
+    layers === "paths"
+      ? ""
+      : `<image height="${height}" width="${width}" x="0" y="0" ` +
+        `xlink:href="data:image/png;base64,${Buffer.from(PNG_32_OPAQUE).toString("base64")}"/>`;
+  // The "title band" — the layer that unwrapping the <image> would lose.
+  const lettering =
+    layers === "image"
+      ? ""
+      : `<path d="M 0,${height - 40} ${width},${height - 40} ${width},${height} 0,${height} Z"/>`;
+
+  return strToU8(
+    `<?xml version="1.0" encoding="utf-8"?>` +
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
+      `version="1.1" viewBox="0 0 ${width} ${height}">` +
+      `<title>The cover for the test edition</title>` +
+      `<style type="text/css">path{fill: #00f;}</style>` +
+      artwork +
+      lettering +
+      `</svg>`,
+  );
+}
+
 export type EpubFixtureOptions = {
   title?: string;
   authors?: string[];
   language?: string;
   /** Cover image bytes; omit for a book with no cover at all. */
   cover?: Uint8Array | undefined;
+  /**
+   * Name the cover is stored under inside the archive, and the media-type
+   * declared for it in the OPF manifest. Defaults to a PNG; pass
+   * `{ coverName: "cover.svg", coverMediaType: "image/svg+xml" }` with
+   * `makeSvgCover()` to build a Standard-Ebooks-shaped book.
+   */
+  coverName?: string;
+  coverMediaType?: string;
   /** Extra padding, to push the file past a size threshold. */
   padBytes?: number;
 };
@@ -87,11 +162,13 @@ export function makeEpub(options: EpubFixtureOptions = {}): Uint8Array {
     authors = ["A Test Author"],
     language = "en",
     cover = PNG_32,
+    coverName = "cover.png",
+    coverMediaType = "image/png",
     padBytes = 0,
   } = options;
 
   const manifest = cover
-    ? `<item id="cover" href="images/cover.png" media-type="image/png" properties="cover-image"/>`
+    ? `<item id="cover" href="images/${coverName}" media-type="${coverMediaType}" properties="cover-image"/>`
     : "";
   const opf =
     `<?xml version="1.0" encoding="UTF-8"?>` +
@@ -110,7 +187,7 @@ export function makeEpub(options: EpubFixtureOptions = {}): Uint8Array {
     ),
     "OEBPS/content.opf": strToU8(opf),
   };
-  if (cover) files["OEBPS/images/cover.png"] = cover;
+  if (cover) files[`OEBPS/images/${coverName}`] = cover;
   if (padBytes > 0) {
     // Random so it doesn't deflate to nothing — the point of padding is size.
     const pad = new Uint8Array(padBytes);

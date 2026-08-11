@@ -38,12 +38,12 @@ const _mainSchema = /*#__PURE__*/ v.procedure("buzz.bookhive.uploadPersonalBook"
        * Total bytes this user is allowed to store
        * @minimum 0
        */
-      storageQuotaBytes: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+      storageQuotaBytes: /*#__PURE__*/ v.integer(),
       /**
        * Total bytes stored for this user after the upload
        * @minimum 0
        */
-      storageUsedBytes: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+      storageUsedBytes: /*#__PURE__*/ v.integer(),
     }),
   },
 });

@@ -190,8 +190,12 @@ export type XrpcContext = {
   addWideEventContext: (context: Record<string, unknown>) => void;
   /** Verifies atproto service-auth JWTs. Null when service auth is disabled. */
   serviceJwtVerifier?: ServiceJwtVerifier | null;
-  /** Gate on service auth: has this DID ever used BookHive? */
-  isKnownAccount?: (did: string) => Promise<boolean>;
+  /**
+   * Gate on service auth: has this DID ever used BookHive? Required — see the
+   * note on `XrpcAuthContext`. The verifier stays optional (null genuinely
+   * means "service auth is off"), but the gate must never be absent.
+   */
+  isKnownAccount: (did: string) => Promise<boolean>;
 };
 
 export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
@@ -1492,14 +1496,26 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           ]),
         ) as typeof query;
       }
+      // Every sort ends on `personal_book.id`. None of the leading keys are
+      // unique: titles and authors collide routinely (a series, an omnibus, the
+      // same book in two formats), and `createdAt` — millisecond-precision ISO
+      // — collides when two uploads commit in the same millisecond. SQLite is
+      // free to return ties in any order it likes between two LIMIT/OFFSET
+      // queries, so without a unique final key a book can appear on two
+      // consecutive pages while another never appears at all.
       query =
         sort === "title"
-          ? (query.orderBy("personal_book.title", "asc") as typeof query)
+          ? (query
+              .orderBy("personal_book.title", "asc")
+              .orderBy("personal_book.id", "asc") as typeof query)
           : sort === "author"
             ? (query
                 .orderBy("personal_book.authors", "asc")
-                .orderBy("personal_book.title", "asc") as typeof query)
-            : (query.orderBy("personal_book.createdAt", "desc") as typeof query);
+                .orderBy("personal_book.title", "asc")
+                .orderBy("personal_book.id", "asc") as typeof query)
+            : (query
+                .orderBy("personal_book.createdAt", "desc")
+                .orderBy("personal_book.id", "desc") as typeof query);
 
       if (shelfId !== undefined) {
         query = query
@@ -1735,10 +1751,16 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       // client the public image proxy. Absolute, so a non-browser client can
       // follow it without knowing our origin, and public, so nothing leaks.
       if (book.hiveId) {
-        return Response.redirect(
-          new URL(`/images/books/${book.hiveId}?w=${width}`, request.url).toString(),
-          302,
-        );
+        // Built by hand rather than with `Response.redirect`, whose headers are
+        // *immutable*: the downstream `Cache-Control` middleware and the nitro
+        // response hook both set headers on the final Response, and doing that
+        // to an immutable guard throws a TypeError — turning a 302 into a 500.
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: new URL(`/images/books/${book.hiveId}?w=${width}`, request.url).toString(),
+          },
+        });
       }
       throw new XRPCError({ status: 404, error: "NotFound", message: "No cover for this book" });
     },

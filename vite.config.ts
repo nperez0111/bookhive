@@ -124,11 +124,18 @@ export default defineConfig(({ command }): any => ({
         "./server/plugins/request-tracing.ts",
         "./server/plugins/cache-headers.ts",
       ],
-      // The OG render worker loads @takumi-rs/core (native NAPI-RS bindings) at
-      // runtime in a worker thread, so it never appears in the Rolldown bundle
-      // graph. Explicitly trace it (full trace `*` to copy the platform-specific
-      // optional binding packages) into .output/server/node_modules/.
-      traceDeps: ["@takumi-rs/core*"],
+      // Native NAPI-RS bindings, which resolve their platform-specific `.node`
+      // at runtime and so never appear in the Rolldown bundle graph. The `*`
+      // suffix is a full trace, which is what copies the optional per-platform
+      // binding packages (…-linux-x64-musl for this Alpine image) into
+      // .output/server/node_modules/.
+      //
+      // - @takumi-rs/core: loaded by the OG render worker.
+      // - @resvg/resvg-js: rasterizes SVG book covers on the upload path.
+      //   Missing it does NOT crash — `prepareCover` catches and returns null —
+      //   so an untraced build silently uploads every Standard Ebooks book with
+      //   no cover, which is precisely the bug this was added to fix.
+      traceDeps: ["@takumi-rs/core*", "@resvg/resvg-js*"],
       // Longer cache lifetimes for static assets (fixes Lighthouse "cache lifetime" warnings).
       // Vite emits content-hashed files under /assets/* → safe to cache immutably for 1 year.
       //

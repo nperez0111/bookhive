@@ -359,7 +359,10 @@ export async function createAppDeps(): Promise<AppDeps> {
     );
   }
 
-  if (isPrimaryWorker && env.XRPC_SERVICE_AUTH_REPLAY) {
+  // Both flags, matching the branch above that creates the table: with service
+  // auth off, `ensureReplayTable` never ran, so the sweep would just log a
+  // "no such table: svc_jti" warning every 15 minutes forever.
+  if (isPrimaryWorker && env.XRPC_SERVICE_AUTH && env.XRPC_SERVICE_AUTH_REPLAY) {
     const replaySweep = setInterval(
       () => {
         void sweepReplayStore(kvDb).catch((err: unknown) => {

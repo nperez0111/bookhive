@@ -44,7 +44,13 @@ export type XrpcAuth =
 export type XrpcAuthContext = {
   getSessionAgent: () => Promise<SessionClient | null>;
   serviceJwtVerifier?: ServiceJwtVerifier | null;
-  isKnownAccount?: (did: string) => Promise<boolean>;
+  /**
+   * Required, not optional: an absent callback used to be treated as "no gate",
+   * so a context that simply forgot to wire it would have accepted any DID on
+   * the network. The type is the enforcement — a missing gate is now a compile
+   * error rather than a silent hole.
+   */
+  isKnownAccount: (did: string) => Promise<boolean>;
 };
 
 export async function resolveXrpcAuth(
@@ -77,7 +83,7 @@ export async function resolveXrpcAuth(
     // A valid token proves control of an atproto identity, not that the
     // identity has ever used BookHive. Without this gate any DID on the network
     // could open a storage quota's worth of space on our disk.
-    if (ctx.isKnownAccount && !(await ctx.isKnownAccount(issuer))) {
+    if (!(await ctx.isKnownAccount(issuer))) {
       throw new AuthRequiredError({
         message: "No BookHive account for this DID — sign in at bookhive.buzz once first",
       });

@@ -24,7 +24,7 @@
         "encoding": "application/json",
         "schema": {
           "type": "object",
-          "required": ["book"],
+          "required": ["book", "storageUsedBytes", "storageQuotaBytes"],
           "properties": {
             "book": {
               "type": "ref",

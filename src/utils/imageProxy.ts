@@ -12,9 +12,10 @@
 import { env } from "../env";
 
 /** Remote hosts we are willing to proxy. */
-// images.isbndb.com: the ISBNdb scraper was deleted, but rows written
-// while it was active still carry those cover URLs — without it we reject our
-// own data as a forbidden source.
+// images.isbndb.com: `src/scrapers/isbndb.ts` still exists but is no longer
+// wired into `findBookDetails`, and rows written while it was active still
+// carry those cover URLs — without it we reject our own data as a forbidden
+// source.
 export const ALLOWED_IMAGE_HOSTS = new Set([
   "i.gr-assets.com",
   "cdn.bsky.app",

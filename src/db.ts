@@ -939,6 +939,11 @@ migrations["022"] = {
 
     // Backfill in JS: SQLite has no md5, and the normalization is Unicode-aware.
     // Both tables hold one row per user per book, so this is small.
+    //
+    // These call the live helpers on purpose — see the header of
+    // `utils/filenameMatching.ts`. Changing their output requires a *new*
+    // migration that recomputes both columns; pinning a frozen copy here would
+    // only guarantee that a fresh install disagrees with the running app.
     const books = (
       await sql<{
         id: number;

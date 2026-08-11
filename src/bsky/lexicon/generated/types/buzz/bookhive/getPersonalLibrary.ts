@@ -83,12 +83,9 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   createdAt: /*#__PURE__*/ v.datetimeString(),
   /**
-   * Synopsis from the linked BookHive catalog entry
-   * @maxLength 5000
+   * Synopsis from the linked BookHive catalog entry. Deliberately unbounded: this is scraped catalog copy, not user input, and 125 of the 367k descriptions in production already exceed 5000 bytes (longest 10386). A maxLength here would be a contract the data violates, and enforcing it would mean truncating a synopsis mid-sentence.
    */
-  description: /*#__PURE__*/ v.optional(
-    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
-  ),
+  description: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * Original uploaded file name. A sync client needs this to correlate the book with what is on the device.
    */
