@@ -427,6 +427,74 @@ migrations["011"] = {
   },
 };
 
+migrations["022"] = {
+  async up(db: Kysely<unknown>) {
+    // Make user_book.hiveId nullable so foreign-lexicon records (e.g. Popfeed
+    // listItem) and unresolvable bookhive records can still be ingested. SQLite
+    // requires recreate-and-copy to drop a NOT NULL constraint.
+    // NOTE: keyed "022" so it runs last (after every column-adding migration —
+    // in particular "015" which adds user_book.previousReads, preserved below).
+    // Migrations execute in sorted-key order regardless of file position; keep
+    // the recreated column list in sync with any future user_book column adds.
+    await sql`
+      CREATE TABLE user_book_new (
+        uri TEXT PRIMARY KEY,
+        cid TEXT NOT NULL,
+        userDid TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        indexedAt TEXT NOT NULL,
+        hiveId TEXT,
+        title TEXT NOT NULL,
+        authors TEXT NOT NULL,
+        status TEXT,
+        startedAt TEXT,
+        finishedAt TEXT,
+        stars INT8,
+        review TEXT,
+        bookProgress TEXT,
+        owned INTEGER NOT NULL DEFAULT 0,
+        previousReads TEXT
+      )
+    `.execute(db);
+    await sql`
+      INSERT INTO user_book_new (
+        uri, cid, userDid, createdAt, indexedAt, hiveId, title, authors,
+        status, startedAt, finishedAt, stars, review, bookProgress, owned,
+        previousReads
+      )
+      SELECT
+        uri, cid, userDid, createdAt, indexedAt, hiveId, title, authors,
+        status, startedAt, finishedAt, stars, review, bookProgress, owned,
+        previousReads
+      FROM user_book
+    `.execute(db);
+    await sql`DROP TABLE user_book`.execute(db);
+    await sql`ALTER TABLE user_book_new RENAME TO user_book`.execute(db);
+
+    // Recreate indexes that lived on the old table.
+    await db.schema
+      .createIndex("idx_user_book_created_at")
+      .on("user_book")
+      .column("createdAt")
+      .execute();
+    await db.schema
+      .createIndex("idx_user_book_user_did")
+      .on("user_book")
+      .column("userDid")
+      .execute();
+    await db.schema.createIndex("idx_user_book_hive_id").on("user_book").column("hiveId").execute();
+    await db.schema
+      .createIndex("idx_user_book_user_created")
+      .on("user_book")
+      .columns(["userDid", "createdAt"])
+      .execute();
+  },
+  async down(_db: Kysely<unknown>) {
+    // Not reversible: existing rows may now have NULL hiveId, which would
+    // violate the original NOT NULL constraint.
+  },
+};
+
 migrations["012"] = {
   async up(db: Kysely<unknown>) {
     // hive_book covering indexes

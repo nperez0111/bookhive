@@ -53,9 +53,10 @@ export type UserBook = {
    */
   cid: string;
   /**
-   * Hive ID of the book
+   * Hive ID of the book. Null when the record came from a foreign lexicon
+   * (e.g. Popfeed) or when our hive_book lookup is still pending.
    */
-  hiveId: HiveId;
+  hiveId: HiveId | null;
   /**
    * DID of the user who added the book
    */

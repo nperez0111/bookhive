@@ -20,7 +20,7 @@ const DateInputForm: FC<{
     >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
-      <input type="hidden" name="hiveId" value={book.hiveId} />
+      <input type="hidden" name="hiveId" value={book.hiveId ?? ""} />
       {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
       {book.status && <input type="hidden" name="status" value={book.status} />}
       {book.owned ? <input type="hidden" name="owned" value="1" /> : null}
@@ -54,7 +54,7 @@ const RatingSelect: FC<{
     >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
-      <input type="hidden" name="hiveId" value={book.hiveId} />
+      <input type="hidden" name="hiveId" value={book.hiveId ?? ""} />
       {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
       {book.status && <input type="hidden" name="status" value={book.status} />}
       {book.owned ? <input type="hidden" name="owned" value="1" /> : null}
@@ -98,7 +98,7 @@ const StatusSelect: FC<{
     >
       <input type="hidden" name="authors" value={book.authors} />
       <input type="hidden" name="title" value={book.title} />
-      <input type="hidden" name="hiveId" value={book.hiveId} />
+      <input type="hidden" name="hiveId" value={book.hiveId ?? ""} />
       {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
       {book.stars && <input type="hidden" name="stars" value={String(book.stars)} />}
       {book.owned ? <input type="hidden" name="owned" value="1" /> : null}

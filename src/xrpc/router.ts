@@ -696,7 +696,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("hiveId", "==", book.id)
         .orderBy("indexedAt", "desc")
         .limit(100)
-        .execute();
+        .execute()
+        .then((rows) => rows.filter((b): b is typeof b & { hiveId: HiveId } => b.hiveId !== null));
 
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
@@ -824,11 +825,19 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .orderBy("user_book.createdAt", "desc")
         .limit(50)
         .execute();
+      // hiveId is now optional in the userBook lexicon: orphan rows (foreign
+      // lexicons / unresolved catalog) flow through with hiveId === null.
+      // Clients use `uri` for stable identity and skip canonical navigation
+      // when hiveId is missing.
       const parsedBooks = books.map((book) => hydrateUserBook(book));
       const parsedFriendsBuzzes = friendsBuzzes.map((book) => hydrateUserBook(book));
 
       const profileHiveIds = [
-        ...new Set([...books.map((b) => b.hiveId), ...friendsBuzzes.map((b) => b.hiveId)]),
+        ...new Set(
+          [...parsedBooks, ...parsedFriendsBuzzes]
+            .map((b) => b.hiveId)
+            .filter((id): id is HiveId => id !== null),
+        ),
       ];
       const profileIdRows =
         profileHiveIds.length > 0
@@ -883,7 +892,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
           createdAt: b.createdAt,
-          hiveId: b.hiveId,
+          hiveId: b.hiveId ?? undefined,
+          uri: b.uri,
           title: b.title,
           thumbnail: b.thumbnail || "",
           cover: b.cover ?? b.thumbnail ?? undefined,
@@ -897,15 +907,16 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
           previousReads: b.previousReads ?? undefined,
-          identifiers: identifiersByHiveId.get(b.hiveId),
-          genres: genresByHiveId.get(b.hiveId as HiveId),
+          identifiers: b.hiveId ? identifiersByHiveId.get(b.hiveId) : undefined,
+          genres: b.hiveId ? genresByHiveId.get(b.hiveId) : undefined,
         })),
         books: parsedBooks.map((b) => ({
           userDid: b.userDid,
           userHandle: didToHandle[b.userDid] ?? b.userDid,
           authors: b.authors,
           createdAt: b.createdAt,
-          hiveId: b.hiveId,
+          hiveId: b.hiveId ?? undefined,
+          uri: b.uri,
           title: b.title,
           thumbnail: b.thumbnail || "",
           cover: b.cover ?? b.thumbnail ?? undefined,
@@ -919,13 +930,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           startedAt: b.startedAt ?? undefined,
           bookProgress: b.bookProgress ?? undefined,
           previousReads: b.previousReads ?? undefined,
-          identifiers: identifiersByHiveId.get(b.hiveId),
-          genres: genresByHiveId.get(b.hiveId as HiveId),
+          identifiers: b.hiveId ? identifiersByHiveId.get(b.hiveId) : undefined,
+          genres: b.hiveId ? genresByHiveId.get(b.hiveId) : undefined,
         })),
-        activity: books
+        activity: parsedBooks
           .reduce(
             (acc, b) => {
-              const existing = acc.find((a) => a.hiveId === b.hiveId);
+              // Dedupe by uri (always unique) so orphan rows aren't collapsed
+              // together when hiveId is null on multiple rows.
+              const existing = acc.find((a) => a.uri === b.uri);
               if (!existing || new Date(b.createdAt) > new Date(existing.createdAt)) {
                 if (existing) {
                   acc.splice(acc.indexOf(existing), 1);
@@ -940,7 +953,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
                         ? "review"
                         : "started",
                   createdAt: b.createdAt,
-                  hiveId: b.hiveId,
+                  hiveId: b.hiveId ?? undefined,
+                  uri: b.uri,
                   title: b.title,
                   userDid: b.userDid,
                   userHandle: didToHandle[b.userDid] ?? b.userDid,
@@ -951,7 +965,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             [] as Array<{
               type: string;
               createdAt: string;
-              hiveId: string;
+              hiveId?: string;
+              uri: string;
               title: string;
               userDid: string;
               userHandle: string;
@@ -1058,6 +1073,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const rows = await query.execute();
       const hasMore = rows.length > limit;
+      // hiveId is now optional in feedActivity; orphan rows flow through with
+      // hiveId omitted. Clients use `uri` as the stable key.
       const activities = rows.slice(0, limit);
 
       const allDids = [...new Set(activities.map((a) => a.userDid))];
@@ -1068,7 +1085,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         activities: activities.map((a) => ({
           userDid: a.userDid,
           userHandle: didToHandle[a.userDid] ?? a.userDid,
-          hiveId: a.hiveId,
+          hiveId: a.hiveId ?? undefined,
+          uri: a.uri,
           title: a.title,
           authors: a.authors,
           status: a.status ?? undefined,
@@ -1185,7 +1203,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .orderBy("user_book.indexedAt", "desc")
         .limit(10_000)
         .execute();
-      const parsedBooks = books.map((b) => hydrateUserBook(b));
+      // Stats only include books we can resolve via hiveId; orphan rows have no
+      // page count / genre data so they'd skew or error in the stats pipeline.
+      const parsedBooks = books
+        .map((b) => hydrateUserBook(b))
+        .filter((b): b is typeof b & { hiveId: HiveId } => b.hiveId !== null);
 
       const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
 
@@ -1220,7 +1242,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const toBookSummary = (
         b: {
-          hiveId: string;
+          hiveId: string | null;
           title: string;
           authors: string;
           cover?: string | null;
@@ -1229,7 +1251,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           rating?: number | null;
         } | null,
       ) => {
-        if (!b) return undefined;
+        if (!b || !b.hiveId) return undefined;
         return {
           hiveId: b.hiveId,
           title: b.title,

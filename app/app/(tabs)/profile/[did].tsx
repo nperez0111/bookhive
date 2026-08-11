@@ -108,12 +108,12 @@ export default function ProfileScreen() {
     );
   }
 
-  // Dedupe by hiveId to avoid duplicate keys in FlatLists
-  const dedupeByHiveId = <T extends { hiveId: string }>(books: T[]) => {
+  // Dedupe by uri (always present), hiveId is optional.
+  const dedupeByUri = <T extends { uri?: string; hiveId?: string }>(books: T[]) => {
     const seen = new Set<string>();
     const unique: T[] = [];
     for (const book of books) {
-      const key = String(book.hiveId);
+      const key = book.uri ?? book.hiveId ?? "";
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(book);
@@ -122,19 +122,23 @@ export default function ProfileScreen() {
     return unique;
   };
 
-  const readingBooks = dedupeByHiveId(
+  const bookKey = (book: { uri?: string; hiveId?: string }) => book.uri ?? book.hiveId ?? "";
+
+  const readingBooks = dedupeByUri(
     profile.data.books.filter((book) => book.status === BOOK_STATUS.READING),
   );
-  const wantToReadBooks = dedupeByHiveId(
+  const wantToReadBooks = dedupeByUri(
     profile.data.books.filter((book) => book.status === BOOK_STATUS.WANTTOREAD),
   );
-  const readBooks = dedupeByHiveId(
+  const readBooks = dedupeByUri(
     profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED),
   );
 
   const renderBookItem = ({ item: book }: { item: any }) => (
     <Pressable
-      onPress={() => router.push(`/book/${book.hiveId}`)}
+      // Orphan rows (no hiveId) aren't navigable yet — disable the press.
+      onPress={() => (book.hiveId ? router.push(`/book/${book.hiveId}`) : undefined)}
+      disabled={!book.hiveId}
       style={[
         styles.bookItem,
         {
@@ -346,7 +350,7 @@ export default function ProfileScreen() {
             </Pressable>
             <FlatList
               data={readingBooks}
-              keyExtractor={(item) => item.hiveId}
+              keyExtractor={(item) => bookKey(item)}
               renderItem={renderBookItem}
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -385,7 +389,7 @@ export default function ProfileScreen() {
             </Pressable>
             <FlatList
               data={wantToReadBooks}
-              keyExtractor={(item) => item.hiveId}
+              keyExtractor={(item) => bookKey(item)}
               renderItem={renderBookItem}
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -424,7 +428,7 @@ export default function ProfileScreen() {
             </Pressable>
             <FlatList
               data={readBooks}
-              keyExtractor={(item) => item.hiveId}
+              keyExtractor={(item) => bookKey(item)}
               renderItem={renderBookItem}
               horizontal
               showsHorizontalScrollIndicator={false}

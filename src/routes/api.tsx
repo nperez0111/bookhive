@@ -40,7 +40,8 @@ function dateInputToISO(val: string): string {
 }
 
 const updateBookSchema = z.object({
-  hiveId: z.string(),
+  hiveId: z.string().optional(),
+  bookUri: z.string().optional(),
   status: z.optional(z.string()),
   owned: z.optional(z.boolean()),
   review: z.optional(z.string()),
@@ -91,7 +92,7 @@ const app = new Hono<AppEnv>()
       return c.json({ success: false, message: "Invalid Session" }, 401);
     }
     const payload = c.req.valid("json");
-    const { hiveId, bookProgress, ...updates } = payload;
+    const { hiveId, bookUri, bookProgress, ...updates } = payload;
 
     let normalizedProgress: BookProgress | undefined | null = bookProgress as
       | BookProgress
@@ -123,23 +124,26 @@ const app = new Hono<AppEnv>()
         updates.status = BOOK_STATUS.READING;
       }
     }
-    if (!hiveId) {
-      return c.json({ success: false, message: "Invalid ID" }, 400);
+    if (!hiveId && !bookUri) {
+      return c.json({ success: false, message: "Provide hiveId or bookUri" }, 400);
     }
+    const lockToken = hiveId ?? bookUri!;
     const bookLockKey = "book_lock:" + agent.did;
     try {
-      await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+      await c.get("ctx").kv.setItem(bookLockKey, lockToken);
       startTime(c, "pds_update_book");
       await updateBookRecord({
         ctx: c.get("ctx"),
         agent,
-        hiveId: hiveId as HiveId,
+        hiveId: hiveId ? (hiveId as HiveId) : undefined,
+        bookUri,
         updates,
       });
       endTime(c, "pds_update_book");
       c.get("ctx").addWideEventContext({
         api: "update_book",
         hiveId,
+        bookUri,
         userDid: agent.did,
       });
       return c.json({ success: true, message: "Book updated" });
@@ -147,6 +151,7 @@ const app = new Hono<AppEnv>()
       c.get("ctx").addWideEventContext({
         api_update_book: "failed",
         hiveId,
+        bookUri,
         userDid: agent.did,
         error: (e as Error).message,
       });

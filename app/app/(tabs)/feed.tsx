@@ -44,7 +44,9 @@ const BOOK_STATUS_LABELS: Record<string, string> = {
 type FeedActivity = {
   userDid: string;
   userHandle?: string;
-  hiveId: string;
+  /** Absent for orphan / foreign-lexicon records — fall back to `uri` for keys/navigation. */
+  hiveId?: string;
+  uri: string;
   title: string;
   authors: string;
   status?: string;
@@ -72,11 +74,9 @@ export default function FeedScreen() {
   const activities = useMemo(() => {
     const currentPageActivities = feed.data?.activities ?? [];
     if (page === 1) return currentPageActivities;
-    // Deduplicate by composite key
-    const seen = new Set(allActivities.map((a) => `${a.hiveId}_${a.userDid}_${a.createdAt}`));
-    const newItems = currentPageActivities.filter(
-      (a) => !seen.has(`${a.hiveId}_${a.userDid}_${a.createdAt}`),
-    );
+    // Dedupe on uri (always unique per row) so orphan rows aren't collapsed.
+    const seen = new Set(allActivities.map((a) => a.uri));
+    const newItems = currentPageActivities.filter((a) => !seen.has(a.uri));
     return [...allActivities, ...newItems];
   }, [feed.data?.activities, page, allActivities]);
 
@@ -116,7 +116,7 @@ export default function FeedScreen() {
           title={item.title}
           authors={item.authors}
           imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`}
-          onPress={() => router.push(`/book/${item.hiveId}` as any)}
+          onPress={() => (item.hiveId ? router.push(`/book/${item.hiveId}` as any) : undefined)}
           variant="list"
         >
           <UserBlock
@@ -217,7 +217,7 @@ export default function FeedScreen() {
       ) : (
         <FlatList
           data={activities}
-          keyExtractor={(item) => `${item.hiveId}_${item.userDid}_${item.createdAt}`}
+          keyExtractor={(item) => item.uri}
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           style={styles.feedList}

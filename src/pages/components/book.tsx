@@ -10,7 +10,8 @@ const NO_BOOKS_FOUND = <p className="text-center text-lg">No books in this list<
 export const BookList: FC<{
   books?: Book[];
   fallback?: Child;
-}> = async ({ books: booksFromProps, fallback }) => {
+  ownerHandle?: string;
+}> = async ({ books: booksFromProps, fallback, ownerHandle }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
   const books =
@@ -19,8 +20,16 @@ export const BookList: FC<{
       ? await c
           .get("ctx")
           .db.selectFrom("user_book")
-          .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .selectAll()
+          .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+          .selectAll("user_book")
+          .select([
+            "hive_book.cover",
+            "hive_book.thumbnail",
+            "hive_book.description",
+            "hive_book.rating",
+            "hive_book.ratingsCount",
+            "hive_book.meta",
+          ])
           .where("user_book.userDid", "=", agent.did)
           .orderBy("user_book.createdAt", "desc")
           .limit(10_000)
@@ -144,7 +153,7 @@ export const BookList: FC<{
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {readBooks.map((book) => (
-              <BookCard variant="dense" book={normalizeBookData(book)} />
+              <BookCard variant="dense" book={normalizeBookData(book, { ownerHandle })} />
             ))}
           </ul>
         </div>
@@ -158,7 +167,7 @@ export const BookList: FC<{
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {readingBooks.map((book) => (
-              <BookCard variant="dense" book={normalizeBookData(book)} />
+              <BookCard variant="dense" book={normalizeBookData(book, { ownerHandle })} />
             ))}
           </ul>
         </div>
@@ -172,7 +181,7 @@ export const BookList: FC<{
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {wantBooks.map((book) => (
-              <BookCard variant="dense" book={normalizeBookData(book)} />
+              <BookCard variant="dense" book={normalizeBookData(book, { ownerHandle })} />
             ))}
           </ul>
         </div>

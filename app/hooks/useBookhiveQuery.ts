@@ -345,7 +345,8 @@ export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", page: n
         activities: {
           userDid: string;
           userHandle?: string;
-          hiveId: string;
+          hiveId?: string;
+          uri: string;
           title: string;
           authors: string;
           status?: string;

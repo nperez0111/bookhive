@@ -176,24 +176,31 @@ export const ProfilePage: FC<{
               <div
                 id="mount-library-table"
                 data-books={JSON.stringify(
-                  books.map((b) => ({
-                    hiveId: b.hiveId,
-                    title: b.title,
-                    authors: b.authors,
-                    cover: b.cover,
-                    thumbnail: b.thumbnail,
-                    status: b.status,
-                    stars: b.stars,
-                    startedAt: b.startedAt,
-                    finishedAt: b.finishedAt,
-                    createdAt: b.createdAt,
-                    owned: b.owned,
-                    review: b.review,
-                  })),
+                  books.map((b) => {
+                    const rkey = b.uri.split("/").at(-1)!;
+                    const userScopedHref = `/profile/${handle}/book/${rkey}`;
+                    return {
+                      hiveId: b.hiveId,
+                      bookUri: b.uri,
+                      bookHref: b.hiveId ? `/books/${b.hiveId}` : userScopedHref,
+                      deleteUrl: b.hiveId ? `/books/${b.hiveId}` : `${userScopedHref}/delete`,
+                      title: b.title,
+                      authors: b.authors,
+                      cover: b.cover,
+                      thumbnail: b.thumbnail,
+                      status: b.status,
+                      stars: b.stars,
+                      startedAt: b.startedAt,
+                      finishedAt: b.finishedAt,
+                      createdAt: b.createdAt,
+                      owned: b.owned,
+                      review: b.review,
+                    };
+                  }),
                 )}
               />
             ) : (
-              <BookList books={books} />
+              <BookList books={books} ownerHandle={handle} />
             )}
           </section>
 

@@ -227,7 +227,7 @@ const SuccessRow: FC<{
           status={status}
           onChange={(nextStatus) => {
             onUpdate({ status: nextStatus });
-            void updateBookApi(hiveId, { status: nextStatus });
+            void updateBookApi({ hiveId }, { status: nextStatus });
           }}
         />
       </td>
@@ -236,7 +236,7 @@ const SuccessRow: FC<{
           stars={stars}
           onChange={(rating) => {
             onUpdate({ stars: rating });
-            void updateBookApi(hiveId, { stars: rating });
+            void updateBookApi({ hiveId }, { stars: rating });
           }}
         />
       </td>
@@ -244,7 +244,7 @@ const SuccessRow: FC<{
         <DeleteButton
           onDelete={() => {
             onDelete(hiveId);
-            void deleteBookApi(hiveId);
+            void deleteBookApi({ hiveId });
           }}
         />
       </td>

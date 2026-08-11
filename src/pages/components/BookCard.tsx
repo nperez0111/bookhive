@@ -17,13 +17,26 @@ export type BookCardData = {
   status?: string | null;
   stars?: number | null;
   review?: string | null;
+  /** Per-user fallback link for orphan rows (no hive_book / no hiveId). */
+  userBookHref?: string;
 };
 
-export function normalizeBookData(book: Book | HiveBook): BookCardData {
+export function normalizeBookData(
+  book: Book | HiveBook,
+  options?: { ownerHandle?: string },
+): BookCardData {
   const isUserBook = "hiveId" in book;
   const hiveId = isUserBook ? book.hiveId : book.id;
   const stars = isUserBook ? (book as Book).stars : null;
   const rating = stars != null ? stars / 2 : "rating" in book ? (book.rating || 0) / 1000 : 0;
+
+  // For user books, fall back to the user-scoped detail page when we don't
+  // have a hiveId we can navigate to canonically.
+  let userBookHref: string | undefined;
+  if (isUserBook && !hiveId && options?.ownerHandle) {
+    const rkey = (book as Book).uri.split("/").at(-1);
+    if (rkey) userBookHref = `/profile/${options.ownerHandle}/book/${rkey}`;
+  }
 
   return {
     hiveId,
@@ -35,7 +48,14 @@ export function normalizeBookData(book: Book | HiveBook): BookCardData {
     status: "status" in book ? (book as Book).status : null,
     stars,
     review: "review" in book ? (book as Book).review : null,
+    userBookHref,
   };
+}
+
+/** Resolve a clickable link for the card: hive-backed first, user-scoped fallback. */
+function bookHref(book: BookCardData): string | undefined {
+  if (book.hiveId) return `/books/${book.hiveId}`;
+  return book.userBookHref;
 }
 
 export function authorsDisplay(authors: string): string {
@@ -159,7 +179,7 @@ const DenseCard: FC<DenseProps> = ({
   tooltipPosition = "top",
   showAuthor = false,
 }) => {
-  const href = book.hiveId ? `/books/${book.hiveId}` : undefined;
+  const href = bookHref(book);
   const Tag = href ? "a" : "div";
 
   return (
@@ -218,13 +238,14 @@ type ListProps = {
 };
 
 const ListCard: FC<ListProps> = ({ book, class: className, children }) => {
+  const href = bookHref(book);
   return (
     <div class={`relative hover:z-30 ${className ?? ""}`}>
       <div class="group relative">
         <BookTooltip book={book} position="top" showChips={false} />
 
         <a
-          href={book.hiveId ? `/books/${book.hiveId}` : undefined}
+          href={href}
           class="book-cover-frame block overflow-hidden rounded-lg transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
         >
           <div class="aspect-[2/3] w-full">
@@ -263,6 +284,7 @@ const RowCard: FC<RowProps> = ({
   children,
 }) => {
   const config = rowSizeMap[size];
+  const href = bookHref(book);
   const statusLabel =
     showStatus && book.status != null && book.status in BOOK_STATUS_MAP
       ? BOOK_STATUS_MAP[book.status as keyof typeof BOOK_STATUS_MAP]
@@ -270,12 +292,12 @@ const RowCard: FC<RowProps> = ({
 
   return (
     <div class={`flex gap-3 min-w-0 ${className ?? ""}`}>
-      <a href={book.hiveId ? `/books/${book.hiveId}` : undefined} class="shrink-0">
+      <a href={href} class="shrink-0">
         <CoverImage book={book} class={`${config.cover} rounded object-cover shrink-0`} />
       </a>
       <div class="min-w-0 flex-1 flex flex-col justify-center">
         <a
-          href={book.hiveId ? `/books/${book.hiveId}` : undefined}
+          href={href}
           class={`text-foreground hover:text-primary font-semibold ${config.titleClamp} ${config.textSize}`}
         >
           {book.title}

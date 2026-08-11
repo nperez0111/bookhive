@@ -4,11 +4,18 @@
   "defs": {
     "feedActivity": {
       "type": "object",
-      "required": ["userDid", "hiveId", "title", "authors", "createdAt", "thumbnail"],
+      "required": ["userDid", "title", "authors", "createdAt", "thumbnail", "uri"],
       "properties": {
         "userDid": { "type": "string" },
         "userHandle": { "type": "string" },
-        "hiveId": { "type": "string" },
+        "hiveId": {
+          "type": "string",
+          "description": "Optional — absent for foreign-lexicon or unresolved records. Fall back to `uri` for navigation."
+        },
+        "uri": {
+          "type": "string",
+          "description": "AT-URI of the user's PDS record; always present and unique per row."
+        },
         "title": { "type": "string" },
         "authors": { "type": "string" },
         "status": { "type": "string" },
