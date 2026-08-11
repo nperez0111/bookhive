@@ -23,7 +23,7 @@ import {
   streamPersonalBook,
   MAX_PERSONAL_BOOK_BYTES,
 } from "../utils/personalLibrary";
-import { NO_HIVE_MATCH } from "../utils/syncMatching";
+import { NO_HIVE_MATCH, matchSyncDocument } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
 const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
@@ -151,6 +151,14 @@ const app = new Hono<AppEnv>()
         matchedHiveId = syncDoc.hiveId;
       }
 
+      if (!matchedHiveId) {
+        matchedHiveId = await matchSyncDocument(db, {
+          title: metadata.title,
+          authors: metadata.authors,
+          filename: file.name,
+        });
+      }
+
       const now = new Date().toISOString();
       await db
         .insertInto("personal_book")
@@ -173,8 +181,15 @@ const app = new Hono<AppEnv>()
         })
         .execute();
 
-      // Mark the book as owned if auto-linked and user has it in their library
       if (matchedHiveId) {
+        await db
+          .updateTable("sync_document")
+          .set({ hiveId: matchedHiveId })
+          .where("userDid", "=", agent.did)
+          .where("documentHash", "=", contentHash)
+          .where("hiveId", "is", null)
+          .execute();
+
         await db
           .updateTable("user_book")
           .set({ owned: 1 })

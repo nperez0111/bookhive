@@ -2154,15 +2154,27 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       if (!hiveId && (title || authors)) {
         hiveId = await matchSyncDocument(ctx.db, { title, authors, filename });
-        if (hiveId) {
-          await ctx.db
-            .updateTable("sync_document")
-            .set({ hiveId })
-            .where("userDid", "=", userDid)
-            .where("provider", "=", "kosync")
-            .where("documentHash", "=", document)
-            .execute();
-        }
+      }
+
+      if (!hiveId) {
+        const pb = await ctx.db
+          .selectFrom("personal_book")
+          .select("hiveId")
+          .where("userDid", "=", userDid)
+          .where("contentHash", "=", document)
+          .executeTakeFirst();
+        if (pb?.hiveId) hiveId = pb.hiveId;
+      }
+
+      if (hiveId) {
+        await ctx.db
+          .updateTable("sync_document")
+          .set({ hiveId })
+          .where("userDid", "=", userDid)
+          .where("provider", "=", "kosync")
+          .where("documentHash", "=", document)
+          .where("hiveId", "is", null)
+          .execute();
       }
 
       if (hiveId) {

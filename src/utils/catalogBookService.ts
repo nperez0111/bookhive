@@ -2,6 +2,7 @@ import { Client } from "@atcute/client";
 import { PasswordSession } from "@atcute/password-session";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { Logger } from "pino";
+import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
 import { createActorResolver } from "../bsky/id-resolver";
@@ -39,6 +40,7 @@ export async function createServiceAccountAgent(
 
 type CatalogCtx = Pick<AppContext, "db"> & {
   serviceAccountAgent: AppContext["serviceAccountAgent"] | undefined;
+  kv?: Storage;
   logger?: Logger;
 };
 
@@ -234,7 +236,7 @@ class RateLimitError extends Error {
 }
 
 export interface BackfillProgress {
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "interrupted";
   startedAt: string | null;
   completedAt: string | null;
   written: number;
@@ -243,6 +245,8 @@ export interface BackfillProgress {
   lastBatchAt: string | null;
   error: string | null;
 }
+
+const BACKFILL_KV_KEY = "backfill:catalog_progress";
 
 let backfillProgress: BackfillProgress = {
   status: "idle",
@@ -255,8 +259,27 @@ let backfillProgress: BackfillProgress = {
   error: null,
 };
 
-export function getBackfillProgress(): BackfillProgress {
-  return { ...backfillProgress };
+function persistProgress(kv: Storage | undefined) {
+  if (!kv) return;
+  kv.setItem(BACKFILL_KV_KEY, JSON.stringify(backfillProgress)).catch(() => {});
+}
+
+export async function getBackfillProgress(kv?: Storage): Promise<BackfillProgress> {
+  if (backfillProgress.status !== "idle") return { ...backfillProgress };
+  if (!kv) return { ...backfillProgress };
+  const stored = await kv.getItem<string>(BACKFILL_KV_KEY);
+  if (!stored) return { ...backfillProgress };
+  try {
+    const parsed = JSON.parse(stored) as BackfillProgress;
+    if (parsed.status === "running") {
+      parsed.status = "interrupted";
+      parsed.completedAt = parsed.lastBatchAt;
+      parsed.error = "Process restarted while backfill was running";
+    }
+    return parsed;
+  } catch {
+    return { ...backfillProgress };
+  }
 }
 
 /**
@@ -306,6 +329,7 @@ export async function backfillCatalogBooks(
     lastBatchAt: null,
     error: null,
   };
+  persistProgress(ctx.kv);
 
   try {
     while (true) {
@@ -345,18 +369,21 @@ export async function backfillCatalogBooks(
       backfillProgress.written = written;
       backfillProgress.batches = batches;
       backfillProgress.lastBatchAt = new Date().toISOString();
+      persistProgress(ctx.kv);
 
       await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
 
     backfillProgress.status = "completed";
     backfillProgress.completedAt = new Date().toISOString();
+    persistProgress(ctx.kv);
     wideEvent["outcome"] = "success";
     return { written, batches };
   } catch (err) {
     backfillProgress.status = "failed";
     backfillProgress.completedAt = new Date().toISOString();
     backfillProgress.error = err instanceof Error ? err.message : String(err);
+    persistProgress(ctx.kv);
     wideEvent["outcome"] = "error";
     wideEvent["error"] =
       err instanceof Error ? { message: err.message, type: err.name } : String(err);

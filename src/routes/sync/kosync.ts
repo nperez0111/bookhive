@@ -103,15 +103,27 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
 
   if (!hiveId && (title || authors)) {
     hiveId = await matchSyncDocument(db, { title, authors, filename });
-    if (hiveId) {
-      await db
-        .updateTable("sync_document")
-        .set({ hiveId })
-        .where("userDid", "=", userDid)
-        .where("provider", "=", "kosync")
-        .where("documentHash", "=", document)
-        .execute();
-    }
+  }
+
+  if (!hiveId) {
+    const pb = await db
+      .selectFrom("personal_book")
+      .select("hiveId")
+      .where("userDid", "=", userDid)
+      .where("contentHash", "=", document)
+      .executeTakeFirst();
+    if (pb?.hiveId) hiveId = pb.hiveId;
+  }
+
+  if (hiveId) {
+    await db
+      .updateTable("sync_document")
+      .set({ hiveId })
+      .where("userDid", "=", userDid)
+      .where("provider", "=", "kosync")
+      .where("documentHash", "=", document)
+      .where("hiveId", "is", null)
+      .execute();
   }
 
   if (hiveId) {
