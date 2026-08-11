@@ -5,6 +5,7 @@ import { getBookDetailedInfo } from "../scrapers/moreInfo";
 import type { BookUtilContext } from "../context";
 import { normalizeGoodreadsId, upsertBookIdentifiers } from "./bookIdentifiers";
 import { Semaphore, withTimeout } from "./semaphore";
+import { lookupIsbn } from "./openLibrary";
 
 /**
  * Bounds enrichment for *every* caller, not just the ones we remembered to
@@ -35,7 +36,7 @@ interface BookMeta {
 
 export async function enrichBookWithDetailedData(
   book: HiveBook,
-  ctx: Pick<BookUtilContext, "db" | "addWideEventContext">,
+  ctx: Pick<BookUtilContext, "db" | "addWideEventContext"> & Partial<Pick<BookUtilContext, "kv">>,
   options?: { force?: boolean },
 ): Promise<void> {
   try {
@@ -100,7 +101,7 @@ export async function enrichBookWithDetailedData(
 /** The actual scrape + write. Runs inside the semaphore and the deadline. */
 async function enrich(
   book: HiveBook,
-  ctx: Pick<BookUtilContext, "db" | "addWideEventContext">,
+  ctx: Pick<BookUtilContext, "db" | "addWideEventContext"> & Partial<Pick<BookUtilContext, "kv">>,
 ): Promise<void> {
   if (!book.sourceUrl) return;
 
@@ -192,11 +193,28 @@ async function enrich(
     ? detailedData.book.id
     : book.sourceId;
 
-  await upsertBookIdentifiers(ctx.db, {
-    ...book,
-    sourceId: enrichedSourceId,
-    meta: serializedMeta,
-  });
+  let olWorkId: string | null = null;
+  if (ctx.kv) {
+    const isbnForLookup = updatedIdentifiers.isbn13 || updatedIdentifiers.isbn10;
+    if (isbnForLookup) {
+      try {
+        const enrichment = await lookupIsbn(ctx.kv, isbnForLookup);
+        olWorkId = enrichment?.workId ?? null;
+      } catch {
+        olWorkId = null;
+      }
+    }
+  }
+
+  await upsertBookIdentifiers(
+    ctx.db,
+    {
+      ...book,
+      sourceId: enrichedSourceId,
+      meta: serializedMeta,
+    },
+    { olWorkId },
+  );
 
   ctx.addWideEventContext({
     enrichment: "completed",

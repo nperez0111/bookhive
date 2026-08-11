@@ -3,6 +3,7 @@ import "basecoat-css/sidebar";
 import "../index.css";
 
 import { SearchTrigger } from "./components/SearchBox";
+import type { LibbyShelfBook } from "./components/LibbyShelf";
 
 document.addEventListener("DOMContentLoaded", () => {
   // Shared open function: the SearchPalette registers it once lazily loaded,
@@ -95,6 +96,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const books = JSON.parse(libraryTable.dataset["books"] || "[]");
     void import("./components/LibraryTable").then(({ LibraryTable }) => {
       render(<LibraryTable initialBooks={books} />, libraryTable);
+    });
+  }
+
+  const libbyShelf = document.getElementById("mount-libby-shelf");
+  if (libbyShelf) {
+    const books = JSON.parse(libbyShelf.dataset["books"] || "[]") as LibbyShelfBook[];
+    void import("./components/LibbyShelf").then(({ LibbyShelf }) => {
+      render(<LibbyShelf books={books} />, libbyShelf);
     });
   }
 

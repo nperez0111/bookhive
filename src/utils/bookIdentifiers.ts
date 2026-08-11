@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import type { Database } from "../db";
 import type { BookIdentifiers, BookIdentifiersRow, HiveBook, HiveId } from "../types";
 
@@ -91,8 +92,19 @@ function extractGoodreadsId(book: BookIdentifiersSource): string | null {
   return normalizeGoodreadsId(match[1]);
 }
 
+export function normalizeOlWorkId(value: string | null | undefined): string | null {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return null;
+  }
+  // Accept "OL45883W" or a trailing path like "/works/OL45883W".
+  const match = normalized.match(/(OL[0-9]+W)\b/i);
+  return match?.[1] ? match[1].toUpperCase() : null;
+}
+
 export function deriveBookIdentifiers(
   book: BookIdentifiersSource,
+  overrides: { olWorkId?: string | null } = {},
 ): Omit<BookIdentifiersRow, "updatedAt"> {
   const meta = parseMeta(book.meta);
   return {
@@ -100,6 +112,7 @@ export function deriveBookIdentifiers(
     isbn: normalizeIsbn(typeof meta.isbn === "string" ? meta.isbn : null),
     isbn13: normalizeIsbn13(typeof meta.isbn13 === "string" ? meta.isbn13 : null),
     goodreadsId: extractGoodreadsId(book),
+    olWorkId: normalizeOlWorkId(overrides.olWorkId ?? null),
   };
 }
 
@@ -117,11 +130,16 @@ export function toBookIdentifiersOutput(
     isbn10: row.isbn ?? undefined,
     isbn13: row.isbn13 ?? undefined,
     goodreadsId: row.goodreadsId ?? undefined,
+    openLibraryId: row.olWorkId ?? undefined,
   };
 }
 
-export async function upsertBookIdentifiers(db: Database, book: BookIdentifiersSource) {
-  const identifiers = deriveBookIdentifiers(book);
+export async function upsertBookIdentifiers(
+  db: Database,
+  book: BookIdentifiersSource,
+  overrides: { olWorkId?: string | null } = {},
+) {
+  const identifiers = deriveBookIdentifiers(book, overrides);
   const updatedAt = new Date().toISOString();
 
   await db
@@ -131,6 +149,7 @@ export async function upsertBookIdentifiers(db: Database, book: BookIdentifiersS
       isbn: identifiers.isbn,
       isbn13: identifiers.isbn13,
       goodreadsId: identifiers.goodreadsId,
+      olWorkId: identifiers.olWorkId,
       updatedAt,
     })
     .onConflict((oc) =>
@@ -138,6 +157,10 @@ export async function upsertBookIdentifiers(db: Database, book: BookIdentifiersS
         isbn: eb.ref("excluded.isbn"),
         isbn13: eb.ref("excluded.isbn13"),
         goodreadsId: eb.ref("excluded.goodreadsId"),
+        // Preserve a previously-stored olWorkId if the new derive doesn't
+        // include one — most callers don't pass it through, so writing a
+        // bare null on conflict would clobber prior enrichment.
+        olWorkId: sql<string | null>`COALESCE(excluded.olWorkId, book_id_map.olWorkId)`,
         updatedAt: eb.ref("excluded.updatedAt"),
       })),
     )
@@ -157,6 +180,7 @@ export async function upsertBookIdentifiersBatch(db: Database, books: BookIdenti
       isbn: identifiers.isbn,
       isbn13: identifiers.isbn13,
       goodreadsId: identifiers.goodreadsId,
+      olWorkId: identifiers.olWorkId,
       updatedAt,
     };
   });
@@ -169,6 +193,7 @@ export async function upsertBookIdentifiersBatch(db: Database, books: BookIdenti
         isbn: eb.ref("excluded.isbn"),
         isbn13: eb.ref("excluded.isbn13"),
         goodreadsId: eb.ref("excluded.goodreadsId"),
+        olWorkId: sql<string | null>`COALESCE(excluded.olWorkId, book_id_map.olWorkId)`,
         updatedAt: eb.ref("excluded.updatedAt"),
       })),
     )

@@ -52,6 +52,7 @@ import shelves from "./shelves";
 import library from "./library";
 import opds from "./opds";
 import kosync from "./sync/kosync";
+import libby from "./libby";
 
 declare module "hono" {
   interface ContextRenderer {
@@ -438,6 +439,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
   app.route("/rss", rss);
   app.route("/og", og);
   app.route("/kosync", kosync);
+  app.route("/libby", libby);
 
   createXrpcRouter(app, {
     searchBooks,
