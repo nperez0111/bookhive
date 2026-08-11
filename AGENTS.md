@@ -504,7 +504,7 @@ the primary worker inside the startup barrier where VACUUM already runs.
 
 ### KV Cache (`src/sqlite-kv.ts`)
 
-SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `account:` (service-auth gate — see Auth), `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep. The `svc_jti` table (service-auth replay store) lives in the same file but is written directly rather than through unstorage — `src/xrpc/replay-store.ts`.
+SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep. The `svc_jti` table (service-auth replay store) lives in the same file but is written directly rather than through unstorage — `src/xrpc/replay-store.ts`.
 
 ### Key Utilities (`src/utils/`)
 
@@ -526,7 +526,6 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `imageProxy.ts`         | imgproxy signing + proxy helper                                                                                                                                                                                                                                                                                                                                                                                               |
 | `personalLibrary.ts`    | Personal library paths, `streamPersonalBook`, `getStorageUsage`/`getStorageQuota`                                                                                                                                                                                                                                                                                                                                             |
 | `uploadPersonalBook.ts` | **The one** "put this ebook in this user's library". Both `POST /library/upload` and the XRPC procedure are thin adapters over it — see below                                                                                                                                                                                                                                                                                 |
-| `account.ts`            | `isKnownAccount`/`markAccount` — the gate on service auth                                                                                                                                                                                                                                                                                                                                                                     |
 | `bookMetadata/`         | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                                                                                                                                                                                                                |
 | `bookMeta.ts`           | Book metadata utilities                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `syncMatching.ts`       | KOReader document → BookHive book matching (3 tiers, see below); `NO_HIVE_MATCH` sentinel; `SAME_BOOK_FILE`                                                                                                                                                                                                                                                                                                                   |
@@ -817,16 +816,13 @@ Three things that are load-bearing and easy to get wrong:
   mints up to an hour when `lxm` is set and most SDKs don't expose `exp`, so
   the stricter default rejects ordinary tokens as `JwtTooOld`. The token's own
   `exp` is still enforced separately.
-- **`isKnownAccount` (`src/utils/account.ts`) is the gate**, and removing it is
-  a real hole: a valid token proves control of _an_ atproto identity, not that
-  it has ever used BookHive, so without it any DID on the network could open a
-  storage quota's worth of space on our disk. OPDS/KOSync get this implicitly
-  because their password derives from `COOKIE_SECRET`. It is a **required**
-  field on `XrpcAuthContext`/`XrpcContext`, not an optional one — it was briefly
-  optional and called as `if (ctx.isKnownAccount && ...)`, which meant a context
-  that merely forgot to wire it opened the gate for every DID on the network
-  instead of failing. The verifier stays optional (null genuinely means "service
-  auth is off"); the gate does not.
+- **There is no prior-relationship gate.** A valid service token from _any_ DID
+  on the network is accepted — we deliberately do not require that the DID has
+  signed in to BookHive before. BookHive signup is open, so such a gate bought
+  little, and the **per-user storage quota** (`PERSONAL_LIBRARY_QUOTA_BYTES`) is
+  the real backstop on what a caller can consume. `pdsWrite` methods are still
+  refused (service auth proves key control, not an OAuth grant), so the exposure
+  is bounded to the identity/personal-library surface.
 
 `lexicons/auth.json` carries the `rpc` permission that lets a client mint these
 tokens at all; **`GRANULAR_SCOPES` in `src/auth/client.ts` must move with it**
@@ -957,9 +953,10 @@ POST https://bookhive.buzz/xrpc/buzz.bookhive.uploadPersonalBook?filename=Dune.e
 Notes worth passing on: `lxm` is **required** (atcute's parser rejects a token
 without it); the audience must match one of `acceptAudiences` **exactly**;
 `atproto-proxy` will not work until the DID document gains an AppView service
-entry; and the account must have signed in to BookHive at least once. The OAuth
-client must have been granted the `rpc:buzz.bookhive.*` scopes, which means
-**existing users need to re-consent** before their PDS will issue these tokens.
+entry. There is no requirement that the account have used BookHive before — any
+valid token is accepted, bounded by the per-user storage quota. The OAuth client
+must have been granted the `rpc:buzz.bookhive.*` scopes, which means **existing
+users need to re-consent** before their PDS will issue these tokens.
 
 ## Workers, Logging & Observability
 

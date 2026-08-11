@@ -33,7 +33,6 @@ import type { BidirectionalResolver } from "./bsky/id-resolver";
 import { ServiceJwtVerifier, type ReplayStore } from "@atcute/xrpc-server/auth";
 import type { AtprotoAudience } from "@atcute/lexicons/syntax";
 import { BOOKHIVE_DID } from "./constants";
-import { isKnownAccount } from "./utils/account";
 import { sweepStaleUploads } from "./utils/uploadPersonalBook";
 import { createKvReplayStore, ensureReplayTable, sweepReplayStore } from "./xrpc/replay-store";
 import type { Database } from "./db";
@@ -81,8 +80,6 @@ export type AppContext = {
   serviceAccountAgent: SessionClient | null;
   /** Verifies atproto service-auth JWTs on /xrpc/*. Null when disabled. */
   serviceJwtVerifier: ServiceJwtVerifier | null;
-  /** Gate on service auth: has this DID ever used BookHive? See utils/account.ts. */
-  isKnownAccount: (did: string) => Promise<boolean>;
   /** Add fields to the one wide event logged per request (observability). */
   addWideEventContext: AddWideEventContext;
 };
@@ -237,9 +234,6 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("sync_pending:", sqliteKv({ table: "sync_pending", db: kvDb }));
   // Per-user KOSync token rotation counter (see src/middleware/sync-auth.ts).
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
-  // "This DID has used BookHive" marker, the gate on service auth. Permanent —
-  // see src/utils/account.ts for why it exists and why it never expires.
-  kv.mount("account:", sqliteKv({ table: "account", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
   if (isPrimaryWorker) {
@@ -626,9 +620,6 @@ export function createContextMiddleware(deps: AppDeps) {
       ...restDeps,
       addWideEventContext(context: Record<string, unknown>) {
         Object.assign(c.get("wideEventBag"), context);
-      },
-      isKnownAccount(did: string): Promise<boolean> {
-        return isKnownAccount({ db: deps.db, kv: deps.kv }, did);
       },
       getSessionDid(): Promise<string | null> {
         return didLazy.value;

@@ -44,13 +44,6 @@ export type XrpcAuth =
 export type XrpcAuthContext = {
   getSessionAgent: () => Promise<SessionClient | null>;
   serviceJwtVerifier?: ServiceJwtVerifier | null;
-  /**
-   * Required, not optional: an absent callback used to be treated as "no gate",
-   * so a context that simply forgot to wire it would have accepted any DID on
-   * the network. The type is the enforcement — a missing gate is now a compile
-   * error rather than a silent hole.
-   */
-  isKnownAccount: (did: string) => Promise<boolean>;
 };
 
 export async function resolveXrpcAuth(
@@ -78,16 +71,12 @@ export async function resolveXrpcAuth(
     // Throws AuthRequiredError (401, with a WWW-Authenticate: Bearer challenge)
     // on every failure path: missing or malformed token, bad signature, wrong
     // audience, wrong lxm, expired, outside the max-age window, or replayed.
+    //
+    // A valid token proves control of an atproto identity, nothing more — any
+    // DID on the network is accepted. The per-user storage quota is the backstop
+    // on what a caller can consume; BookHive signup is open, so gating this on a
+    // prior sign-in bought little and is deliberately not done.
     const { issuer } = await ctx.serviceJwtVerifier.verifyRequest(request, { lxm: opts.lxm });
-
-    // A valid token proves control of an atproto identity, not that the
-    // identity has ever used BookHive. Without this gate any DID on the network
-    // could open a storage quota's worth of space on our disk.
-    if (!(await ctx.isKnownAccount(issuer))) {
-      throw new AuthRequiredError({
-        message: "No BookHive account for this DID — sign in at bookhive.buzz once first",
-      });
-    }
 
     return { did: issuer, method: "service", agent: null };
   }

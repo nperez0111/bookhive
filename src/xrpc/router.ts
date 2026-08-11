@@ -190,12 +190,6 @@ export type XrpcContext = {
   addWideEventContext: (context: Record<string, unknown>) => void;
   /** Verifies atproto service-auth JWTs. Null when service auth is disabled. */
   serviceJwtVerifier?: ServiceJwtVerifier | null;
-  /**
-   * Gate on service auth: has this DID ever used BookHive? Required — see the
-   * note on `XrpcAuthContext`. The verifier stays optional (null genuinely
-   * means "service auth is off"), but the gate must never be absent.
-   */
-  isKnownAccount: (did: string) => Promise<boolean>;
 };
 
 export type XrpcDeps<E extends XrpcContext = XrpcContext> = {

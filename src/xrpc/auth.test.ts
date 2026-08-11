@@ -26,7 +26,6 @@ import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import type { AppContext, AppEnv } from "../context";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
 import { makeEpub } from "../utils/bookMetadata/testFixtures";
-import { markAccount, isKnownAccount } from "../utils/account";
 import { personalBookDir } from "../utils/personalLibrary";
 import { createXrpcRouter, type XrpcContext } from "./router";
 
@@ -101,7 +100,6 @@ async function createApp(opts: { audiences?: string[]; maxAge?: number; enabled?
       baseIdResolver: { handle: { resolve: async () => undefined } },
       addWideEventContext: () => {},
       serviceJwtVerifier: verifier,
-      isKnownAccount: (did: string) => isKnownAccount({ db, kv }, did),
     } as unknown as AppContext);
     await next();
   });
@@ -141,8 +139,6 @@ beforeEach(async () => {
   kv = createStorage({ driver: memoryDriver() });
   keypair = await P256PrivateKeyExportable.createKeypair();
   strangerKeypair = await P256PrivateKeyExportable.createKeypair();
-  // DID has used BookHive before; STRANGER has not.
-  await markAccount(kv, DID);
 });
 
 afterEach(async () => {
@@ -254,17 +250,17 @@ describe("service auth — rejections", () => {
     expect(res.status).toBe(401);
   });
 
-  it("401s a valid token from a DID that has never used BookHive", async () => {
-    // The gate that stops any identity on the network opening a storage quota
-    // on our disk. The token itself is perfectly valid.
+  it("accepts a valid token from any DID, including one that has never used BookHive", async () => {
+    // There is no prior-relationship gate: a valid token is sufficient, and the
+    // per-user storage quota is the backstop on what a caller can consume.
     const app = await createApp();
     const res = await app.request("/xrpc/buzz.bookhive.listPersonalShelves", {
       headers: {
         authorization: `Bearer ${await token({ issuer: STRANGER, key: strangerKeypair })}`,
       },
     });
-    expect(res.status).toBe(401);
-    expect(((await res.json()) as { message: string }).message).toContain("No BookHive account");
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { totalBooks: number }).toHaveProperty("totalBooks", 0);
   });
 
   it("401s garbage in the Authorization header", async () => {
@@ -301,30 +297,5 @@ describe("service auth — what it deliberately cannot do", () => {
     expect(res.status).toBe(401);
     const message = ((await res.json()) as { message: string }).message;
     expect(message).toContain("OAuth session");
-  });
-});
-
-describe("isKnownAccount", () => {
-  it("backfills from an existing account's durable traces", async () => {
-    // Every current user predates the marker, so the probe is what makes
-    // service auth usable for them on day one.
-    const freshKv = createStorage({ driver: memoryDriver() });
-    expect(await isKnownAccount({ db, kv: freshKv }, DID)).toBe(false);
-
-    await db
-      .insertInto("sync_document")
-      .values({
-        userDid: DID,
-        provider: "kosync",
-        documentHash: "abc",
-        progressData: "{}",
-        createdAt: "2026-08-01T00:00:00.000Z",
-        updatedAt: "2026-08-01T00:00:00.000Z",
-      })
-      .execute();
-
-    expect(await isKnownAccount({ db, kv: freshKv }, DID)).toBe(true);
-    // ...and memoised, so the four-way probe runs once per DID.
-    expect(await freshKv.hasItem(`account:${DID}`)).toBe(true);
   });
 });
