@@ -1,5 +1,6 @@
 import { describe, it, expect, mock } from "bun:test";
 import { getIronSession } from "iron-session";
+import { env as realEnv } from "../env";
 
 // Mock iron-session
 const mockGetIronSession = mock();
@@ -7,11 +8,16 @@ void mock.module("iron-session", () => ({
   getIronSession: mockGetIronSession,
 }));
 
-// Mock environment
+// Override one field of the environment, keeping the rest.
+//
+// `mock.module` is process-wide and permanent, so returning a bare object here
+// replaces `env` for *every* module loaded afterwards in the same `bun test`
+// run — every other field reads back as undefined. That is a landmine for any
+// module that reads env lazily inside a request (`getLibraryDir()` reading
+// `DB_PATH`, for one): the owning test passes in isolation and an unrelated
+// file fails in the full suite. Spread the real env so only COOKIE_SECRET moves.
 void mock.module("../env", () => ({
-  env: {
-    COOKIE_SECRET: "test-secret-key-for-testing-purposes-only",
-  },
+  env: { ...realEnv, COOKIE_SECRET: "test-secret-key-for-testing-purposes-only" },
 }));
 
 describe("Auth Session TTL Logic", () => {

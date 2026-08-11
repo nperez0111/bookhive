@@ -37,6 +37,51 @@ const getJson = (url: string): Promise<Response> => fetch(url, { cache: "no-stor
  * triaged above the grid, or parked in "Also tracking" below it once the user
  * has linked or dismissed them.
  */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
+ * Storage against quota. Deliberately quiet until it matters: below 60% this is
+ * just a line of text, and the bar only appears once the number is worth acting
+ * on. Better for the user to see it filling up here than to push 100 MB up the
+ * wire and get a 413.
+ */
+const StorageMeter: FC<{ storage: { usedBytes: number; quotaBytes: number } | null }> = ({
+  storage,
+}) => {
+  if (!storage || storage.quotaBytes <= 0) return null;
+  const ratio = Math.min(1, storage.usedBytes / storage.quotaBytes);
+  const pct = Math.round(ratio * 100);
+  const full = ratio >= 1;
+
+  return (
+    <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span>
+        {formatBytes(storage.usedBytes)} of {formatBytes(storage.quotaBytes)} used
+      </span>
+      {ratio >= 0.6 && (
+        <span
+          class="h-1.5 w-32 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Library storage used"
+        >
+          <span
+            class={`block h-full rounded-full ${full ? "bg-destructive" : "bg-primary"}`}
+            style={`width: ${pct}%`}
+          />
+        </span>
+      )}
+      {full && <span class="text-destructive">Library full — delete a book to upload more.</span>}
+    </div>
+  );
+};
+
 export const LibraryManager: FC = () => {
   const [books, setBooks] = useState<PersonalBook[] | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -48,6 +93,7 @@ export const LibraryManager: FC = () => {
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [shelvesLoaded, setShelvesLoaded] = useState(false);
   const [totalBooks, setTotalBooks] = useState(0);
+  const [storage, setStorage] = useState<{ usedBytes: number; quotaBytes: number } | null>(null);
 
   const [activeShelfId, setActiveShelfId] = useState<number | null>(null);
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
@@ -72,11 +118,21 @@ export const LibraryManager: FC = () => {
         if (!r.ok) throw new Error("Failed");
         return r.json();
       })
-      .then((d: { books: PersonalBook[]; total?: number; cursor?: string }) => {
-        setBooks(d.books);
-        setCursor(d.cursor);
-        if (shelfId === null) setTotalBooks(d.total ?? d.books.length);
-      })
+      .then(
+        (d: {
+          books: PersonalBook[];
+          total?: number;
+          cursor?: string;
+          storage?: { usedBytes: number; quotaBytes: number };
+        }) => {
+          setBooks(d.books);
+          setCursor(d.cursor);
+          if (shelfId === null) setTotalBooks(d.total ?? d.books.length);
+          // Rides along on the list every client already refetches after each
+          // mutation, so the usage bar stays current with no extra request.
+          if (d.storage) setStorage(d.storage);
+        },
+      )
       .catch(() => setError(true))
       .finally(() => setRefreshing(false));
   }, []);
@@ -392,6 +448,8 @@ export const LibraryManager: FC = () => {
           onDelete={handleDeleteShelf}
         />
       )}
+
+      <StorageMeter storage={storage} />
 
       {error && (
         <p class="mt-6 text-sm text-muted-foreground">

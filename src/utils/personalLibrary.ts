@@ -8,16 +8,30 @@ import type { Database } from "../db";
 export const OPDS_PAGE_SIZE = 24;
 
 /**
- * Largest accepted ebook upload. Every upload path materialises the whole file
- * as a `Uint8Array` (the KOReader partial MD5 and the format parsers both need
- * random access), so this is a direct per-request ceiling on native memory —
- * enforce it against the *declared* size before reading the body.
+ * Largest accepted ebook upload. The body itself streams to disk, but the
+ * format parsers need the whole file in one contiguous buffer (fflate reads a
+ * ZIP's central directory from the end), so this remains the per-request
+ * ceiling on native memory for the parse step. Enforce it against the
+ * *declared* size first, then again while streaming.
  */
 export const MAX_PERSONAL_BOOK_BYTES = 100 * 1024 * 1024;
 
-/** Root directory for all personal library files, adjacent to the DB. */
+/**
+ * Root directory for all personal library files. `LIBRARY_DIR` wins when set,
+ * so the library can live on a different volume from the DB; otherwise it sits
+ * adjacent to the DB as it always has.
+ */
 export function getLibraryDir(): string {
-  return path.join(path.dirname(env.DB_PATH), "library");
+  return env.LIBRARY_DIR || path.join(path.dirname(env.DB_PATH), "library");
+}
+
+/**
+ * Scratch directory for in-flight uploads. Deliberately under the library root
+ * so the finished file can be `rename`d into place rather than copied — that
+ * only holds within one filesystem.
+ */
+export function getLibraryTmpDir(): string {
+  return path.join(getLibraryDir(), ".tmp");
 }
 
 /** Directory for a specific book: `{libraryDir}/{did}/{contentHash}/` */
@@ -50,6 +64,29 @@ export async function removeUserDir(did: string): Promise<void> {
   await rm(path.join(getLibraryDir(), did), { recursive: true, force: true });
 }
 
+/** Total bytes one user may store across their personal library. */
+export function getStorageQuota(): number {
+  return env.PERSONAL_LIBRARY_QUOTA_BYTES;
+}
+
+/**
+ * Bytes this user currently stores. Derived with a `SUM`, never a maintained
+ * counter: the quota itself bounds the row count (2 GB over a ~3 MB median
+ * epub is ~700 rows), `idx_personal_book_user_size` makes it an index-only
+ * scan, and a derived total cannot drift. A counter would need a backfill,
+ * decrements in both delete paths, and a repair job — and `removeBookDir` is
+ * best-effort, so a failed `rm` after a row delete would leave the counter
+ * under-reporting forever while the disk quietly filled.
+ */
+export async function getStorageUsage(db: Database, userDid: string): Promise<number> {
+  const row = await db
+    .selectFrom("personal_book")
+    .select((eb) => eb.fn.coalesce(eb.fn.sum<number>("sizeBytes"), eb.lit(0)).as("used"))
+    .where("userDid", "=", userDid)
+    .executeTakeFirst();
+  return Number(row?.used ?? 0);
+}
+
 export type PersonalBookDownload =
   | { notModified: true; headers: Record<string, string> }
   | { notModified: false; stream: ReadableStream; headers: Record<string, string> };
@@ -59,7 +96,7 @@ export type PersonalBookDownload =
  * and `*` forms, and tolerates the `W/` prefix a client may echo back — the
  * validator is a content hash, so a weak match is still the same bytes.
  */
-function etagMatches(ifNoneMatch: string | null | undefined, etag: string): boolean {
+export function etagMatches(ifNoneMatch: string | null | undefined, etag: string): boolean {
   if (!ifNoneMatch) return false;
   const normalize = (raw: string) => raw.trim().replace(/^W\//, "");
   return ifNoneMatch

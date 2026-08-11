@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../context";
 import { syncAuthMiddleware } from "../../middleware/sync-auth";
-import { matchSyncDocument } from "../../utils/syncMatching";
+import { matchSyncDocumentForUser } from "../../utils/syncMatching";
+import { filenameKey } from "../../utils/filenameMatching";
 import { bridgeProgressToUserBook } from "../../utils/syncBridge";
 import type { HiveId, SyncProgressData } from "../../types";
 
@@ -75,7 +76,7 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
       .set({
         progressData: JSON.stringify(progressData),
         updatedAt: now,
-        ...(filename != null ? { filename } : {}),
+        ...(filename != null ? { filename, filenameKey: filenameKey(filename) } : {}),
         ...(title != null ? { title } : {}),
         ...(authors != null ? { authors } : {}),
       })
@@ -90,6 +91,7 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
         documentHash: document,
         hiveId: null,
         filename,
+        filenameKey: filenameKey(filename),
         title,
         authors,
         progressData: JSON.stringify(progressData),
@@ -101,8 +103,17 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
 
   let hiveId = existing?.hiveId ?? null;
 
-  if (!hiveId && (title || authors)) {
-    hiveId = await matchSyncDocument(db, { title, authors, filename });
+  // Unconditional: a default-configured KOReader sends no metadata at all, and
+  // `matchSyncDocumentForUser` resolves those from the uploaded file the
+  // document hash points at. Gating this on the client having sent something is
+  // what kept both that case and the filename-only case unmatchable.
+  if (!hiveId) {
+    hiveId = await matchSyncDocumentForUser(db, userDid, {
+      documentHash: document,
+      title,
+      authors,
+      filename,
+    });
     if (hiveId) {
       await db
         .updateTable("sync_document")
@@ -110,6 +121,12 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
         .where("userDid", "=", userDid)
         .where("provider", "=", "kosync")
         .where("documentHash", "=", document)
+        // Only fill a genuinely empty link. `hiveId` was read at the top of the
+        // handler and the match takes a few queries, so a concurrent request —
+        // or the user linking by hand in another tab — can land in between;
+        // production runs three worker processes, so this is not theoretical.
+        // It also can't clobber the NO_HIVE_MATCH dismissal sentinel.
+        .where("hiveId", "is", null)
         .execute();
     }
   }

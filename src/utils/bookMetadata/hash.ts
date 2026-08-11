@@ -29,3 +29,29 @@ export function koreaderPartialMD5(bytes: Uint8Array): string {
   }
   return hasher.digest("hex");
 }
+
+/**
+ * The same hash, read straight off a file instead of a buffer.
+ *
+ * The algorithm only ever touches twelve 1 KB windows, so it never needed the
+ * whole file resident — the buffer was incidental to how the upload path used
+ * to work. Reading the slices costs at most 12 KB regardless of file size,
+ * which is what lets an upload be hashed (and rejected as a duplicate) before
+ * anything is materialised.
+ *
+ * Must stay byte-for-byte equivalent to `koreaderPartialMD5`: the resulting
+ * hash is what lines an uploaded file up with the `document` id a KOReader
+ * device sends. `bookMetadata.test.ts` pins the two together.
+ */
+export async function koreaderPartialMD5File(file: Blob, size: number): Promise<string> {
+  const step = 1024;
+  const window = 1024;
+  const hasher = new Bun.CryptoHasher("md5");
+  for (let i = -1; i <= 10; i++) {
+    const offset = (step << ((2 * i) & 0x1f)) >>> 0; // i === -1 -> 0
+    if (offset >= size) break;
+    const end = Math.min(offset + window, size);
+    hasher.update(new Uint8Array(await file.slice(offset, end).arrayBuffer()));
+  }
+  return hasher.digest("hex");
+}

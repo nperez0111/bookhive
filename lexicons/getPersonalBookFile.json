@@ -1,0 +1,29 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getPersonalBookFile",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Download the raw ebook file for a book in the authenticated user's personal library. Responds with the stored bytes, a strong ETag equal to the content hash, and a `Content-Disposition: attachment` filename. Honours `If-None-Match` with a 304, so an e-reader syncing on a schedule does not re-download every book. The XRPC equivalent of GET /opds/books/{hash}/download.",
+      "parameters": {
+        "type": "params",
+        "required": ["contentHash"],
+        "properties": {
+          "contentHash": {
+            "type": "string",
+            "description": "Content hash identifying the book, as returned by getPersonalLibrary"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/epub+zip,application/x-mobipocket-ebook,application/x-fictionbook+xml,application/vnd.comicbook+zip,application/octet-stream"
+      },
+      "errors": [
+        {
+          "name": "NotFound",
+          "description": "No such book in the caller's library, or its file is missing from disk"
+        }
+      ]
+    }
+  }
+}

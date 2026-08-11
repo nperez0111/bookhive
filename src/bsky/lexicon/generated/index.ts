@@ -17,6 +17,8 @@ export * as BuzzBookhiveGetFeed from "./types/buzz/bookhive/getFeed.js";
 export * as BuzzBookhiveGetLanguages from "./types/buzz/bookhive/getLanguages.js";
 export * as BuzzBookhiveGetList from "./types/buzz/bookhive/getList.js";
 export * as BuzzBookhiveGetPersonalBook from "./types/buzz/bookhive/getPersonalBook.js";
+export * as BuzzBookhiveGetPersonalBookCover from "./types/buzz/bookhive/getPersonalBookCover.js";
+export * as BuzzBookhiveGetPersonalBookFile from "./types/buzz/bookhive/getPersonalBookFile.js";
 export * as BuzzBookhiveGetPersonalLibrary from "./types/buzz/bookhive/getPersonalLibrary.js";
 export * as BuzzBookhiveGetProfile from "./types/buzz/bookhive/getProfile.js";
 export * as BuzzBookhiveGetReadingStats from "./types/buzz/bookhive/getReadingStats.js";
@@ -25,6 +27,7 @@ export * as BuzzBookhiveGetUserLists from "./types/buzz/bookhive/getUserLists.js
 export * as BuzzBookhiveHiveBook from "./types/buzz/bookhive/hiveBook.js";
 export * as BuzzBookhiveLinkPersonalBook from "./types/buzz/bookhive/linkPersonalBook.js";
 export * as BuzzBookhiveListGenres from "./types/buzz/bookhive/listGenres.js";
+export * as BuzzBookhiveListPersonalShelves from "./types/buzz/bookhive/listPersonalShelves.js";
 export * as BuzzBookhiveListSyncDocuments from "./types/buzz/bookhive/listSyncDocuments.js";
 export * as BuzzBookhivePutSyncProgress from "./types/buzz/bookhive/putSyncProgress.js";
 export * as BuzzBookhiveRemoveFromList from "./types/buzz/bookhive/removeFromList.js";

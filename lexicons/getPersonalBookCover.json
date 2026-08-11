@@ -1,0 +1,36 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.getPersonalBookCover",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Cover image for a book in the authenticated user's personal library. Serves the cover extracted from the uploaded file when there is one; otherwise, if the book is linked to a BookHive catalog entry, responds 302 to the public image proxy for that entry. The XRPC equivalent of GET /opds/books/{hash}/cover.",
+      "parameters": {
+        "type": "params",
+        "required": ["contentHash"],
+        "properties": {
+          "contentHash": {
+            "type": "string",
+            "description": "Content hash identifying the book"
+          },
+          "width": {
+            "type": "integer",
+            "description": "Requested width in pixels for the catalog-cover redirect. Ignored for locally stored covers, which are served at the size they were extracted at.",
+            "minimum": 32,
+            "maximum": 1024,
+            "default": 300
+          }
+        }
+      },
+      "output": {
+        "encoding": "image/jpeg,image/png,image/gif,image/webp"
+      },
+      "errors": [
+        {
+          "name": "NotFound",
+          "description": "No such book, or the book has neither a stored cover nor a linked catalog entry"
+        }
+      ]
+    }
+  }
+}

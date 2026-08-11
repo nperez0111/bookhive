@@ -1,4 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { env as realEnv } from "../env";
 
 // Mock the OAuth client and session
 const mockOAuthSession = {
@@ -16,11 +17,11 @@ const mockSession = {
   destroy: mock(),
 };
 
-// Mock environment
+// Override one field of the environment, keeping the rest — see the same note
+// in session.test.ts. `mock.module` is process-wide, so a bare object here
+// blanks every other env field for the remainder of the run.
 void mock.module("../env", () => ({
-  env: {
-    COOKIE_SECRET: "test-secret-key-for-testing-purposes-only",
-  },
+  env: { ...realEnv, COOKIE_SECRET: "test-secret-key-for-testing-purposes-only" },
 }));
 
 describe("Token Refresh Logic", () => {

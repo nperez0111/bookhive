@@ -19,9 +19,25 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getPersonalLibrary", {
       24,
     ),
     /**
+     * Case-insensitive substring match against title or authors. Mirrors the OPDS search feed.
+     * @minLength 1
+     * @maxLength 256
+     */
+    q: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(1, 256)]),
+    ),
+    /**
      * Filter by personal shelf ID
      */
     shelfId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+    /**
+     * Result ordering. `recent` is newest-added first (the default, matching the library page and the OPDS /all feed); `title` and `author` are ascending alphabetical, matching the OPDS search results feed. Not switched implicitly when `q` is set — pass it explicitly.
+     * @default "recent"
+     */
+    sort: /*#__PURE__*/ v.optional(
+      /*#__PURE__*/ v.string<"author" | "recent" | "title" | (string & {})>(),
+      "recent",
+    ),
   }),
   output: {
     type: "lex",
@@ -33,6 +49,12 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getPersonalLibrary", {
        * Pagination cursor for the next page
        */
       cursor: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+      /**
+       * This user's storage usage against their quota
+       */
+      get storage() {
+        return /*#__PURE__*/ v.optional(storageViewSchema);
+      },
       /**
        * Total number of books matching the query, across all pages
        */
@@ -53,7 +75,7 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   contentHash: /*#__PURE__*/ v.string(),
   /**
-   * URL of the book cover image
+   * URL of the book cover image. When it points at the public catalog image proxy it needs no authentication; the `/library/covers/...` form is session-authenticated, so a client using service auth should use `hasLocalCover` and getPersonalBookCover instead.
    */
   coverUrl: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
@@ -61,9 +83,24 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   createdAt: /*#__PURE__*/ v.datetimeString(),
   /**
+   * Synopsis from the linked BookHive catalog entry
+   * @maxLength 5000
+   */
+  description: /*#__PURE__*/ v.optional(
+    /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [/*#__PURE__*/ v.stringLength(0, 5000)]),
+  ),
+  /**
+   * Original uploaded file name. A sync client needs this to correlate the book with what is on the device.
+   */
+  filename: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
+  /**
    * File format (e.g. epub, pdf, mobi, fb2, cbz)
    */
   format: /*#__PURE__*/ v.string(),
+  /**
+   * Whether a cover extracted from the uploaded file is stored. Fetch it with getPersonalBookCover, which works under any supported authentication.
+   */
+  hasLocalCover: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
   /**
    * Linked BookHive catalog entry ID
    */
@@ -99,6 +136,21 @@ const _personalBookViewSchema = /*#__PURE__*/ v.object({
    */
   updatedAt: /*#__PURE__*/ v.datetimeString(),
 });
+const _storageViewSchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(
+    /*#__PURE__*/ v.literal("buzz.bookhive.getPersonalLibrary#storageView"),
+  ),
+  /**
+   * Total bytes this user is allowed to store
+   * @minimum 0
+   */
+  quotaBytes: /*#__PURE__*/ v.integer(),
+  /**
+   * Total bytes currently stored for this user
+   * @minimum 0
+   */
+  usedBytes: /*#__PURE__*/ v.integer(),
+});
 const _syncProgressViewSchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(
     /*#__PURE__*/ v.literal("buzz.bookhive.getPersonalLibrary#syncProgressView"),
@@ -118,18 +170,24 @@ const _syncProgressViewSchema = /*#__PURE__*/ v.object({
 });
 type main$schematype = typeof _mainSchema;
 type personalBookView$schematype = typeof _personalBookViewSchema;
+type storageView$schematype = typeof _storageViewSchema;
 type syncProgressView$schematype = typeof _syncProgressViewSchema;
 
 export interface mainSchema extends main$schematype {}
 
 export interface personalBookViewSchema extends personalBookView$schematype {}
 
+export interface storageViewSchema extends storageView$schematype {}
+
 export interface syncProgressViewSchema extends syncProgressView$schematype {}
 export const mainSchema = _mainSchema as mainSchema;
 export const personalBookViewSchema = _personalBookViewSchema as personalBookViewSchema;
+export const storageViewSchema = _storageViewSchema as storageViewSchema;
 export const syncProgressViewSchema = _syncProgressViewSchema as syncProgressViewSchema;
 
 export interface PersonalBookView extends v.InferInput<typeof personalBookViewSchema> {}
+
+export interface StorageView extends v.InferInput<typeof storageViewSchema> {}
 
 export interface SyncProgressView extends v.InferInput<typeof syncProgressViewSchema> {}
 

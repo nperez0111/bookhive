@@ -22,6 +22,7 @@ import {
   uploadBlob,
 } from "../pds/client";
 import { generateInitialsAvatar } from "../utils/generateInitialsAvatar";
+import { markAccount } from "../utils/account";
 
 // Helper function to get consistent session configuration
 export function getSessionConfig(): SessionOptions {
@@ -81,6 +82,12 @@ export function loginRouter(
 
       clientSession.did = session.did as string;
       await clientSession.save();
+
+      // Marks this DID as a BookHive account, which is the gate service auth
+      // checks — a valid inter-service JWT proves identity, not that the
+      // identity has ever used us. Best-effort: a failure here would only cost
+      // the (indexed, one-off) backfill probe in isKnownAccount.
+      void markAccount(c.get("ctx").kv, session.did as string).catch(() => {});
 
       const agent = sessionClientFromOAuthSession(session);
 

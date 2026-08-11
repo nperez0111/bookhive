@@ -22,6 +22,18 @@
           "shelfId": {
             "type": "integer",
             "description": "Filter by personal shelf ID"
+          },
+          "q": {
+            "type": "string",
+            "description": "Case-insensitive substring match against title or authors. Mirrors the OPDS search feed.",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "sort": {
+            "type": "string",
+            "description": "Result ordering. `recent` is newest-added first (the default, matching the library page and the OPDS /all feed); `title` and `author` are ascending alphabetical, matching the OPDS search results feed. Not switched implicitly when `q` is set — pass it explicitly.",
+            "knownValues": ["recent", "title", "author"],
+            "default": "recent"
           }
         }
       },
@@ -45,8 +57,29 @@
             "cursor": {
               "type": "string",
               "description": "Pagination cursor for the next page"
+            },
+            "storage": {
+              "type": "ref",
+              "ref": "#storageView",
+              "description": "This user's storage usage against their quota"
             }
           }
+        }
+      }
+    },
+    "storageView": {
+      "type": "object",
+      "required": ["usedBytes", "quotaBytes"],
+      "properties": {
+        "usedBytes": {
+          "type": "integer",
+          "description": "Total bytes currently stored for this user",
+          "minimum": 0
+        },
+        "quotaBytes": {
+          "type": "integer",
+          "description": "Total bytes this user is allowed to store",
+          "minimum": 0
         }
       }
     },
@@ -88,7 +121,20 @@
         },
         "coverUrl": {
           "type": "string",
-          "description": "URL of the book cover image"
+          "description": "URL of the book cover image. When it points at the public catalog image proxy it needs no authentication; the `/library/covers/...` form is session-authenticated, so a client using service auth should use `hasLocalCover` and getPersonalBookCover instead."
+        },
+        "hasLocalCover": {
+          "type": "boolean",
+          "description": "Whether a cover extracted from the uploaded file is stored. Fetch it with getPersonalBookCover, which works under any supported authentication."
+        },
+        "filename": {
+          "type": "string",
+          "description": "Original uploaded file name. A sync client needs this to correlate the book with what is on the device."
+        },
+        "description": {
+          "type": "string",
+          "description": "Synopsis from the linked BookHive catalog entry",
+          "maxLength": 5000
         },
         "createdAt": {
           "type": "string",

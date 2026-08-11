@@ -309,4 +309,41 @@ describe("OPDS 2.0 content negotiation", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain("Basic");
   });
+
+  describe("cover caching", () => {
+    // This route sits under `/opds/books/`, which is excluded from hono's
+    // etag() middleware, so if it doesn't set a validator itself it cannot ever
+    // answer a conditional request. It didn't: production served 43 cover
+    // fetches in 48h and never once returned a 304, while a catalogue browse
+    // re-requests every cover on the page.
+    const coverPath = "/tmp/bookhive-opds-cover-test.jpg";
+
+    beforeEach(async () => {
+      await Bun.write(coverPath, "not-really-a-jpeg-but-bytes-are-bytes");
+      await seedBook(db, { contentHash: "hash-a", coverPath });
+    });
+
+    it("serves the cover with a strong ETag", async () => {
+      const res = await app.request("/opds/books/hash-a/cover", {
+        headers: { authorization: auth },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("etag")).toBe('"hash-a-cover"');
+    });
+
+    it("answers a matching If-None-Match with 304 and no body", async () => {
+      const res = await app.request("/opds/books/hash-a/cover", {
+        headers: { authorization: auth, "if-none-match": '"hash-a-cover"' },
+      });
+      expect(res.status).toBe(304);
+      expect(await res.text()).toBe("");
+    });
+
+    it("still serves the bytes when the validator does not match", async () => {
+      const res = await app.request("/opds/books/hash-a/cover", {
+        headers: { authorization: auth, "if-none-match": '"something-else"' },
+      });
+      expect(res.status).toBe(200);
+    });
+  });
 });

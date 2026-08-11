@@ -96,10 +96,21 @@ export function detectFormat(bytes: Uint8Array, filename: string): FormatInfo {
   return unknown(ext);
 }
 
-/** Parse metadata for any supported format. Never throws. */
-export function parseBook(bytes: Uint8Array, filename: string): BookMetadata {
+/**
+ * Parse metadata for any supported format. Never throws.
+ *
+ * `formatInfo` is optional purely to save re-deriving it: the upload path
+ * already ran `detectFormat` against a 4 KB head to decide whether to accept
+ * the file at all, and re-running it here would be the only reason that call
+ * needed the full buffer.
+ */
+export function parseBook(
+  bytes: Uint8Array,
+  filename: string,
+  formatInfo?: FormatInfo,
+): BookMetadata {
   const fallbackTitle = filename.replace(/\.[^.]+$/, "");
-  const { format } = detectFormat(bytes, filename);
+  const { format } = formatInfo ?? detectFormat(bytes, filename);
   switch (format) {
     case "epub":
       return parseEpub(bytes, fallbackTitle);
@@ -114,8 +125,8 @@ export function parseBook(bytes: Uint8Array, filename: string): BookMetadata {
   }
 }
 
-export { koreaderPartialMD5 } from "./hash";
+export { koreaderPartialMD5, koreaderPartialMD5File } from "./hash";
 export { looksLikeZip } from "./shared";
 export { parseEpub } from "./epub";
-export { isUsableCover, MIN_COVER_DIMENSION } from "./cover";
+export { isUsableCover, MAX_COVER_BYTES, MIN_COVER_DIMENSION } from "./cover";
 export type { BookCover, BookMetadata, EpubCover, EpubMetadata } from "./types";

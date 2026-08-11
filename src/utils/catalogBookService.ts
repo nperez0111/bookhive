@@ -2,6 +2,7 @@ import { Client } from "@atcute/client";
 import { PasswordSession } from "@atcute/password-session";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { Logger } from "pino";
+import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
 import type { AppContext } from "../context";
 import { createActorResolver } from "../bsky/id-resolver";
@@ -39,6 +40,8 @@ export async function createServiceAccountAgent(
 
 type CatalogCtx = Pick<AppContext, "db"> & {
   serviceAccountAgent: AppContext["serviceAccountAgent"] | undefined;
+  /** Optional: when present, backfill progress is persisted across restarts. */
+  kv?: Storage;
   logger?: Logger;
 };
 
@@ -234,7 +237,7 @@ class RateLimitError extends Error {
 }
 
 export interface BackfillProgress {
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "interrupted";
   startedAt: string | null;
   completedAt: string | null;
   written: number;
@@ -243,6 +246,8 @@ export interface BackfillProgress {
   lastBatchAt: string | null;
   error: string | null;
 }
+
+const BACKFILL_KV_KEY = "backfill:catalog_progress";
 
 let backfillProgress: BackfillProgress = {
   status: "idle",
@@ -255,8 +260,45 @@ let backfillProgress: BackfillProgress = {
   error: null,
 };
 
-export function getBackfillProgress(): BackfillProgress {
-  return { ...backfillProgress };
+/**
+ * Mirror the in-memory progress into the KV so it survives a restart. Fire and
+ * forget: this is observability for an admin endpoint, and failing to record it
+ * must never interrupt the backfill itself.
+ *
+ * Stores the object, not `JSON.stringify` of it. unstorage runs `destr` over
+ * whatever a driver returns, so a stored JSON *string* reads back as an object
+ * — round-tripping it through `JSON.parse` then throws, and the persisted
+ * progress is silently discarded. Same idiom as `enqueuePdsWrite`.
+ */
+function persistProgress(kv: Storage | undefined) {
+  if (!kv) return;
+  void kv.setItem(BACKFILL_KV_KEY, backfillProgress).catch(() => {});
+}
+
+/**
+ * Progress of the catalog backfill. Reads the in-memory value while a run is
+ * live in *this* process, and otherwise falls back to the KV — which is what
+ * makes the answer meaningful after a restart, and across the other cluster
+ * workers that never ran the backfill.
+ *
+ * A stored "running" status necessarily means the process died mid-run (a live
+ * run would have answered from memory), so it is reported as `interrupted`
+ * rather than left looking active forever.
+ */
+export async function getBackfillProgress(kv?: Storage): Promise<BackfillProgress> {
+  if (backfillProgress.status !== "idle") return { ...backfillProgress };
+  if (!kv) return { ...backfillProgress };
+  const stored = await kv.getItem<BackfillProgress>(BACKFILL_KV_KEY);
+  if (!stored || typeof stored !== "object" || typeof stored.status !== "string") {
+    return { ...backfillProgress };
+  }
+  const parsed = { ...stored };
+  if (parsed.status === "running") {
+    parsed.status = "interrupted";
+    parsed.completedAt = parsed.lastBatchAt;
+    parsed.error = "Process restarted while backfill was running";
+  }
+  return parsed;
 }
 
 /**
@@ -306,6 +348,7 @@ export async function backfillCatalogBooks(
     lastBatchAt: null,
     error: null,
   };
+  persistProgress(ctx.kv);
 
   try {
     while (true) {
@@ -345,18 +388,21 @@ export async function backfillCatalogBooks(
       backfillProgress.written = written;
       backfillProgress.batches = batches;
       backfillProgress.lastBatchAt = new Date().toISOString();
+      persistProgress(ctx.kv);
 
       await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
 
     backfillProgress.status = "completed";
     backfillProgress.completedAt = new Date().toISOString();
+    persistProgress(ctx.kv);
     wideEvent["outcome"] = "success";
     return { written, batches };
   } catch (err) {
     backfillProgress.status = "failed";
     backfillProgress.completedAt = new Date().toISOString();
     backfillProgress.error = err instanceof Error ? err.message : String(err);
+    persistProgress(ctx.kv);
     wideEvent["outcome"] = "error";
     wideEvent["error"] =
       err instanceof Error ? { message: err.message, type: err.name } : String(err);

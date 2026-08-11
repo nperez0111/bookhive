@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import type { AppEnv } from "../context";
 import { opdsAuthMiddleware } from "../middleware/opds-auth";
 import { escapeXml } from "../utils/xml";
-import { OPDS_PAGE_SIZE, streamPersonalBook } from "../utils/personalLibrary";
+import { etagMatches, OPDS_PAGE_SIZE, streamPersonalBook } from "../utils/personalLibrary";
 import type { Selectable } from "kysely";
 import type { PersonalBookRow } from "../types";
 
@@ -19,7 +19,20 @@ const THUMBNAIL_REL = "http://opds-spec.org/image/thumbnail";
 
 type OpdsEnv = AppEnv & { Variables: { opdsUserDid: string } };
 
-type BookForEntry = Selectable<PersonalBookRow> & {
+// Only the columns an entry actually renders, so adding one to `personal_book`
+// (filename matching, say) does not oblige every feed query to select it.
+type BookForEntry = Pick<
+  Selectable<PersonalBookRow>,
+  | "contentHash"
+  | "hiveId"
+  | "title"
+  | "authors"
+  | "language"
+  | "mime"
+  | "coverPath"
+  | "coverMime"
+  | "updatedAt"
+> & {
   hiveBookCover?: string | null;
   hiveBookDescription?: string | null;
 };
@@ -555,10 +568,22 @@ app.get("/books/:hash/cover", async (c) => {
   if (book.coverPath) {
     const file = Bun.file(book.coverPath);
     if (await file.exists()) {
-      return c.body(file.stream(), 200, {
+      // This route is under `/opds/books/`, which is in ETAG_EXCLUDED_PREFIXES,
+      // so hono's etag() never sees it — without an ETag set here the response
+      // carries no validator at all and a 304 is impossible. Production bore
+      // that out: 43 cover fetches over 48h, none of them conditional, while
+      // the catalogue root was hit 431 times. The hash is immutable content, so
+      // the validator is free.
+      const etag = `"${hash}-cover"`;
+      const headers = {
         "Content-Type": book.coverMime || "image/jpeg",
         "Cache-Control": "private, max-age=86400",
-      });
+        ETag: etag,
+      };
+      if (etagMatches(c.req.header("if-none-match"), etag)) {
+        return c.body(null, 304, headers);
+      }
+      return c.body(file.stream(), 200, headers);
     }
   }
 

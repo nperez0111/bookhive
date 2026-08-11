@@ -9,6 +9,14 @@
 export const MIN_COVER_DIMENSION = 16;
 
 /**
+ * Largest cover we will decompress out of an archive. The ZIP central
+ * directory tells us the decompressed size before we inflate anything, so this
+ * is checked ahead of the work rather than after it — a book advertising a
+ * 200 MB image as its cover simply doesn't get one.
+ */
+export const MAX_COVER_BYTES = 8 * 1024 * 1024;
+
+/**
  * Decode the cover header with Bun's native image pipeline and confirm it is a
  * real, sensibly-sized image. Never throws — returns false on any failure.
  */
