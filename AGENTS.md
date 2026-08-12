@@ -153,9 +153,9 @@ Two traps this encodes, both of which caused real bugs:
   `GET /admin/backfill-catalog/progress` reads **through the KV**, not just this
   process's memory: the backfill runs for hours on the primary worker while the
   request lands on any of the three, so an in-memory-only answer reported `idle`
-  for a live job and lost the outcome of a finished one. A _stored_ `running`
-  can only mean the process died mid-run (a live run answers from memory), so it
-  is reported as `interrupted`.
+  for a live job and lost the outcome of a finished one. A stored `running` is
+  distinguished from a dead run via `nextBatchExpectedAt`: if the next batch is
+  still expected (plus a 60s grace), report `running`; otherwise `interrupted`.
   **Persist the object, never `JSON.stringify` of it.** unstorage runs `destr`
   over whatever a driver returns, so a stored JSON string reads back as an
   object and any `JSON.parse` of it throws — which silently discarded every

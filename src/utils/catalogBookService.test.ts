@@ -32,6 +32,7 @@ function stored(overrides: Partial<BackfillProgress>): BackfillProgress {
     batches: 5,
     totalPending: 900,
     lastBatchAt: "2026-08-01T00:20:00.000Z",
+    nextBatchExpectedAt: null,
     error: null,
     ...overrides,
   };
@@ -54,15 +55,26 @@ describe("getBackfillProgress", () => {
     expect(progress.batches).toBe(5);
   });
 
-  it("reports a stored 'running' as interrupted", async () => {
-    // A genuinely live run answers from this process's memory, so a *stored*
-    // "running" can only mean the process died mid-run. Leaving it as "running"
-    // would show a job that never finishes and never fails.
-    await kv.setItem(KEY, stored({ status: "running" }));
+  it("reports a stored 'running' as interrupted when nextBatchExpectedAt has passed", async () => {
+    const pastTime = new Date(Date.now() - 120_000).toISOString();
+    await kv.setItem(KEY, stored({ status: "running", nextBatchExpectedAt: pastTime }));
     const progress = await getBackfillProgress(kv);
     expect(progress.status).toBe("interrupted");
     expect(progress.completedAt).toBe("2026-08-01T00:20:00.000Z");
     expect(progress.error).toContain("restarted");
+  });
+
+  it("reports a stored 'running' as interrupted when no nextBatchExpectedAt and startedAt is old", async () => {
+    await kv.setItem(KEY, stored({ status: "running", nextBatchExpectedAt: null }));
+    const progress = await getBackfillProgress(kv);
+    expect(progress.status).toBe("interrupted");
+  });
+
+  it("reports running when nextBatchExpectedAt is in the future", async () => {
+    const futureTime = new Date(Date.now() + 60_000).toISOString();
+    await kv.setItem(KEY, stored({ status: "running", nextBatchExpectedAt: futureTime }));
+    const progress = await getBackfillProgress(kv);
+    expect(progress.status).toBe("running");
   });
 
   it("falls back to idle rather than throwing on an unusable entry", async () => {

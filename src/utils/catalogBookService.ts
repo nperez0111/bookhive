@@ -244,6 +244,7 @@ export interface BackfillProgress {
   batches: number;
   totalPending: number | null;
   lastBatchAt: string | null;
+  nextBatchExpectedAt: string | null;
   error: string | null;
 }
 
@@ -257,6 +258,7 @@ let backfillProgress: BackfillProgress = {
   batches: 0,
   totalPending: null,
   lastBatchAt: null,
+  nextBatchExpectedAt: null,
   error: null,
 };
 
@@ -284,9 +286,10 @@ function persistProgress(kv: Storage | undefined) {
  * makes the answer meaningful after a restart, and across the other cluster
  * workers that never ran the backfill.
  *
- * A stored "running" status necessarily means the process died mid-run (a live
- * run would have answered from memory), so it is reported as `interrupted`
- * rather than left looking active forever.
+ * A stored "running" status could mean the backfill is alive on another worker
+ * (sleeping between batches) or that the process died mid-run.
+ * `nextBatchExpectedAt` distinguishes the two: if the next batch is still
+ * expected (plus a 60s grace period), report "running"; otherwise "interrupted".
  */
 export async function getBackfillProgress(kv?: Storage): Promise<BackfillProgress> {
   if (backfillProgress.status !== "idle") return { ...backfillProgress };
@@ -297,9 +300,19 @@ export async function getBackfillProgress(kv?: Storage): Promise<BackfillProgres
   }
   const parsed = { ...stored };
   if (parsed.status === "running") {
-    parsed.status = "interrupted";
-    parsed.completedAt = parsed.lastBatchAt;
-    parsed.error = "Process restarted while backfill was running";
+    const GRACE_MS = 60_000;
+    const now = Date.now();
+    let stillExpected = false;
+    if (parsed.nextBatchExpectedAt) {
+      stillExpected = now < new Date(parsed.nextBatchExpectedAt).getTime() + GRACE_MS;
+    } else if (parsed.startedAt) {
+      stillExpected = now < new Date(parsed.startedAt).getTime() + GRACE_MS;
+    }
+    if (!stillExpected) {
+      parsed.status = "interrupted";
+      parsed.completedAt = parsed.lastBatchAt;
+      parsed.error = "Process restarted while backfill was running";
+    }
   }
   return parsed;
 }
@@ -349,6 +362,7 @@ export async function backfillCatalogBooks(
     batches: 0,
     totalPending: totalRow ? Number(totalRow.count) : null,
     lastBatchAt: null,
+    nextBatchExpectedAt: null,
     error: null,
   };
   persistProgress(ctx.kv);
@@ -378,6 +392,10 @@ export async function backfillCatalogBooks(
             batches,
             backoff_ms: RATE_LIMIT_BACKOFF_MS,
           });
+          backfillProgress.nextBatchExpectedAt = new Date(
+            Date.now() + RATE_LIMIT_BACKOFF_MS,
+          ).toISOString();
+          persistProgress(ctx.kv);
           await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF_MS));
           // Retry the same batch (lastId not advanced)
           continue;
@@ -391,6 +409,7 @@ export async function backfillCatalogBooks(
       backfillProgress.written = written;
       backfillProgress.batches = batches;
       backfillProgress.lastBatchAt = new Date().toISOString();
+      backfillProgress.nextBatchExpectedAt = new Date(Date.now() + BATCH_DELAY_MS).toISOString();
       persistProgress(ctx.kv);
 
       await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
