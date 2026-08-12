@@ -1,6 +1,7 @@
 import { describe, it, expect, mock } from "bun:test";
 import { getIronSession } from "iron-session";
 import { env as realEnv } from "../env";
+import { getSessionAgent } from "../context";
 
 // Mock iron-session
 const mockGetIronSession = mock();
@@ -63,5 +64,31 @@ describe("Auth Session TTL Logic", () => {
     const typicalOAuthTokenLifetime = 30 * 60;
 
     expect(sessionTTL).toBeGreaterThan(typicalOAuthTokenLifetime * 10);
+  });
+});
+
+describe("getSessionAgent — corrupt cookie tolerance", () => {
+  it("returns null and clears the sid cookie instead of throwing when the cookie won't decode", async () => {
+    // iron-session throws `Wrong mac prefix` for a tampered / stale-secret
+    // cookie. Left uncaught this surfaced as a 500 on every route (a user who
+    // edited their `sid` cookie hard-500'd the whole site). getSessionAgent
+    // must treat it as no session.
+    mockGetIronSession.mockImplementationOnce(() => {
+      throw new Error("Wrong mac prefix");
+    });
+
+    const req = new Request("https://bookhive.buzz/home", {
+      headers: { cookie: "sid=tampered-value" },
+    });
+    const res = new Response();
+    const ctx = {} as any;
+
+    const agent = await getSessionAgent(req, res, ctx);
+
+    expect(agent).toBeNull();
+    // The bad cookie is expired so the browser stops resending it.
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("sid=");
+    expect(setCookie.toLowerCase()).toContain("max-age=0");
   });
 });

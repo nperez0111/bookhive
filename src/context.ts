@@ -6,7 +6,7 @@ import type { Ingester } from "./bsky/ingester";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { endTime, startTime, type TimingVariables } from "hono/timing";
-import { getIronSession } from "iron-session";
+import { getIronSession, type IronSession } from "iron-session";
 import { sql } from "kysely";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
@@ -507,6 +507,36 @@ async function restoreSessionClient(ctx: AppContext, did: string): Promise<Sessi
   }
 }
 
+/**
+ * Expire the `sid` cookie on the response. Used when the cookie can't be
+ * decoded (see `readIronSession`) so the browser stops resending a value that
+ * will only ever 500 — without this, a tampered or stale-secret cookie is a
+ * sticky hard error on every page for that browser until the user clears it by
+ * hand. Cookie name + options mirror `getSessionConfig`.
+ */
+function clearSidCookie(res: Response): void {
+  const parts = ["sid=", "Path=/", "Max-Age=0", "HttpOnly", "SameSite=Lax"];
+  if (env.NODE_ENV === "production") parts.push("Secure");
+  res.headers.append("set-cookie", parts.join("; "));
+}
+
+/**
+ * Decode the iron-session cookie, tolerating a corrupt/tampered/rotated-secret
+ * value instead of throwing. iron-session throws `Wrong mac prefix` (and
+ * similar) when the HMAC doesn't verify; left uncaught that surfaced as a 500
+ * on every route for anyone whose `sid` cookie was modified or was sealed with
+ * a previous `COOKIE_SECRET`. A cookie we can't verify is, for our purposes,
+ * no session at all — so treat it as logged out and clear it.
+ */
+async function readIronSession(req: Request, res: Response): Promise<IronSession<Session> | null> {
+  try {
+    return await getIronSession<Session>(req, res, getSessionConfig());
+  } catch {
+    clearSidCookie(res);
+    return null;
+  }
+}
+
 // Helper function to get the session client for the active session
 export async function getSessionAgent(
   req: Request,
@@ -515,8 +545,11 @@ export async function getSessionAgent(
   timing?: SessionTiming,
 ): Promise<SessionClient | null> {
   timing?.start("session_iron");
-  const session = await getIronSession<Session>(req, res, getSessionConfig());
+  const session = await readIronSession(req, res);
   timing?.end("session_iron");
+  if (!session) {
+    return null;
+  }
 
   if (!session.did) {
     return null;
@@ -620,9 +653,9 @@ export function createContextMiddleware(deps: AppDeps) {
     // Fast path: read DID from iron-session cookie only (no OAuth restore).
     const didLazy = lazy(async () => {
       startTime(c, "session_iron");
-      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+      const session = await readIronSession(c.req.raw, c.res);
       endTime(c, "session_iron");
-      return session.did || null;
+      return session?.did || null;
     });
 
     const sessionLazy = lazy(() =>
