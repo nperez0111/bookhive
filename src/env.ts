@@ -1,4 +1,4 @@
-import { bool, cleanEnv, num, port, str, testOnly } from "envalid";
+import { cleanEnv, num, port, str, testOnly } from "envalid";
 
 // Bun loads .env automatically; envalid reads process.env
 
@@ -77,18 +77,6 @@ export const env = cleanEnv(process.env, {
   IMGPROXY_SALT: str({
     default: "",
     desc: "Hex-encoded imgproxy signing salt (IMGPROXY_SALT). Empty uses unsafe URLs (dev only).",
-  }),
-  XRPC_SERVICE_AUTH: bool({
-    default: true,
-    desc: "Accept atproto inter-service auth (Authorization: Bearer <service JWT>) on /xrpc/*, which is what lets non-browser clients use the personal library. Kill switch only; the iron-session cookie path is unaffected by it.",
-  }),
-  XRPC_SERVICE_AUTH_MAX_AGE: num({
-    default: 3600,
-    desc: "Maximum accepted service-JWT lifetime window, in seconds. atcute defaults to 300, but a PDS mints up to 3600 when `lxm` is set and most client SDKs don't expose `exp`, so those tokens would be refused as JwtTooOld. The token's own `exp` is still enforced separately.",
-  }),
-  XRPC_SERVICE_AUTH_REPLAY: bool({
-    default: false,
-    desc: "Reject reused (iss, jti) service tokens. Off by default: enabling it forces a fresh com.atproto.server.getServiceAuth round-trip to the user's PDS on every single call, to close a <=MAX_AGE window on a token already scoped to one lxm and one audience.",
   }),
   XRPC_SERVICE_AUTH_AUDIENCES: str({
     default: "",
