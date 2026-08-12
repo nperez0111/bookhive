@@ -16,8 +16,8 @@ RUN bun run build
 FROM base AS final
 ARG BUILD_SHA
 ENV BUILD_SHA=${BUILD_SHA} NODE_ENV=production PORT=8080
-# tini reaps orphans. PID 1 is the cluster supervisor (a normal process, so the
-# kernel does not auto-reap for it) and Bun has no waitpid binding, so every
+# tini reaps orphans. The cluster supervisor is a normal process (the kernel
+# does not auto-reap for it) and Bun has no waitpid binding, so every
 # HEALTHCHECK `wget` would otherwise leak a zombie forever.
 RUN apk add --no-cache tini
 # Own the workdir and /data as root before switching user (cheap — directories are empty)
@@ -32,6 +32,13 @@ EXPOSE 8080
 # start-period covers migrations on worker 0 plus the staggered sibling spawn
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:8080/healthcheck || exit 1
-# Supervisor spawns WEB_CONCURRENCY workers sharing port 8080 via SO_REUSEPORT
-ENTRYPOINT ["/sbin/tini", "--"]
+# Supervisor spawns WEB_CONCURRENCY workers sharing port 8080 via SO_REUSEPORT.
+# `-s` registers tini as a child subreaper. The deployed compose runs the
+# service with `init: true`, so Docker's own init takes PID 1 and this tini runs
+# beneath it as a child — without `-s` it logs "Tini is not running as PID 1 …
+# zombie reaping won't work" on every boot and does nothing. With `-s` it reaps
+# orphans in the supervisor's subtree regardless of whether it is PID 1, so
+# reaping works both under `init: true` and when this image is run standalone
+# (where tini *is* PID 1 and `-s` is a harmless no-op).
+ENTRYPOINT ["/sbin/tini", "-s", "--"]
 CMD ["bun", "run", "cluster.ts"]
