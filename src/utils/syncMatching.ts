@@ -353,12 +353,26 @@ export async function matchSyncDocumentForUser(
     // statement, not just by the `!file.hiveId` read above: two sync pushes for
     // the same file can race between the SELECT and this UPDATE, and the loser
     // would otherwise overwrite a link the winner just established.
-    await db
+    const updated = await db
       .updateTable("personal_book")
       .set({ hiveId })
       .where("id", "=", file.id)
       .where("hiveId", "is", null)
-      .execute();
+      .executeTakeFirst();
+
+    // Lost the race: another request (or a manual link in another tab) linked
+    // this file first, possibly to a *different* book. Adopt whatever it
+    // persisted instead of our own guess, so the file, the ownership flag and
+    // the returned id can't disagree — a wrong link is worse than no link.
+    if (!updated.numUpdatedRows) {
+      const current = await db
+        .selectFrom("personal_book")
+        .select("hiveId")
+        .where("id", "=", file.id)
+        .executeTakeFirst();
+      if (current?.hiveId && current.hiveId !== NO_HIVE_MATCH) hiveId = current.hiveId;
+    }
+
     await db
       .updateTable("user_book")
       .set({ owned: 1 })

@@ -71,6 +71,11 @@ async function rasterizeSvgCover(bytes: Uint8Array): Promise<BookCover | null> {
       // A cover with transparency would otherwise flatten to black once we
       // encode to JPEG, which has no alpha channel.
       background: "white",
+      // Don't rescan the host font database on every instance — resvg-js does
+      // that per-`Resvg` and it is slow. These covers carry their text as
+      // outlined vector `<path>`s (Standard Ebooks), so no fonts are needed; an
+      // SVG that relied on live `<text>` would supply them via `fontFiles` here.
+      font: { loadSystemFonts: false },
     })
       .render()
       .asPng();

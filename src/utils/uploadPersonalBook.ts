@@ -449,7 +449,20 @@ export async function uploadPersonalBook(
 
     // ── 9. Commit the bytes: rename, not copy ──
     await ensureDir(personalBookDir(userDid, contentHash));
-    await rename(tmp, filePath);
+    try {
+      await rename(tmp, filePath);
+    } catch (err) {
+      // The row committed in step 8, before the bytes moved. A rename failure
+      // here would otherwise leave a personal_book row with no file behind it —
+      // a dead download and phantom quota usage. Roll the row back before
+      // rethrowing; the `finally` still unlinks the temp file.
+      await db
+        .deleteFrom("personal_book")
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .execute();
+      throw err;
+    }
 
     // The row is already committed, so a failed cover write must not fail the
     // upload — the book itself is fine. But it must not leave `coverPath` set
