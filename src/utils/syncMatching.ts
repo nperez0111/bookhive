@@ -370,7 +370,11 @@ export async function matchSyncDocumentForUser(
         .select("hiveId")
         .where("id", "=", file.id)
         .executeTakeFirst();
-      if (current?.hiveId && current.hiveId !== NO_HIVE_MATCH) hiveId = current.hiveId;
+      // Always take the persisted value, never the stale local guess: adopt a
+      // real link, but clear to null when the winner dismissed the match
+      // (NO_HIVE_MATCH) or the row vanished — so the ownership update below
+      // matches nothing and we return "no match" rather than a wrong link.
+      hiveId = current?.hiveId && current.hiveId !== NO_HIVE_MATCH ? current.hiveId : null;
     }
 
     await db
