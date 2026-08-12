@@ -22,6 +22,7 @@ import { BookSearchModal } from "@/components/BookSearchModal";
 import { PersonalBookCard } from "@/components/PersonalBookCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { StorageMeter } from "@/components/StorageMeter";
 import { TextPromptModal } from "@/components/TextPromptModal";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -44,13 +45,19 @@ import {
   useUnlinkPersonalBook,
   useUpdatePersonalShelf,
   useUploadPersonalBook,
+  storageFromLibrary,
   type PersonalBook,
   type PersonalShelf,
   type SyncDoc,
 } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { formatAuthors, progressFraction } from "@/utils/personalLibrary";
+import {
+  formatAuthors,
+  formatBytes,
+  formatFileSize,
+  progressFraction,
+} from "@/utils/personalLibrary";
 import type { HiveBook } from "../../../../src/types";
 
 /** Mirrors the formats the upload route accepts (`ACCEPTED_EXTENSIONS`). */
@@ -123,6 +130,14 @@ export default function LibraryScreen() {
   const shelves = shelvesQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
 
+  // Storage rides along on every library page, so this is current as of the
+  // last fetch without a request of its own. `quotaBytes <= 0` means the
+  // deployment has the quota switched off — treat that as "no ceiling", never
+  // as "full", or the upload button would lock out every user on such a server.
+  const storage = storageFromLibrary(allBooksQuery.data);
+  const hasQuota = storage != null && storage.quotaBytes > 0;
+  const isLibraryFull = hasQuota && storage.usedBytes >= storage.quotaBytes;
+
   // A document whose content hash matches an upload is already on screen as a
   // grid card, so the sync sections only cover documents with no file.
   const looseDocuments = useMemo(() => documents.filter((doc) => !doc.hasFile), [documents]);
@@ -148,6 +163,17 @@ export default function LibraryScreen() {
   // ── Upload ──
 
   const handleUpload = useCallback(async () => {
+    // Refuse before opening the picker rather than disabling the button: a
+    // greyed-out icon in a header explains nothing, and "why can't I upload"
+    // is exactly the question the message answers.
+    if (storage && storage.quotaBytes > 0 && storage.usedBytes >= storage.quotaBytes) {
+      Alert.alert(
+        "Library full",
+        `You've used ${formatBytes(storage.usedBytes)} of your ${formatBytes(storage.quotaBytes)}. Delete a book to free up space.`,
+      );
+      return;
+    }
+
     const picked = await DocumentPicker.getDocumentAsync({
       // iOS reports no useful MIME type for most ebook formats, so accept
       // everything and check the extension ourselves — a clear message beats a
@@ -168,6 +194,21 @@ export default function LibraryScreen() {
         `BookHive accepts ${ACCEPTED_EXTENSIONS.map((e) => `.${e}`).join(", ")} files.`,
       );
       return;
+    }
+
+    // The server is still the authority — this copy of `storage` is as old as
+    // the last library fetch, and the quota is evaluated inside the INSERT. But
+    // pushing 80 MB over a cellular connection to be told there was never room
+    // for it is the failure worth spending two lines to avoid.
+    if (storage && storage.quotaBytes > 0 && asset.size != null) {
+      const free = Math.max(0, storage.quotaBytes - storage.usedBytes);
+      if (asset.size > free) {
+        Alert.alert(
+          "Not enough space",
+          `“${asset.name}” is ${formatBytes(asset.size)}, but only ${formatBytes(free)} of your ${formatBytes(storage.quotaBytes)} is free. Delete a book to make room.`,
+        );
+        return;
+      }
     }
 
     setUploadName(asset.name);
@@ -195,7 +236,7 @@ export default function LibraryScreen() {
         },
       },
     );
-  }, [upload]);
+  }, [upload, storage]);
 
   // ── Book actions ──
 
@@ -206,7 +247,9 @@ export default function LibraryScreen() {
       // it loses its file and reappears in the sync sections. Say so.
       Alert.alert(
         "Delete this file?",
-        `“${book.title}” will be removed from your library and your OPDS catalog.` +
+        `“${book.title}” will be removed from your library and your OPDS catalog` +
+          (book.sizeBytes ? `, freeing ${formatFileSize(book.sizeBytes)}` : "") +
+          "." +
           (book.progress
             ? " Your e-reader progress is kept and moves down to “Also tracking”."
             : "") +
@@ -612,6 +655,8 @@ export default function LibraryScreen() {
 
   const renderHeader = () => (
     <View>
+      <StorageMeter storage={storage} />
+
       {renderShelfTabs()}
 
       {needsTriage.length > 0 ? (
@@ -771,12 +816,19 @@ export default function LibraryScreen() {
             onPress={handleUpload}
             disabled={upload.isPending}
             hitSlop={8}
-            accessibilityLabel="Upload a book"
+            accessibilityLabel={isLibraryFull ? "Upload a book — library full" : "Upload a book"}
+            // Dimmed, not disabled: pressing it explains that the library is
+            // full, which a dead control can't.
+            style={isLibraryFull ? styles.uploadFull : undefined}
           >
             {upload.isPending ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Ionicons name="add-circle" size={28} color={colors.primary} />
+              <Ionicons
+                name="add-circle"
+                size={28}
+                color={isLibraryFull ? colors.tertiaryText : colors.primary}
+              />
             )}
           </Pressable>
         }
@@ -905,6 +957,9 @@ export default function LibraryScreen() {
                     }`
                   : null,
                 bookSheet.hiveId ? "Linked to BookHive" : "Not linked",
+                // Worth the space now that there is a quota: "which of these do
+                // I delete to make room" is unanswerable without it.
+                formatFileSize(bookSheet.sizeBytes),
               ]
                 .filter(Boolean)
                 .join(" · ")
@@ -1025,6 +1080,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  uploadFull: {
+    opacity: 0.6,
   },
   uploadStrip: {
     marginHorizontal: 16,

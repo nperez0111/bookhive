@@ -27,8 +27,13 @@ import {
   createBidirectionalResolverAtcute,
   createCachingBaseIdResolver,
   createCachingBidirectionalResolver,
+  getDidDocumentResolver,
 } from "./bsky/id-resolver";
 import type { BidirectionalResolver } from "./bsky/id-resolver";
+import { ServiceJwtVerifier } from "@atcute/xrpc-server/auth";
+import type { AtprotoAudience } from "@atcute/lexicons/syntax";
+import { BOOKHIVE_DID } from "./constants";
+import { sweepStaleUploads } from "./utils/uploadPersonalBook";
 import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
@@ -72,6 +77,8 @@ export type AppContext = {
   getProfile: () => Promise<ProfileViewDetailed | null>;
   /** Service account agent for @bookhive.buzz ATProto writes. Null if env vars not set. */
   serviceAccountAgent: SessionClient | null;
+  /** Verifies atproto service-auth JWTs on /xrpc/*. Null when disabled. */
+  serviceJwtVerifier: ServiceJwtVerifier | null;
   /** Add fields to the one wide event logged per request (observability). */
   addWideEventContext: AddWideEventContext;
 };
@@ -117,6 +124,8 @@ export type AppDeps = {
   ingester: Ingester;
   resolver: BidirectionalResolver;
   serviceAccountAgent: SessionClient | null;
+  /** Verifies atproto service-auth JWTs on /xrpc/*. Null when disabled. */
+  serviceJwtVerifier: ServiceJwtVerifier | null;
   /** Stops the primary worker's enrichment drain loop; no-op elsewhere. */
   stopEnrichmentDrain: () => void;
 };
@@ -304,6 +313,33 @@ export async function createAppDeps(): Promise<AppDeps> {
   // scrape per search result (the 2026-08-01 OOM).
   const stopEnrichmentDrain = isPrimaryWorker ? startEnrichmentDrain({ db, logger }) : () => {};
 
+  // Accepts atproto inter-service auth on /xrpc/*, which is what lets a client
+  // that is not a browser (a script, an e-reader, another app) use the personal
+  // library. Always on; the cookie path is unaffected either way. No replay
+  // store — a token is already scoped to one lxm and one audience, so within its
+  // short lifetime "authed is authed".
+  const serviceJwtVerifier: ServiceJwtVerifier = new ServiceJwtVerifier({
+    // atcute compares these with exact string equality, so a bare DID does
+    // *not* match a `#fragment` audience — both spellings have to be listed.
+    // The fragment form is here in advance of a PLC operation adding a
+    // `#bookhive_appview` service entry to the DID document; once that lands,
+    // clients that switch to PDS proxying keep working with no server change.
+    acceptAudiences: serviceAuthAudiences(),
+    resolver: getDidDocumentResolver(),
+    maxAge: SERVICE_AUTH_MAX_AGE_SECONDS,
+  });
+
+  if (isPrimaryWorker) {
+    // Clear `.part` files left by a process that died between an upload's write
+    // and its rename. Nothing else removes them, and each is up to 100 MB.
+    void sweepStaleUploads().then(
+      (removed) => {
+        if (removed > 0) logger.info({ removed }, "swept stale upload temp files");
+      },
+      (err: unknown) => logger.warn({ err }, "stale upload sweep failed"),
+    );
+  }
+
   return {
     db,
     kv,
@@ -313,8 +349,30 @@ export async function createAppDeps(): Promise<AppDeps> {
     ingester,
     resolver,
     serviceAccountAgent,
+    serviceJwtVerifier,
     stopEnrichmentDrain,
   };
+}
+
+/**
+ * Maximum accepted service-JWT lifetime window, in seconds. atcute defaults to
+ * 300, but a PDS mints up to 3600 when `lxm` is set and most client SDKs don't
+ * expose `exp`, so those tokens would be refused as JwtTooOld. The token's own
+ * `exp` is still enforced separately, so widening this only accepts tokens the
+ * issuing PDS already considered valid.
+ */
+const SERVICE_AUTH_MAX_AGE_SECONDS = 3600;
+
+/**
+ * The `aud` values this deployment answers for. Overridable so a staging
+ * deployment can run under its own DID without a code change.
+ */
+function serviceAuthAudiences(): (Did | AtprotoAudience)[] {
+  const override = env.XRPC_SERVICE_AUTH_AUDIENCES.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (override.length > 0) return override as (Did | AtprotoAudience)[];
+  return [BOOKHIVE_DID, `${BOOKHIVE_DID}#bookhive_appview`] as (Did | AtprotoAudience)[];
 }
 
 /** Optional timing callbacks for server-timing breakdown (session_iron, session_restore, session_save). */

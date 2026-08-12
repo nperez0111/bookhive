@@ -56,9 +56,34 @@ an `ActionSheet` (match/unmatch, shelves, delete) — there is no in-app reader,
 Native stream the file off disk and drive a determinate progress bar from
 `XMLHttpRequest.upload.onprogress`.
 
+**Storage quota.** Every `getPersonalLibrary` page carries a `storage`
+`{usedBytes, quotaBytes}`, so `StorageMeter` stays current off the queries the
+screen already runs — there is no separate usage request and nothing extra to
+invalidate. Three guards hang off it, in increasing order of how much they cost
+the user to hit:
+
+- The upload button dims and explains itself when the library is full, rather
+  than being `disabled` — a dead control in a header answers no questions.
+- A picked file larger than the remaining quota is refused before a byte goes
+  over the wire. This is a _hint_, not the rule: `storage` is as old as the last
+  fetch, and the server evaluates the quota inside the INSERT.
+- A 413 that gets through arrives as an `UploadError` with
+  `code: "QuotaExceeded"`, whose message is the server's own prose (rendered
+  verbatim) and which triggers a library refetch, because a rejection means the
+  meter was showing room that wasn't there.
+
+`quotaBytes <= 0` means the deployment has quotas switched off, and so does an
+older server that sends no `storage` at all; both must read as "no ceiling",
+never as "full", or every upload on such a server would be blocked client-side.
+
 **`/sync`** shows a connection-status card (derived from whether any documents
 have synced), the KOSync server URL, OPDS catalog URL, username and derived
-password with reveal/copy/reset, and the six KOReader setup steps.
+password with reveal/copy/reset, and the seven KOReader setup steps. One of those
+steps is load-bearing rather than cosmetic: KOReader's "Send document metadata"
+toggle defaults to **off**, and with it off a sync request identifies the book by
+a single partial-MD5 hash, so a book the user never uploaded here has nothing to
+match against. The web setup instructions say the same thing — keep the two lists
+in step.
 
 Sync documents are surfaced in three places by state: `hasFile` → folded into
 the grid card that shares its content hash; unmatched → triage strip; matched or
@@ -91,6 +116,7 @@ dismissed → "Also tracking".
 | Hook                                                       | Purpose                                        |
 | ---------------------------------------------------------- | ---------------------------------------------- |
 | `usePersonalLibrary(shelfId?)`                             | Infinite query of uploaded books (24/page)     |
+| `storageFromLibrary(data)`                                 | Storage usage out of a library result (helper) |
 | `usePersonalShelves()`                                     | Shelves with book counts                       |
 | `useSyncDocuments()`                                       | Synced e-reader documents                      |
 | `useSyncPassword()` / `useRotateSyncPassword()`            | Derived KOSync/OPDS password, and rotating it  |
@@ -102,7 +128,9 @@ dismissed → "Also tracking".
 | `useLinkSyncDocument()` / `useDismissSyncDocument()`       | Match a document, or mark it "not on BookHive" |
 | `useRenameSyncDocument()` / `useDeleteSyncDocument()`      | Rename / forget a document (both optimistic)   |
 
-Exported types: `PersonalBook`, `PersonalShelf`, `SyncDoc`.
+Exported types: `PersonalBook`, `PersonalShelf`, `PersonalStorage`, `SyncDoc`, and
+`UploadError` (a real class — it carries the server's `code`, so a caller can
+tell a quota rejection from a dropped connection and act on it).
 
 ### Context Providers
 
@@ -184,6 +212,7 @@ Exported types: `PersonalBook`, `PersonalShelf`, `SyncDoc`.
 | `DeleteConfirmationModal` | Delete confirmation dialog      |
 | `DatePickerModal`         | Date picker for reading dates   |
 | `PersonalBookCard`        | Grid card for an uploaded file  |
+| `StorageMeter`            | Library storage used vs. quota  |
 | `BookSearchModal`         | Catalog picker for matching     |
 
 ### Layout & Navigation

@@ -28,6 +28,21 @@ export function personalCoverSource(
   };
 }
 
+/**
+ * Human-readable byte count at quota scale, e.g. "1.2 GB".
+ *
+ * Deliberately a byte-for-byte port of `formatBytes` in `src/routes/library.tsx`
+ * and `src/client/components/LibraryManager.tsx`: the server bakes this exact
+ * rendering into the 413 body it sends when an upload busts the quota, and the
+ * app shows that message verbatim. If the two round differently, the alert and
+ * the meter directly under it disagree about how full the library is.
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
 /** Human-readable file size, e.g. "2.4 MB". */
 export function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 0) return "";
@@ -38,7 +53,17 @@ export function formatFileSize(bytes: number): string {
   return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
 }
 
-/** Authors are stored tab-separated throughout BookHive. */
+/**
+ * Render a stored author string as a comma list.
+ *
+ * `personal_book.authors` is not consistently tab-separated, despite what the
+ * lexicon description says: `parseBook` joins the ebook's own creators with
+ * `", "`, while `linkPersonalBook` overwrites the column with `hive_book.authors`,
+ * which is tab-separated. Splitting on tab handles the linked case and leaves the
+ * parsed case alone — it is already a comma list. Do **not** also split on comma
+ * to "fix" the parsed case: EPUB `dc:creator` is frequently "Last, First", and
+ * that would turn one author into two.
+ */
 export function formatAuthors(authors: string | null | undefined): string {
   return (authors ?? "").split("\t").filter(Boolean).join(", ");
 }

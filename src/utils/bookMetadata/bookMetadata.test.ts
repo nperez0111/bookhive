@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { zipSync, strToU8 } from "fflate";
-import { koreaderPartialMD5, parseBook, detectFormat, isUsableCover } from ".";
+import { imageMeta } from "image-meta";
+import {
+  koreaderPartialMD5,
+  parseBook,
+  detectFormat,
+  isUsableCover,
+  prepareCover,
+  MIN_COVER_DIMENSION,
+} from ".";
+import { makeSvgCover, PNG_32 } from "./testFixtures";
 
 // 1x1 red PNG (a degenerate placeholder cover).
 const RED_PNG = Uint8Array.from(
@@ -131,12 +140,83 @@ describe("detectFormat", () => {
 describe("isUsableCover", () => {
   test("accepts a real, adequately-sized image", async () => {
     const bigPng = await new Bun.Image(RED_PNG).resize(32, 48).png().bytes();
-    expect(await isUsableCover(bigPng)).toBe(true);
+    expect(isUsableCover(bigPng)).toBe(true);
   });
 
-  test("rejects a 1x1 placeholder and empty input", async () => {
-    expect(await isUsableCover(RED_PNG)).toBe(false);
-    expect(await isUsableCover(new Uint8Array())).toBe(false);
-    expect(await isUsableCover(undefined)).toBe(false);
+  test("rejects a 1x1 placeholder and empty input", () => {
+    expect(isUsableCover(RED_PNG)).toBe(false);
+    expect(isUsableCover(new Uint8Array())).toBe(false);
+    expect(isUsableCover(undefined)).toBe(false);
+  });
+
+  test("rejects bytes that are not an image at all", () => {
+    expect(isUsableCover(strToU8("definitely not an image"))).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// prepareCover — the gate between "the parser found something" and "we store a
+// cover". Rasterizes SVG, because an SVG cover is a composition, not a wrapper.
+// -----------------------------------------------------------------------------
+
+describe("prepareCover", () => {
+  test("passes a raster cover through untouched", async () => {
+    const out = await prepareCover({ bytes: PNG_32, mime: "image/png", ext: "png" });
+    expect(out?.ext).toBe("png");
+    expect(out?.bytes).toBe(PNG_32);
+  });
+
+  test("rasterizes an SVG cover to a JPEG", async () => {
+    const out = await prepareCover({ bytes: makeSvgCover(), mime: "image/svg+xml", ext: "svg" });
+    expect(out).not.toBeNull();
+    // JPEG, not SVG: OPDS clients and e-readers can't be relied on to render
+    // vector covers, and nothing should ever write an SVG to the library.
+    expect(out!.ext).toBe("jpg");
+    expect(out!.mime).toBe("image/jpeg");
+    const meta = imageMeta(out!.bytes);
+    expect(meta.type).toBe("jpg");
+    expect(meta.width).toBeGreaterThanOrEqual(MIN_COVER_DIMENSION);
+  });
+
+  test("renders BOTH svg layers — the artwork and the lettering over it", async () => {
+    // The whole reason this rasterizes instead of unwrapping the embedded
+    // <image>. Rendering is deterministic, so comparing the full cover against
+    // each single-layer version pins down the two real failure modes:
+    //   - equal to the paths-only render  => the artwork was dropped
+    //     (what @takumi-rs does: it ignores the embedded <image> entirely)
+    //   - equal to the image-only render  => the lettering was dropped
+    //     (what pulling the base64 raster back out of the SVG does)
+    const render = async (layers: "both" | "image" | "paths") =>
+      (await prepareCover({
+        bytes: makeSvgCover({ layers }),
+        mime: "image/svg+xml",
+        ext: "svg",
+      }))!.bytes;
+
+    const [both, imageOnly, pathsOnly] = await Promise.all([
+      render("both"),
+      render("image"),
+      render("paths"),
+    ]);
+
+    expect(Buffer.compare(both, pathsOnly)).not.toBe(0);
+    expect(Buffer.compare(both, imageOnly)).not.toBe(0);
+    // Sanity: the two degenerate renders differ from each other too, so the
+    // assertions above can't both pass on a renderer that emits a constant.
+    expect(Buffer.compare(imageOnly, pathsOnly)).not.toBe(0);
+  });
+
+  test("returns null for an unrenderable SVG rather than throwing", async () => {
+    const out = await prepareCover({
+      bytes: strToU8("<svg><this is not valid"),
+      mime: "image/svg+xml",
+      ext: "svg",
+    });
+    expect(out).toBeNull();
+  });
+
+  test("returns null for a cover below the minimum dimension", async () => {
+    expect(await prepareCover({ bytes: RED_PNG, mime: "image/png", ext: "png" })).toBeNull();
+    expect(await prepareCover(undefined)).toBeNull();
   });
 });

@@ -30,6 +30,20 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
 
   app.use(timing({ autoEnd: false }));
 
+  /**
+   * Routes that stream a stored ebook file. Kept out of both `compress()` and
+   * `etag()` — see the notes at each call site.
+   */
+  const BOOK_DOWNLOAD_PREFIXES = [
+    "/library/books/",
+    "/opds/books/",
+    "/xrpc/buzz.bookhive.getPersonalBookFile",
+  ];
+  const isBookDownloadPath = (path: string) =>
+    BOOK_DOWNLOAD_PREFIXES.some(
+      (prefix) => path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`),
+    );
+
   if (env.isDevelopment) {
     app.use(prettyJSON());
   }
@@ -65,7 +79,16 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     await next();
     endTime(c, "compress");
   });
-  app.use(compress());
+  const compressMiddleware = compress();
+  app.use("*", async (c, next) => {
+    // Ebook downloads are already-compressed containers (EPUB and CBZ are ZIP,
+    // MOBI is its own packing), so gzipping them burns CPU for ~nothing. The
+    // one that would actually match hono's compressible-type regex is FB2 —
+    // `application/x-fictionbook+xml` hits the `+xml` branch — and compressing
+    // it drops the Content-Length a client is driving a progress bar from.
+    if (isBookDownloadPath(c.req.path)) return next();
+    return compressMiddleware(c, next);
+  });
 
   app.use(jsxRenderer());
 
@@ -122,7 +145,18 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   // completes and no byte is ever flushed. That failure is severe and would
   // look like "import is broken" rather than "etag is misconfigured", so it is
   // worth being order-independent about.
-  const ETAG_EXCLUDED_PREFIXES = ["/library/books/", "/opds/books/", "/import"];
+  // The two binary XRPC methods are listed by exact NSID, deliberately not as
+  // a `/xrpc/` prefix — that would cost the ~35 JSON methods their 304s. Both
+  // set their own ETag, and hono's etag() skips a response that already has
+  // one, so this is belt-and-braces: if a future edit drops that header the
+  // buffering regression above would otherwise come back silently.
+  const ETAG_EXCLUDED_PREFIXES = [
+    "/library/books/",
+    "/opds/books/",
+    "/import",
+    "/xrpc/buzz.bookhive.getPersonalBookFile",
+    "/xrpc/buzz.bookhive.getPersonalBookCover",
+  ];
   const isEtagExcluded = (path: string) =>
     ETAG_EXCLUDED_PREFIXES.some(
       (prefix) =>

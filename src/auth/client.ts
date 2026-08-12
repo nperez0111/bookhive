@@ -13,8 +13,40 @@ export type LockFunction = <T>(key: string, cb: () => Promise<T>) => Promise<T>;
 // When false, uses the granular per-resource scopes (works on all current PDS instances).
 const USE_PERMISSION_SETS = true;
 
+/**
+ * The `rpc:buzz.bookhive.*` entries are what allow a client to mint an atproto
+ * service-auth token for our own XRPC methods via
+ * `com.atproto.server.getServiceAuth` — without them the user's PDS refuses.
+ * They must stay in lockstep with the `rpc` permission in `lexicons/auth.json`:
+ * this constant is the fallback used when `USE_PERMISSION_SETS` is false, and
+ * granting the permission in only one of the two places silently drops it for
+ * whichever path is live.
+ */
+const PERSONAL_LIBRARY_RPC_SCOPES = [
+  "getPersonalLibrary",
+  "getPersonalBook",
+  "getPersonalBookFile",
+  "getPersonalBookCover",
+  "listPersonalShelves",
+  "uploadPersonalBook",
+  "deletePersonalBook",
+  "linkPersonalBook",
+  "unlinkPersonalBook",
+  "createPersonalShelf",
+  "updatePersonalShelf",
+  "deletePersonalShelf",
+  "addToPersonalShelf",
+  "removeFromPersonalShelf",
+  "getSyncProgress",
+  "putSyncProgress",
+  "listSyncDocuments",
+]
+  .map((method) => `rpc:buzz.bookhive.${method}?aud=*`)
+  .join(" ");
+
 const GRANULAR_SCOPES =
-  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
+  "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=* " +
+  PERSONAL_LIBRARY_RPC_SCOPES;
 
 // Permission set can only cover buzz.bookhive.* namespace (spec namespace authority rule).
 // blob, app.bsky.*, and social.popfeed.* must remain as granular scopes.

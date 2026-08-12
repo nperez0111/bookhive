@@ -1,6 +1,6 @@
 import type { Storage } from "unstorage";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
-import type { ActorResolver } from "@atcute/identity-resolver";
+import type { ActorResolver, DidDocumentResolver } from "@atcute/identity-resolver";
 import {
   CompositeDidDocumentResolver,
   CompositeHandleResolver,
@@ -13,6 +13,26 @@ import { NodeDnsHandleResolver } from "@atcute/identity-resolver-node";
 
 import { readThroughCache } from "../utils/readThroughCache";
 
+let sharedDidDocumentResolver: DidDocumentResolver | undefined;
+
+/**
+ * The process-wide DID document resolver.
+ *
+ * Memoised rather than constructed per caller so the OAuth client, the handle
+ * resolvers and the service-auth JWT verifier all share one instance — and
+ * therefore one DID-document cache. The verifier re-resolves with
+ * `noCache: true` when a signature fails, to recover from key rotation;
+ * `CompositeDidDocumentResolver` forwards that through, so sharing is safe.
+ */
+export function getDidDocumentResolver(): DidDocumentResolver {
+  return (sharedDidDocumentResolver ??= new CompositeDidDocumentResolver({
+    methods: {
+      plc: new PlcDidDocumentResolver(),
+      web: new WebDidDocumentResolver(),
+    },
+  }));
+}
+
 /** Create ActorResolver for OAuth (handle/DID resolution). */
 export function createActorResolver(): ActorResolver {
   const handleResolver = new CompositeHandleResolver({
@@ -21,15 +41,9 @@ export function createActorResolver(): ActorResolver {
       http: new WellKnownHandleResolver(),
     },
   });
-  const didDocumentResolver = new CompositeDidDocumentResolver({
-    methods: {
-      plc: new PlcDidDocumentResolver(),
-      web: new WebDidDocumentResolver(),
-    },
-  });
   return new LocalActorResolver({
     handleResolver,
-    didDocumentResolver,
+    didDocumentResolver: getDidDocumentResolver(),
   });
 }
 

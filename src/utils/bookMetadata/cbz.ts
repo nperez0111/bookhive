@@ -4,6 +4,7 @@
 import { unzipSync } from "fflate";
 import type { BookCover, BookMetadata } from "./types";
 import { extOf, mimeForExt } from "./shared";
+import { MAX_COVER_BYTES } from "./cover";
 
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "bmp", "webp", "avif"]);
 
@@ -16,20 +17,34 @@ const collator = new Intl.Collator(undefined, { numeric: true });
 export function parseCbz(bytes: Uint8Array, fallbackTitle: string): BookMetadata {
   const fallback: BookMetadata = { title: fallbackTitle, authors: "" };
   try {
-    const files = unzipSync(bytes, {
-      filter: (f) => IMAGE_EXTS.has(extOf(f.name)),
+    // Pass 1: index every page without inflating one. This used to decompress
+    // the entire comic — every page — in order to keep page 1. Returning
+    // `false` still walks the central directory, so the names (and sizes) are
+    // free; a 100 MB CBZ no longer inflates ~100 MB of pages it discards.
+    const pages: { name: string; originalSize: number }[] = [];
+    unzipSync(bytes, {
+      filter: (f) => {
+        if (IMAGE_EXTS.has(extOf(f.name))) {
+          pages.push({ name: f.name, originalSize: f.originalSize });
+        }
+        return false;
+      },
     });
-    const names = Object.keys(files).sort((a, b) => collator.compare(a, b));
-    if (names.length === 0) return fallback;
+    if (pages.length === 0) return fallback;
 
-    const first = names[0];
-    if (!first) return fallback;
-    const ext = extOf(first) === "jpeg" ? "jpg" : extOf(first);
-    const cover: BookCover = {
-      bytes: files[first]!,
-      mime: mimeForExt(ext),
-      ext,
-    };
+    pages.sort((a, b) => collator.compare(a.name, b.name));
+    const first = pages[0]!;
+    if (first.originalSize > MAX_COVER_BYTES) return fallback;
+
+    // Pass 2: inflate exactly the first page.
+    const data = unzipSync(bytes, { filter: (f) => f.name === first.name })[first.name];
+    // `originalSize` above is the archive's own claim; re-check the bytes we
+    // actually got, since a crafted zip can understate it and covers are
+    // written outside the storage quota.
+    if (!data || data.length === 0 || data.length > MAX_COVER_BYTES) return fallback;
+
+    const ext = extOf(first.name) === "jpeg" ? "jpg" : extOf(first.name);
+    const cover: BookCover = { bytes: data, mime: mimeForExt(ext), ext };
     return { title: fallbackTitle, authors: "", cover };
   } catch {
     return fallback;

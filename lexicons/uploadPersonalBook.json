@@ -4,23 +4,67 @@
   "defs": {
     "main": {
       "type": "procedure",
-      "description": "Upload an ebook file to the personal library. Accepts EPUB, PDF, MOBI, FB2, CBZ.",
+      "description": "Upload an ebook file to the authenticated user's personal library. Accepts EPUB, MOBI/AZW/AZW3, FB2 (including .fb2.zip) and CBZ. The declared Content-Type is advisory only: the format is determined from the file's magic bytes checked against the `filename` extension, and a file that matches neither is rejected. `application/octet-stream` is accepted because mobile document pickers and plain curl uploads routinely send it.",
+      "parameters": {
+        "type": "params",
+        "required": ["filename"],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Original file name including extension. Required: the extension is the only thing distinguishing the zip-container formats (.epub / .cbz / .fb2.zip) from each other, and it is the key used to match e-reader sync documents to this file.",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      },
       "input": {
-        "encoding": "*/*"
+        "encoding": "application/epub+zip,application/x-mobipocket-ebook,application/vnd.amazon.ebook,application/vnd.amazon.mobi8-ebook,application/x-fictionbook+xml,application/vnd.comicbook+zip,application/x-cbz,application/zip,application/octet-stream"
       },
       "output": {
         "encoding": "application/json",
         "schema": {
           "type": "object",
-          "required": ["book"],
+          "required": ["book", "storageUsedBytes", "storageQuotaBytes"],
           "properties": {
             "book": {
               "type": "ref",
               "ref": "buzz.bookhive.getPersonalLibrary#personalBookView"
+            },
+            "storageUsedBytes": {
+              "type": "integer",
+              "description": "Total bytes stored for this user after the upload",
+              "minimum": 0
+            },
+            "storageQuotaBytes": {
+              "type": "integer",
+              "description": "Total bytes this user is allowed to store",
+              "minimum": 0
             }
           }
         }
-      }
+      },
+      "errors": [
+        {
+          "name": "UnsupportedFormat",
+          "description": "The bytes are not a recognised ebook, or do not match the filename's extension"
+        },
+        {
+          "name": "AlreadyExists",
+          "description": "A book with this content hash is already in the library"
+        },
+        {
+          "name": "TooLarge",
+          "description": "The file exceeds the per-file size limit"
+        },
+        {
+          "name": "QuotaExceeded",
+          "description": "The upload would take the library over its total storage quota"
+        },
+        {
+          "name": "Busy",
+          "description": "Too many uploads are being processed; retry shortly"
+        }
+      ]
     }
   }
 }

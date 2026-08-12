@@ -20,6 +20,7 @@ import type {
   UserFollow,
 } from "./types";
 import { deriveBookIdentifiers } from "./utils/bookIdentifiers.js";
+import { filenameKey, koreaderFilenameHash } from "./utils/filenameMatching.js";
 
 // Types
 export type DatabaseSchema = {
@@ -905,6 +906,103 @@ migrations["021"] = {
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("hive_book").dropColumn("enrichFailedAt").execute();
     await db.schema.alterTable("hive_book").dropColumn("enrichAttempts").execute();
+  },
+};
+
+migrations["022"] = {
+  async up(db: Kysely<unknown>) {
+    // Filename-derived identity for e-reader documents. See
+    // src/utils/filenameMatching.ts for what each value is and why the first is
+    // exact while the second is not:
+    //
+    // - `filenameHash` is md5(basename) — literally the `document` id a KOSync
+    //   client sends when its checksum method is FILENAME instead of BINARY.
+    //   Without it, every user on that setting has a library where no uploaded
+    //   file ever lines up with its synced progress, because the id they send
+    //   is not a content hash at all.
+    // - `filenameKey` is a normalized, extension-less name, so a file survives
+    //   the calibre conversion (.epub -> .azw3) that broke the content hash in
+    //   the first place — which is the reason those users switched.
+    await db.schema.alterTable("personal_book").addColumn("filenameHash", "text").execute();
+    await db.schema.alterTable("personal_book").addColumn("filenameKey", "text").execute();
+    await db.schema.alterTable("sync_document").addColumn("filenameKey", "text").execute();
+
+    await sql`CREATE INDEX idx_personal_book_user_filename_hash ON personal_book(userDid, filenameHash)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX idx_personal_book_user_filename_key ON personal_book(userDid, filenameKey)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX idx_sync_document_user_filename_key ON sync_document(userDid, filenameKey)`.execute(
+      db,
+    );
+
+    // Backfill in JS: SQLite has no md5, and the normalization is Unicode-aware.
+    // Both tables hold one row per user per book, so this is small.
+    //
+    // These call the live helpers on purpose — see the header of
+    // `utils/filenameMatching.ts`. Changing their output requires a *new*
+    // migration that recomputes both columns; pinning a frozen copy here would
+    // only guarantee that a fresh install disagrees with the running app.
+    const books = (
+      await sql<{
+        id: number;
+        filename: string | null;
+      }>`SELECT id, filename FROM personal_book`.execute(db)
+    ).rows;
+    for (const row of books) {
+      const hash = koreaderFilenameHash(row.filename);
+      const key = filenameKey(row.filename);
+      if (!hash && !key) continue;
+      await sql`UPDATE personal_book SET filenameHash = ${hash}, filenameKey = ${key} WHERE id = ${row.id}`.execute(
+        db,
+      );
+    }
+
+    const docs = (
+      await sql<{
+        id: number;
+        filename: string | null;
+      }>`SELECT id, filename FROM sync_document WHERE filename IS NOT NULL`.execute(db)
+    ).rows;
+    for (const row of docs) {
+      const key = filenameKey(row.filename);
+      if (!key) continue;
+      await sql`UPDATE sync_document SET filenameKey = ${key} WHERE id = ${row.id}`.execute(db);
+    }
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_sync_document_user_filename_key`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_personal_book_user_filename_key`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_personal_book_user_filename_hash`.execute(db);
+    await db.schema.alterTable("sync_document").dropColumn("filenameKey").execute();
+    await db.schema.alterTable("personal_book").dropColumn("filenameKey").execute();
+    await db.schema.alterTable("personal_book").dropColumn("filenameHash").execute();
+  },
+};
+
+migrations["023"] = {
+  async up(db: Kysely<unknown>) {
+    // Covering index for the storage quota. The quota is enforced as
+    // `SUM(sizeBytes) WHERE userDid = ?` evaluated inside the upload INSERT, and
+    // the existing `idx_personal_book_user` only covers `userDid` — SQLite would
+    // walk it and then fetch every row from the table to read `sizeBytes`. With
+    // the size in the index the SUM is an index-only range scan.
+    await sql`CREATE INDEX idx_personal_book_user_size ON personal_book(userDid, sizeBytes)`.execute(
+      db,
+    );
+
+    // `parseBook` returns `authors: ""` (not null) on every fallback path, and
+    // the web upload route stored that verbatim while the XRPC one normalised
+    // it. The two are indistinguishable to JS truthiness and completely
+    // different to SQL — `WHERE authors IS NULL` silently misses every row the
+    // web route wrote. Normalise the existing rows once here; the shared upload
+    // core writes NULL from now on.
+    await sql`UPDATE personal_book SET authors = NULL WHERE authors = ''`.execute(db);
+    await sql`UPDATE personal_book SET language = NULL WHERE language = ''`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_personal_book_user_size`.execute(db);
   },
 };
 

@@ -44,7 +44,7 @@ const admin = new Hono<AppEnv>()
     ctx.addWideEventContext({ backfill_catalog: "started" });
     return c.json({ message: "Backfill started" }, 202);
   })
-  .get("/backfill-catalog/progress", (c) => {
+  .get("/backfill-catalog/progress", async (c) => {
     const authorization = c.req.header("authorization");
     if (
       !env.EXPORT_SHARED_SECRET ||
@@ -56,7 +56,10 @@ const admin = new Hono<AppEnv>()
       return c.json({ message: "Not Found" }, 404);
     }
 
-    return c.json(getBackfillProgress());
+    // Reads through to the KV, so this answers usefully even when the request
+    // lands on a worker that never ran the backfill, or after a restart.
+    const ctx = c.get("ctx");
+    return c.json(await getBackfillProgress(ctx.kv));
   })
   .get("/export", async (c) => {
     const ctx = c.get("ctx");

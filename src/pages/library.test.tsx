@@ -55,6 +55,45 @@ describe("LibraryPage", () => {
     });
   });
 
+  describe("upload error alert", () => {
+    it("renders the reason a plain form post failed, in both layouts", async () => {
+      // A <form> post can't read a JSON error body, so the browser path
+      // redirects with a code. Before this it landed on a page showing raw
+      // JSON as text.
+      for (const bookCount of [0, 3]) {
+        const html = await render(
+          <LibraryPage
+            handle="alice.bsky.social"
+            bookCount={bookCount}
+            syncDocCount={0}
+            uploadError="QuotaExceeded"
+          />,
+        );
+        expect(html).toContain("Your library is full");
+        expect(html).toContain('role="alert"');
+      }
+    });
+
+    it("falls back to a generic message for an unknown code", async () => {
+      const html = await render(
+        <LibraryPage
+          handle="alice.bsky.social"
+          bookCount={3}
+          syncDocCount={0}
+          uploadError="SomethingNew"
+        />,
+      );
+      expect(html).toContain("didn&#39;t work");
+    });
+
+    it("renders no alert when there is no error", async () => {
+      const html = await render(
+        <LibraryPage handle="alice.bsky.social" bookCount={3} syncDocCount={0} />,
+      );
+      expect(html).not.toContain('role="alert"');
+    });
+  });
+
   it("uses the populated layout when only synced documents exist", async () => {
     // Progress can arrive from an e-reader before anything is uploaded; that
     // still needs the manager so the user can triage those documents.

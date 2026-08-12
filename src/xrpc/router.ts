@@ -31,6 +31,9 @@ import {
   BuzzBookhiveGetLanguages,
   BuzzBookhiveGetPersonalLibrary,
   BuzzBookhiveGetPersonalBook,
+  BuzzBookhiveGetPersonalBookFile,
+  BuzzBookhiveGetPersonalBookCover,
+  BuzzBookhiveListPersonalShelves,
   BuzzBookhiveUploadPersonalBook,
   BuzzBookhiveDeletePersonalBook,
   BuzzBookhiveLinkPersonalBook,
@@ -96,18 +99,61 @@ import type {
   ProfileViewDetailed,
   SyncProgressData,
 } from "../types";
-import { detectFormat, parseBook, koreaderPartialMD5 } from "../utils/bookMetadata/index";
 import {
-  bookFilePath,
-  coverFilePath,
-  ensureDir,
-  MAX_PERSONAL_BOOK_BYTES,
-  personalBookDir,
+  etagMatches,
+  getStorageQuota,
+  getStorageUsage,
   removeBookDir,
+  streamPersonalBook,
 } from "../utils/personalLibrary";
-import { matchSyncDocument, NO_HIVE_MATCH } from "../utils/syncMatching";
+import { uploadPersonalBook, type UploadPersonalBookResult } from "../utils/uploadPersonalBook";
+import { resolveXrpcAuth, type AuthMode, type XrpcAuth, type XrpcAuthContext } from "./auth";
+import type { Nsid } from "@atcute/lexicons";
+import type { ServiceJwtVerifier } from "@atcute/xrpc-server/auth";
+import { matchSyncDocumentForUser, NO_HIVE_MATCH, SAME_BOOK_FILE } from "../utils/syncMatching";
+import { filenameKey } from "../utils/filenameMatching";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
 import { truncateForLog } from "../middleware/wide-event";
+
+/**
+ * The one place the upload core's failure reasons become XRPC errors, so the
+ * XRPC and multipart adapters can't drift on what a given failure means. The
+ * matching HTTP mapping lives in `src/routes/library.tsx`.
+ */
+function uploadErrorFor(result: Extract<UploadPersonalBookResult, { ok: false }>): XRPCError {
+  switch (result.reason) {
+    case "too-large":
+      return new XRPCError({
+        status: 413,
+        error: "TooLarge",
+        message: `File exceeds ${result.limitBytes} bytes`,
+      });
+    case "quota-exceeded":
+      return new XRPCError({
+        status: 413,
+        error: "QuotaExceeded",
+        message: `Library full (${result.usedBytes} of ${result.quotaBytes} bytes used)`,
+      });
+    case "unsupported-format":
+      return new InvalidRequestError({
+        message: `Unsupported file format: ${result.filename}`,
+      });
+    case "duplicate":
+      return new XRPCError({
+        status: 409,
+        error: "AlreadyExists",
+        message: "This book already exists in your library",
+      });
+    case "empty":
+      return new InvalidRequestError({ message: "The file is empty" });
+    case "busy":
+      return new XRPCError({
+        status: 503,
+        error: "Busy",
+        message: "Server is busy — try again in a moment",
+      });
+  }
+}
 
 /**
  * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
@@ -130,143 +176,6 @@ function syncProgressView(
   }
 }
 
-/**
- * Process a book upload: detect format, hash, extract metadata, write to disk,
- * insert DB row, and attempt auto-linking to a hive_book. Exported so it can be
- * called from both the XRPC handler and a regular Hono multipart form route.
- */
-export async function processBookUpload(
-  db: Database,
-  _kv: Storage,
-  userDid: string,
-  bytes: Uint8Array,
-  filename: string,
-): Promise<{
-  contentHash: string;
-  title: string;
-  authors?: string;
-  language?: string;
-  format: string;
-  mime: string;
-  sizeBytes: number;
-  createdAt: string;
-  updatedAt: string;
-  hiveId?: string;
-  coverUrl?: string;
-}> {
-  // 1. Detect format — reject unknown
-  const formatInfo = detectFormat(bytes, filename);
-  if (formatInfo.format === "unknown") {
-    throw new XRPCError({
-      status: 400,
-      error: "InvalidRequest",
-      message: `Unsupported file format: ${filename}`,
-    });
-  }
-
-  // 2. Compute content hash
-  const contentHash = koreaderPartialMD5(bytes);
-
-  // 3. Check for duplicate
-  const duplicate = await db
-    .selectFrom("personal_book")
-    .select(["id", "contentHash"])
-    .where("userDid", "=", userDid)
-    .where("contentHash", "=", contentHash)
-    .executeTakeFirst();
-
-  if (duplicate) {
-    throw new XRPCError({
-      status: 409,
-      error: "AlreadyExists",
-      message: "This book already exists in your library",
-    });
-  }
-
-  // 4. Parse metadata + cover
-  const metadata = parseBook(bytes, filename);
-
-  // 5. Write file to disk
-  const dir = personalBookDir(userDid, contentHash);
-  await ensureDir(dir);
-  const filePath = bookFilePath(userDid, contentHash, formatInfo.ext);
-  await Bun.write(filePath, bytes);
-
-  // 6. Write cover if extracted
-  let coverPath: string | null = null;
-  let coverMime: string | null = null;
-  if (metadata.cover) {
-    coverPath = coverFilePath(userDid, contentHash, metadata.cover.ext);
-    coverMime = metadata.cover.mime;
-    await Bun.write(coverPath, metadata.cover.bytes);
-  }
-
-  // 7. Insert into personal_book
-  const now = new Date().toISOString();
-
-  // 8. Auto-link: try to match to a hive_book
-  let hiveId = await matchSyncDocument(db, {
-    title: metadata.title,
-    authors: metadata.authors,
-    filename,
-  });
-
-  await db
-    .insertInto("personal_book")
-    .values({
-      userDid,
-      contentHash,
-      hiveId,
-      filename,
-      title: metadata.title,
-      authors: metadata.authors || null,
-      language: metadata.language ?? null,
-      format: formatInfo.format,
-      mime: formatInfo.mime,
-      filePath,
-      coverPath,
-      coverMime,
-      sizeBytes: bytes.length,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .execute();
-
-  // 9. If contentHash matches a sync_document for this user, update its hiveId
-  if (hiveId) {
-    await db
-      .updateTable("sync_document")
-      .set({ hiveId })
-      .where("userDid", "=", userDid)
-      .where("documentHash", "=", contentHash)
-      .where("hiveId", "is", null)
-      .execute();
-
-    // Mark the book as owned if the user has it in their library
-    await db
-      .updateTable("user_book")
-      .set({ owned: 1 })
-      .where("userDid", "=", userDid)
-      .where("hiveId", "=", hiveId)
-      .where("owned", "=", 0)
-      .execute();
-  }
-
-  return {
-    contentHash,
-    title: metadata.title,
-    authors: metadata.authors || undefined,
-    language: metadata.language ?? undefined,
-    format: formatInfo.format,
-    mime: formatInfo.mime,
-    sizeBytes: bytes.length,
-    createdAt: now,
-    updatedAt: now,
-    hiveId: hiveId ?? undefined,
-    coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
-  };
-}
-
 /** Minimal context shape required by XRPC handlers (avoids importing index). */
 export type XrpcContext = {
   db: Database;
@@ -279,6 +188,8 @@ export type XrpcContext = {
     handle: { resolve: (handle: string) => Promise<string | undefined> };
   };
   addWideEventContext: (context: Record<string, unknown>) => void;
+  /** Verifies atproto service-auth JWTs. Null when service auth is disabled. */
+  serviceJwtVerifier?: ServiceJwtVerifier | null;
 };
 
 export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
@@ -298,27 +209,78 @@ function getCtx(): XrpcContext {
   return ctx;
 }
 
+/**
+ * Auth resolved for the in-flight handler, by the registration wrapper below.
+ * Same AsyncLocalStorage idiom as the context — atcute handlers only receive
+ * `{request, params, input, signal}`, so there is nowhere else to put it.
+ */
+const xrpcAuthStorage = new AsyncLocalStorage<XrpcAuth>();
+
+/** The authenticated caller. Only valid inside a handler registered with `auth`. */
+function getAuth(): XrpcAuth {
+  const auth = xrpcAuthStorage.getStore();
+  if (!auth) throw new Error("XRPC auth not resolved (method registered without `auth`)");
+  return auth;
+}
+
+/**
+ * The caller's OAuth session, for handlers that write to their repo. Non-null by
+ * construction — `auth: "pdsWrite"` refuses service auth before the handler runs
+ * — but narrowing the union keeps that guarantee in the types rather than in a
+ * comment.
+ */
+function requireAgent(): SessionClient {
+  const auth = getAuth();
+  if (auth.method !== "session") {
+    throw new AuthRequiredError({ message: "This method requires an OAuth session" });
+  }
+  return auth.agent;
+}
+
 export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = { ctx: E }>(
   app: import("hono").Hono<{ Variables: V }>,
   deps: XrpcDeps<E>,
 ): void {
   const router = new XRPCRouter();
 
-  // XRPCRouter catches handler throws and turns them into a 500 Response, so
-  // Hono's error-capture middleware never sees them and the wide event logs an
-  // error-level line with no `error` field at all. Record the cause on the way
-  // past. Patching the two registration methods once beats annotating 40+
-  // handlers (and can't be forgotten by the next one added).
+  // Two things are patched onto every registration here rather than repeated in
+  // 40+ handlers (where the next one added would forget them):
+  //
+  // 1. **Error observability.** XRPCRouter catches handler throws and turns them
+  //    into a 500 Response, so Hono's error-capture middleware never sees them
+  //    and the wide event logs an error-level line with no `error` field at all.
+  //    Record the cause on the way past.
+  // 2. **Authentication**, when the registration carries an `auth` mode. The
+  //    `lxm` a service-auth token must be bound to is derived from the schema's
+  //    own NSID, which makes it structurally impossible for a method's route and
+  //    its token binding to disagree.
   for (const method of ["addQuery", "addProcedure"] as const) {
     const original = router[method].bind(router) as (schema: unknown, options: any) => unknown;
-    (router as any)[method] = (schema: unknown, options: any) => {
+    (router as any)[method] = (schema: any, options: any) => {
       const handler = options?.handler;
       if (typeof handler !== "function") return original(schema, options);
+
+      // A generated lexicon module carries `mainSchema`; `v.query`/`v.procedure`
+      // put the NSID on it. Same unwrap atcute does internally.
+      const nsid = ("mainSchema" in schema ? schema.mainSchema : schema).nsid as Nsid;
+      const mode: AuthMode | undefined = options.auth;
+      const { auth: _auth, ...rest } = options;
+
       return original(schema, {
-        ...options,
-        handler: async (input: unknown) => {
+        ...rest,
+        handler: async (input: any) => {
           try {
-            return await handler(input);
+            if (mode === undefined) return await handler(input);
+
+            const ctx = xrpcContextStorage.getStore();
+            const auth = await resolveXrpcAuth(ctx as XrpcAuthContext, input.request, {
+              lxm: nsid,
+              mode,
+            });
+            ctx?.addWideEventContext({ userDid: auth.did, xrpc_auth: auth.method });
+            // Auth failures land inside this try, so a 401 is recorded as the
+            // intentional control flow it is — same as a hand-thrown one.
+            return await xrpcAuthStorage.run(auth, () => handler(input));
           } catch (err) {
             // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control
             // flow, not defects — record them without a stack.
@@ -1272,10 +1234,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── List CRUD ──
 
   router.addProcedure(BuzzBookhiveCreateList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveCreateList.$input;
 
       const result = await createList({
@@ -1292,10 +1254,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveUpdateList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveUpdateList.$input;
 
       const result = await updateList({
@@ -1313,10 +1275,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveDeleteList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveDeleteList.$input;
 
       await deleteList({ agent, db: ctx.db, uri: input.uri });
@@ -1326,10 +1288,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveAddToList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveAddToList.$input;
 
       const result = await addBookToList({
@@ -1346,10 +1308,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveRemoveFromList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveRemoveFromList.$input;
 
       await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
@@ -1359,10 +1321,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveReorderList, {
+    auth: "pdsWrite",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
+      const agent = requireAgent();
       const input = _input as BuzzBookhiveReorderList.$input;
 
       await reorderListItems({
@@ -1457,27 +1419,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── Personal Library CRUD ──
 
   router.addQuery(BuzzBookhiveGetPersonalLibrary, {
+    auth: "identity",
     async handler({ params: _params }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const params = _params as BuzzBookhiveGetPersonalLibrary.$params;
-      const { limit = 24, shelfId } = params;
+      const { limit = 24, shelfId, q, sort = "recent" } = params;
       const offset = params.cursor ? parseInt(params.cursor, 10) : 0;
 
       let query = ctx.db
         .selectFrom("personal_book")
         .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
-        // The KOReader partial MD5 is both `personal_book.contentHash` and
-        // `sync_document.documentHash`, so a synced file joins straight to its
-        // e-reader progress.
-        .leftJoin("sync_document", (join) =>
-          join
-            .onRef("sync_document.documentHash", "=", "personal_book.contentHash")
-            .on("sync_document.userDid", "=", userDid)
-            .on("sync_document.provider", "=", "kosync"),
-        )
         .select([
           "personal_book.id",
           "personal_book.contentHash",
@@ -1496,11 +1448,68 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           "personal_book.updatedAt",
           "hive_book.cover as hiveCover",
           "hive_book.thumbnail as hiveThumbnail",
-          "sync_document.progressData as progressData",
-          "sync_document.updatedAt as progressUpdatedAt",
+          "hive_book.description as hiveDescription",
         ])
-        .where("personal_book.userDid", "=", userDid)
-        .orderBy("personal_book.createdAt", "desc");
+        // E-reader progress for this file. Correlated subqueries rather than a
+        // join: a file can match more than one synced document (the same book
+        // read on a device in BINARY checksum mode and another in FILENAME
+        // mode is two rows — see SAME_BOOK_FILE), and a join would emit the
+        // book once per match and quietly corrupt this query's pagination.
+        // Most recent wins.
+        .select((eb) => [
+          eb
+            .selectFrom("sync_document")
+            .select("sync_document.progressData")
+            .where("sync_document.userDid", "=", userDid)
+            .where("sync_document.provider", "=", "kosync")
+            .where(SAME_BOOK_FILE)
+            .orderBy("sync_document.updatedAt", "desc")
+            .limit(1)
+            .as("progressData"),
+          eb
+            .selectFrom("sync_document")
+            .select("sync_document.updatedAt")
+            .where("sync_document.userDid", "=", userDid)
+            .where("sync_document.provider", "=", "kosync")
+            .where(SAME_BOOK_FILE)
+            .orderBy("sync_document.updatedAt", "desc")
+            .limit(1)
+            .as("progressUpdatedAt"),
+        ])
+        .where("personal_book.userDid", "=", userDid);
+
+      // Same predicate and ordering as the OPDS search feed, so "full parity"
+      // is a property of the SQL rather than a claim. SQLite's LIKE is
+      // case-insensitive for ASCII only; that is pre-existing OPDS behaviour
+      // and deliberately preserved rather than silently changed here.
+      if (q) {
+        query = query.where((eb) =>
+          eb.or([
+            eb("personal_book.title", "like", `%${q}%`),
+            eb("personal_book.authors", "like", `%${q}%`),
+          ]),
+        ) as typeof query;
+      }
+      // Every sort ends on `personal_book.id`. None of the leading keys are
+      // unique: titles and authors collide routinely (a series, an omnibus, the
+      // same book in two formats), and `createdAt` — millisecond-precision ISO
+      // — collides when two uploads commit in the same millisecond. SQLite is
+      // free to return ties in any order it likes between two LIMIT/OFFSET
+      // queries, so without a unique final key a book can appear on two
+      // consecutive pages while another never appears at all.
+      query =
+        sort === "title"
+          ? (query
+              .orderBy("personal_book.title", "asc")
+              .orderBy("personal_book.id", "asc") as typeof query)
+          : sort === "author"
+            ? (query
+                .orderBy("personal_book.authors", "asc")
+                .orderBy("personal_book.title", "asc")
+                .orderBy("personal_book.id", "asc") as typeof query)
+            : (query
+                .orderBy("personal_book.createdAt", "desc")
+                .orderBy("personal_book.id", "desc") as typeof query);
 
       if (shelfId !== undefined) {
         query = query
@@ -1518,6 +1527,14 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .selectFrom("personal_book")
         .select((eb) => eb.fn.countAll<number>().as("total"))
         .where("personal_book.userDid", "=", userDid);
+      if (q) {
+        countQuery = countQuery.where((eb) =>
+          eb.or([
+            eb("personal_book.title", "like", `%${q}%`),
+            eb("personal_book.authors", "like", `%${q}%`),
+          ]),
+        ) as typeof countQuery;
+      }
       if (shelfId !== undefined) {
         countQuery = countQuery
           .innerJoin(
@@ -1528,12 +1545,16 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .where("personal_shelf_item.shelfId", "=", shelfId) as typeof countQuery;
       }
 
-      const [rows, counted] = await Promise.all([
+      const [rows, counted, usedBytes] = await Promise.all([
         query
           .limit(limit + 1)
           .offset(offset)
           .execute(),
         countQuery.executeTakeFirstOrThrow(),
+        // Bundled here rather than exposed as its own method: every client
+        // already refetches this on mount and after each mutation, so a usage
+        // bar updates with no extra round-trip and no new invalidation wiring.
+        getStorageUsage(ctx.db, userDid),
       ]);
       const hasMore = rows.length > limit;
       const books = rows.slice(0, limit);
@@ -1570,6 +1591,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           format: b.format,
           mime: b.mime,
           sizeBytes: b.sizeBytes,
+          filename: b.filename,
+          description: b.hiveDescription ?? undefined,
           createdAt: b.createdAt,
           updatedAt: b.updatedAt,
           hiveId: b.hiveId ?? undefined,
@@ -1577,21 +1600,26 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             b.hiveCover ??
             b.hiveThumbnail ??
             (b.coverPath ? `/library/covers/${b.contentHash}` : undefined),
+          // `coverUrl`'s local form needs a session cookie, which a service-auth
+          // client does not have. This tells such a client to use
+          // getPersonalBookCover instead, without breaking `coverUrl` for the
+          // web and mobile clients that already read it.
+          hasLocalCover: Boolean(b.coverPath),
           progress: syncProgressView(b.progressData, b.progressUpdatedAt),
           shelfIds: shelfIdsByBook.get(b.id) ?? [],
         })),
         total: Number(counted.total),
         cursor: nextCursor,
+        storage: { usedBytes, quotaBytes: getStorageQuota() },
       });
     },
   });
 
   router.addQuery(BuzzBookhiveGetPersonalBook, {
+    auth: "identity",
     async handler({ params: _params }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { contentHash } = _params as BuzzBookhiveGetPersonalBook.$params;
 
       const book = await ctx.db
@@ -1641,44 +1669,183 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  // TODO: The uploadPersonalBook XRPC handler uses blob input. If the XRPC
-  // server's binary handling proves problematic, the actual upload route may
-  // need to be a standard Hono multipart form handler at `/library/upload`
-  // instead. The core logic is exported as `processBookUpload` so it can be
-  // called from either location.
-  router.addProcedure(BuzzBookhiveUploadPersonalBook, {
-    async handler({ request }) {
+  // The XRPC equivalent of GET /opds/books/:hash/download.
+  //
+  // Returns a bare `Response` rather than `json(...)`: the lexicon declares a
+  // blob output, so the router passes whatever we return straight through and
+  // sets no headers of its own — this handler owns all of them.
+  router.addQuery(BuzzBookhiveGetPersonalBookFile, {
+    auth: "identity",
+    async handler({ request, params: _params }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
+      const { contentHash } = _params as BuzzBookhiveGetPersonalBookFile.$params;
 
-      // This path had no size limit at all, unlike POST /library/upload — an
-      // unbounded `arrayBuffer()` straight into native memory on an
-      // authenticated endpoint. Reject on the declared length first so an
-      // oversized body is never materialised.
+      // `streamPersonalBook` answers the conditional request itself, before it
+      // opens the file. This route must not lean on hono's `etag()` for the
+      // 304: that middleware buffers a whole body through a digest, which is
+      // exactly what a 100 MB download must never do.
+      const download = await streamPersonalBook(
+        ctx.db,
+        userDid,
+        contentHash,
+        request.headers.get("if-none-match"),
+      );
+      // 404 rather than 403 for someone else's book — don't leak existence.
+      if (!download) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+      if (download.notModified) {
+        return new Response(null, { status: 304, headers: download.headers });
+      }
+      return new Response(download.stream, { status: 200, headers: download.headers });
+    },
+  });
+
+  // The XRPC equivalent of GET /opds/books/:hash/cover.
+  router.addQuery(BuzzBookhiveGetPersonalBookCover, {
+    auth: "identity",
+    async handler({ request, params: _params }) {
+      const ctx = getCtx();
+      const { did: userDid } = getAuth();
+      const { contentHash, width = 300 } = _params as BuzzBookhiveGetPersonalBookCover.$params;
+
+      const book = await ctx.db
+        .selectFrom("personal_book")
+        .select(["coverPath", "coverMime", "hiveId"])
+        .where("userDid", "=", userDid)
+        .where("contentHash", "=", contentHash)
+        .executeTakeFirst();
+      if (!book) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+
+      if (book.coverPath) {
+        const file = Bun.file(book.coverPath);
+        if (await file.exists()) {
+          // Set our own ETag: hono's `etag()` only digests (and so buffers) a
+          // response that doesn't already carry one, and this gets conditional
+          // requests answered for free.
+          const etag = `"${contentHash}-cover"`;
+          if (etagMatches(request.headers.get("if-none-match"), etag)) {
+            return new Response(null, { status: 304, headers: { ETag: etag } });
+          }
+          return new Response(file.stream(), {
+            headers: {
+              "Content-Type": book.coverMime || "image/jpeg",
+              "Content-Length": String(file.size),
+              "Cache-Control": "private, max-age=86400",
+              ETag: etag,
+            },
+          });
+        }
+      }
+
+      // No extracted cover, but the book is linked to a catalog entry: hand the
+      // client the public image proxy. Absolute, so a non-browser client can
+      // follow it without knowing our origin, and public, so nothing leaks.
+      if (book.hiveId) {
+        // Built by hand rather than with `Response.redirect`, whose headers are
+        // *immutable*: the downstream `Cache-Control` middleware and the nitro
+        // response hook both set headers on the final Response, and doing that
+        // to an immutable guard throws a TypeError — turning a 302 into a 500.
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: new URL(`/images/books/${book.hiveId}?w=${width}`, request.url).toString(),
+          },
+        });
+      }
+      throw new XRPCError({ status: 404, error: "NotFound", message: "No cover for this book" });
+    },
+  });
+
+  // The root call for a catalog client: everything GET /opds renders, in one
+  // request — shelves with their counts, the library total, and storage usage.
+  router.addQuery(BuzzBookhiveListPersonalShelves, {
+    auth: "identity",
+    async handler() {
+      const ctx = getCtx();
+      const { did: userDid } = getAuth();
+
+      const [shelves, counted, usedBytes] = await Promise.all([
+        ctx.db
+          .selectFrom("personal_shelf")
+          .leftJoin("personal_shelf_item", "personal_shelf.id", "personal_shelf_item.shelfId")
+          .select((eb) => [
+            "personal_shelf.id",
+            "personal_shelf.name",
+            "personal_shelf.description",
+            "personal_shelf.createdAt",
+            "personal_shelf.updatedAt",
+            eb.fn.count<number>("personal_shelf_item.personalBookId").as("bookCount"),
+          ])
+          .where("personal_shelf.userDid", "=", userDid)
+          .groupBy("personal_shelf.id")
+          .orderBy("personal_shelf.name", "asc")
+          .execute(),
+        ctx.db
+          .selectFrom("personal_book")
+          .select((eb) => eb.fn.countAll<number>().as("total"))
+          .where("userDid", "=", userDid)
+          .executeTakeFirstOrThrow(),
+        getStorageUsage(ctx.db, userDid),
+      ]);
+
+      return json({
+        shelves: shelves.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description ?? undefined,
+          bookCount: Number(s.bookCount),
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        })),
+        totalBooks: Number(counted.total),
+        storage: { usedBytes, quotaBytes: getStorageQuota() },
+      });
+    },
+  });
+
+  // The blob-input twin of POST /library/upload. Both are thin adapters over
+  // `uploadPersonalBook`; the body streams straight to disk from here, so an
+  // oversized or malformed upload is never materialised in memory.
+  router.addProcedure(BuzzBookhiveUploadPersonalBook, {
+    auth: "identity",
+    async handler({ request, params: _params }) {
+      const ctx = getCtx();
+      const { did: userDid } = getAuth();
+      const { filename } = _params as BuzzBookhiveUploadPersonalBook.$params;
+
       const declared = Number(request.headers.get("content-length"));
-      if (Number.isFinite(declared) && declared > MAX_PERSONAL_BOOK_BYTES) {
-        throw new InvalidRequestError({ message: "File exceeds 100 MB limit" });
-      }
+      const result = await uploadPersonalBook({
+        db: ctx.db,
+        kv: ctx.kv,
+        userDid,
+        filename,
+        source: {
+          kind: "stream",
+          // The lexicon declares a blob input, so atcute leaves the body alone
+          // and types it as a stream for us.
+          body: request.body as ReadableStream<Uint8Array>,
+          declaredLength: Number.isFinite(declared) && declared > 0 ? declared : undefined,
+        },
+      });
 
-      const bytes = new Uint8Array(await request.arrayBuffer());
-      if (bytes.length > MAX_PERSONAL_BOOK_BYTES) {
-        throw new InvalidRequestError({ message: "File exceeds 100 MB limit" });
-      }
-      const filename = request.headers.get("x-file-name") ?? "unknown";
-
-      const result = await processBookUpload(ctx.db, ctx.kv, userDid, bytes, filename);
-      return json({ book: result });
+      if (!result.ok) throw uploadErrorFor(result);
+      return json({
+        book: result.book,
+        storageUsedBytes: result.storageUsedBytes,
+        storageQuotaBytes: result.storageQuotaBytes,
+      });
     },
   });
 
   router.addProcedure(BuzzBookhiveDeletePersonalBook, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { contentHash } = _input as BuzzBookhiveDeletePersonalBook.$input;
 
       const book = await ctx.db
@@ -1704,18 +1871,26 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("contentHash", "=", contentHash)
         .execute();
 
-      await removeBookDir(userDid, contentHash);
+      // Best-effort: the row is already gone, so the book is out of the library
+      // and out of the quota either way. Failing the request here would 500 an
+      // otherwise-successful delete and send the client into retrying a delete
+      // that now 404s.
+      await removeBookDir(userDid, contentHash).catch((err: unknown) => {
+        ctx.addWideEventContext({
+          personal_book_rm: "failed",
+          error: { message: err instanceof Error ? err.message : String(err) },
+        });
+      });
 
       return json({});
     },
   });
 
   router.addProcedure(BuzzBookhiveLinkPersonalBook, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { contentHash, hiveId } = _input as BuzzBookhiveLinkPersonalBook.$input;
 
       const book = await ctx.db
@@ -1791,11 +1966,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveUnlinkPersonalBook, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { contentHash } = _input as BuzzBookhiveUnlinkPersonalBook.$input;
 
       const book = await ctx.db
@@ -1846,11 +2020,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── Personal Shelf Management ──
 
   router.addProcedure(BuzzBookhiveCreatePersonalShelf, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { name, description } = _input as BuzzBookhiveCreatePersonalShelf.$input;
 
       const now = new Date().toISOString();
@@ -1880,11 +2053,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveUpdatePersonalShelf, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { id, name, description } = _input as BuzzBookhiveUpdatePersonalShelf.$input;
 
       const existing = await ctx.db
@@ -1936,11 +2108,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveDeletePersonalShelf, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { id } = _input as BuzzBookhiveDeletePersonalShelf.$input;
 
       const existing = await ctx.db
@@ -1966,11 +2137,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveAddToPersonalShelf, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { shelfId, contentHash } = _input as BuzzBookhiveAddToPersonalShelf.$input;
 
       const shelf = await ctx.db
@@ -2007,11 +2177,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhiveRemoveFromPersonalShelf, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { shelfId, contentHash } = _input as BuzzBookhiveRemoveFromPersonalShelf.$input;
 
       const shelf = await ctx.db
@@ -2049,11 +2218,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   // ── Sync Progress (XRPC mirrors of KOSync) ──
 
   router.addQuery(BuzzBookhiveGetSyncProgress, {
+    auth: "identity",
     async handler({ params: _params }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const { contentHash } = _params as BuzzBookhiveGetSyncProgress.$params;
 
       const row = await ctx.db
@@ -2081,11 +2249,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addProcedure(BuzzBookhivePutSyncProgress, {
+    auth: "identity",
     async handler({ input: _input }) {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
       const input = _input as BuzzBookhivePutSyncProgress.$input;
       const { document, progress, percentage: percentageStr, device, device_id, metadata } = input;
 
@@ -2126,7 +2293,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           .set({
             progressData: JSON.stringify(progressData),
             updatedAt: now,
-            ...(filename != null ? { filename } : {}),
+            ...(filename != null ? { filename, filenameKey: filenameKey(filename) } : {}),
             ...(title != null ? { title } : {}),
             ...(authors != null ? { authors } : {}),
           })
@@ -2141,6 +2308,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             documentHash: document,
             hiveId: null,
             filename,
+            filenameKey: filenameKey(filename),
             title,
             authors,
             progressData: JSON.stringify(progressData),
@@ -2152,8 +2320,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       let hiveId = existing?.hiveId ?? null;
 
-      if (!hiveId && (title || authors)) {
-        hiveId = await matchSyncDocument(ctx.db, { title, authors, filename });
+      // Unconditional, and resolved against the user's uploaded files — see the
+      // same call in src/routes/sync/kosync.ts.
+      if (!hiveId) {
+        hiveId = await matchSyncDocumentForUser(ctx.db, userDid, {
+          documentHash: document,
+          title,
+          authors,
+          filename,
+        });
         if (hiveId) {
           await ctx.db
             .updateTable("sync_document")
@@ -2161,6 +2336,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             .where("userDid", "=", userDid)
             .where("provider", "=", "kosync")
             .where("documentHash", "=", document)
+            // Fill only an empty link — see the same guard in
+            // src/routes/sync/kosync.ts for why.
+            .where("hiveId", "is", null)
             .execute();
         }
       }
@@ -2174,11 +2352,10 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveListSyncDocuments, {
+    auth: "identity",
     async handler() {
       const ctx = getCtx();
-      const agent = await ctx.getSessionAgent();
-      if (!agent) throw new AuthRequiredError({ message: "Authentication required" });
-      const userDid = agent.did;
+      const { did: userDid } = getAuth();
 
       const rows = await ctx.db
         .selectFrom("sync_document")

@@ -4,3 +4,9 @@
 # directories explicitly (`bun test src server`) so app/'s React Native suites,
 # which use the jest preset rather than bun's runner, stay out of the way.
 root = "."
+
+# Runs before src/env.ts is imported, which is the only moment DB_PATH and
+# LIBRARY_DIR can still be set — envalid freezes `env` at import. Without it
+# getLibraryDir() resolves to ./library inside the checkout and upload tests
+# write ebooks into the repo. See src/test/env-setup.ts.
+preload = ["./src/test/env-setup.ts"]

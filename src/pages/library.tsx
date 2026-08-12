@@ -296,11 +296,38 @@ const LibraryDialog: FC<{
   </dialog>
 );
 
+/**
+ * What a failed upload said, for the codes `POST /library/upload` redirects
+ * with. A plain `<form>` post can't read a JSON error body, so the browser path
+ * round-trips a code and renders it here — it used to land on a page showing
+ * raw JSON as text.
+ */
+const UPLOAD_ERRORS: Record<string, string> = {
+  TooLarge: "That file is larger than the 100 MB limit.",
+  QuotaExceeded: "Your library is full. Delete a book to free up space, then try again.",
+  UnsupportedFormat: "That file isn't a supported ebook. Try EPUB, MOBI, AZW3, FB2 or CBZ.",
+  AlreadyExists: "That book is already in your library.",
+  EmptyFile: "That file is empty.",
+  NoFile: "No file was selected.",
+  Busy: "The server is busy right now — try that upload again in a moment.",
+};
+
+const UploadError: FC<{ code: string }> = ({ code }) => (
+  <div
+    role="alert"
+    class="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground"
+  >
+    {UPLOAD_ERRORS[code] ?? "That upload didn't work. Please try again."}
+  </div>
+);
+
 export const LibraryPage: FC<{
   handle: string;
   bookCount: number;
   syncDocCount: number;
-}> = ({ handle, bookCount, syncDocCount }) => {
+  /** `?error=` code from a failed upload redirect, if any. */
+  uploadError?: string | undefined;
+}> = ({ handle, bookCount, syncDocCount, uploadError }) => {
   // Nothing uploaded and nothing synced: there's no library to manage yet, so
   // explain the feature and put setup right on the page instead of behind
   // buttons the user has no reason to press.
@@ -335,6 +362,11 @@ export const LibraryPage: FC<{
             <p class="text-muted-foreground mt-1 mb-4 text-sm">
               Supported formats: EPUB, MOBI, AZW3, FB2, CBZ.
             </p>
+            {uploadError ? (
+              <div class="mb-4">
+                <UploadError code={uploadError} />
+              </div>
+            ) : null}
             <UploadZone />
           </div>
         </div>
@@ -365,6 +397,12 @@ export const LibraryPage: FC<{
           </button>
         </div>
       </div>
+
+      {uploadError ? (
+        <div class="mt-4">
+          <UploadError code={uploadError} />
+        </div>
+      ) : null}
 
       <LibraryDialog
         id="ereader-dialog"

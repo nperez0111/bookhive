@@ -1,6 +1,12 @@
 import { unzipSync, strFromU8 } from "fflate";
 import type { BookCover, BookMetadata } from "./types";
 import { attr, decodeXmlEntities, mimeForExt } from "./shared";
+import { MAX_COVER_BYTES } from "./cover";
+
+const IMAGE_NAME_RE = /\.(?:jpg|jpeg|png|gif|webp|svg)$/i;
+
+/** One archive entry we know about but have deliberately not inflated yet. */
+type ImageEntry = { name: string; originalSize: number };
 
 /** Extract inner text of the first matching <dc:tag> (or <tag>) element. */
 function firstDcValue(xml: string, tag: string): string | undefined {
@@ -45,22 +51,25 @@ function resolveHref(opfPath: string, href: string): string {
 export function parseEpub(bytes: Uint8Array, fallbackTitle: string): BookMetadata {
   const fallback: BookMetadata = { title: fallbackTitle, authors: "" };
 
+  // Pass 1: inflate ONLY container.xml and the .opf, while noting the name and
+  // size of every image without inflating any of them.
+  //
+  // This used to decompress every image in the archive in order to keep one.
+  // Returning `false` from the filter still walks the central directory — the
+  // entry's name and `originalSize` are available for free — so an index costs
+  // nothing and the ~100 MB of pages in a large CBZ-style EPUB is never
+  // materialised. See the second pass below for the one entry we do inflate.
+  const images: ImageEntry[] = [];
   let files: Record<string, Uint8Array>;
   try {
-    // Only decompress the small files we actually need plus any image (cover).
     files = unzipSync(bytes, {
       filter(file) {
         const n = file.name.toLowerCase();
-        return (
-          n === "meta-inf/container.xml" ||
-          n.endsWith(".opf") ||
-          n.endsWith(".jpg") ||
-          n.endsWith(".jpeg") ||
-          n.endsWith(".png") ||
-          n.endsWith(".gif") ||
-          n.endsWith(".webp") ||
-          n.endsWith(".svg")
-        );
+        if (IMAGE_NAME_RE.test(n)) {
+          images.push({ name: file.name, originalSize: file.originalSize });
+          return false;
+        }
+        return n === "meta-inf/container.xml" || n.endsWith(".opf");
       },
     });
   } catch {
@@ -101,27 +110,47 @@ export function parseEpub(bytes: Uint8Array, fallbackTitle: string): BookMetadat
   const language = firstDcValue(opf, "language");
   const identifier = firstDcValue(opf, "identifier");
 
-  // 3. Locate the cover image.
-  const cover = findCover(opf, opfPath, byLowerName);
+  // 3. Locate the cover image, then inflate exactly that one entry.
+  const imagesByLowerName = new Map<string, ImageEntry>();
+  for (const image of images) imagesByLowerName.set(image.name.toLowerCase(), image);
+  const cover = inflateCover(bytes, findCoverEntry(opf, opfPath, imagesByLowerName));
 
   return { title, authors, language, identifier, cover };
 }
 
-function findCover(
+/**
+ * Pass 2: decompress the single chosen image. Guarded on `originalSize` so a
+ * book advertising a 200 MB "cover" can't inflate unbounded — nothing we do
+ * with a cover needs more than MAX_COVER_BYTES.
+ */
+function inflateCover(bytes: Uint8Array, entry: ImageEntry | undefined): BookCover | undefined {
+  if (!entry || entry.originalSize > MAX_COVER_BYTES) return undefined;
+  let data: Uint8Array | undefined;
+  try {
+    data = unzipSync(bytes, { filter: (f) => f.name === entry.name })[entry.name];
+  } catch {
+    return undefined;
+  }
+  // `originalSize` above is the archive's own claim about the entry. Check the
+  // bytes we actually got as well: a crafted zip can understate it, and covers
+  // are written outside the storage quota, so an unchecked one is a way to put
+  // arbitrarily many bytes on our disk for free.
+  if (!data || data.length === 0 || data.length > MAX_COVER_BYTES) return undefined;
+  const ext = (entry.name.split(".").pop() || "").toLowerCase();
+  const normExt = ext === "jpeg" ? "jpg" : ext;
+  return { bytes: data, mime: mimeForExt(normExt), ext: normExt };
+}
+
+function findCoverEntry(
   opf: string,
   opfPath: string,
-  byLowerName: Map<string, { name: string; data: Uint8Array }>,
-): BookCover | undefined {
+  byLowerName: Map<string, ImageEntry>,
+): ImageEntry | undefined {
   const itemTags = opf.match(/<item\b[^>]*>/gi) ?? [];
 
-  const findByHref = (href?: string): BookCover | undefined => {
+  const findByHref = (href?: string): ImageEntry | undefined => {
     if (!href) return undefined;
-    const resolved = resolveHref(opfPath, href).toLowerCase();
-    const entry = byLowerName.get(resolved);
-    if (!entry) return undefined;
-    const ext = (entry.name.split(".").pop() || "").toLowerCase();
-    const normExt = ext === "jpeg" ? "jpg" : ext;
-    return { bytes: entry.data, mime: mimeForExt(normExt), ext: normExt };
+    return byLowerName.get(resolveHref(opfPath, href).toLowerCase());
   };
 
   // EPUB3: item with properties="cover-image".

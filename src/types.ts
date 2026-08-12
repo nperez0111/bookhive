@@ -283,6 +283,10 @@ export type PersonalBookRow = {
   contentHash: string;
   hiveId: HiveId | null;
   filename: string;
+  /** md5 of the basename — the id a FILENAME-checksum KOSync client sends. */
+  filenameHash: string | null;
+  /** Normalized, extension-less basename; survives format conversion. */
+  filenameKey: string | null;
   title: string;
   authors: string | null;
   language: string | null;
@@ -319,6 +323,8 @@ export type SyncDocumentRow = {
   documentHash: string;
   hiveId: HiveId | null;
   filename: string | null;
+  /** Normalized `filename`; see src/utils/filenameMatching.ts. */
+  filenameKey: string | null;
   title: string | null;
   authors: string | null;
   progressData: string;

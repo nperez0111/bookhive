@@ -101,4 +101,4 @@ jobs:
           push-to-registry: true
       - name: Deploy to Portainer
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: curl -X POST https://portainer.nickthesick.com/api/stacks/webhooks/b45c66e3-986c-4c08-b302-123ce48fe8b8
+        run: curl -X POST ${{ secrets.PORTAINER_WEBHOOK_URL }}

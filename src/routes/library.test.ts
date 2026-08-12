@@ -9,6 +9,7 @@ import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
 import type { HiveId } from "../types";
 import { koreaderPartialMD5 } from "../utils/bookMetadata/index";
 import { NO_HIVE_MATCH } from "../utils/syncMatching";
+import { filenameKey, koreaderFilenameHash } from "../utils/filenameMatching";
 import libraryRouter from "./library";
 
 type TestApp = Hono<AppEnv>;
@@ -56,8 +57,10 @@ async function seedSyncDocument(
     title?: string | null;
     percentage?: number;
     userDid?: string;
+    filename?: string;
   },
 ) {
+  const filename = opts.filename ?? "book.epub";
   await db
     .insertInto("sync_document")
     .values({
@@ -65,7 +68,8 @@ async function seedSyncDocument(
       provider: "kosync",
       documentHash: opts.documentHash,
       hiveId: opts.hiveId ?? null,
-      filename: "book.epub",
+      filename,
+      filenameKey: filenameKey(filename),
       title: opts.title ?? "A Synced Book",
       authors: "An Author",
       progressData: JSON.stringify({
@@ -81,14 +85,21 @@ async function seedSyncDocument(
     .execute();
 }
 
-async function seedPersonalBook(db: Database, contentHash: string, filePath: string) {
+async function seedPersonalBook(
+  db: Database,
+  contentHash: string,
+  filePath: string,
+  filename = "book.epub",
+) {
   await db
     .insertInto("personal_book")
     .values({
       userDid: DID,
       contentHash,
       hiveId: null,
-      filename: "book.epub",
+      filename,
+      filenameHash: koreaderFilenameHash(filename),
+      filenameKey: filenameKey(filename),
       title: "An Uploaded Book",
       authors: "An Author",
       language: "en",
@@ -147,6 +158,55 @@ describe("GET /library/sync/documents", () => {
 
     const [doc] = await getDocuments(app);
     expect(doc?.hasFile).toBe(true);
+  });
+
+  it("reports hasFile=true for a client using the FILENAME checksum method", async () => {
+    // KOSync's other checksum mode sends md5(basename) as the document id, so
+    // it never equals our content hash. Matching only on content hash left
+    // every one of these users' uploads looking unsynced.
+    const filename = "The Dispossessed.epub";
+    await seedSyncDocument(db, { documentHash: koreaderFilenameHash(filename)!, filename });
+    await seedPersonalBook(db, "some-content-hash", "/tmp/nonexistent.epub", filename);
+
+    const [doc] = await getDocuments(app);
+    expect(doc?.hasFile).toBe(true);
+  });
+
+  it("reports hasFile=true when conversion changed the bytes and the extension", async () => {
+    // Neither hash can line up: the device holds an .azw3 calibre made from the
+    // .epub we hold. The readable filename is the only thing left.
+    await seedSyncDocument(db, {
+      documentHash: "hash-from-the-converted-copy",
+      filename: "Dune - Frank Herbert.azw3",
+    });
+    await seedPersonalBook(db, "hash-of-original", "/tmp/x.epub", "dune_-_frank_herbert.epub");
+
+    const [doc] = await getDocuments(app);
+    expect(doc?.hasFile).toBe(true);
+  });
+
+  it("lists a document once even when several uploads match it", async () => {
+    // EXISTS rather than a join: a join emits one row per match.
+    const filename = "Dune.epub";
+    await seedSyncDocument(db, { documentHash: koreaderFilenameHash(filename)!, filename });
+    await seedPersonalBook(db, "hash-a", "/tmp/a.epub", filename);
+    await seedPersonalBook(db, "hash-b", "/tmp/b.epub", "Dune.azw3");
+
+    const docs = await getDocuments(app);
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.hasFile).toBe(true);
+  });
+
+  it("does not match a file with no filename key to a document with none", async () => {
+    // Both keys null; `NULL = NULL` is not true, which is what stops every
+    // metadata-less document matching every metadata-less upload.
+    await seedSyncDocument(db, { documentHash: "hash-orphan" });
+    await db.updateTable("sync_document").set({ filenameKey: null }).execute();
+    await seedPersonalBook(db, "other-hash", "/tmp/nonexistent.epub");
+    await db.updateTable("personal_book").set({ filenameKey: null, filenameHash: null }).execute();
+
+    const [doc] = await getDocuments(app);
+    expect(doc?.hasFile).toBe(false);
   });
 
   it("does not match another user's uploaded file", async () => {
@@ -456,7 +516,9 @@ describe("POST /library/upload", () => {
     db = await createTestDb();
     app = createApp(db);
     // Seed the row the uploader will collide with, keyed by the same hash the
-    // upload computes, so neither request reaches the filesystem.
+    // upload computes, so neither request reaches the library directory. This
+    // relies on the shared core running its duplicate check before the parse
+    // and before the rename — keep that ordering.
     await seedPersonalBook(db, koreaderPartialMD5(new TextEncoder().encode(FB2)), "/tmp/dupe.fb2");
   });
 
@@ -466,10 +528,12 @@ describe("POST /library/upload", () => {
     expect((await res.json()) as { error: string }).toHaveProperty("error");
   });
 
-  it("still redirects the browser back to the library", async () => {
+  it("redirects the browser back to the library with the reason", async () => {
+    // A plain <form> post used to get raw JSON rendered as a text page. Every
+    // failure now round-trips a code the library page can render as an alert.
     const res = await uploadRequest(app, { json: false });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/library");
+    expect(res.headers.get("location")).toBe("/library?error=AlreadyExists");
   });
 
   it("401s without a session", async () => {

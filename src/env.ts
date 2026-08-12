@@ -78,4 +78,20 @@ export const env = cleanEnv(process.env, {
     default: "",
     desc: "Hex-encoded imgproxy signing salt (IMGPROXY_SALT). Empty uses unsafe URLs (dev only).",
   }),
+  XRPC_SERVICE_AUTH_AUDIENCES: str({
+    default: "",
+    desc: "Comma-separated `aud` values this deployment answers for. Empty uses BOOKHIVE_DID plus its #bookhive_appview fragment. Matching is exact string equality — a bare DID does not match a fragment audience.",
+  }),
+  LIBRARY_DIR: str({
+    default: "",
+    desc: "Root directory for personal-library files. Empty derives it from dirname(DB_PATH)/library. Set explicitly to put the library on a different volume from the DB — and by the test preload, so tests can never write ebooks into the repo.",
+  }),
+  PERSONAL_LIBRARY_QUOTA_BYTES: num({
+    default: 2 * 1024 * 1024 * 1024,
+    desc: "Total bytes of personal-library files one user may store. Enforced as SUM(personal_book.sizeBytes) evaluated *inside* the INSERT, so two concurrent uploads can't both observe the pre-insert total. The per-file ceiling (MAX_PERSONAL_BOOK_BYTES, 100 MB) applies on top. Excludes stored cover images, which are <1% of the total.",
+  }),
+  UPLOAD_PARSE_CONCURRENCY: num({
+    default: 2,
+    desc: "Per-process cap on concurrent ebook metadata parses. The parse is the only step that holds the whole file (<=100 MB) in native memory, so this is the memory bound on uploads — and it is per-process: with WEB_CONCURRENCY=4 the cluster-wide ceiling is this x 4 x 100 MB. See src/utils/uploadPersonalBook.ts.",
+  }),
 });

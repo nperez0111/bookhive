@@ -41,17 +41,19 @@ Browser ──> Bun.serve() ──> Hono app ──> Server-rendered JSX pages
                 │                              └── Worker threads (see below)
                 └── static files (public/)
 
-Worker threads (src/workers/, bundled to .output/server/workers/):
-  ingester-worker     — Jetstream firehose ingest
-  og-render-worker    — OG image generation (React + takumi)
-  open-observe-worker — pino log shipping to OpenObserve
-  import-worker       — CSV import processing
+Worker threads (bundled to .output/server/workers/):
+  ingester-worker     — Jetstream firehose ingest          (src/workers/)
+  og-render-worker    — OG image generation (React+takumi) (src/workers/)
+  open-observe-worker — pino log shipping to OpenObserve   (src/workers/)
+  import-worker       — CSV import processing              (src/workers/)
+  parse-worker        — ebook metadata parse + cover raster (single-shot, src/workers/)
+  waf-solver-worker   — AWS WAF challenge solve            (src/scrapers/waf/)
 ```
 
 **Key patterns:**
 
 - Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
-- **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` (default 4) workers sharing port 8080 via SO_REUSEPORT. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
+- **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — the code defaults to 4, but the deployed container sets **3** (verified on the host), which is the number every memory ceiling in this document is derived from. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
 - **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline. That drain interval × concurrency is also the **only** rate limit on requests to Goodreads — 36 fetches/min, healthy or not. Don't add a second one.
 - **`enrich_queue.attempts` counts answers from Goodreads, not failures.** A run reports `enrich_retry` in the wide-event bag: `retry` spends an attempt, `defer` costs nothing and re-queues on a decaying schedule, `dead` tombstones the book immediately. Anything the app decided on its own — a WAF challenge, a timeout, a transport error — is a `defer`. Getting this wrong is expensive: when refusals counted as attempts, one 6h window wrote off 2,854 books for 7 days apiece **without sending a single request on their behalf** (98% of everything the queue gave up on). The bound on defers is `MAX_QUEUE_AGE_MS` (7d from `enqueuedAt`, which survives re-enqueue), not the attempt counter.
 - **Author lookups use `hive_book_author` join** (mig 020), not `LIKE`. This is exact identity, not text search.
@@ -147,7 +149,17 @@ Two traps this encodes, both of which caused real bugs:
 
 - `/healthcheck` → JSON status + git sha
 - `/metrics` → Prometheus
-- `/admin/*` → `src/routes/admin.ts` (gated by `EXPORT_SHARED_SECRET`)
+- `/admin/*` → `src/routes/admin.ts` (gated by `EXPORT_SHARED_SECRET`).
+  `GET /admin/backfill-catalog/progress` reads **through the KV**, not just this
+  process's memory: the backfill runs for hours on the primary worker while the
+  request lands on any of the three, so an in-memory-only answer reported `idle`
+  for a live job and lost the outcome of a finished one. A _stored_ `running`
+  can only mean the process died mid-run (a live run answers from memory), so it
+  is reported as `interrupted`.
+  **Persist the object, never `JSON.stringify` of it.** unstorage runs `destr`
+  over whatever a driver returns, so a stored JSON string reads back as an
+  object and any `JSON.parse` of it throws — which silently discarded every
+  stored run. Same idiom as `enqueuePdsWrite`.
 - `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`)
 - `/import` (POST `/goodreads`, `/storygraph`) → `src/routes/import.ts` — CSV import handler
 
@@ -221,7 +233,7 @@ User book lists ("shelves"). Uses **popfeed** lexicons (`social.popfeed.feed.lis
 Personal library: ebook uploads, e-reader credentials, sync documents. All auth-required.
 
 - GET `/` → `src/pages/library.tsx`
-- POST `/upload` → multipart upload (validates format, computes KOReader partial MD5, parses metadata, auto-links matching `sync_document`). Content-negotiated: JSON for mobile, 302 for browser. Size checked before `arrayBuffer()`.
+- POST `/upload` → multipart upload. A **thin adapter** over `uploadPersonalBook` (`src/utils/uploadPersonalBook.ts`) — the same core the XRPC procedure calls. Content-negotiated: JSON for mobile, `302 /library?error=<code>` for browsers (a plain `<form>` can't read a JSON error body, so the reason round-trips as a code `LibraryPage` renders as an alert). **No `bodyLimit()` middleware** — see the upload-core section for why it was the worst memory path in the codebase.
 - GET `/covers/:hash` → cover image; GET `/books/:hash/download` → file download (shares `streamPersonalBook` with OPDS)
 - GET `/shelves` → JSON shelf list with counts
 - GET `/sync/password`, POST `/sync/rotate` → KOSync password (duplicated from settings)
@@ -259,6 +271,66 @@ Auth: `x-auth-user` (handle) + `x-auth-key` (md5 of HMAC-derived password). Prog
 - GET `/users/auth` → validate credentials
 - PUT `/syncs/progress` → push progress; GET `/syncs/progress/:document` → pull progress
 - GET `/syncs/documents` → list all synced documents
+
+**A KOSync `document` id is not necessarily a content hash.** KOReader's
+checksum method is a user setting: `BINARY` (the default) is
+`koreaderPartialMD5` over the file, but `FILENAME` is plain `md5(basename)`, and
+users switch to it precisely because their files are _not_ byte-identical across
+devices. Matching only `documentHash = personal_book.contentHash` therefore
+never fired for any of them. `SAME_BOOK_FILE` (`src/utils/syncMatching.ts`) is
+the one predicate for "same book" — content hash, filename hash, or normalized
+filename — and it is used as a **correlated subquery, never a join**, because a
+document can match several files (and vice versa) and a join fans that out into
+duplicate rows that also break `getPersonalLibrary`'s pagination.
+
+Separately, the payload may carry `metadata: { filename, title, authors }`
+(KOReader PR #15306, merged 2026-04-29 — its "Send document metadata" toggle
+**defaults off**, so most KOReader users still send none of it; CrossPoint sends
+it). Two non-obvious things about that object, each of which silently matches
+nothing if you assume otherwise:
+
+- **`authors` is newline-separated**, not comma- or tab-separated. It is
+  `doc_props.authors`, one of the three props KOReader's metadata editor opens
+  with `allow_newline = true`. (Three separators are in play across the app:
+  newline from KOReader, **comma** in `personal_book.authors` from `parseBook`,
+  tab in `hive_book.authors`.)
+- **`title` may itself be a filename.** It is `doc_props.display_title`, defined
+  as `props.title or splitFileNameType(filepath)` — so any document with no
+  embedded title sends the filename stem, dashes and all. `matchSyncDocument`
+  runs the client's `title` through the filename parser for that reason.
+
+**The routes call `matchSyncDocumentForUser`, not `matchSyncDocument`.** With
+both KOReader defaults in force — BINARY checksum, `send_metadata` off, which is
+most users — the entire request identifies the book as one partial-MD5 hash and
+nothing else, so matching the _payload_ is hopeless no matter how good the tiers
+get. But that hash is `personal_book.contentHash`: if the user uploaded the
+file, we already parsed real title/author metadata out of the ebook at upload
+time and may already have resolved it to a book.
+`matchSyncDocumentForUser` finds the file first, inherits its `hiveId`, else
+matches on the file's own metadata, and writes the result back onto the file
+(plus `user_book.owned`). `uploadPersonalBook` already pushes a link the other
+way when the document exists first; this covers the opposite ordering.
+
+`matchSyncDocument` itself runs three tiers, and the invariant across all of
+them is that **a wrong link is worse than no link**: it writes progress onto a
+book the user isn't reading and mirrors it to their PDS, while a miss just
+leaves the document for them to link by hand.
+
+1. Exact `hive_book.id` hash of the client's title+author.
+2. Exact id hash of title/author pairs parsed out of the filename. Both
+   orderings of an `A - B` split are tried; that is safe _because_ it resolves
+   against the catalogue, so a wrong guess hashes to an id that does not exist.
+3. Fuzzy. Candidates come from `hive_book_fts`, searched by **author** as well
+   as by title — FTS matches phrases, so a title search alone can never reach
+   "The Hitchhiker's Guide" from "Hitchhikers Guide", whereas an author's name
+   is spelled the same either way and their books can then be compared in JS.
+   Acceptance is `titlesEquivalent` (equal content-word sets, gated **both**
+   ways — one-way containment would accept "Dune" as "Dune Messiah") plus an
+   agreeing author. With no author signal anywhere, only a title that names
+   exactly one book is accepted.
+
+Do not gate any of this on title/author being present — that gate is what made a
+filename-only client unmatchable in the first place.
 
 ### Shared route helpers
 
@@ -337,7 +409,8 @@ larger than the JPEG. Size the WebP to ~2x the CSS slot, not to the source's int
 - `apple-touch-icon.png`, `favicon*.png`, `favicon.ico` — fixed-format platform requirements.
 - `reading.png` — only used by `README.md` / `app/README.md`, never served.
 
-The other 16 `public/screenshots/*.png` (~6.6 MB) are referenced nowhere in the codebase; they
+The other 13 `public/screenshots/*.png` (5.6 MB — the directory holds 16, three of which are the
+`<img>` fallbacks above) are referenced nowhere in the codebase; they
 look like App Store listing assets (light/dark and `-16` variants), so they are kept as-is.
 
 ### Shared Page Components (`src/pages/components/`)
@@ -382,7 +455,7 @@ Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`, `icons.tsx`, `debounc
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
+SQLite via Kysely. Schema + all migrations (001–023) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -396,11 +469,11 @@ SQLite via Kysely. Schema + all migrations (001–021) in one file. `createDb` s
 | `user_follows`        | Cached follow graph       | userDid, followsDid, followedAt, syncedAt, **isActive**                                                                                                                                                  |
 | `book_list`           | User-created book lists   | **uri (PK, AT URI)**, userDid, name, description, ordered, tags, createdAt                                                                                                                               |
 | `book_list_item`      | Items in a book list      | **uri (PK, AT URI)**, userDid, **listUri**, hiveId, position                                                                                                                                             |
-| `sync_document`       | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, title, authors, progressData (JSON)                                                                    |
+| `sync_document`       | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, **filenameKey**, title, authors, progressData (JSON)                                                   |
 | `enrich_queue`        | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, **enqueuedAt** (age ceiling; survives re-enqueue), attempts, nextAttemptAt, claimedAt, lastError                                                                           |
-| `personal_book`       | Uploaded ebook files      | contentHash (PK), userDid, filename, title, authors, format, hiveId (nullable), fileSize                                                                                                                 |
+| `personal_book`       | Uploaded ebook files      | id (PK, autoincrement), UNIQUE (userDid, contentHash), filename, **filenameHash**, **filenameKey**, title, authors, format, hiveId (nullable), **sizeBytes**                                             |
 | `personal_shelf`      | User's personal shelves   | id (PK, autoincrement), userDid, name, description                                                                                                                                                       |
-| `personal_shelf_item` | Books in personal shelves | shelfId, contentHash (PK pair)                                                                                                                                                                           |
+| `personal_shelf_item` | Books in personal shelves | shelfId, **personalBookId** (UNIQUE pair) — the row id, not the content hash                                                                                                                             |
 
 Notes: `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface as `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
@@ -436,33 +509,162 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 ### Key Utilities (`src/utils/`)
 
-| File                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getBook.ts`          | Book record CRUD against user's PDS                                                                                                                                                                                                                                                                                                                                                                                           |
-| `getProfile.ts`       | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `getFollows.ts`       | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `enrichBookData.ts`   | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                                                                                                                                                                                                        |
-| `enrichQueue.ts`      | `enrich_queue` producer + primary-worker drain, and the `retry`/`defer`/`dead` accounting. The `exhausted` gauge/heartbeat counts `hive_book.enrichFailedAt` inside the cooldown, **not** queue rows at MAX_ATTEMPTS — those are deleted as they exhaust, so that read was always 0. `deferred` counts books parked on something that isn't their fault; it replaced `circuit_open` as the signal that fetching is in trouble |
-| `semaphore.ts`        | Async concurrency limiter + `withTimeout`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `circuitBreaker.ts`   | Three-state breaker — **`auth/restore-guard.ts` only.** Right when refusing is cheaper for a waiting user than failing; wrong for scraping, where the queue can defer instead. See the note under Scrapers                                                                                                                                                                                                                    |
-| `bookIdentifiers.ts`  | ISBN/ID normalization + persistence                                                                                                                                                                                                                                                                                                                                                                                           |
-| `bookProgress.ts`     | BookProgress serialization                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `readThroughCache.ts` | KV read-through with TTL                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `csv.ts`              | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                                                                                                                                                                                                              |
-| `lists.ts`            | Book list (shelf) CRUD against PDS                                                                                                                                                                                                                                                                                                                                                                                            |
-| `readingStats.ts`     | Reading stats aggregation by year                                                                                                                                                                                                                                                                                                                                                                                             |
-| `imageProxy.ts`       | imgproxy signing + proxy helper                                                                                                                                                                                                                                                                                                                                                                                               |
-| `personalLibrary.ts`  | Personal library paths, `streamPersonalBook`                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bookMetadata/`       | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                                                                                                                                                                                                                |
-| `bookMeta.ts`         | Book metadata utilities                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `syncMatching.ts`     | KOReader document → BookHive book matching; `NO_HIVE_MATCH` sentinel                                                                                                                                                                                                                                                                                                                                                          |
-| `syncBridge.ts`       | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                                                                                                                                                                                                                        |
-| `ftsQuery.ts`         | FTS5 MATCH expression builder                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `importBook.ts`       | Import a single book record                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `authorMatching.ts`   | Author name matching                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `manifest.ts`         | Vite manifest → asset URLs                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `xml.ts`              | XML utilities                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Other                 | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`                                                                                                                                                                                              |
+| File                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBook.ts`            | Book record CRUD against user's PDS                                                                                                                                                                                                                                                                                                                                                                                           |
+| `getProfile.ts`         | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `getFollows.ts`         | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `enrichBookData.ts`     | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                                                                                                                                                                                                        |
+| `enrichQueue.ts`        | `enrich_queue` producer + primary-worker drain, and the `retry`/`defer`/`dead` accounting. The `exhausted` gauge/heartbeat counts `hive_book.enrichFailedAt` inside the cooldown, **not** queue rows at MAX_ATTEMPTS — those are deleted as they exhaust, so that read was always 0. `deferred` counts books parked on something that isn't their fault; it replaced `circuit_open` as the signal that fetching is in trouble |
+| `semaphore.ts`          | Async concurrency limiter + `withTimeout`                                                                                                                                                                                                                                                                                                                                                                                     |
+| `circuitBreaker.ts`     | Three-state breaker — **`auth/restore-guard.ts` only.** Right when refusing is cheaper for a waiting user than failing; wrong for scraping, where the queue can defer instead. See the note under Scrapers                                                                                                                                                                                                                    |
+| `bookIdentifiers.ts`    | ISBN/ID normalization + persistence                                                                                                                                                                                                                                                                                                                                                                                           |
+| `bookProgress.ts`       | BookProgress serialization                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `readThroughCache.ts`   | KV read-through with TTL                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `csv.ts`                | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                                                                                                                                                                                                              |
+| `lists.ts`              | Book list (shelf) CRUD against PDS                                                                                                                                                                                                                                                                                                                                                                                            |
+| `readingStats.ts`       | Reading stats aggregation by year                                                                                                                                                                                                                                                                                                                                                                                             |
+| `imageProxy.ts`         | imgproxy signing + proxy helper                                                                                                                                                                                                                                                                                                                                                                                               |
+| `personalLibrary.ts`    | Personal library paths, `streamPersonalBook`, `getStorageUsage`/`getStorageQuota`                                                                                                                                                                                                                                                                                                                                             |
+| `uploadPersonalBook.ts` | **The one** "put this ebook in this user's library". Both `POST /library/upload` and the XRPC procedure are thin adapters over it — see below                                                                                                                                                                                                                                                                                 |
+| `bookMetadata/`         | Ebook metadata parsing (epub, mobi, fb2, cbz, cover extraction, KOReader hash)                                                                                                                                                                                                                                                                                                                                                |
+| `bookMeta.ts`           | Book metadata utilities                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `syncMatching.ts`       | KOReader document → BookHive book matching (3 tiers, see below); `NO_HIVE_MATCH` sentinel; `SAME_BOOK_FILE`                                                                                                                                                                                                                                                                                                                   |
+| `filenameMatching.ts`   | Filename-derived identity: `koreaderFilenameHash`, `filenameKey`, `filenameBookCandidates`, `titlesEquivalent`, `authorsMatch`                                                                                                                                                                                                                                                                                                |
+| `bookMatching.ts`       | Fuzzy title scoring primitives (`similarityScore`, `contentWords`, `contentWordsMatch`), ported from MIT-licensed shelfcheck                                                                                                                                                                                                                                                                                                  |
+| `syncBridge.ts`         | Bridge e-reader progress → user_book + queue PDS write                                                                                                                                                                                                                                                                                                                                                                        |
+| `ftsQuery.ts`           | FTS5 MATCH expression builder                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `importBook.ts`         | Import a single book record                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `authorMatching.ts`     | Author name matching                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `manifest.ts`           | Vite manifest → asset URLs                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `xml.ts`                | XML utilities                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Other                   | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`                                                                                                                                                                                              |
+
+### The upload core (`src/utils/uploadPersonalBook.ts`)
+
+**There is exactly one upload implementation. Do not add a second.** There used
+to be two — the live multipart route and a `processBookUpload` in the XRPC
+router whose own doc comment claimed to be the shared core — and they drifted in
+four ways (cover validation, sync matching, `sync_document.hiveId` writeback,
+empty-string handling) before anyone noticed. Both routes are now thin adapters.
+
+**The step order is the design, not an accident**, and each step is where it is
+for a measured reason:
+
+1. Reject on the _declared_ size and against the quota — before a byte is read.
+2. `writeCapped` streams the body to `{libraryDir}/.tmp/*.part`, capping as it
+   goes. The memory bound is the sink's **1 MB `highWaterMark`** — awaiting each
+   write is the backpressure signal, so a 100 MB body costs 1 MB of buffer
+   rather than 100 MB. This is what replaced `bodyLimit()`, which only
+   short-circuits on `Content-Length`: given a chunked body it drained the whole
+   stream into an array and rebuilt the Request, so a compliant 100 MB chunked
+   upload was buffered there **and again** by `formData()`.
+3. `detectFormat` off a **4 KB head** (it reads ≤512 bytes, plus 60–68 for MOBI).
+4. `koreaderPartialMD5File` reads **twelve 1 KB windows** — the hash never needed
+   the whole file; the buffer was incidental to how the old path worked.
+5. **Duplicate check before the parse**, so a re-upload allocates nothing.
+   `src/routes/library.test.ts` leans on this ordering to exercise the duplicate
+   path without touching the library directory.
+6. `parseBook` + `prepareCover` in a **single-shot Worker** (`parseBookInWorker`,
+   `src/workers/parse-client.ts` → `parse-worker.ts`), gated by `parseSemaphore`.
+   These are the only whole-file, CPU-bound steps — `parseBook` holds the full
+   buffer (fflate reads a ZIP's central directory from the end of one contiguous
+   array) and `prepareCover` rasterizes synchronously — so running them inline
+   stalled the request process's event loop; a Worker per upload moves both off
+   it. The file is read inside the Worker from the temp path, so nothing large
+   crosses the thread boundary. `UPLOAD_PARSE_CONCURRENCY` (2) still bounds
+   concurrency — now the number of **live Workers**, hence the native memory
+   across them — and it is **per process**: at the deployed `WEB_CONCURRENCY=3`
+   the ceiling is `2 × 3 × 100 MB ≈ 630 MB`, against a previously _unbounded_
+   ~200–400 MB per in-flight upload. The Worker is terminated on every path
+   (reply, error, or the 60s deadline); the semaphore sheds excess as `busy`
+   (503) rather than spawning Workers without limit.
+7. Cover gated on `prepareCover`, always (rasterizes SVG, then validates). `coverPath IS NOT NULL` is the only
+   signal driving `coverUrl` on the web library, the OPDS feed and the XRPC book
+   view, so an unvalidated cover is a dead URL and a blank box in all three.
+8. **The quota `SUM` is evaluated inside the INSERT's `WHERE`.** SQLite
+   serialises writers, so this is exact — two concurrent uploads cannot both
+   observe the pre-insert total. A per-process mutex would not have worked:
+   production is three independent processes against one file. The statement
+   also carries `ON CONFLICT (userDid, contentHash) DO NOTHING`, so two uploads
+   of the same file racing past the duplicate check report `duplicate` instead
+   of raising a UNIQUE violation; the two zero-row outcomes are told apart by
+   re-reading the row.
+9. `rename` into place — same filesystem, zero bytes copied. The row commits
+   _before_ the bytes move, which beats writing 100 MB and then discovering a
+   problem.
+
+Sync-doc linking is **exact first, fuzzy only on a miss**. The XRPC path used to
+run `matchSyncDocument` first, which let a title/author guess beat a byte-exact
+`documentHash` — wrong, and it paid for up to four FTS queries on the common
+path. Newly-linked documents also get their **already-recorded progress
+bridged**, which is why the core takes `kv`.
+
+Errors are a **discriminated result, never a throw** — `processBookUpload` threw
+`XRPCError` from a util, so a Hono route had to catch an HTTP-shaped exception
+and translate it back. Each adapter owns its own status codes; the XRPC mapping
+is `uploadErrorFor` in the router, the HTTP one is the `switch` in
+`src/routes/library.tsx`.
+
+**Storage quota** is `SUM(personal_book.sizeBytes)` per user, derived rather than
+counted: the quota itself bounds the row count (~700 rows at 2 GB over a ~3 MB
+median epub), `idx_personal_book_user_size` (migration 023) makes it index-only,
+and a derived total cannot drift. A counter would need a backfill, decrements in
+both delete paths and a repair job — and `removeBookDir` is best-effort, so a
+failed `rm` after a row delete would under-report forever while the disk filled.
+**The quota counts book bytes only; stored covers are extra.** Measured on
+production they add **~12%** on top (13.4 MiB of covers against 110.4 MiB of
+books), so a user at a 2 GB quota occupies closer to 2.25 GB of disk — size the
+volume accordingly rather than assuming the quota is the ceiling.
+Over-quota is **413** (not 507, which proxies retry as a server fault; not 403,
+which reads as auth) with `{error, code, usedBytes, quotaBytes}` — the iOS app
+renders `payload.error` verbatim for any non-2xx, so already-installed builds
+show the message with no update shipped.
+
+**Cover extraction is two-pass** (`bookMetadata/epub.ts`, `cbz.ts`). fflate's
+`UnzipFileFilter` returning `false` still walks the central directory, so pass 1
+indexes every image's name and `originalSize` for free and pass 2 inflates
+exactly the chosen one, gated on `MAX_COVER_BYTES`. Both parsers used to inflate
+_every_ image in the archive to keep one — a 100 MB CBZ decompressed ~100 MB of
+pages to keep page 1.
+
+**An SVG cover is a composition, not a wrapper — it must be rasterized.**
+`prepareCover` (`bookMetadata/cover.ts`) is the one gate between "the parser
+found something" and "we store a cover", and it renders SVG through
+`@resvg/resvg-js` before validating. Standard Ebooks — one of the largest
+sources of public-domain EPUBs — ships every cover as an SVG holding the artwork
+in an `<image>` element _plus_ the title and author as ~40 vector `<path>`s over
+a translucent band. Both shortcuts lose half the cover, and both were tried:
+pulling the embedded base64 raster back out drops the lettering, and rendering
+with `@takumi-rs` (already a dependency, so tempting) drops the artwork — it
+ignores the embedded `<image>` entirely.
+
+Three things hold this together:
+
+- **Dimension checks use `image-meta`, not `Bun.Image`.** Bun's pipeline rejects
+  SVG as an "unrecognised format", which is what made every Standard Ebooks
+  upload land with no cover at all. The two agree exactly on every raster
+  format; `image-meta` just knows more of them, and parses headers only.
+- **The output is JPEG, never SVG.** OPDS clients and e-readers can't be relied
+  on to render vector covers, and an SVG served from our own origin is
+  script-capable where a JPEG is inert (there is no CSP anywhere in this app).
+  Rasterizing at `SVG_RASTER_WIDTH` (700 — the largest a cover is ever displayed
+  is ~300 CSS px) then encoding to JPEG turns a 1.1 MB `resvg` PNG into ~77 KB.
+- **`@resvg/resvg-js*` is in `traceDeps`** (`vite.config.ts`) alongside
+  `@takumi-rs/core*`. Native NAPI bindings never appear in the Rolldown graph,
+  and a missing one here does **not** crash — `prepareCover` catches and returns
+  null — so an untraced build silently uploads every Standard Ebooks book with
+  no cover, which is exactly the bug it was added to fix.
+
+Rasterizing runs inside the parse Worker (step 6), next to the ZIP parse and
+under the same `parseSemaphore`, so `UPLOAD_PARSE_CONCURRENCY` bounds all of an
+upload's native memory rather than just the file buffer. `resvg` renders
+synchronously (~0.5s at width 700, ~2.4s at 1400 — the cost scales with the
+square of the width, which is the other reason 700 is the cap); running it on
+the Worker rather than the request thread is why that synchronous cost no longer
+stalls the event loop. `@resvg/resvg-js` is bundled into the standalone Worker
+by `bun build` (its `.node` binding is emitted alongside `parse-worker.js`), the
+same way the OG worker ships takumi's.
 
 ## Types & Constants
 
@@ -478,7 +680,7 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                          |
 | `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas                |
 | `src/xrpc/router.ts`      | All `/xrpc/*` methods                                            |
-| `lexicons/*.json`         | AT Protocol lexicon definitions (~27 files)                      |
+| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                       |
 | `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                        |
 
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
@@ -487,9 +689,52 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 **XRPC list procedures**: `createList`, `updateList`, `deleteList`, `addToList`, `removeFromList`, `reorderList`.
 
-**XRPC personal library queries**: `getPersonalLibrary`, `getPersonalBook`, `getSyncProgress`, `listSyncDocuments`.
+**XRPC personal library queries**: `getPersonalLibrary` (params `limit`/`cursor`/`shelfId`/`q`/`sort`; output carries `storage`), `getPersonalBook`, `getPersonalBookFile`, `getPersonalBookCover`, `listPersonalShelves`, `getSyncProgress`, `listSyncDocuments`.
+
+**Every `getPersonalLibrary` sort ends on `personal_book.id`.** None of the
+leading keys are unique: titles and authors collide routinely (a series, an
+omnibus, the same book in two formats), and `createdAt` — millisecond-precision
+ISO — collides when two uploads commit in the same millisecond. SQLite may order
+ties differently between two `LIMIT`/`OFFSET` queries, so without a unique final
+key a book appears on two consecutive pages while another never appears at all.
+Same reasoning applies to any new sort added here.
 
 **XRPC personal library procedures**: `uploadPersonalBook`, `deletePersonalBook`, `linkPersonalBook`, `unlinkPersonalBook`, `putSyncProgress`, `createPersonalShelf`, `updatePersonalShelf`, `deletePersonalShelf`, `addToPersonalShelf`, `removeFromPersonalShelf`.
+
+**The personal library is fully reachable over XRPC, not just over `/opds`.** Parity map:
+
+| OPDS route                          | XRPC method                                        |
+| ----------------------------------- | -------------------------------------------------- |
+| `GET /opds` (root nav + counts)     | `listPersonalShelves` — the root call, one request |
+| `GET /opds/all`                     | `getPersonalLibrary`                               |
+| `GET /opds/shelves/:id`             | `getPersonalLibrary?shelfId=`                      |
+| `GET /opds/search/results`          | `getPersonalLibrary?q=&sort=title` (same SQL)      |
+| `GET /opds/books/:hash/download`    | `getPersonalBookFile`                              |
+| `GET /opds/books/:hash/cover`       | `getPersonalBookCover`                             |
+| `GET /opds/search` (OpenSearch doc) | n/a — an XRPC client reads the lexicon instead     |
+
+**Two methods declare non-JSON bodies**, which is what makes upload and download work at all:
+
+- `uploadPersonalBook` — `input.encoding` is an explicit ebook MIME list **plus
+  `application/octet-stream`**, and the filename is a required **query param**
+  (it replaced an `x-file-name` header that defaulted to `"unknown"`). Two
+  things to know before touching this: `@atcute/lex-cli` emits **no MIME
+  validator at all** when the encoding is exactly `*/*` (which is what the old
+  lexicon said), and `constructMimeValidator` is **exact-match** — `image/*` in
+  an encoding list is a literal, not a wildcard, so every type must be
+  enumerated. `octet-stream` is in the list deliberately: the iOS app sends
+  `type: mime || "application/octet-stream"`, mobile document pickers report it
+  for `.epub`, and `curl --data-binary` sends form-urlencoded. The declared
+  type is client-asserted and worthless as a control — **`detectFormat`
+  checking magic bytes against the filename's extension is the real gate**, and
+  `filename` is required because `.epub`/`.cbz`/`.fb2.zip` are all zip
+  containers that nothing else can tell apart.
+- `getPersonalBookFile` / `getPersonalBookCover` — blob outputs, so the handler
+  returns a bare `Response` and owns every header (the `json()` helper is only
+  typed for lex outputs, and the router sets no Content-Type for you). Both are
+  in `ETAG_EXCLUDED_PREFIXES` and skipped by `compress()` in `src/app.ts`, by
+  **exact NSID path** rather than a `/xrpc/` prefix — the prefix would cost the
+  other ~35 JSON methods their 304s.
 
 ## Scrapers (`src/scrapers/`)
 
@@ -544,6 +789,65 @@ currently fails from the production host but not from a residential IP.
 | `restore-guard.ts` | Per-PDS timeout (5s) + circuit breaker around `restore()`     |
 
 **Key constraint**: `guardedRestore` wraps every OAuth restore in a 5s timeout + circuit breaker keyed by the authorization-server host. `getSessionAgent` only destroys sessions on terminal credential errors, never on timeouts.
+
+### XRPC auth (`src/xrpc/auth.ts`)
+
+`/xrpc/*` accepts **two** credentials, resolved by `resolveXrpcAuth`:
+
+- the `sid` iron-session cookie (web + iOS, unchanged);
+- an **atproto inter-service auth JWT** as `Authorization: Bearer <token>`
+  ([spec](https://atproto.com/specs/xrpc#inter-service-authentication-jwt)) —
+  the client calls `com.atproto.server.getServiceAuth` on its own PDS with
+  `aud` and `lxm`, and we verify with `ServiceJwtVerifier` from
+  `@atcute/xrpc-server/auth`. This is what makes the personal library usable
+  from a script or an e-reader rather than only from a browser session.
+
+Bearer wins when both are present. A method declares what it needs with
+`auth: "identity" | "pdsWrite"` on its registration, and the wrapper in
+`createXrpcRouter` **derives the `lxm` from the schema's own NSID**, so a
+method's route and its token binding cannot drift apart. Handlers then read
+`getAuth()` / `requireAgent()` instead of repeating a `getSessionAgent()`
+preamble.
+
+- `identity` — we only need the DID. Every personal-library and sync method:
+  none of them touch the agent for anything but `.did` (progress bridging
+  writes `user_book` and queues a deferred PDS write via `sync_pending:`).
+- `pdsWrite` — writes a record to the user's repo, so it needs a live OAuth
+  session. **Service auth can never satisfy this** — it proves key control, not
+  that we hold a grant. Only the six book-list procedures.
+
+Three things that are load-bearing and easy to get wrong:
+
+- **`acceptAudiences` is exact string `Array.includes`.** A bare DID does _not_
+  match a `DID#fragment` audience, so both spellings are listed. The fragment
+  is there in advance of a PLC operation adding a `#bookhive_appview` service
+  entry; the live DID document has only `#atproto_pds`, so **PDS proxying via
+  `atproto-proxy` cannot work today** and clients must mint a token and POST to
+  us directly.
+- **`SERVICE_AUTH_MAX_AGE_SECONDS` is 3600, not atcute's 300** (a constant in
+  `src/context.ts`). A PDS mints up to an hour when `lxm` is set and most SDKs
+  don't expose `exp`, so the stricter default rejects ordinary tokens as
+  `JwtTooOld`. The token's own `exp` is still enforced separately.
+- **There is no prior-relationship gate.** A valid service token from _any_ DID
+  on the network is accepted — we deliberately do not require that the DID has
+  signed in to BookHive before. BookHive signup is open, so such a gate bought
+  little, and the **per-user storage quota** (`PERSONAL_LIBRARY_QUOTA_BYTES`) is
+  the real backstop on what a caller can consume. `pdsWrite` methods are still
+  refused (service auth proves key control, not an OAuth grant), so the exposure
+  is bounded to the identity/personal-library surface.
+
+`lexicons/auth.json` carries the `rpc` permission that lets a client mint these
+tokens at all; **`GRANULAR_SCOPES` in `src/auth/client.ts` must move with it**
+(it is the `USE_PERMISSION_SETS = false` fallback, and granting in only one
+place silently drops it for whichever path is live). Note that adding `rpc`
+permissions means **existing users must re-consent** before their PDS will
+issue tokens for these methods.
+
+There is **no replay protection**: a token is already scoped to one `lxm` and
+one audience, and within its short `SERVICE_AUTH_MAX_AGE_SECONDS` window a reused
+one authenticates the same DID it always did. Service auth is also **always on**
+— there is no kill-switch env var; the cookie path is unaffected by it either
+way.
 
 ## Middleware (`src/middleware/`)
 
@@ -615,15 +919,58 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 | `bun run lint`      | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)         |
 | `bun run format`    | `vp fmt`                                                     |
 | `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons              |
-| `bun run seed:db`   | Seed/initialize the DB (`src/initialize.ts`)                 |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 4 worker entry points into `.output/server/workers/`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. Path alias `@` → `./src`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
+
+**`bunfig.toml` preloads `src/test/env-setup.ts`, and that is load-bearing.**
+envalid freezes `env` at import, so `DB_PATH`/`LIBRARY_DIR` can only be set
+before the import graph loads. Without it `DB_PATH` falls back to `":memory:"`,
+`getLibraryDir()` resolves to **`./library` inside the checkout**, and any test
+exercising an upload writes ebooks into the working tree.
+
+Related trap, since it cost real debugging time: **`mock.module("../env", …)` is
+process-wide and permanent.** Returning a bare object from it replaces `env` for
+every module loaded afterwards in the same run, so every field the mock doesn't
+name reads back as `undefined`. `src/auth/session.test.ts` and
+`token-refresh.test.ts` spread the real env for exactly this reason — the
+failure shows up in an unrelated file that passes in isolation.
 
 ## iOS App (`app/`)
 
 Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes personal-library and KOSync surfaces (XRPC `*PersonalBook`/`*PersonalShelf` methods, REST `/library/*`, `/settings/sync/*`, `POST /library/upload`).
+
+**The app renders `payload.error` verbatim for any non-2xx upload response**, which is why the quota rejection is a 413 carrying human prose rather than a bare code — already-installed builds show the right message with nothing shipped. It reads `storage` off `getPersonalLibrary` for its own meter and pre-flight check, so **anything that changes the quota's wire shape needs an app release**, unlike the message text. `app/utils/personalLibrary.ts` `formatBytes` is a deliberate byte-for-byte copy of the server's; if they diverge, the 413 alert and the meter under it disagree about how full the library is.
+
+## Third-party clients (service auth)
+
+What to tell someone who wants to script against the personal library:
+
+```http
+# 1. Mint a token on YOUR OWN PDS, bound to one method and one audience.
+#    exp should be short; one token per call is what Bluesky's own PDS does.
+GET  https://<your-pds>/xrpc/com.atproto.server.getServiceAuth
+       ?aud=did:plc:enu2j5xjlqsjaylv3du4myh4
+       &lxm=buzz.bookhive.uploadPersonalBook
+       &exp=<now + 60>
+  -> { "token": "..." }
+
+# 2. Call BookHive directly with it. `filename` is a required query param and
+#    the body is the raw file — no multipart wrapper.
+POST https://bookhive.buzz/xrpc/buzz.bookhive.uploadPersonalBook?filename=Dune.epub
+  Authorization: Bearer <token>
+  Content-Type: application/epub+zip
+  <raw bytes>
+```
+
+Notes worth passing on: `lxm` is **required** (atcute's parser rejects a token
+without it); the audience must match one of `acceptAudiences` **exactly**;
+`atproto-proxy` will not work until the DID document gains an AppView service
+entry. There is no requirement that the account have used BookHive before — any
+valid token is accepted, bounded by the per-user storage quota. The OAuth client
+must have been granted the `rpc:buzz.bookhive.*` scopes, which means **existing
+users need to re-consent** before their PDS will issue these tokens.
 
 ## Workers, Logging & Observability
 

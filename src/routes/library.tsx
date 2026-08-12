@@ -1,6 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
@@ -9,204 +9,159 @@ import { currentSyncPassword, rotateSyncToken } from "../middleware/sync-auth";
 import { bridgeProgressToUserBook } from "../utils/syncBridge";
 import { updateBookRecord } from "../utils/getBook";
 import { READING } from "../constants";
-import {
-  detectFormat,
-  parseBook,
-  koreaderPartialMD5,
-  isUsableCover,
-} from "../utils/bookMetadata/index";
-import {
-  ensureDir,
-  personalBookDir,
-  bookFilePath,
-  coverFilePath,
-  streamPersonalBook,
-  MAX_PERSONAL_BOOK_BYTES,
-} from "../utils/personalLibrary";
-import { NO_HIVE_MATCH } from "../utils/syncMatching";
+import { streamPersonalBook, MAX_PERSONAL_BOOK_BYTES } from "../utils/personalLibrary";
+import { uploadPersonalBook } from "../utils/uploadPersonalBook";
+import { NO_HIVE_MATCH, SAME_BOOK_FILE } from "../utils/syncMatching";
 import type { HiveId, SyncProgressData } from "../types";
 
 const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
 
+/**
+ * Headroom for multipart part headers and boundaries when checking the request's
+ * total `Content-Length` against the per-file limit. Generous on purpose — this
+ * is a cheap early reject, and the core enforces the real cap on the file itself.
+ */
+const MULTIPART_SLACK = 64 * 1024;
+
+/** Human-readable byte count for user-facing quota messages. */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
+ * The `?error=` codes the upload adapter redirects a browser back with. Closed
+ * set rather than a free string: it is the one input on this page that comes
+ * from the URL, and anything outside the list is someone hand-crafting a link
+ * to put an error banner on another user's library.
+ */
+const UPLOAD_ERROR_CODES = [
+  "TooLarge",
+  "QuotaExceeded",
+  "UnsupportedFormat",
+  "AlreadyExists",
+  "EmptyFile",
+  "NoFile",
+  "Busy",
+] as const;
+
 const app = new Hono<AppEnv>()
-  .get("/", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.redirect("/login");
-    const profile = await c.get("ctx").getProfile();
-    const handle = profile?.handle ?? agent.did;
-    const { db } = c.get("ctx");
-
-    // Drives the empty-vs-populated layout: with nothing uploaded and nothing
-    // synced there is no library to manage, so the page explains itself and
-    // puts setup inline instead of behind modals.
-    const [books, documents] = await Promise.all([
-      db
-        .selectFrom("personal_book")
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .where("userDid", "=", agent.did)
-        .executeTakeFirstOrThrow(),
-      db
-        .selectFrom("sync_document")
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .where("userDid", "=", agent.did)
-        .executeTakeFirstOrThrow(),
-    ]);
-
-    return c.render(
-      <LibraryPage
-        handle={handle}
-        bookCount={Number(books.total)}
-        syncDocCount={Number(documents.total)}
-      />,
-      { title: "Personal Library" },
-    );
-  })
-  .post(
-    "/upload",
-    // Rejects on Content-Length, and aborts the stream once the cap is passed
-    // when there is none. This has to run *before* the handler because
-    // `c.req.formData()` materialises the entire multipart body in native
-    // memory — the `file.size` check below cannot fire until after that has
-    // already happened, so on its own it bounds what we store, not what we
-    // allocate.
-    bodyLimit({
-      maxSize: MAX_FILE_SIZE,
-      onError: (c) => c.json({ error: "File exceeds 100 MB limit" }, 413),
-    }),
+  .get(
+    "/",
+    // `.catch` rather than a hard 400: an unrecognised code means a stale or
+    // hand-edited link, and dropping the banner is a better answer than
+    // refusing to render the user's library.
+    zValidator(
+      "query",
+      z.object({ error: z.enum(UPLOAD_ERROR_CODES).optional().catch(undefined) }),
+    ),
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
-      if (!agent) return c.json({ error: "Unauthorized" }, 401);
-
-      // The browser posts a plain <form> and wants to land back on the library;
-      // the mobile app posts the same multipart body but needs the created record
-      // (and a real status on duplicates) rather than a redirect to HTML.
-      const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
-
-      const formData = await c.req.formData();
-      const file = formData.get("file");
-      if (!file || !(file instanceof File)) {
-        return c.json({ error: "No file provided" }, 400);
-      }
-
-      // Check the declared size *before* materialising the file. The check used
-      // to run after `arrayBuffer()`, so rejecting an oversized upload still cost
-      // a full copy of it in native memory first.
-      if (file.size > MAX_FILE_SIZE) {
-        return c.json({ error: "File exceeds 100 MB limit" }, 413);
-      }
-
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      if (bytes.length > MAX_FILE_SIZE) {
-        return c.json({ error: "File exceeds 100 MB limit" }, 413);
-      }
-
-      const formatInfo = detectFormat(bytes, file.name);
-      if (formatInfo.format === "unknown") {
-        return c.json({ error: "Unsupported file format" }, 400);
-      }
-
-      const contentHash = koreaderPartialMD5(bytes);
-
+      if (!agent) return c.redirect("/login");
+      const profile = await c.get("ctx").getProfile();
+      const handle = profile?.handle ?? agent.did;
       const { db } = c.get("ctx");
 
-      // Check for duplicate
-      const existing = await db
-        .selectFrom("personal_book")
-        .select("id")
-        .where("userDid", "=", agent.did)
-        .where("contentHash", "=", contentHash)
-        .executeTakeFirst();
-      if (existing) {
-        if (wantsJson) {
-          return c.json({ error: "This book is already in your library" }, 409);
-        }
-        return c.redirect("/library");
-      }
-
-      const metadata = parseBook(bytes, file.name);
-
-      await ensureDir(personalBookDir(agent.did, contentHash));
-
-      const filePath = bookFilePath(agent.did, contentHash, formatInfo.ext);
-      await Bun.write(filePath, bytes);
-
-      let coverPath: string | null = null;
-      let coverMime: string | null = null;
-      if (metadata.cover && (await isUsableCover(metadata.cover.bytes))) {
-        const cp = coverFilePath(agent.did, contentHash, metadata.cover.ext);
-        await Bun.write(cp, metadata.cover.bytes);
-        coverPath = cp;
-        coverMime = metadata.cover.mime;
-      }
-
-      // Try to match an existing sync_document (contentHash is the KOReader partial MD5)
-      let matchedHiveId: HiveId | null = null;
-      const syncDoc = await db
-        .selectFrom("sync_document")
-        .select(["hiveId"])
-        .where("userDid", "=", agent.did)
-        .where("documentHash", "=", contentHash)
-        .executeTakeFirst();
-      if (syncDoc?.hiveId) {
-        matchedHiveId = syncDoc.hiveId;
-      }
-
-      const now = new Date().toISOString();
-      await db
-        .insertInto("personal_book")
-        .values({
-          userDid: agent.did,
-          contentHash,
-          hiveId: matchedHiveId,
-          filename: file.name,
-          title: metadata.title,
-          authors: metadata.authors,
-          language: metadata.language || null,
-          format: formatInfo.format,
-          mime: formatInfo.mime,
-          filePath,
-          coverPath,
-          coverMime,
-          sizeBytes: bytes.length,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .execute();
-
-      // Mark the book as owned if auto-linked and user has it in their library
-      if (matchedHiveId) {
-        await db
-          .updateTable("user_book")
-          .set({ owned: 1 })
+      // Drives the empty-vs-populated layout: with nothing uploaded and nothing
+      // synced there is no library to manage, so the page explains itself and
+      // puts setup inline instead of behind modals.
+      const [books, documents] = await Promise.all([
+        db
+          .selectFrom("personal_book")
+          .select((eb) => eb.fn.countAll<number>().as("total"))
           .where("userDid", "=", agent.did)
-          .where("hiveId", "=", matchedHiveId)
-          .where("owned", "=", 0)
-          .execute();
-      }
+          .executeTakeFirstOrThrow(),
+        db
+          .selectFrom("sync_document")
+          .select((eb) => eb.fn.countAll<number>().as("total"))
+          .where("userDid", "=", agent.did)
+          .executeTakeFirstOrThrow(),
+      ]);
 
-      if (wantsJson) {
-        // Same shape as getPersonalLibrary#personalBookView so clients have one
-        // book type for both the list and the upload response.
-        return c.json({
-          book: {
-            contentHash,
-            title: metadata.title,
-            authors: metadata.authors || undefined,
-            language: metadata.language || undefined,
-            format: formatInfo.format,
-            mime: formatInfo.mime,
-            sizeBytes: bytes.length,
-            createdAt: now,
-            updatedAt: now,
-            hiveId: matchedHiveId ?? undefined,
-            coverUrl: coverPath ? `/library/covers/${contentHash}` : undefined,
-          },
-        });
-      }
-
-      return c.redirect("/library");
+      return c.render(
+        <LibraryPage
+          handle={handle}
+          bookCount={Number(books.total)}
+          syncDocCount={Number(documents.total)}
+          uploadError={c.req.valid("query").error}
+        />,
+        { title: "Personal Library" },
+      );
     },
-  );
+  )
+  // Thin adapter over `uploadPersonalBook` — the same core the XRPC procedure
+  // calls. Everything here is transport: content negotiation and the mapping
+  // from the core's discriminated result to a status code.
+  //
+  // Note there is no `bodyLimit()` middleware any more. It only short-circuits
+  // on `Content-Length`; given a chunked body it drains the whole stream into
+  // an array and rebuilds the Request, so a compliant 100 MB chunked upload was
+  // buffered there *and again* by `formData()`. The core caps while streaming
+  // to disk, which bounds every path at one chunk.
+  .post("/upload", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+
+    // The browser posts a plain <form> and wants to land back on the library;
+    // the mobile app posts the same multipart body but needs the created record
+    // (and a real status on duplicates) rather than a redirect to HTML.
+    const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
+    const fail = (status: ContentfulStatusCode, code: string, error: string, extra = {}) =>
+      wantsJson
+        ? c.json({ error, code, ...extra }, status)
+        : c.redirect(`/library?error=${encodeURIComponent(code)}`);
+
+    // The early reject `bodyLimit` used to give. `formData()` below still
+    // materialises the File in native memory — Bun/hono expose no incremental
+    // multipart API — so refusing an obviously oversized body before parsing it
+    // is worth the two lines. MULTIPART_SLACK covers the part headers.
+    const declaredTotal = Number(c.req.header("content-length"));
+    if (Number.isFinite(declaredTotal) && declaredTotal > MAX_FILE_SIZE + MULTIPART_SLACK) {
+      return fail(413, "TooLarge", "File exceeds 100 MB limit");
+    }
+
+    const formData = await c.req.formData();
+    const file = formData.get("file");
+    if (!file || !(file instanceof File)) {
+      return fail(400, "NoFile", "No file provided");
+    }
+
+    const { db, kv } = c.get("ctx");
+    const result = await uploadPersonalBook({
+      db,
+      kv,
+      userDid: agent.did,
+      filename: file.name,
+      source: { kind: "stream", body: file.stream(), declaredLength: file.size },
+    });
+
+    if (result.ok) {
+      // Same shape as getPersonalLibrary#personalBookView so clients have one
+      // book type for both the list and the upload response.
+      return wantsJson ? c.json({ book: result.book }) : c.redirect("/library");
+    }
+
+    switch (result.reason) {
+      case "too-large":
+        return fail(413, "TooLarge", "File exceeds 100 MB limit");
+      case "quota-exceeded":
+        return fail(
+          413,
+          "QuotaExceeded",
+          `Library full — ${formatBytes(result.usedBytes)} of ${formatBytes(result.quotaBytes)} used. Delete a book to free space.`,
+          { usedBytes: result.usedBytes, quotaBytes: result.quotaBytes },
+        );
+      case "unsupported-format":
+        return fail(400, "UnsupportedFormat", "Unsupported file format");
+      case "duplicate":
+        return fail(409, "AlreadyExists", "This book is already in your library");
+      case "empty":
+        return fail(400, "EmptyFile", "The file is empty");
+      case "busy":
+        return fail(503, "Busy", "Server is busy — try again in a moment");
+    }
+  });
 
 // Serve cover images for personal library books
 app.get("/covers/:hash", async (c) => {
@@ -316,13 +271,6 @@ app.get("/sync/documents", async (c) => {
   const rows = await db
     .selectFrom("sync_document")
     .leftJoin("hive_book", "hive_book.id", "sync_document.hiveId")
-    // A document whose hash matches an uploaded file is the same book: the
-    // library grid renders it, so the sync sections must not claim it too.
-    .leftJoin("personal_book", (join) =>
-      join
-        .onRef("personal_book.contentHash", "=", "sync_document.documentHash")
-        .onRef("personal_book.userDid", "=", "sync_document.userDid"),
-    )
     .select([
       "sync_document.documentHash as document",
       "sync_document.title as title",
@@ -332,8 +280,22 @@ app.get("/sync/documents", async (c) => {
       "sync_document.updatedAt as updatedAt",
       "sync_document.hiveId as hiveId",
       "hive_book.title as bookTitle",
-      "personal_book.id as personalBookId",
     ])
+    // A document we hold the file for is the same book: the library grid
+    // renders it, so the sync sections must not claim it too. An EXISTS rather
+    // than a join because more than one upload can match one document (see
+    // SAME_BOOK_FILE) and a join would list the document once per match.
+    .select((eb) =>
+      eb
+        .exists(
+          eb
+            .selectFrom("personal_book")
+            .select("personal_book.id")
+            .whereRef("personal_book.userDid", "=", "sync_document.userDid")
+            .where(SAME_BOOK_FILE),
+        )
+        .as("hasFile"),
+    )
     .where("sync_document.userDid", "=", agent.did)
     .orderBy("sync_document.updatedAt", "desc")
     .execute();
@@ -362,7 +324,7 @@ app.get("/sync/documents", async (c) => {
       hiveId: dismissed ? null : row.hiveId,
       bookTitle: dismissed ? null : row.bookTitle,
       dismissed,
-      hasFile: row.personalBookId != null,
+      hasFile: Boolean(row.hasFile),
     };
   });
 

@@ -732,12 +732,35 @@ export type PersonalBook = {
   mime: string;
   sizeBytes: number;
   coverUrl?: string;
+  /**
+   * Whether a cover was extracted from the uploaded file (as opposed to
+   * `coverUrl` pointing at the public catalog image proxy). The app fetches
+   * either form through `personalCoverSource`, which attaches the session
+   * cookie for the local one; this is here because a service-auth client can't
+   * use the local URL at all and has to go through `getPersonalBookCover`.
+   */
+  hasLocalCover?: boolean;
   hiveId?: string;
+  /** Original uploaded file name — what the user sees on their e-reader. */
+  filename?: string;
+  /** Synopsis from the linked catalog entry. Absent until the book is linked. */
+  description?: string;
   createdAt: string;
   updatedAt: string;
   /** Percentage arrives as a decimal string ("0.42") straight from KOSync. */
   progress?: { percentage: string; device?: string; updatedAt: string };
   shelfIds?: number[];
+};
+
+/**
+ * Per-user storage usage against the quota, returned on every
+ * `getPersonalLibrary` page rather than by a method of its own — the library
+ * screen already refetches that after each mutation, so the meter stays honest
+ * with no extra round-trip and no separate invalidation to keep in sync.
+ */
+export type PersonalStorage = {
+  usedBytes: number;
+  quotaBytes: number;
 };
 
 /** A user-defined shelf grouping personal library books. */
@@ -783,6 +806,7 @@ export const usePersonalLibrary = (shelfId?: number) => {
         books: PersonalBook[];
         total?: number;
         cursor?: string;
+        storage?: PersonalStorage;
       }>(url);
     },
     getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
@@ -790,6 +814,21 @@ export const usePersonalLibrary = (shelfId?: number) => {
     gcTime: 15 * 60 * 1000,
   });
 };
+
+/**
+ * Storage usage out of a `usePersonalLibrary` result.
+ *
+ * Reads the **last** page, not the first: every page carries a fresh `storage`,
+ * and on a refetch React Query replays the pages in order, so the last one is
+ * the most recently observed. Falling back to the first page covers the
+ * single-page case and a paginated result whose tail hasn't loaded yet.
+ */
+export function storageFromLibrary(
+  data: { pages: { storage?: PersonalStorage }[] } | undefined,
+): PersonalStorage | null {
+  if (!data?.pages.length) return null;
+  return data.pages[data.pages.length - 1]?.storage ?? data.pages[0]?.storage ?? null;
+}
 
 export const usePersonalShelves = () => {
   return useQuery({
@@ -845,6 +884,34 @@ export const useRotateSyncPassword = () => {
 };
 
 /**
+ * An upload the server refused for a reason it named.
+ *
+ * `code` is the server's closed set of upload failure codes (`TooLarge`,
+ * `QuotaExceeded`, `UnsupportedFormat`, `AlreadyExists`, `EmptyFile`, `NoFile`,
+ * `Busy`). `message` is the server's own prose, which is what the UI shows — the
+ * code is for deciding what to do *besides* showing it, like refreshing the
+ * storage meter after a quota rejection.
+ */
+export class UploadError extends Error {
+  readonly code?: string;
+  readonly status: number;
+  readonly usedBytes?: number;
+  readonly quotaBytes?: number;
+
+  constructor(
+    message: string,
+    init: { code?: string; status: number; usedBytes?: number; quotaBytes?: number },
+  ) {
+    super(message);
+    this.name = "UploadError";
+    this.code = init.code;
+    this.status = init.status;
+    this.usedBytes = init.usedBytes;
+    this.quotaBytes = init.quotaBytes;
+  }
+}
+
+/**
  * Multipart upload with real progress. Goes through XMLHttpRequest rather than
  * the shared fetch wrapper for two reasons: React Native streams a
  * `{ uri, name, type }` form part straight off disk (a 100 MB ebook never lands
@@ -894,11 +961,17 @@ function uploadBookFile({
         return;
       }
       reject(
-        new Error(
+        new UploadError(
           payload?.error ||
             (xhr.status === 401
               ? "Your session expired. Sign in again to upload."
               : `Upload failed (${xhr.status})`),
+          {
+            code: payload?.code,
+            status: xhr.status,
+            usedBytes: payload?.usedBytes,
+            quotaBytes: payload?.quotaBytes,
+          },
         ),
       );
     };
@@ -923,6 +996,18 @@ export const useUploadPersonalBook = () => {
       // it out of the triage list and into the grid.
       void queryClient.invalidateQueries({ queryKey: ["syncDocuments"] });
       void queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (error) => {
+      // A rejection on these two codes means our copy of the library disagrees
+      // with the server's: the quota bar is showing room that isn't there, or
+      // the grid is missing a book that already exists. Both are worth a
+      // refetch — the user's next action depends on seeing the real state.
+      if (
+        error instanceof UploadError &&
+        (error.code === "QuotaExceeded" || error.code === "AlreadyExists")
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ["personalLibrary"] });
+      }
     },
     retry: false,
   });
