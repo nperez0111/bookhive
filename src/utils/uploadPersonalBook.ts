@@ -40,12 +40,11 @@ import { Semaphore, SemaphoreFullError, SemaphoreTimeoutError } from "./semaphor
 import {
   detectFormat,
   koreaderPartialMD5File,
-  parseBook,
-  prepareCover,
   type BookCover,
   type BookMetadata,
   type FormatInfo,
 } from "./bookMetadata/index";
+import { parseBookInWorker } from "../workers/parse-client";
 import {
   bookFilePath,
   coverFilePath,
@@ -362,12 +361,16 @@ export async function uploadPersonalBook(
       .executeTakeFirst();
     if (duplicate) return { ok: false, reason: "duplicate", contentHash };
 
-    // ── 6+7. Parse and cover — the native-memory steps, bounded together ──
+    // ── 6+7. Parse and cover — the native-memory, CPU-bound steps ──
     //
-    // `parseBook` is the only full-buffer step, and `prepareCover` is the only
-    // one that rasterizes (an SVG cover renders synchronously on this thread via
-    // `resvg`). Both are held under the same permit so the semaphore bounds all
-    // of the native memory an upload can hold, not just the ZIP buffer.
+    // Offloaded to a single-shot Worker (`parseBookInWorker`): `parseBook`
+    // (fflate `unzipSync`) and `prepareCover` (synchronous `resvg` raster) are
+    // the only whole-file, CPU-bound work in an upload, and running them inline
+    // would stall this process's event loop for the duration. The Worker reads
+    // the file from the temp path we just wrote, so nothing large crosses the
+    // thread boundary. The semaphore still bounds concurrency — now the number
+    // of live Workers, hence the native memory across them — and sheds load as
+    // `busy` rather than spawning an unbounded number of them.
     //
     // The cover gate is not optional: `coverPath IS NOT NULL` is the only signal
     // driving `coverUrl` on the web library, the OPDS feed and the XRPC book
@@ -376,11 +379,9 @@ export async function uploadPersonalBook(
     let metadata: BookMetadata;
     let cover: BookCover | undefined;
     try {
-      ({ metadata, cover } = await parseSemaphore.run(async () => {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const parsed = parseBook(bytes, filename, formatInfo);
-        return { metadata: parsed, cover: (await prepareCover(parsed.cover)) ?? undefined };
-      }));
+      ({ metadata, cover } = await parseSemaphore.run(() =>
+        parseBookInWorker(tmp, filename, formatInfo),
+      ));
     } catch (err) {
       if (err instanceof SemaphoreFullError || err instanceof SemaphoreTimeoutError) {
         return { ok: false, reason: "busy" };

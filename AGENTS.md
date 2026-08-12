@@ -46,6 +46,7 @@ Worker threads (bundled to .output/server/workers/):
   og-render-worker    — OG image generation (React+takumi) (src/workers/)
   open-observe-worker — pino log shipping to OpenObserve   (src/workers/)
   import-worker       — CSV import processing              (src/workers/)
+  parse-worker        — ebook metadata parse + cover raster (single-shot, src/workers/)
   waf-solver-worker   — AWS WAF challenge solve            (src/scrapers/waf/)
 ```
 
@@ -504,7 +505,7 @@ the primary worker inside the startup barrier where VACUUM already runs.
 
 ### KV Cache (`src/sqlite-kv.ts`)
 
-SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep. The `svc_jti` table (service-auth replay store) lives in the same file but is written directly rather than through unstorage — `src/xrpc/replay-store.ts`.
+SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep.
 
 ### Key Utilities (`src/utils/`)
 
@@ -564,13 +565,20 @@ for a measured reason:
 5. **Duplicate check before the parse**, so a re-upload allocates nothing.
    `src/routes/library.test.ts` leans on this ordering to exercise the duplicate
    path without touching the library directory.
-6. `parseBook` inside `parseSemaphore` — the **only** full-buffer step, because
-   fflate reads a ZIP's central directory from the end of one contiguous array.
-   `UPLOAD_PARSE_CONCURRENCY` (2) is therefore the memory bound on uploads, and
-   it is **per process**: at the deployed `WEB_CONCURRENCY=3` the ceiling is
-   `2 × 3 × 100 MB ≈ 630 MB`, against a previously _unbounded_ ~200–400 MB per
-   in-flight upload. Production baseline is ~1.05 GB RSS across the three
-   workers in a 6 GB container, so that headroom fits comfortably.
+6. `parseBook` + `prepareCover` in a **single-shot Worker** (`parseBookInWorker`,
+   `src/workers/parse-client.ts` → `parse-worker.ts`), gated by `parseSemaphore`.
+   These are the only whole-file, CPU-bound steps — `parseBook` holds the full
+   buffer (fflate reads a ZIP's central directory from the end of one contiguous
+   array) and `prepareCover` rasterizes synchronously — so running them inline
+   stalled the request process's event loop; a Worker per upload moves both off
+   it. The file is read inside the Worker from the temp path, so nothing large
+   crosses the thread boundary. `UPLOAD_PARSE_CONCURRENCY` (2) still bounds
+   concurrency — now the number of **live Workers**, hence the native memory
+   across them — and it is **per process**: at the deployed `WEB_CONCURRENCY=3`
+   the ceiling is `2 × 3 × 100 MB ≈ 630 MB`, against a previously _unbounded_
+   ~200–400 MB per in-flight upload. The Worker is terminated on every path
+   (reply, error, or the 60s deadline); the semaphore sheds excess as `busy`
+   (503) rather than spawning Workers without limit.
 7. Cover gated on `prepareCover`, always (rasterizes SVG, then validates). `coverPath IS NOT NULL` is the only
    signal driving `coverUrl` on the web library, the OPDS feed and the XRPC book
    view, so an unvalidated cover is a dead URL and a blank box in all three.
@@ -648,11 +656,15 @@ Three things hold this together:
   null — so an untraced build silently uploads every Standard Ebooks book with
   no cover, which is exactly the bug it was added to fix.
 
-Rasterizing runs inside the upload core's `parseSemaphore`, next to the ZIP
-parse, so `UPLOAD_PARSE_CONCURRENCY` bounds all of an upload's native memory
-rather than just the file buffer. `resvg` renders synchronously on the calling
-thread (~0.5s at width 700, ~2.4s at 1400 — the cost scales with the square of
-the width, which is the other reason 700 is the cap).
+Rasterizing runs inside the parse Worker (step 6), next to the ZIP parse and
+under the same `parseSemaphore`, so `UPLOAD_PARSE_CONCURRENCY` bounds all of an
+upload's native memory rather than just the file buffer. `resvg` renders
+synchronously (~0.5s at width 700, ~2.4s at 1400 — the cost scales with the
+square of the width, which is the other reason 700 is the cap); running it on
+the Worker rather than the request thread is why that synchronous cost no longer
+stalls the event loop. `@resvg/resvg-js` is bundled into the standalone Worker
+by `bun build` (its `.node` binding is emitted alongside `parse-worker.js`), the
+same way the OG worker ships takumi's.
 
 ## Types & Constants
 
@@ -812,10 +824,10 @@ Three things that are load-bearing and easy to get wrong:
   entry; the live DID document has only `#atproto_pds`, so **PDS proxying via
   `atproto-proxy` cannot work today** and clients must mint a token and POST to
   us directly.
-- **`XRPC_SERVICE_AUTH_MAX_AGE` defaults to 3600, not atcute's 300.** A PDS
-  mints up to an hour when `lxm` is set and most SDKs don't expose `exp`, so
-  the stricter default rejects ordinary tokens as `JwtTooOld`. The token's own
-  `exp` is still enforced separately.
+- **`SERVICE_AUTH_MAX_AGE_SECONDS` is 3600, not atcute's 300** (a constant in
+  `src/context.ts`). A PDS mints up to an hour when `lxm` is set and most SDKs
+  don't expose `exp`, so the stricter default rejects ordinary tokens as
+  `JwtTooOld`. The token's own `exp` is still enforced separately.
 - **There is no prior-relationship gate.** A valid service token from _any_ DID
   on the network is accepted — we deliberately do not require that the DID has
   signed in to BookHive before. BookHive signup is open, so such a gate bought
@@ -831,11 +843,11 @@ place silently drops it for whichever path is live). Note that adding `rpc`
 permissions means **existing users must re-consent** before their PDS will
 issue tokens for these methods.
 
-Replay protection (`src/xrpc/replay-store.ts`) ships **defaulted off**: it would
-force a fresh `getServiceAuth` round-trip to the user's PDS on every call, to
-close a `≤maxAge` window on a token already scoped to one `lxm` and one
-audience. The insert is `ON CONFLICT DO NOTHING ... RETURNING` rather than an
-unstorage get-then-set, which is not atomic across the cluster processes.
+There is **no replay protection**: a token is already scoped to one `lxm` and
+one audience, and within its short `SERVICE_AUTH_MAX_AGE_SECONDS` window a reused
+one authenticates the same DID it always did. Service auth is also **always on**
+— there is no kill-switch env var; the cookie path is unaffected by it either
+way.
 
 ## Middleware (`src/middleware/`)
 
@@ -908,7 +920,7 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 | `bun run format`    | `vp fmt`                                                     |
 | `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons              |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 5 worker entry points into `.output/server/workers/` — the four under `src/workers/` plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
 
@@ -928,6 +940,8 @@ failure shows up in an unrelated file that passes in isolation.
 ## iOS App (`app/`)
 
 Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes personal-library and KOSync surfaces (XRPC `*PersonalBook`/`*PersonalShelf` methods, REST `/library/*`, `/settings/sync/*`, `POST /library/upload`).
+
+**The app renders `payload.error` verbatim for any non-2xx upload response**, which is why the quota rejection is a 413 carrying human prose rather than a bare code — already-installed builds show the right message with nothing shipped. It reads `storage` off `getPersonalLibrary` for its own meter and pre-flight check, so **anything that changes the quota's wire shape needs an app release**, unlike the message text. `app/utils/personalLibrary.ts` `formatBytes` is a deliberate byte-for-byte copy of the server's; if they diverge, the 413 alert and the meter under it disagree about how full the library is.
 
 ## Third-party clients (service auth)
 

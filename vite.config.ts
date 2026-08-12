@@ -46,6 +46,12 @@ function standaloneBundles(): Plugin {
       name: "waf-solver-worker.js",
       label: "WAF solver worker",
     },
+    {
+      entrypoint: "./src/workers/parse-worker.ts",
+      outdir: "./.output/server/workers",
+      name: "parse-worker.js",
+      label: "Ebook parse worker",
+    },
   ];
 
   return {
