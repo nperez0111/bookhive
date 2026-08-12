@@ -19,11 +19,19 @@ import { useRotateSyncPassword, useSyncDocuments, useSyncPassword } from "@/hook
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
+/**
+ * The metadata step is not cosmetic. KOReader's "Send document metadata" toggle
+ * defaults to off, and with it off a sync request identifies the book by one
+ * partial-MD5 hash and nothing else — so for a file the user never uploaded
+ * here, there is nothing to match a catalog entry against. Turning it on is the
+ * difference between progress landing on the right book and landing nowhere.
+ */
 const SETUP_STEPS = [
   "Open a book on your KOReader device.",
   "Go to Settings → Progress sync → Custom sync server.",
   "Enter the sync server URL above.",
   "Choose Login and enter the username and password above.",
+  "Turn on “Send document metadata” in the same menu — it’s off by default, and it’s what lets BookHive match books you haven’t uploaded here.",
   "Tap “Push progress from this device now” to test it.",
   "For your uploads, add the OPDS catalog URL in KOReader’s OPDS browser with the same login.",
 ];
