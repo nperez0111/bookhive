@@ -28,7 +28,7 @@ import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
 import { searchBooks, cacheControl } from "./lib";
 import { NO_STORE } from "../utils/cacheHeaders";
-import { getAvailableLanguages } from "../utils/getLanguages";
+import { getAvailableLanguages, resolveLanguage } from "../utils/getLanguages";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
@@ -248,8 +248,12 @@ const app = new Hono<AppEnv>()
   .use("/authors/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
   .get("/explore", async (c) => {
     const { db, kv } = c.get("ctx");
-    const lang = c.req.query("lang") || undefined;
-    const languages = await getAvailableLanguages(db, kv);
+    // Validated, not passed through: `lang` keys a cached 356k-row aggregate,
+    // so an arbitrary string is an unbounded KV-cardinality and CPU amplifier.
+    const [lang, languages] = await Promise.all([
+      resolveLanguage(db, kv, c.req.query("lang")),
+      getAvailableLanguages(db, kv),
+    ]);
     return c.render(<Explore lang={lang} languages={languages} />, {
       title: "BookHive | Explore",
       description: "Discover books by genre or author on BookHive",
@@ -297,12 +301,21 @@ const app = new Hono<AppEnv>()
       },
     );
   })
-  .get("/explore/authors", (c) =>
-    c.render(<AuthorDirectory />, {
+  .get("/explore/authors", async (c) => {
+    const { db, kv } = c.get("ctx");
+    // This route used to ignore `lang` entirely while /explore linked here with
+    // it and the anon page cache keyed on it — every language a crawler found
+    // became a separate cache entry holding byte-identical HTML, each paying
+    // its own cold render.
+    const [lang, languages] = await Promise.all([
+      resolveLanguage(db, kv, c.req.query("lang")),
+      getAvailableLanguages(db, kv),
+    ]);
+    return c.render(<AuthorDirectory lang={lang} languages={languages} />, {
       title: "BookHive | Explore Authors",
       description: "Explore books by author on BookHive",
-    }),
-  )
+    });
+  })
   // Legacy redirects
   .get("/genres", (c) => c.redirect("/explore/genres", 301))
   .get("/genres/:genre", (c) =>

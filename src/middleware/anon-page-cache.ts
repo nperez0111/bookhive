@@ -21,7 +21,19 @@ import { NO_STORE, hasSessionCookie } from "../utils/cacheHeaders";
 const ALLOWED_QUERY_PARAMS = new Set(["page", "sort", "lang", "review-id"]);
 
 export const PAGE_CACHE_TTL_MS = 60 * 60 * 1000; // matches Cache-Control max-age=3600 on these routes
-const MAX_BODY_BYTES = 512 * 1024;
+
+/**
+ * What we actually store, so this is what the limit is measured against. The
+ * guard used to compare the *uncompressed* body against 512 KB and then store
+ * the gzipped form — which rejected pages that would have cost ~25 KB of KV.
+ * `/explore/authors` renders 500 near-identical author rows on top of the
+ * inlined CSS bundle (see `getInlineCss` in src/utils/manifest.ts) and sits
+ * close enough to that old ceiling to fall off it.
+ */
+const MAX_STORED_BYTES = 256 * 1024;
+/** Separate ceiling on the pre-compression buffer, purely to bound the memory
+ * a single response can cost us. Nothing legitimate on these routes is close. */
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /** Served on cache hits and misses when the route's Cache-Control didn't reach
  * the final response (headers set via the cacheControl helper after next()
@@ -73,8 +85,10 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
   if (!contentType.includes("text/html")) return null;
   const body = await res.clone().text();
   if (Buffer.byteLength(body) > MAX_BODY_BYTES) return null;
+  const gzipped = Bun.gzipSync(body);
+  if (gzipped.byteLength > MAX_STORED_BYTES) return null;
   return {
-    bodyGzipB64: Buffer.from(Bun.gzipSync(body)).toString("base64"),
+    bodyGzipB64: Buffer.from(gzipped).toString("base64"),
     contentType,
     cacheControl: res.headers.get("cache-control") || DEFAULT_CACHE_CONTROL,
   };
@@ -104,7 +118,16 @@ export function anonPageCache(kv: Storage) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}=${v}`)
       .join("&");
-    const key = `page:${url.pathname}${query ? `?${query}` : ""}`;
+    // The query is percent-encoded into the key, NOT appended after a literal
+    // `?`. unstorage's `normalizeKey` is `key.split("?")[0].replace(...)` — it
+    // throws the query string away — so a `?`-joined key silently collapsed
+    // every variant of a path onto one entry: `/explore?lang=French` was served
+    // the English page, `/authors/X?page=2` was served page 1, and
+    // `/explore/genres/Y?sort=relevance` was served the popularity sort. That
+    // made ALLOWED_QUERY_PARAMS and this sort dead code. `encodeURIComponent`
+    // escapes `?`, `/` and `\`, which are the only characters normalizeKey
+    // touches, so the key survives it intact.
+    const key = `page:${url.pathname}${query ? `:q:${encodeURIComponent(query)}` : ""}`;
 
     // Fresh cached copy?
     const meta = await kv.getMeta(key);

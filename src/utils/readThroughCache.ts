@@ -135,7 +135,12 @@ export async function readThroughCache<T extends StorageValue>(
 
       return fetch({ key })
         .then(async (fresh) => {
-          await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: now })]);
+          // Stamped *after* the fetch, not with the `now` captured before it.
+          // A 5s fetch used to be born 5s stale, which on a short TTL cost a
+          // meaningful slice of the entry's life (and on an SWR entry brought
+          // the next revalidation forward by the whole fetch duration). The
+          // SWR path below already does this.
+          await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: Date.now() })]);
           return fresh;
         })
         .catch(() => {

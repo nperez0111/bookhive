@@ -1006,6 +1006,66 @@ migrations["023"] = {
   },
 };
 
+/**
+ * Covering indexes for the /explore family's author and genre aggregates.
+ *
+ * Every one of them is a `GROUP BY` over the whole of `hive_book_author` (or
+ * `hive_book_genre`) joined to `hive_book`, and every one of them planned as
+ * `SEARCH b USING INDEX sqlite_autoindex_hive_book_1 (id=?)` — an index probe
+ * to get a rowid, then a fetch of the whole 356k-row, 1.62 GB `hive_book` row
+ * just to read `ratingsCount`/`rating`/`language`. Against the 16 MB
+ * `cache_size` with `mmap_size = 0` that is 356k random reads; `/explore` took
+ * 6-9s and `/explore/authors` 9-14.5s, and `bun:sqlite` is synchronous, so
+ * each one froze a whole worker's event loop.
+ *
+ * `idx_hive_book_stats` is ~18 MB and holds exactly the columns those
+ * aggregates read, so the join becomes index-only and the working set fits in
+ * the page cache. Deliberately WITHOUT `thumbnail` — URLs are 60-100 bytes a
+ * row and would triple the index, evicting the thing we are trying to keep
+ * resident. The handful of thumbnails the featured row needs are fetched by id
+ * afterwards (see `src/utils/authorStats.ts`).
+ *
+ * IMPORTANT: the index alone does nothing. This database has never been
+ * ANALYZEd, and with no `sqlite_stat1` the planner prefers the UNIQUE
+ * `sqlite_autoindex_hive_book_1` for an `id = ?` equality and goes right back
+ * to the table. The queries therefore say `INDEXED BY idx_hive_book_stats`
+ * explicitly. Shipping `ANALYZE` instead would re-plan every other query in an
+ * app whose indexes were all hand-tuned against the no-stats planner — far too
+ * much blast radius for an index migration. If you drop this index, the
+ * `INDEXED BY` clauses become hard errors rather than silent 9s regressions,
+ * which is the intent.
+ */
+migrations["024"] = {
+  async up(db: Kysely<unknown>) {
+    // `IF NOT EXISTS` throughout (as migration 012 does): a half-applied state
+    // — a backup restored without its WAL, an index created by hand while
+    // debugging — otherwise makes this throw `index already exists` on every
+    // boot, and since migrations run inside the startup barrier that is a
+    // permanent crash loop rather than a degraded page.
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_stats ON hive_book(id, ratingsCount, rating, language)`.execute(
+      db,
+    );
+
+    // `idx_hive_book_author_first` (migration 020) is a strict prefix of this.
+    // Adding `hiveId` makes the `WHERE position = 0 GROUP BY author` side of
+    // the aggregate index-only too — the join key no longer costs a rowid
+    // fetch per row. Every other consumer of this table filters on `author`
+    // alone and is served by `idx_hive_book_author_author`, so the old index
+    // has no remaining reader.
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_first_cover ON hive_book_author(position, author, hiveId)`.execute(
+      db,
+    );
+    await sql`DROP INDEX IF EXISTS idx_hive_book_author_first`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_first ON hive_book_author(position, author)`.execute(
+      db,
+    );
+    await sql`DROP INDEX IF EXISTS idx_hive_book_author_first_cover`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_hive_book_stats`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

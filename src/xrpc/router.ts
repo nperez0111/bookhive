@@ -64,7 +64,9 @@ import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
-import { getTopAuthors } from "../pages/authorDirectory";
+import { getFeaturedAuthors } from "../utils/authorStats";
+import { getTopGenres } from "../utils/exploreGenres";
+import { resolveLanguage } from "../utils/getLanguages";
 import { getAvailableLanguages } from "../utils/getLanguages";
 import {
   computeReadingStats,
@@ -938,25 +940,21 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveGetExplore, {
     async handler({ params: _params }) {
       const ctx = getCtx();
-      const language = (_params as BuzzBookhiveGetExplore.$params).language || undefined;
-
-      let genreQuery = ctx.db
-        .selectFrom("hive_book_genre")
-        .select(["genre", sql<number>`COUNT(*)`.as("count")]);
-
-      if (language) {
-        genreQuery = genreQuery
-          .innerJoin("hive_book", "hive_book_genre.hiveId", "hive_book.id")
-          .where("hive_book.language", "=", language) as any;
-      }
+      // Both aggregates are cached with SWR inside their helpers and shared
+      // with /explore and /explore/authors. This handler used to run them
+      // uncached on every mobile Explore open — a synchronous multi-second
+      // query that froze one of the three worker processes outright.
+      // `language` is lexicon-typed as a free-form string, so it is narrowed to
+      // one we have books in before it can key a cache entry.
+      const language = await resolveLanguage(
+        ctx.db,
+        ctx.kv,
+        (_params as BuzzBookhiveGetExplore.$params).language,
+      );
 
       const [genreRows, topAuthors] = await Promise.all([
-        genreQuery
-          .groupBy("genre")
-          .orderBy(sql`COUNT(*)`, "desc")
-          .limit(6)
-          .execute(),
-        getTopAuthors(ctx.db, 8, language),
+        getTopGenres(ctx.db, ctx.kv, 6, language),
+        getFeaturedAuthors(ctx.db, ctx.kv, 8, language),
       ]);
 
       return json({

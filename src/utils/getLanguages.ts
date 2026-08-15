@@ -29,3 +29,23 @@ export async function getAvailableLanguages(db: Database, kv: Storage): Promise<
     { ttl: LANGUAGES_CACHE_TTL },
   );
 }
+
+/**
+ * Narrow a client-supplied `?lang=` / `language=` to one we actually have books
+ * in, or `undefined`.
+ *
+ * The explore aggregates are cached per language and are expensive to compute,
+ * so an unvalidated free-form string is both an unbounded KV-key cardinality
+ * amplifier and an unbounded CPU one — `?lang=<junk>` would key its own cache
+ * entry and run its own 356k-row GROUP BY to produce an empty list. The
+ * language list this checks against is itself cached for a day.
+ */
+export async function resolveLanguage(
+  db: Database,
+  kv: Storage,
+  lang: string | undefined | null,
+): Promise<string | undefined> {
+  if (!lang) return undefined;
+  const languages = await getAvailableLanguages(db, kv);
+  return languages.includes(lang) ? lang : undefined;
+}
