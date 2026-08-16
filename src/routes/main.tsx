@@ -122,7 +122,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
     const db = c.get("ctx").db;
     startTime(c, "pds_profiles+book_counts");
     const [profiles, bookCountRows] = await Promise.all([
-      dids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids }) : [],
+      dids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids, publicOnly: true }) : [],
       db
         .selectFrom("user_book")
         .select((eb) => ["userDid", eb.fn.countAll<number>().as("count")])
@@ -236,7 +236,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
           allDids.length > 0
             ? ctx.resolver.resolveDidsToHandles(allDids)
             : ({} as Record<string, string>),
-          allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
+          allDids.length > 0 ? getProfiles({ ctx, dids: allDids, publicOnly: true }) : [],
         ]);
         endTime(c, "marketing_handles");
         endTime(c, "marketing_profiles");
