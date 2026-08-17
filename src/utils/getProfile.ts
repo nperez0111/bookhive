@@ -14,6 +14,13 @@ const publicHandler = {
     }),
 };
 
+const REVALIDATE_AFTER = 24 * 60 * 60 * 1000;
+const PROFILE_TTL = 30 * 24 * 60 * 60 * 1000;
+
+function profileCacheKey(targetDid: string, viewerDid: string | null): string {
+  return viewerDid ? "profile:" + viewerDid + ":" + targetDid : "profile:pub:" + targetDid;
+}
+
 export async function getProfile({
   ctx,
   did,
@@ -25,7 +32,7 @@ export async function getProfile({
 }): Promise<ProfileViewDetailed | null> {
   const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
   const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
-  const cacheKey = sessionClient ? "profile:" + did : "profile:pub:" + did;
+  const cacheKey = profileCacheKey(did, sessionClient?.did ?? null);
   const profile = await readThroughCache<ProfileViewDetailed | null>(
     ctx.kv,
     cacheKey,
@@ -50,7 +57,7 @@ export async function getProfile({
       }
     },
     undefined,
-    { revalidateAfter: 24 * 60 * 60 * 1000, ttl: 30 * 24 * 60 * 60 * 1000 },
+    { revalidateAfter: REVALIDATE_AFTER, ttl: PROFILE_TTL },
   );
   return profile;
 }
@@ -67,18 +74,30 @@ export async function getProfiles({
   dids = Array.from(new Set(dids));
   const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
   const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
-  const keyPrefix = sessionClient ? "profile:" : "profile:pub:";
-  const profiles = await ctx.kv.getItems<ProfileViewDetailed | null>(
-    dids.map((did) => keyPrefix + did),
+  const viewerDid = sessionClient?.did ?? null;
+
+  const now = Date.now();
+  const entries = await Promise.all(
+    dids.map(async (did) => {
+      const key = profileCacheKey(did, viewerDid);
+      const [value, meta] = await Promise.all([
+        ctx.kv.get<ProfileViewDetailed | null>(key),
+        ctx.kv.getMeta(key),
+      ]);
+      const timestamp = meta && typeof meta["timestamp"] === "number" ? meta["timestamp"] : null;
+      const age = timestamp !== null ? now - timestamp : Infinity;
+      const isFresh = value !== null && timestamp !== null && age < REVALIDATE_AFTER;
+      const isStale =
+        value !== null && timestamp !== null && age >= REVALIDATE_AFTER && age < PROFILE_TTL;
+      return { did, key, value, isFresh, isStale };
+    }),
   );
 
-  const missingProfiles = profiles
-    .filter((p) => p.value === null)
-    .map((p) => p.key.slice(keyPrefix.length));
+  const fetchDids = entries.filter((e) => !e.isFresh).map((e) => e.did);
 
-  if (missingProfiles.length > 0) {
+  if (fetchDids.length > 0) {
     try {
-      const actorsParam = missingProfiles as ActorIdentifier[];
+      const actorsParam = fetchDids as ActorIdentifier[];
       const res = sessionClient
         ? await sessionClient.get("app.bsky.actor.getProfiles", {
             params: { actors: actorsParam },
@@ -91,15 +110,19 @@ export async function getProfiles({
         ? (res.data as { profiles: ProfileViewDetailed[] }).profiles
         : [];
 
-      profiles.forEach((p) => {
-        if (p.value === null) {
-          p.value = fetchedProfiles.find((f) => f.did === p.key.slice(keyPrefix.length)) || null;
+      for (const entry of entries) {
+        if (!entry.isFresh && entry.value === null) {
+          entry.value = fetchedProfiles.find((f) => f.did === entry.did) ?? null;
         }
-      });
+      }
 
-      ctx.kv
-        .setItems(fetchedProfiles.map((p) => ({ key: keyPrefix + p.did, value: p })))
-        .catch(() => {});
+      const writeTimestamp = Date.now();
+      Promise.all(
+        fetchedProfiles.flatMap((p) => {
+          const key = profileCacheKey(p.did, viewerDid);
+          return [ctx.kv.set(key, p), ctx.kv.setMeta(key, { timestamp: writeTimestamp })];
+        }),
+      ).catch(() => {});
       await Promise.all(
         fetchedProfiles
           .filter((p) => p.did && p.handle)
@@ -110,7 +133,7 @@ export async function getProfiles({
     }
   }
 
-  return profiles
-    .filter((p): p is { key: string; value: ProfileViewDetailed } => Boolean(p.value))
-    .map((p) => p.value);
+  return entries
+    .filter((e): e is typeof e & { value: ProfileViewDetailed } => e.value !== null)
+    .map((e) => e.value);
 }
