@@ -25,9 +25,10 @@ export async function getProfile({
 }): Promise<ProfileViewDetailed | null> {
   const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
   const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
+  const cacheKey = sessionClient ? "profile:" + did : "profile:pub:" + did;
   const profile = await readThroughCache<ProfileViewDetailed | null>(
     ctx.kv,
-    "profile:" + did,
+    cacheKey,
     async () => {
       try {
         const actorParam = did as ActorIdentifier;
@@ -64,15 +65,16 @@ export async function getProfiles({
   publicOnly?: boolean;
 }): Promise<ProfileViewDetailed[]> {
   dids = Array.from(new Set(dids));
-  const profiles = await ctx.kv.getItems<ProfileViewDetailed | null>(
-    dids.map((did) => "profile:" + did),
-  );
   const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
   const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
+  const keyPrefix = sessionClient ? "profile:" : "profile:pub:";
+  const profiles = await ctx.kv.getItems<ProfileViewDetailed | null>(
+    dids.map((did) => keyPrefix + did),
+  );
 
   const missingProfiles = profiles
     .filter((p) => p.value === null)
-    .map((p) => p.key.slice("profile:".length));
+    .map((p) => p.key.slice(keyPrefix.length));
 
   if (missingProfiles.length > 0) {
     try {
@@ -91,11 +93,13 @@ export async function getProfiles({
 
       profiles.forEach((p) => {
         if (p.value === null) {
-          p.value = fetchedProfiles.find((f) => f.did === p.key.slice("profile:".length)) || null;
+          p.value = fetchedProfiles.find((f) => f.did === p.key.slice(keyPrefix.length)) || null;
         }
       });
 
-      void ctx.kv.setItems(fetchedProfiles.map((p) => ({ key: "profile:" + p.did, value: p })));
+      ctx.kv
+        .setItems(fetchedProfiles.map((p) => ({ key: keyPrefix + p.did, value: p })))
+        .catch(() => {});
       await Promise.all(
         fetchedProfiles
           .filter((p) => p.did && p.handle)
