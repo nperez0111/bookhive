@@ -97,18 +97,26 @@ export async function getProfiles({
 
   if (fetchDids.length > 0) {
     try {
-      const actorsParam = fetchDids as ActorIdentifier[];
-      const res = sessionClient
-        ? await sessionClient.get("app.bsky.actor.getProfiles", {
-            params: { actors: actorsParam },
-            headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
-          })
-        : await client.get("app.bsky.actor.getProfiles", {
-            params: { actors: actorsParam },
-          });
-      const fetchedProfiles = res.ok
-        ? (res.data as { profiles: ProfileViewDetailed[] }).profiles
-        : [];
+      const BATCH_SIZE = 25;
+      const batches: ActorIdentifier[][] = [];
+      for (let i = 0; i < fetchDids.length; i += BATCH_SIZE) {
+        batches.push(fetchDids.slice(i, i + BATCH_SIZE) as ActorIdentifier[]);
+      }
+      const results = await Promise.all(
+        batches.map((batch) =>
+          sessionClient
+            ? sessionClient.get("app.bsky.actor.getProfiles", {
+                params: { actors: batch },
+                headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
+              })
+            : client.get("app.bsky.actor.getProfiles", {
+                params: { actors: batch },
+              }),
+        ),
+      );
+      const fetchedProfiles = results.flatMap((res) =>
+        res.ok ? (res.data as { profiles: ProfileViewDetailed[] }).profiles : [],
+      );
 
       for (const entry of entries) {
         if (!entry.isFresh && entry.value === null) {
