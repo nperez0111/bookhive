@@ -1,12 +1,10 @@
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
-import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
-import type { Storage } from "unstorage";
 import { getEmoji } from "./genreEmoji";
-import { getTopAuthors, type AuthorWithStats } from "./authorDirectory";
+import { getFeaturedAuthors } from "../utils/authorStats";
+import { getTopGenres } from "../utils/exploreGenres";
 import { StarDisplay } from "./components/cards/StarDisplay";
-import { readThroughCache } from "../utils/readThroughCache";
 import { sourceCoverImageUrl } from "../utils/imageProxy";
 import { LanguageSelect } from "./components/LanguageSelect";
 import { buildUrl } from "./utils/buildUrl";
@@ -18,12 +16,8 @@ function formatCount(count: number): string {
   return `${Math.floor(count / 100) * 100}+`;
 }
 
-interface GenreCount {
-  genre: string;
-  count: number;
-}
-
-const CACHE_TTL = 3_600_000; // 1 hour
+const TOP_GENRE_COUNT = 6;
+const TOP_AUTHOR_COUNT = 8;
 
 interface ExploreProps {
   lang?: string;
@@ -37,39 +31,15 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
   startTime(c, "explore-genres");
   startTime(c, "explore-authors");
 
-  const langCacheKey = lang || "all";
-
+  // Both aggregates are cached with stale-while-revalidate inside their
+  // helpers, and shared with /explore/authors and XRPC getExplore so the three
+  // callers can't drift to three different TTLs again.
   const [genres, topAuthors] = await Promise.all([
-    readThroughCache<GenreCount[]>(
-      kv as Storage<GenreCount[]>,
-      `explore:genres:${langCacheKey}`,
-      () => {
-        let query = db
-          .selectFrom("hive_book_genre")
-          .innerJoin("hive_book", "hive_book.id", "hive_book_genre.hiveId")
-          .select(["hive_book_genre.genre", sql<number>`COUNT(*)`.as("count")]);
-        if (lang) {
-          query = query.where("hive_book.language", "=", lang);
-        }
-        return query
-          .groupBy("hive_book_genre.genre")
-          .orderBy(sql`COUNT(*)`, "desc")
-          .limit(6)
-          .execute();
-      },
-      [],
-      { ttl: CACHE_TTL },
-    ).then((r) => {
+    getTopGenres(db, kv, TOP_GENRE_COUNT, lang).then((r) => {
       endTime(c, "explore-genres");
       return r;
     }),
-    readThroughCache<AuthorWithStats[]>(
-      kv as Storage<AuthorWithStats[]>,
-      `authors:featured:${langCacheKey}`,
-      () => getTopAuthors(db, 8, lang),
-      [],
-      { ttl: CACHE_TTL },
-    ).then((r) => {
+    getFeaturedAuthors(db, kv, TOP_AUTHOR_COUNT, lang).then((r) => {
       endTime(c, "explore-authors");
       return r;
     }),

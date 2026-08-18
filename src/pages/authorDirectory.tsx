@@ -1,22 +1,10 @@
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
-import { sql } from "kysely";
 import { endTime, startTime } from "hono/timing";
-import type { Kysely } from "kysely";
-import type { Storage } from "unstorage";
-import type { DatabaseSchema } from "../db";
-import { readThroughCache } from "../utils/readThroughCache";
+import { getAuthorStats, getFeaturedAuthors } from "../utils/authorStats";
 import { sourceCoverImageUrl } from "../utils/imageProxy";
-
-export interface AuthorWithStats {
-  author: string;
-  totalRatings: number;
-  avgRating: number | null;
-  bookCount: number;
-  thumbnail: string | null;
-}
-
-type AuthorStats = Omit<AuthorWithStats, "thumbnail">;
+import { LanguageSelect } from "./components/LanguageSelect";
+import { buildUrl } from "./utils/buildUrl";
 
 function formatCount(count: number): string {
   if (count < 10) return `${count}`;
@@ -26,84 +14,6 @@ function formatCount(count: number): string {
 }
 
 const FEATURED_COUNT = 8;
-
-/**
- * Returns top authors with stats and their most popular book thumbnail.
- * Uses two queries to avoid a slow correlated subquery:
- *   1. Aggregation (GROUP BY first author, no thumbnail)
- *   2. Single scan of top books by ratingsCount to resolve thumbnails in JS
- *
- * @param language - optional language filter; when set, only books in that language are counted
- */
-export async function getTopAuthors(
-  db: Kysely<DatabaseSchema>,
-  limit: number,
-  language?: string,
-): Promise<AuthorWithStats[]> {
-  // Groups the normalized hive_book_author table (migration 020) rather than
-  // re-deriving the first author per row with instr/substr/trim over the whole
-  // of hive_book. `position = 0` is the credited first author.
-  const langCondition = language ? sql`AND b.language = ${language}` : sql``;
-  const statsResult = await sql<AuthorStats>`
-    SELECT
-      a.author as author,
-      SUM(COALESCE(b.ratingsCount, 0)) as totalRatings,
-      ROUND(AVG(CASE WHEN b.rating IS NOT NULL AND b.rating > 0 THEN b.rating END) / 1000.0, 1) as avgRating,
-      COUNT(*) as bookCount
-    FROM hive_book_author a
-    JOIN hive_book b ON b.id = a.hiveId
-    WHERE a.position = 0 ${langCondition}
-    GROUP BY a.author
-    HAVING bookCount >= 2 AND totalRatings > 0
-    ORDER BY totalRatings DESC
-    LIMIT ${limit}
-  `.execute(db);
-
-  const authors = statsResult.rows;
-  if (authors.length === 0) return [];
-
-  // Resolve thumbnails with a single forward scan of the most-rated books.
-  // All top-N authors' best books appear well within the first limit*150 rows.
-  const thumbLangCondition = language ? sql`AND b.language = ${language}` : sql``;
-  const thumbResult = await sql<{ author: string; thumbnail: string }>`
-    SELECT a.author as author, b.thumbnail as thumbnail
-    FROM hive_book_author a
-    JOIN hive_book b ON b.id = a.hiveId
-    WHERE a.position = 0 AND b.thumbnail IS NOT NULL AND b.thumbnail != '' ${thumbLangCondition}
-    ORDER BY b.ratingsCount DESC
-    LIMIT ${limit * 150}
-  `.execute(db);
-
-  const thumbnailByAuthor = new Map<string, string>();
-  for (const row of thumbResult.rows) {
-    if (!thumbnailByAuthor.has(row.author)) {
-      thumbnailByAuthor.set(row.author, row.thumbnail);
-    }
-  }
-
-  return authors.map((a) => ({
-    ...a,
-    thumbnail: thumbnailByAuthor.get(a.author) ?? null,
-  }));
-}
-
-async function getAllAuthors(db: Kysely<DatabaseSchema>): Promise<AuthorStats[]> {
-  const result = await sql<AuthorStats>`
-    SELECT
-      a.author as author,
-      SUM(COALESCE(b.ratingsCount, 0)) as totalRatings,
-      ROUND(AVG(CASE WHEN b.rating IS NOT NULL AND b.rating > 0 THEN b.rating END) / 1000.0, 1) as avgRating,
-      COUNT(*) as bookCount
-    FROM hive_book_author a
-    JOIN hive_book b ON b.id = a.hiveId
-    WHERE a.position = 0
-    GROUP BY a.author
-    HAVING bookCount >= 2 AND totalRatings > 0
-    ORDER BY totalRatings DESC
-    LIMIT 500
-  `.execute(db);
-  return result.rows;
-}
 
 const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({ thumbnail, author }) => {
   if (thumbnail) {
@@ -123,33 +33,28 @@ const AuthorCover: FC<{ thumbnail: string | null; author: string }> = ({ thumbna
   );
 };
 
-export const AuthorDirectory: FC = async () => {
+interface AuthorDirectoryProps {
+  lang?: string;
+  languages: string[];
+}
+
+export const AuthorDirectory: FC<AuthorDirectoryProps> = async ({ lang, languages }) => {
   const c = useRequestContext();
 
   const { db, kv } = c.get("ctx");
-  const cacheOpts = { ttl: 300_000 }; // 5 minutes
 
   startTime(c, "authors-featured");
   startTime(c, "authors-list");
 
+  // `featured` is the top FEATURED_COUNT of `all` plus covers, so on a cold
+  // cache this is one aggregate, not two. Both are cached with SWR inside the
+  // helpers (see src/utils/authorStats.ts).
   const [featured, all] = await Promise.all([
-    readThroughCache<AuthorWithStats[]>(
-      kv as Storage<AuthorWithStats[]>,
-      "authors:featured",
-      () => getTopAuthors(db, FEATURED_COUNT),
-      [],
-      cacheOpts,
-    ).then((r) => {
+    getFeaturedAuthors(db, kv, FEATURED_COUNT, lang).then((r) => {
       endTime(c, "authors-featured");
       return r;
     }),
-    readThroughCache<AuthorStats[]>(
-      kv as Storage<AuthorStats[]>,
-      "authors:all",
-      () => getAllAuthors(db),
-      [],
-      cacheOpts,
-    ).then((r) => {
+    getAuthorStats(db, kv, lang).then((r) => {
       endTime(c, "authors-list");
       return r;
     }),
@@ -167,7 +72,7 @@ export const AuthorDirectory: FC = async () => {
           </a>
           <span aria-hidden="true">›</span>
           <a
-            href="/explore"
+            href={buildUrl("/explore", { lang })}
             class="hover:text-foreground min-h-10 inline-flex items-center transition-[color]"
           >
             Explore
@@ -176,13 +81,21 @@ export const AuthorDirectory: FC = async () => {
           <span class="text-foreground font-medium">Authors</span>
         </nav>
 
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
-            Explore Authors
-          </h1>
-          <p class="text-muted-foreground mt-2 text-base">
-            Discover books by your favourite authors.
-          </p>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
+              Explore Authors
+            </h1>
+            <p class="text-muted-foreground mt-2 text-base">
+              Discover books by your favourite authors.
+            </p>
+          </div>
+          <LanguageSelect
+            languages={languages}
+            currentLang={lang}
+            baseUrl="/explore/authors"
+            paramName="lang"
+          />
         </div>
 
         {/* Featured authors */}
@@ -193,7 +106,7 @@ export const AuthorDirectory: FC = async () => {
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {featured.map((author) => (
               <a
-                href={`/authors/${encodeURIComponent(author.author)}`}
+                href={buildUrl(`/authors/${encodeURIComponent(author.author)}`, { lang })}
                 class="card group flex items-center gap-3 p-4 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
               >
                 <AuthorCover thumbnail={author.thumbnail} author={author.author} />
@@ -249,7 +162,7 @@ export const AuthorDirectory: FC = async () => {
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {all.map((author) => (
                 <a
-                  href={`/authors/${encodeURIComponent(author.author)}`}
+                  href={buildUrl(`/authors/${encodeURIComponent(author.author)}`, { lang })}
                   data-author={author.author.toLowerCase()}
                   class="group flex min-h-10 items-center gap-3 border-b border-border px-4 py-3 transition-[color,background-color] hover:bg-muted/60"
                 >

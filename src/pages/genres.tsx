@@ -45,7 +45,10 @@ export const GenresDirectory: FC = async () => {
         .orderBy(sql`COUNT(*)`, "desc")
         .execute(),
     [],
-    { ttl: 3_600_000 },
+    // SWR rather than a plain TTL: this is index-only but still a full scan of
+    // hive_book_genre, and a plain TTL makes every expiry a synchronous cliff
+    // for whichever request lands on it (bun:sqlite blocks the event loop).
+    { ttl: 86_400_000, revalidateAfter: 3_600_000 },
   );
   endTime(c, "genres-query");
 

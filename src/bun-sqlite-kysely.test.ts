@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect, type Generated } from "kysely";
+import { Kysely, SqliteDialect, sql, type Generated } from "kysely";
 
 import { toImmediateTransaction, wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
 
@@ -84,6 +84,35 @@ describe("wrapBunSqliteForKysely", () => {
     const rows = await db.selectFrom("thing").selectAll().execute();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.note).toBe("n");
+  });
+
+  it("returns rows from a query fronted by a CTE", async () => {
+    // `WITH ... SELECT` used to be classified as a non-reader (the check was
+    // anchored on a leading SELECT), so Kysely called run() and the query
+    // yielded zero rows with no error whatsoever. The author-directory cover
+    // lookup is a window function over a CTE, and it silently returned nothing.
+    await db.insertInto("thing").values({ name: "a", note: "n" }).execute();
+
+    const rows = await sql<{ name: string }>`
+      WITH ranked AS (
+        SELECT name, ROW_NUMBER() OVER (ORDER BY id) AS rn FROM thing
+      )
+      SELECT name FROM ranked WHERE rn = 1
+    `.execute(db);
+
+    expect(rows.rows.map((r) => r.name)).toEqual(["a"]);
+  });
+
+  it("still reports affected rows for a write fronted by a CTE", async () => {
+    // The converse: a leading CTE does not make a statement a reader.
+    await db.insertInto("thing").values({ name: "a", note: null }).execute();
+
+    const res = await sql`
+      WITH targets AS (SELECT id FROM thing WHERE name = 'a')
+      UPDATE thing SET name = 'b' WHERE id IN (SELECT id FROM targets)
+    `.execute(db);
+
+    expect(Number(res.numAffectedRows)).toBe(1);
   });
 
   it("runs transactions", async () => {

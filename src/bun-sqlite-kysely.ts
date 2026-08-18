@@ -25,9 +25,21 @@ export interface KyselySqliteStatement {
  * rows must report true — including `INSERT`/`UPDATE`/`DELETE ... RETURNING`
  * (SQLite >= 3.35), which otherwise executes fine but hands Kysely zero rows, so
  * `.returning(...).executeTakeFirstOrThrow()` fails with "no result".
+ *
+ * SQLite answers this exactly, so ask it rather than pattern-matching the text:
+ * a prepared statement's `columnNames` is empty for anything that doesn't
+ * produce rows. The regex below is only a fallback for a runtime that doesn't
+ * expose it.
+ *
+ * This used to be `/^\s*SELECT\b/` plus a RETURNING check, which got
+ * `WITH cte AS (...) SELECT ...` wrong — a leading CTE is extremely common for
+ * window-function queries, and misclassifying one produces **zero rows with no
+ * error at all**. `columnNames` also gets the converse right, where a regex
+ * struggles: `WITH cte AS (...) INSERT INTO ...` is not a reader.
  */
-function isReaderStatement(sql: string): boolean {
-  return /^\s*SELECT\b/i.test(sql) || /\bRETURNING\b/i.test(sql);
+function isReaderStatement(stmt: { columnNames?: string[] }, sql: string): boolean {
+  if (Array.isArray(stmt.columnNames)) return stmt.columnNames.length > 0;
+  return /^\s*(?:SELECT|WITH)\b/i.test(sql) || /\bRETURNING\b/i.test(sql);
 }
 
 /**
@@ -55,7 +67,7 @@ export function wrapBunSqliteForKysely(db: DatabaseSync): KyselySqliteDatabase {
     prepare(rawSql: string): KyselySqliteStatement {
       const sql = toImmediateTransaction(rawSql);
       const stmt = db.prepare(sql);
-      const reader = isReaderStatement(sql);
+      const reader = isReaderStatement(stmt, sql);
       return {
         get reader() {
           return reader;
