@@ -27,6 +27,66 @@ type LibraryBook = {
 
 const FINISHED = "buzz.bookhive.defs#finished";
 
+type SortKey = "default" | "title" | "status" | "rating" | "date";
+type SortDir = "asc" | "desc";
+
+const STATUS_ORDER: Record<string, number> = {
+  "buzz.bookhive.defs#reading": 0,
+  "buzz.bookhive.defs#wantToRead": 1,
+  "buzz.bookhive.defs#finished": 2,
+  "buzz.bookhive.defs#abandoned": 3,
+};
+
+function compareBooks(a: LibraryBook, b: LibraryBook, key: SortKey, dir: SortDir): number {
+  let cmp = 0;
+  switch (key) {
+    case "title":
+      cmp = a.title.localeCompare(b.title);
+      break;
+    case "status": {
+      const aOrd = a.status ? (STATUS_ORDER[a.status] ?? 99) : 99;
+      const bOrd = b.status ? (STATUS_ORDER[b.status] ?? 99) : 99;
+      cmp = aOrd - bOrd;
+      if (cmp === 0) cmp = a.title.localeCompare(b.title);
+      break;
+    }
+    case "rating":
+      cmp = (b.stars ?? -1) - (a.stars ?? -1);
+      break;
+    case "date": {
+      const aDate = a.finishedAt || a.startedAt;
+      const bDate = b.finishedAt || b.startedAt;
+      if (!aDate && !bDate) cmp = 0;
+      else if (!aDate) cmp = 1;
+      else if (!bDate) cmp = -1;
+      else cmp = new Date(bDate).getTime() - new Date(aDate).getTime();
+      break;
+    }
+    default: {
+      const aIsFinished = a.status === FINISHED;
+      const bIsFinished = b.status === FINISHED;
+      if (aIsFinished && bIsFinished) {
+        if (!a.finishedAt && !b.finishedAt) return 0;
+        if (!a.finishedAt) return 1;
+        if (!b.finishedAt) return -1;
+        return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  }
+  return dir === "desc" ? -cmp : cmp;
+}
+
+const SortArrow: FC<{ active: boolean; dir: SortDir }> = ({ active, dir }) => (
+  <svg
+    className={`ml-1 inline-block h-3 w-3 transition-transform ${active ? "text-primary" : "text-muted-foreground/40"}`}
+    viewBox="0 0 12 12"
+    fill="currentColor"
+  >
+    {dir === "asc" ? <path d="M6 2L10 8H2L6 2Z" /> : <path d="M6 10L2 4H10L6 10Z" />}
+  </svg>
+);
+
 // --- Desktop row ---
 
 const TableRow: FC<{
@@ -238,20 +298,21 @@ const MobileCard: FC<{
 
 export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks }) => {
   const [books, setBooks] = useState<LibraryBook[]>(initialBooks);
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
 
   const sortedBooks = useMemo(() => {
-    return [...books].sort((a, b) => {
-      const aIsFinished = a.status === FINISHED;
-      const bIsFinished = b.status === FINISHED;
-      if (aIsFinished && bIsFinished) {
-        if (!a.finishedAt && !b.finishedAt) return 0;
-        if (!a.finishedAt) return 1;
-        if (!b.finishedAt) return -1;
-        return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [books]);
+    return [...books].sort((a, b) => compareBooks(a, b, sortKey, sortDir));
+  }, [books, sortKey, sortDir]);
 
   const updateBook_ = (hiveId: string, fields: Partial<LibraryBook>) => {
     setBooks((prev) => prev.map((b) => (b.hiveId === hiveId ? { ...b, ...fields } : b)));
@@ -279,28 +340,45 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           <thead className="sticky top-0 z-10 bg-muted">
             <tr>
               <th
-                className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
                 style={{ width: "34%" }}
+                onClick={() => toggleSort("title")}
               >
                 Book
+                <SortArrow
+                  active={sortKey === "title"}
+                  dir={sortKey === "title" ? sortDir : "asc"}
+                />
               </th>
               <th
-                className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
                 style={{ width: "14%" }}
+                onClick={() => toggleSort("status")}
               >
                 Status
+                <SortArrow
+                  active={sortKey === "status"}
+                  dir={sortKey === "status" ? sortDir : "asc"}
+                />
               </th>
               <th
-                className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
                 style={{ width: "14%", minWidth: "120px" }}
+                onClick={() => toggleSort("rating")}
               >
                 Rating
+                <SortArrow
+                  active={sortKey === "rating"}
+                  dir={sortKey === "rating" ? sortDir : "asc"}
+                />
               </th>
               <th
-                className="px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground"
+                className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground transition-colors hover:text-primary"
                 style={{ width: "14%" }}
+                onClick={() => toggleSort("date")}
               >
                 Dates
+                <SortArrow active={sortKey === "date"} dir={sortKey === "date" ? sortDir : "asc"} />
               </th>
               <th
                 className="px-4 py-2 text-left text-sm font-semibold text-foreground"
@@ -324,6 +402,28 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
       </div>
 
       {/* Mobile: card view */}
+      <div className="space-y-4 md:hidden">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">Sort by</label>
+          <select
+            className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+            value={`${sortKey}:${sortDir}`}
+            onChange={(e) => {
+              const [k, d] = (e.target as HTMLSelectElement).value.split(":") as [SortKey, SortDir];
+              setSortKey(k);
+              setSortDir(d);
+            }}
+          >
+            <option value="default:asc">Recent</option>
+            <option value="title:asc">Title A–Z</option>
+            <option value="title:desc">Title Z–A</option>
+            <option value="status:asc">Status</option>
+            <option value="rating:asc">Rating ↑</option>
+            <option value="rating:desc">Rating ↓</option>
+            <option value="date:asc">Date read</option>
+          </select>
+        </div>
+      </div>
       <div className="space-y-4 md:hidden">
         {sortedBooks.map((book) => (
           <MobileCard
