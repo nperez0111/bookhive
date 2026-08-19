@@ -463,6 +463,7 @@ const app = new Hono<AppEnv>()
       "form",
       z.object({
         hiveId: z.string(),
+        q: z.string().optional(),
       }),
     ),
     async (c) => {
@@ -479,7 +480,7 @@ const app = new Hono<AppEnv>()
       }
 
       const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
-      const { hiveId } = c.req.valid("form");
+      const { hiveId, q } = c.req.valid("form");
       try {
         startTime(c, "addBookToList");
         await addBookToList({
@@ -489,7 +490,10 @@ const app = new Hono<AppEnv>()
           hiveId: hiveId as HiveId,
         });
         endTime(c, "addBookToList");
-        return c.redirect(`/shelves/${handle}/${rkey}`);
+        const redirectUrl = q
+          ? `/shelves/${handle}/${rkey}?q=${encodeURIComponent(q)}`
+          : `/shelves/${handle}/${rkey}`;
+        return c.redirect(redirectUrl);
       } catch (e) {
         c.set("requestError", e);
         c.status(500);
