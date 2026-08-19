@@ -16,26 +16,15 @@ import { getUserBook, updateBookRecord } from "../utils/getBook";
 import { toUserBookView } from "../utils/userBookView";
 
 /**
- * Convert a date-input value to a full ISO datetime. YYYY-MM-DD inputs are
- * combined with the current UTC time-of-day so the timestamp captures when
- * the user logged the date (matching createdAt behavior).
+ * Convert a date-input value to a full ISO datetime. YYYY-MM-DD inputs use
+ * noon UTC so the calendar date survives display in any timezone (max offset
+ * ±14h can't shift noon past a day boundary).
  */
 function dateInputToISO(val: string): string {
   if (!val || val === "") return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
     const [year, month, day] = val.split("-").map(Number) as [number, number, number];
-    const now = new Date();
-    return new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day,
-        now.getUTCHours(),
-        now.getUTCMinutes(),
-        now.getUTCSeconds(),
-        now.getUTCMilliseconds(),
-      ),
-    ).toISOString();
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0)).toISOString();
   }
   return val;
 }

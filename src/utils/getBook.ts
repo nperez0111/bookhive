@@ -27,8 +27,8 @@ export { getBookRecord } from "./bookRecordWrite";
 
 /**
  * Normalize a date string to a full ISO datetime.
- * - YYYY-MM-DD inputs (from <input type="date">) are combined with the current
- *   UTC time-of-day, so the timestamp records *when* the user logged the date.
+ * - YYYY-MM-DD inputs use noon UTC so the calendar date survives display in
+ *   any timezone (max offset ±14h can't shift noon past a day boundary).
  * - Full ISO datetimes are preserved as-is.
  */
 function normalizeDate(dateString: string | undefined): string | undefined {
@@ -39,18 +39,7 @@ function normalizeDate(dateString: string | undefined): string | undefined {
   try {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [year, month, day] = dateString.split("-").map(Number) as [number, number, number];
-      const now = new Date();
-      return new Date(
-        Date.UTC(
-          year,
-          month - 1,
-          day,
-          now.getUTCHours(),
-          now.getUTCMinutes(),
-          now.getUTCSeconds(),
-          now.getUTCMilliseconds(),
-        ),
-      ).toISOString();
+      return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0)).toISOString();
     }
 
     const date = parseISO(dateString);

@@ -9,6 +9,13 @@ import { StarRating } from "./StarRating";
 import { DatePickerModal } from "./DatePickerModal";
 import { BOOK_STATUS_MAP, type BookStatus } from "@/constants/index";
 
+/** Parse an ISO datetime or YYYY-MM-DD string into a Date representing local
+ *  noon on that calendar date, so timezone offsets never shift the day. */
+function calendarDate(dateStr: string): Date {
+  const ymd = dateStr.includes("T") ? dateStr.split("T")[0]! : dateStr;
+  return new Date(ymd + "T12:00:00");
+}
+
 interface BookActionCardProps {
   type: "status" | "rating" | "review" | "dates";
   title: string;
@@ -240,7 +247,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                     },
                   ]}
                 >
-                  {startedAt ? format(new Date(startedAt), "MMM d, yyyy") : "Select date"}
+                  {startedAt ? format(calendarDate(startedAt), "MMM d, yyyy") : "Select date"}
                 </ThemedText>
                 <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
@@ -269,7 +276,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                     },
                   ]}
                 >
-                  {finishedAt ? format(new Date(finishedAt), "MMM d, yyyy") : "Select date"}
+                  {finishedAt ? format(calendarDate(finishedAt), "MMM d, yyyy") : "Select date"}
                 </ThemedText>
                 <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
@@ -289,8 +296,8 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
             <DatePickerModal
               visible={showStartedPicker}
               title="Select Started Date"
-              initialDate={startedAt ? new Date(startedAt) : undefined}
-              maximumDate={finishedAt ? new Date(finishedAt) : undefined}
+              initialDate={startedAt ? calendarDate(startedAt) : undefined}
+              maximumDate={finishedAt ? calendarDate(finishedAt) : undefined}
               onConfirm={handleStartedDateConfirm}
               onCancel={() => setShowStartedPicker(false)}
             />
@@ -298,8 +305,8 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
             <DatePickerModal
               visible={showFinishedPicker}
               title="Select Finished Date"
-              initialDate={finishedAt ? new Date(finishedAt) : undefined}
-              minimumDate={startedAt ? new Date(startedAt) : undefined}
+              initialDate={finishedAt ? calendarDate(finishedAt) : undefined}
+              minimumDate={startedAt ? calendarDate(startedAt) : undefined}
               onConfirm={handleFinishedDateConfirm}
               onCancel={() => setShowFinishedPicker(false)}
             />
