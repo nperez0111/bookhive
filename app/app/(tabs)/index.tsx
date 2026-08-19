@@ -286,11 +286,15 @@ export default function HomeScreen() {
     if (!profile.data) return { totalRead: 0, thisMonth: 0, thisYear: 0 };
     const finishedBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.FINISHED);
     const totalRead = finishedBooks.length;
+    const toCalendarDate = (d: string) => {
+      const ymd = d.includes("T") ? d.split("T")[0]! : d;
+      return new Date(ymd + "T12:00:00");
+    };
     const thisMonth = finishedBooks.filter(
-      (book) => book.finishedAt && isThisMonth(new Date(book.finishedAt)),
+      (book) => book.finishedAt && isThisMonth(toCalendarDate(book.finishedAt)),
     ).length;
     const thisYear = finishedBooks.filter(
-      (book) => book.finishedAt && isThisYear(new Date(book.finishedAt)),
+      (book) => book.finishedAt && isThisYear(toCalendarDate(book.finishedAt)),
     ).length;
     return { totalRead, thisMonth, thisYear };
   }, [profile.data]);
