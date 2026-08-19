@@ -118,10 +118,18 @@ export const ShelfViewPage: FC<{
             )}
             {searchResults.length > 0 && (
               <div class="space-y-2">
-                <p class="text-xs font-medium text-muted-foreground">
-                  <span class="tabular-nums">{searchResults.length}</span> result
-                  {searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
-                </p>
+                <div class="flex items-center justify-between">
+                  <p class="text-xs font-medium text-muted-foreground">
+                    <span class="tabular-nums">{searchResults.length}</span> result
+                    {searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
+                  </p>
+                  <a
+                    href={`/shelves/${handle}/${rkey}`}
+                    class="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </a>
+                </div>
                 {searchResults.map((book) => (
                   <div
                     key={book.id}
@@ -142,6 +150,7 @@ export const ShelfViewPage: FC<{
                     />
                     <form action={`/shelves/${handle}/${rkey}/add`} method="post" class="shrink-0">
                       <input type="hidden" name="hiveId" value={book.id} />
+                      <input type="hidden" name="q" value={searchQuery} />
                       <button type="submit" class="btn btn-primary btn-sm">
                         Add
                       </button>
