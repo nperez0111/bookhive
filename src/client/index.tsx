@@ -63,24 +63,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const starRating = document.getElementById("star-rating");
-  if (starRating) {
-    void import("./components/StarRating").then(({ StarRating }) => {
-      render(
-        <StarRating
-          initialRating={Number(starRating.dataset["rating"]) || 0}
-          onChange={(rating) => {
-            const ratingInput = document.getElementById("rating-value") as HTMLInputElement;
-            ratingInput.value = rating.toString();
-
-            const ratingForm = document.getElementById("activity-form") as HTMLFormElement;
-
-            ratingForm.submit();
-          }}
-        />,
-        starRating,
-      );
-    });
+  // /books/:id — status, owned, rating, review, progress, dates. One store,
+  // three mounts; see components/book/index.tsx.
+  const bookActions = document.getElementById("mount-book-actions");
+  if (bookActions) {
+    const props = JSON.parse(bookActions.dataset["props"] || "null");
+    if (props) {
+      void import("./components/book/index").then(({ mountBookIslands }) => {
+        mountBookIslands(props);
+      });
+    }
   }
 
   const importTable = document.getElementById("import-table");

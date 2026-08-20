@@ -1,4 +1,4 @@
-import { useState, useRef, type FC } from "hono/jsx/dom";
+import { useEffect, useState, useRef, type FC } from "hono/jsx/dom";
 
 type StarType = "full" | "half" | "empty";
 
@@ -23,6 +23,9 @@ export function calculateStars(rating: number): StarType[] {
 
 export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange }) => {
   const [rating, setRating] = useState(initialRating);
+  // Follow the prop: the book page's store replaces it with the server's
+  // answer, and a rollback after a failed write has to be visible here too.
+  useEffect(() => setRating(initialRating), [initialRating]);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);

@@ -52,7 +52,7 @@ Worker threads (bundled to .output/server/workers/):
 
 **Key patterns:**
 
-- Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
+- Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`); one of them, the book page's `BookIslands`, renders into three mount points. Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
 - **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — the code defaults to 4, but the deployed container sets **3** (verified on the host), which is the number every memory ceiling in this document is derived from. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
 - **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline. That drain interval × concurrency is also the **only** rate limit on requests to Goodreads — 36 fetches/min, healthy or not. Don't add a second one.
 - **`enrich_queue.attempts` counts answers from Goodreads, not failures.** A run reports `enrich_retry` in the wide-event bag: `retry` spends an attempt, `defer` costs nothing and re-queues on a decaying schedule, `dead` tombstones the book immediately. Anything the app decided on its own — a WAF challenge, a timeout, a transport error — is a `defer`. Getting this wrong is expensive: when refusals counted as attempts, one 6h window wrote off 2,854 books for 7 days apiece **without sending a single request on their behalf** (98% of everything the queue gave up on). The bound on defers is `MAX_QUEUE_AGE_MS` (7d from `enqueuedAt`, which survives re-enqueue), not the attempt counter.
@@ -95,13 +95,13 @@ Wide content (the library/import tables) already clips itself, so `<main>` does 
 
 ## Entry Points
 
-| File                   | Purpose                                                             |
-| ---------------------- | ------------------------------------------------------------------- |
-| `src/index.ts`         | Bun.serve — HTML bundle route + Hono fetch handler                  |
-| `src/server.ts`        | Wires deps via `createAppDeps()` + `createApp()`; graceful shutdown |
-| `src/app.ts`           | Hono app factory — all middleware + route mounting                  |
-| `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)                     |
-| `src/client/index.tsx` | Client bundle entry — mounts 6 hydrated components                  |
+| File                   | Purpose                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `src/index.ts`         | Bun.serve — HTML bundle route + Hono fetch handler                             |
+| `src/server.ts`        | Wires deps via `createAppDeps()` + `createApp()`; graceful shutdown            |
+| `src/app.ts`           | Hono app factory — all middleware + route mounting                             |
+| `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)                                |
+| `src/client/index.tsx` | Client bundle entry — mounts the hydrated islands (see Client-Side Components) |
 
 ## Routes
 
@@ -448,14 +448,43 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 
 6 hydration islands, mounted in `src/client/index.tsx`:
 
-| Component        | Mount Point              | File                                              |
-| ---------------- | ------------------------ | ------------------------------------------------- |
-| `SearchTrigger`  | `#mount-search-box`      | `src/client/components/SearchBox.tsx`             |
-| `SearchPalette`  | `#mount-search-palette`  | `src/client/components/SearchPalette.tsx`         |
-| `StarRating`     | `#star-rating`           | `src/client/components/StarRating.tsx`            |
-| `ImportTableApp` | `#import-table`          | `src/client/components/import/ImportTableApp.tsx` |
-| `LibraryTable`   | `#mount-library-table`   | `src/client/components/LibraryTable.tsx`          |
-| `LibraryManager` | `#mount-library-manager` | `src/client/components/LibraryManager.tsx`        |
+| Component        | Mount Point                                                               | File                                              |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------------------------- |
+| `SearchTrigger`  | `#mount-search-box`                                                       | `src/client/components/SearchBox.tsx`             |
+| `SearchPalette`  | `#mount-search-palette`                                                   | `src/client/components/SearchPalette.tsx`         |
+| `BookIslands`    | `#mount-book-actions` (+ `#mount-book-timestamp`, `#mount-book-activity`) | `src/client/components/book/index.tsx`            |
+| `ImportTableApp` | `#import-table`                                                           | `src/client/components/import/ImportTableApp.tsx` |
+| `LibraryTable`   | `#mount-library-table`                                                    | `src/client/components/LibraryTable.tsx`          |
+| `LibraryManager` | `#mount-library-manager`                                                  | `src/client/components/LibraryManager.tsx`        |
+
+**`BookIslands`** (`src/client/components/book/`) is the signed-in half of `/books/:id`: status
+dropdown + owned toggle (hero card), the "Finished: 2 days ago" line, and the whole "Your
+Activity" card (rating, review, progress, dates, Save, re-read history, Remove). One
+`createUserBookStore` per page (`userBookStore.ts`) holds `{ view, confirmed, pending, error }`
+and the three components subscribe with `useSyncExternalStore` — they can't share a root because
+the hero and the activity card are two cards apart. Props arrive as JSON in
+`#mount-book-actions[data-props]` (`BookActionsProps`: `hiveId`, `title`, `authors`, `numPages`,
+`userBook: UserBookView | null`), built in `src/pages/bookInfo.tsx`. Three rules hold it together:
+
+- **Every change is optimistic, and the server's `UserBookView` replaces it.** `applyOptimistic`
+  mirrors `inferBookStatusAndDates` and the re-read rotation so the first frame looks like the
+  confirmed one will; the JSON `/api/update-book` answer (one PDS round-trip) then becomes
+  `view`. On failure `view` snaps back to `confirmed` and a plain-language error renders under
+  the buttons (the server's message goes to `console.error` — it names CIDs and lexicon paths).
+  Verified in a browser against a real PDS: a status click paints at once, the POST lands
+  ~200–400 ms later with no navigation.
+- **Mutations are serialised, and a response never overwrites `view` while more are queued.**
+  The server holds a per-user lock and CAS's on the previous cid, so parallel writes would only
+  race each other; and applying response N on top of optimistic edit N+1 would briefly undo what
+  the user just did.
+- **The server-rendered forms inside the mounts are the pre-hydration paint**, replaced by
+  `render()` on load. They are also all a no-JS visitor gets — which is no worse than before,
+  since the status menu was already JS-only. The inline `<Script>`s for the dropdown, progress
+  auto-calc and delete dialog were removed with the island taking over; don't add them back.
+
+`StarRating` (`src/client/components/StarRating.tsx`) is no longer mounted on its own — the
+activity panel renders it, and it now follows its `initialRating` prop so a rollback or a
+server reconcile shows in the stars.
 
 `LibraryManager` sub-components in `src/client/components/library/`: `AnchoredMenu.tsx`, `ShelfTabs.tsx`, `PersonalBookCard.tsx`, `SyncDocumentSections.tsx`, `types.ts`.
 
