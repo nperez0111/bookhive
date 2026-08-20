@@ -71,7 +71,14 @@ function inferBookStatusAndDates(
     startedAt?: string;
     finishedAt?: string;
   },
-  { skipAutoDate = false }: { skipAutoDate?: boolean } = {},
+  {
+    skipAutoDate = false,
+    existing,
+  }: {
+    skipAutoDate?: boolean;
+    /** Dates the record already carries, so a partial update can't restamp them. */
+    existing?: { startedAt?: string | undefined; finishedAt?: string | undefined };
+  } = {},
 ): {
   status: string | undefined;
   startedAt: string | undefined;
@@ -100,10 +107,18 @@ function inferBookStatusAndDates(
   // Use the current full timestamp so we record when the action happened,
   // matching the behavior of createdAt.
   // Imports pass skipAutoDate to avoid stamping today when the source has no date.
+  // "if not already provided" means by the caller *or* by the record. The
+  // island sends only what changed, so a status click carries no dates — and
+  // stamping today over the date the user already has silently rewrites their
+  // reading history on their PDS.
   if (!skipAutoDate) {
-    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
+    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt && !existing?.startedAt) {
       autoStartedAt = new Date().toISOString();
-    } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
+    } else if (
+      autoStatus === BOOK_STATUS.FINISHED &&
+      !updates.finishedAt &&
+      !existing?.finishedAt
+    ) {
       autoFinishedAt = new Date().toISOString();
     }
   }
@@ -139,11 +154,16 @@ export async function getBookRecord({
     },
   });
   const payload = res.ok ? (res.data as { value?: unknown; cid?: string }) : null;
-  const parsed = payload?.value ? BookRecord.validateRecord(payload.value) : null;
-  if (!parsed?.success || !payload?.cid) {
-    return null;
-  }
-  return { value: parsed.value, cid: payload.cid };
+  // Both are required: without a cid there is nothing to compare-and-swap on.
+  if (!payload?.value || !payload.cid) return null;
+  const parsed = BookRecord.validateRecord(payload.value);
+  // A record that fails our validator is still the record the user has, and
+  // merging onto it is how a bad field gets healed by the write that
+  // overwrites it. Refusing would make that book permanently unwritable.
+  return {
+    value: (parsed.success ? parsed.value : payload.value) as BookRecord.Record,
+    cid: payload.cid,
+  };
 }
 
 /** Pure, so a CAS conflict can re-run it against what the PDS actually holds. */
@@ -198,7 +218,13 @@ function buildBookRecord({
           startedAt: updates.startedAt,
           finishedAt: updates.finishedAt,
         },
-        { skipAutoDate },
+        {
+          skipAutoDate,
+          existing: {
+            startedAt: originalBook?.startedAt,
+            finishedAt: originalBook?.finishedAt,
+          },
+        },
       );
 
   if (autoStartedAt && autoFinishedAt) {
@@ -311,16 +337,12 @@ export async function updateBookRecord({
     ctx.addWideEventContext({ book_merge_source: local ? "local" : "pds" });
   }
 
-  // A row whose record we could not read (pre-025 and the PDS read failed or
-  // the stored record no longer validates) still knows the book's identity.
-  // Without this the merge has no title/authors and every write 400s.
+  // A row with a URI already has a record at that rkey, so we must not fall
+  // through to the create branch below. Bail before building anything, so the
+  // reason surfaces instead of a downstream validation error masking it.
   if (userBook && !original) {
-    Object.assign(recordUpdates, {
-      title: userBook.title,
-      authors: userBook.authors,
-      createdAt: userBook.createdAt,
-      ...recordUpdates,
-    });
+    ctx.addWideEventContext({ book_record_read: "unusable" });
+    throw new Error(`Failed to record book: could not read the current record for ${hiveId}`);
   }
 
   let coverSource = coverImage;
@@ -358,12 +380,6 @@ export async function updateBookRecord({
 
   let record = build(original?.value ?? null);
   const rkey = userBook ? userBook.uri.split("/").at(-1)! : TID.now();
-  // `swapRecord: null` is a create. A row with a URI already has a record at
-  // this rkey, so falling into the create branch because we could not read it
-  // would write over whatever is actually there.
-  if (userBook && !original) {
-    throw new Error(`Failed to record book: could not read the current record for ${hiveId}`);
-  }
   let written = await writeBookRecord({
     agent,
     rkey,
@@ -475,7 +491,13 @@ export async function updateBookRecords({
         startedAt: update.startedAt,
         finishedAt: update.finishedAt,
       },
-      { skipAutoDate },
+      {
+        skipAutoDate,
+        existing: {
+          startedAt: originalBook?.startedAt,
+          finishedAt: originalBook?.finishedAt,
+        },
+      },
     );
 
     if (autoStartedAt && autoFinishedAt) {

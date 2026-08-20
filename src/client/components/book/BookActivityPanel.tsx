@@ -154,11 +154,25 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
     // with the user's text on screen and a Save button that built an empty
     // payload and did nothing, with no way to retry but a reload.
     const sent = new Set(touched);
+    const sentValues = { ...draft };
     void store.update(fields, { explicitSave: true }).then((ok) => {
       if (!ok) return;
       setTouched((t) => {
         const next = new Set(t);
         for (const key of sent) next.delete(key);
+        return next;
+      });
+      // Re-sync the fields we just sent from what the server actually stored —
+      // an emptied review or date is not a clear, and leaving the box blank
+      // would misreport the record until some later change resynced it. A
+      // field edited again while the write was in flight keeps the new text.
+      const confirmedNow = store.getSnapshot().confirmed;
+      setDraft((d) => {
+        const fresh = draftFrom(confirmedNow, props.numPages);
+        const next = { ...d };
+        for (const key of sent) {
+          if (d[key] === sentValues[key]) next[key] = fresh[key];
+        }
         return next;
       });
     });
@@ -185,7 +199,13 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
             <div class="flex cursor-pointer">
               <StarRating
                 initialRating={view?.stars ?? 0}
-                onChange={(stars) => void store.update({ stars })}
+                onChange={(stars) => {
+                  // The leftmost sliver of the widget yields 0, and the server
+                  // reads 0 as "leave the rating alone" — sending it would
+                  // clear the stars on screen and then snap them back.
+                  if (!stars) return;
+                  void store.update({ stars });
+                }}
               />
             </div>
           </div>
@@ -255,7 +275,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   <input
                     id="progress-current-page"
                     type="number"
-                    min={0}
+                    min={1}
                     class={inputClass}
                     placeholder="0"
                     value={draft.currentPage}

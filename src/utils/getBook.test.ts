@@ -7,10 +7,11 @@ import memoryDriver from "unstorage/drivers/memory";
 import type { SessionClient } from "../auth/client";
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import type { BookUtilContext } from "../context";
-import { FINISHED, READING, WANTTOREAD } from "../constants";
+import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../constants";
 import { migrateToLatest, type Database, type DatabaseSchema } from "../db";
 import type { BookRecordValue, HiveId } from "../types";
 import { getBookRecord, getUserBook, updateBookRecord } from "./getBook";
+import { completeUserBookRecord } from "./userBookFollowUp";
 import { recordFromUserBook } from "./userBookStore";
 import { toUserBookView } from "./userBookView";
 
@@ -101,6 +102,21 @@ const baseRecord = (over: Partial<BookRecordValue> = {}): BookRecordValue => ({
   hiveBookUri: "at://did:plc:bookhive/buzz.bookhive.hiveBook/dune",
   ...over,
 });
+
+/** One-pixel PNG on a loopback port, so the cover path runs for real. */
+function coverServer() {
+  return Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+        { headers: { "content-type": "image/png" } },
+      ),
+  });
+}
 
 describe("updateBookRecord", () => {
   let db: Database;
@@ -292,6 +308,72 @@ describe("updateBookRecord", () => {
     }
   });
 
+  it("does not revert a column written while the follow-up is in flight", async () => {
+    const server = coverServer();
+    try {
+      const { agent } = fakePds();
+      // Create with no cover, so nothing is deferred yet and we hold the same
+      // stale snapshot a real follow-up would have captured.
+      const { userBook, followUp } = await updateBookRecord({
+        ctx,
+        agent,
+        hiveId: HIVE_ID,
+        updates: { status: WANTTOREAD, owned: false },
+      });
+      // The create's own follow-up is keyed by uri; let it settle so the one
+      // under test isn't deduped onto it.
+      await followUp;
+      expect(userBook.owned).toBe(0);
+
+      // A library upload marks the book owned, and KOSync pushes progress.
+      // Neither column lives in the PDS record, so the CAS cannot protect them.
+      await db
+        .updateTable("user_book")
+        .set({ owned: 1, bookProgress: JSON.stringify({ percent: 25, updatedAt: "x" }) })
+        .where("uri", "=", URI)
+        .execute();
+
+      const outcome = await completeUserBookRecord({
+        ctx,
+        agent,
+        userBook,
+        coverImage: `${server.url}cover.png`,
+      });
+      expect(outcome).toBe("completed");
+
+      const row = await getUserBook({ ctx, agent, hiveId: HIVE_ID });
+      expect(row?.owned).toBe(1);
+      expect(row?.bookProgress?.percent).toBe(25);
+      expect(row?.record?.cover).toBeTruthy();
+      expect(row?.cid).toBe("cid2");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it("leaves the row alone when it has moved on since the follow-up was scheduled", async () => {
+    const server = coverServer();
+    try {
+      const { agent } = fakePds();
+      const { userBook, followUp } = await updateBookRecord({
+        ctx,
+        agent,
+        hiveId: HIVE_ID,
+        updates: { status: WANTTOREAD },
+      });
+      await followUp;
+      // Another write lands first; the follow-up's snapshot cid is now stale.
+      await db.updateTable("user_book").set({ cid: "cid-newer" }).where("uri", "=", URI).execute();
+
+      await completeUserBookRecord({ ctx, agent, userBook, coverImage: `${server.url}cover.png` });
+
+      const row = await getUserBook({ ctx, agent, hiveId: HIVE_ID });
+      expect(row?.cid).toBe("cid-newer");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   it("skips the follow-up when the record is already complete", async () => {
     const original = baseRecord();
     const { agent, names } = fakePds({ value: original, cid: "cid0" });
@@ -339,6 +421,54 @@ describe("updateBookRecord", () => {
     } finally {
       await server.stop(true);
     }
+  });
+
+  it("keeps the recorded start date when a partial update re-asserts Reading", async () => {
+    // The island sends only what changed, so `startedAt` is absent here. It
+    // must not be re-stamped to today over a date the user already has.
+    const original = baseRecord({ status: ABANDONED, startedAt: "2026-03-01T09:00:00.000Z" });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0", { status: ABANDONED, startedAt: "2026-03-01T09:00:00.000Z" });
+
+    const { book } = await updateBookRecord({
+      ctx,
+      agent,
+      hiveId: HIVE_ID,
+      updates: { status: READING },
+    });
+
+    expect(book.status).toBe(READING);
+    expect(book.startedAt).toBe("2026-03-01T09:00:00.000Z");
+  });
+
+  it("keeps the recorded finish date when a partial update re-asserts Read", async () => {
+    const original = baseRecord({ status: ABANDONED, finishedAt: "2026-04-02T09:00:00.000Z" });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0", { status: ABANDONED, finishedAt: "2026-04-02T09:00:00.000Z" });
+
+    const { book } = await updateBookRecord({
+      ctx,
+      agent,
+      hiveId: HIVE_ID,
+      updates: { status: FINISHED },
+    });
+
+    expect(book.finishedAt).toBe("2026-04-02T09:00:00.000Z");
+  });
+
+  it("still stamps a start date when the book has none", async () => {
+    const original = baseRecord({ status: WANTTOREAD });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0");
+
+    const { book } = await updateBookRecord({
+      ctx,
+      agent,
+      hiveId: HIVE_ID,
+      updates: { status: READING },
+    });
+
+    expect(book.startedAt).toBeTruthy();
   });
 
   it("refuses to create over an existing rkey when the record cannot be read", async () => {

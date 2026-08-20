@@ -464,6 +464,34 @@ export const BookInfo: FC<{
                             </div>
                           </div>
                         </form>
+
+                        {/* Makes the fallback dropdown usable before the island
+                            loads. The island replaces this markup on hydration,
+                            leaving these listeners on detached nodes. */}
+                        <Script
+                          script={(document) => {
+                            const dropdown = document.getElementById("status-dropdown");
+                            const menu = document.getElementById("status-dropdown-menu");
+                            if (!dropdown || !menu) return;
+                            dropdown.addEventListener("click", () => {
+                              dropdown.setAttribute(
+                                "aria-expanded",
+                                dropdown.getAttribute("aria-expanded") === "true"
+                                  ? "false"
+                                  : "true",
+                              );
+                            });
+                            document.addEventListener("click", (e) => {
+                              if (
+                                dropdown.getAttribute("aria-expanded") === "true" &&
+                                !dropdown.contains(e.target as any) &&
+                                !menu.contains(e.target as any)
+                              ) {
+                                dropdown.setAttribute("aria-expanded", "false");
+                              }
+                            });
+                          }}
+                        />
                       </div>
 
                       {/* Owned toggle */}
@@ -1056,6 +1084,15 @@ export const BookInfo: FC<{
                     </form>
                   </div>
                 </dialog>
+                <Script
+                  script={(document) => {
+                    const btn = document.getElementById("delete-book-btn");
+                    const dialog = document.getElementById(
+                      "delete-book-dialog",
+                    ) as HTMLDialogElement | null;
+                    btn?.addEventListener("click", () => dialog?.showModal());
+                  }}
+                />
               </div>
             )}
           </div>

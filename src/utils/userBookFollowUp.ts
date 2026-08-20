@@ -17,7 +17,6 @@ import { INVALID_SWAP, writeBookRecord } from "./bookRecordWrite";
 import { ensureBookCataloged } from "./ensureBookCataloged";
 import { Semaphore, withTimeout } from "./semaphore";
 import { uploadImageBlob } from "./uploadImageBlob";
-import { updateUserBook } from "./userBookStore";
 
 export type FollowUpOutcome = "completed" | "nothing" | "conflict" | "failed";
 
@@ -88,15 +87,21 @@ export function completeUserBookRecord({
       if (written.error === INVALID_SWAP) return "conflict";
       throw new Error(`follow-up write failed: ${written.error} ${written.message ?? ""}`);
     }
-    await updateUserBook({
-      ctx,
-      userBook: {
-        ...userBook,
+    // Only the three fields this task owns, and only if the row is still the
+    // one we patched. Replaying the whole row would revert column-only writes
+    // made during the up-to-60s window — `owned` from a library upload (whose
+    // `WHERE owned = 0` guard means it never re-fires) and KOSync progress.
+    // The CAS is not enough on its own: those columns are not in the record.
+    await ctx.db
+      .updateTable("user_book")
+      .set({
         cid: written.cid,
         indexedAt: new Date().toISOString(),
-        record: patched,
-      },
-    });
+        record: JSON.stringify(patched),
+      })
+      .where("uri", "=", userBook.uri)
+      .where("cid", "=", userBook.cid)
+      .execute();
     return "completed";
   };
 

@@ -135,7 +135,7 @@ describe("createUserBookStore", () => {
     expect(s.view?.stars).toBe(8);
   });
 
-  it("waits for queued writes before deleting, and refuses writes afterwards", async () => {
+  it("waits for queued writes before deleting", async () => {
     const calls: string[] = [];
     let releaseUpdate: (() => void) | null = null;
     const updateStarted = new Promise<void>((r) => (releaseUpdate = r));
@@ -156,10 +156,47 @@ describe("createUserBookStore", () => {
     // The DELETE must not overtake the update — that write would re-create the book.
     expect(calls).toEqual(["POST /api/update-book", "DELETE /books/bk_x"]);
     expect(store.getSnapshot().view).toBeNull();
+  });
 
-    expect(await store.update({ stars: 2 })).toBe(false);
-    expect(calls).toHaveLength(2);
+  it("refuses a write started while the delete is in flight", async () => {
+    const calls: string[] = [];
+    let releaseDelete: (() => void) | null = null;
+    const deleteStarted = new Promise<void>((r) => (releaseDelete = r));
+    let unblock: (() => void) | null = null;
+    const held = new Promise<void>((r) => (unblock = r));
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      calls.push(`${init.method} ${url}`);
+      if (init.method === "DELETE") {
+        (releaseDelete as unknown as () => void)();
+        await held;
+        return jsonOk({ success: true });
+      }
+      return jsonOk({ success: true, userBook: view({ stars: 8 }) });
+    }) as unknown as typeof fetch;
+
+    const store = createUserBookStore(props);
+    const removal = store.remove();
+    await deleteStarted;
+    // A click landing between the DELETE going out and coming back: the server
+    // would create the record again, so the store must not send it.
+    expect(await store.update({ stars: 8 })).toBe(false);
+    (unblock as unknown as () => void)();
+    expect(await removal).toBe(true);
+    expect(calls).toEqual(["DELETE /books/bk_x"]);
     expect(store.getSnapshot().view).toBeNull();
+  });
+
+  it("allows the book to be added again after a successful removal", async () => {
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      if (init.method === "DELETE") return jsonOk({ success: true });
+      return jsonOk({ success: true, userBook: view({ status: STATUS.WANT_TO_READ }) });
+    }) as unknown as typeof fetch;
+    const store = createUserBookStore(props);
+    expect(await store.remove()).toBe(true);
+    expect(store.getSnapshot().view).toBeNull();
+
+    expect(await store.update({ status: STATUS.WANT_TO_READ })).toBe(true);
+    expect(store.getSnapshot().view?.status).toBe(STATUS.WANT_TO_READ);
   });
 
   it("reports a failed removal without clearing the book", async () => {

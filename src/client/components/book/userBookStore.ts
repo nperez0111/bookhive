@@ -70,7 +70,10 @@ function nowIso() {
 /** Mirrors `dateInputToISO` on the server: a date input's value plus the current time of day. */
 function dateInputToIso(value: string | undefined): string | null | undefined {
   if (value === undefined) return undefined;
-  if (value === "") return null;
+  // The server's `normalizeDate("")` yields undefined and the merge then keeps
+  // the recorded date, so an emptied box is a no-op, not a clear. Mirroring
+  // that here is what stops the UI from showing a clear that never happened.
+  if (value === "") return undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [y, m, d] = value.split("-").map(Number) as [number, number, number];
     const now = new Date();
@@ -124,7 +127,9 @@ export function applyOptimistic(
     next.bookProgress = fields.bookProgress
       ? { ...fields.bookProgress, updatedAt: nowIso() }
       : null;
-    if (!fields.status && !base.status) status = STATUS.READING;
+    // `/api/update-book` forces READING on any progress write that carries no
+    // status of its own — including on an abandoned book.
+    if (!fields.status) status = STATUS.READING;
   }
   if (startedAt && (!status || status === STATUS.WANT_TO_READ)) status = STATUS.READING;
   if (finishedAt && (!status || status === STATUS.WANT_TO_READ || status === STATUS.READING)) {
@@ -173,10 +178,13 @@ export function createUserBookStore(props: BookActionsProps) {
     listeners.forEach((l) => l());
   };
   let queue: Promise<unknown> = Promise.resolve();
-  // Set once the book has been removed. `updateBookRecord` *creates* a record
-  // when no `user_book` row exists, so a write that lands after the DELETE
-  // would put the book back on the user's PDS and in their library.
-  let removed = false;
+  // Set synchronously for the whole removal, because `updateBookRecord`
+  // *creates* a record when no `user_book` row exists: a write that starts
+  // during the DELETE would put the book back on the user's PDS. Awaiting the
+  // queue is not enough — `queue` is reassigned by every `update`, so a click
+  // during the round trip would slip past it. Cleared when the removal
+  // settles, so re-adding the book afterwards still works.
+  let deleting = false;
 
   async function send(fields: UpdateFields, explicitSave: boolean): Promise<boolean> {
     // Everything runs through one queue and `pending` only drops when a send
@@ -230,7 +238,7 @@ export function createUserBookStore(props: BookActionsProps) {
     getSnapshot: () => state,
     /** Apply at once, send in order. Resolves to whether the write landed. */
     update: (fields: UpdateFields, { explicitSave = false } = {}): Promise<boolean> => {
-      if (removed) return Promise.resolve(false);
+      if (deleting) return Promise.resolve(false);
       set({
         view: applyOptimistic(state.view, fields, props),
         pending: state.pending + 1,
@@ -241,24 +249,31 @@ export function createUserBookStore(props: BookActionsProps) {
       return queue as Promise<boolean>;
     },
     remove: async (): Promise<boolean> => {
+      if (deleting) return false;
+      deleting = true;
       set({ error: null });
-      // Queued writes first, for the reason above: a delete that overtakes
-      // them would be undone by whichever one lands last.
+      // Queued writes first: a delete that overtakes them would be undone by
+      // whichever one lands last.
       await queue.catch(() => {});
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(`/books/${props.hiveId}`, {
           method: "DELETE",
           headers: { accept: "application/json" },
+          signal: abort.signal,
         });
         const body = (await res.json().catch(() => ({}))) as { success?: boolean };
         if (!res.ok || !body.success) throw new Error(`Could not remove (${res.status})`);
-        removed = true;
         set({ view: null, confirmed: null });
         return true;
       } catch (e) {
         console.error("[book] remove failed:", e);
         set({ error: "The book could not be removed. Please try again." });
         return false;
+      } finally {
+        clearTimeout(timer);
+        deleting = false;
       }
     },
     dismissError: () => {

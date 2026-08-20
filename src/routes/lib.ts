@@ -547,16 +547,20 @@ export async function refetchBooks({
         // spends a CAS failure and a re-read before it can land.
         const results =
           (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
-        for (const [index, write] of batch.entries()) {
-          const result = results[index];
-          if (!result?.uri || !result.cid) continue;
-          await ctx.db
-            .updateTable("user_book")
-            .set({ cid: result.cid, record: JSON.stringify(write.value) })
-            .where("uri", "=", result.uri)
-            .where("userDid", "=", agent.did)
-            .execute();
-        }
+        // One transaction: bun:sqlite is synchronous, and a 5k-book library
+        // issuing these as separate autocommits costs ~1.8s of worker CPU.
+        await ctx.db.transaction().execute(async (trx) => {
+          for (const [index, write] of batch.entries()) {
+            const result = results[index];
+            if (!result?.uri || !result.cid) continue;
+            await trx
+              .updateTable("user_book")
+              .set({ cid: result.cid, record: JSON.stringify(write.value) })
+              .where("uri", "=", result.uri)
+              .where("userDid", "=", agent.did)
+              .execute();
+          }
+        });
       }
     }
   }
