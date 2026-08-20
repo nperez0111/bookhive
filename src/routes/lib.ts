@@ -542,13 +542,12 @@ export async function refetchBooks({
             `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
           );
         }
-        // Mirror what we just wrote onto the rows. Skipping this leaves every
-        // backfilled row holding a superseded cid, so the user's next edit
-        // spends a CAS failure and a re-read before it can land.
+        // Mirror what we wrote onto the rows: a superseded cid costs the
+        // user's next edit a CAS failure and a re-read.
         const results =
           (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
-        // One transaction: bun:sqlite is synchronous, and a 5k-book library
-        // issuing these as separate autocommits costs ~1.8s of worker CPU.
+        // One transaction: as autocommits this measured ~1.8s of worker CPU
+        // for a 5k-book library.
         await ctx.db.transaction().execute(async (trx) => {
           for (const [index, write] of batch.entries()) {
             const result = results[index];

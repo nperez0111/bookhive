@@ -80,6 +80,51 @@ describe("applyOptimistic", () => {
     expect(next.bookProgress?.currentPage).toBe(300);
   });
 
+  it("stamps no date when the payload asserts no status", () => {
+    // A stars/owned/review write carries no status, and the server leaves the
+    // dates alone. Guessing from the record's status painted a "Started just
+    // now" that the response then took back.
+    const next = applyOptimistic(
+      view({ status: STATUS.READING, startedAt: null }),
+      { stars: 8 },
+      props,
+    );
+    expect(next.startedAt).toBeNull();
+    expect(next.status).toBe(STATUS.READING);
+  });
+
+  it("does not restamp the start date of a book already reading", () => {
+    const next = applyOptimistic(
+      view({ status: STATUS.READING, startedAt: "2026-03-01T00:00:00.000Z" }),
+      { status: STATUS.READING, bookProgress: { currentPage: 12 } },
+      props,
+    );
+    expect(next.startedAt).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("does not downgrade a finished book when only a date is edited", () => {
+    const next = applyOptimistic(
+      view({
+        status: STATUS.FINISHED,
+        startedAt: "2026-02-01T00:00:00.000Z",
+        finishedAt: "2026-03-01T00:00:00.000Z",
+      }),
+      { startedAt: "2026-02-05" },
+      props,
+    );
+    expect(next.status).toBe(STATUS.FINISHED);
+    expect(next.finishedAt).toBe("2026-03-01T00:00:00.000Z");
+  });
+
+  it("stamps a fresh finish date when a book is finished again", () => {
+    const next = applyOptimistic(
+      view({ status: STATUS.READING, finishedAt: "2020-02-01T00:00:00.000Z" }),
+      { status: STATUS.FINISHED },
+      props,
+    );
+    expect(next.finishedAt).not.toBe("2020-02-01T00:00:00.000Z");
+  });
+
   it("cannot clear a review with an empty string (matches the server)", () => {
     const next = applyOptimistic(view({ review: "Good." }), { review: "" }, props);
     expect(next.review).toBe("Good.");

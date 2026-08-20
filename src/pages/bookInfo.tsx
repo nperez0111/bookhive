@@ -258,9 +258,8 @@ export const BookInfo: FC<{
   if (meta?.publisher) pubDetails.push(meta.publisher);
   if (meta?.language) pubDetails.push(meta.language);
 
-  // Initial state for the client islands (src/client/components/book). The
-  // forms below are what the page looks like until they hydrate — and the
-  // only thing a no-JS visitor gets.
+  // Initial state for the islands (src/client/components/book). The forms
+  // below are the pre-hydration paint, and all a no-JS visitor gets.
   const actionProps: BookActionsProps | null = did
     ? {
         hiveId: book.id,
@@ -465,9 +464,8 @@ export const BookInfo: FC<{
                           </div>
                         </form>
 
-                        {/* Makes the fallback dropdown usable before the island
-                            loads. The island replaces this markup on hydration,
-                            leaving these listeners on detached nodes. */}
+                        {/* Makes the fallback dropdown work before the island
+                            loads; hydration detaches these nodes. */}
                         <Script
                           script={(document) => {
                             const dropdown = document.getElementById("status-dropdown");

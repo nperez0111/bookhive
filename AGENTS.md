@@ -459,33 +459,21 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 | `LibraryManager` | `#mount-library-manager`                                                  | `src/client/components/LibraryManager.tsx`        |
 
 **`BookIslands`** (`src/client/components/book/`) is the signed-in half of `/books/:id`: status
-dropdown + owned toggle (hero card), the "Finished: 2 days ago" line, and the whole "Your
-Activity" card (rating, review, progress, dates, Save, re-read history, Remove). One
-`createUserBookStore` per page (`userBookStore.ts`) holds `{ view, confirmed, pending, error }`
-and the three components subscribe with `useSyncExternalStore` — they can't share a root because
-the hero and the activity card are two cards apart. Props arrive as JSON in
-`#mount-book-actions[data-props]` (`BookActionsProps`: `hiveId`, `title`, `authors`, `numPages`,
-`userBook: UserBookView | null`), built in `src/pages/bookInfo.tsx`. Three rules hold it together:
+and owned in the hero card, the timestamp line, and the whole "Your Activity" card. One
+`createUserBookStore` per page holds `{ view, confirmed, pending, error }` and the three
+components subscribe with `useSyncExternalStore` — they can't share a root, being cards apart.
+Props are JSON in `#mount-book-actions[data-props]`, built in `src/pages/bookInfo.tsx`.
 
-- **Every change is optimistic, and the server's `UserBookView` replaces it.** `applyOptimistic`
-  mirrors `inferBookStatusAndDates` and the re-read rotation so the first frame looks like the
-  confirmed one will; the JSON `/api/update-book` answer (one PDS round-trip) then becomes
-  `view`. On failure `view` snaps back to `confirmed` and a plain-language error renders under
-  the buttons (the server's message goes to `console.error` — it names CIDs and lexicon paths).
-  Verified in a browser against a real PDS: a status click paints at once, the POST lands
-  ~200–400 ms later with no navigation.
-- **Mutations are serialised, and a response never overwrites `view` while more are queued.**
-  The server holds a per-user lock and CAS's on the previous cid, so parallel writes would only
-  race each other; and applying response N on top of optimistic edit N+1 would briefly undo what
-  the user just did.
-- **The server-rendered forms inside the mounts are the pre-hydration paint**, replaced by
-  `render()` on load. They are also all a no-JS visitor gets — which is no worse than before,
-  since the status menu was already JS-only. The inline `<Script>`s for the dropdown, progress
-  auto-calc and delete dialog were removed with the island taking over; don't add them back.
+- **Changes are optimistic and replaced by the server's `UserBookView`.** `applyOptimistic`
+  mirrors `inferBookStatusAndDates`, so it must be updated whenever that is: a payload asserting
+  no status must leave status and dates alone, or the frame flickers back.
+- **Writes are serialised**, and a response never overwrites `view` while later ones are queued.
+  A delete blocks writes for its whole duration — the server re-creates the record otherwise.
+- **The server-rendered forms inside the mounts are the pre-hydration paint** and all a no-JS
+  visitor gets, so they keep their own inline `<Script>` handlers. Don't delete those again.
 
-`StarRating` (`src/client/components/StarRating.tsx`) is no longer mounted on its own — the
-activity panel renders it, and it now follows its `initialRating` prop so a rollback or a
-server reconcile shows in the stars.
+`StarRating` is no longer mounted on its own; the activity panel renders it, and it follows its
+`initialRating` prop so a rollback or reconcile shows in the stars.
 
 `LibraryManager` sub-components in `src/client/components/library/`: `AnchoredMenu.tsx`, `ShelfTabs.tsx`, `PersonalBookCard.tsx`, `SyncDocumentSections.tsx`, `types.ts`.
 
@@ -593,50 +581,26 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 ### The book write path (`src/utils/getBook.ts` → `updateBookRecord`)
 
-Every status click, rating and review edit goes through here, so it is built to
-be **one PDS round-trip**. It used to be two to four plus a scrape: `getRecord`
-to read the original, `ensureBookCataloged` (up to 20s inline when the book was
-not catalogued), a cover fetch from Goodreads' CDN + `Bun.Image` resize +
-`uploadBlob` on first add, then `applyWrites`. Three things replaced that, and
-each is load-bearing:
+Every status click, rating and review edit goes through here, so it is **one PDS round-trip**.
+It used to be two to four plus a scrape. Four things keep it correct:
 
-- **The merge source is the local row, not the PDS.** `user_book.record`
-  (migration 025) holds the last record seen for the row, verbatim, because the
-  record carries three fields the columns don't — `cover`, `identifiers`,
-  `hiveBookUri` — and merging without them would silently strip them.
-  `recordFromUserBook` rebuilds the record with **columns winning** over it:
-  KOSync progress (`syncBridge`, queued in `sync_pending:`) and `owned` from a
-  library upload are written to the columns before they reach the PDS, and
-  merging against the stored record alone would revert them on the next click.
-  Every full-record writer sets the column — the ingester (backfill + live),
-  `refetchBooks`, the admin backfill, and this path — and a null column (a row
-  older than the migration) falls back to `getRecord`. The wide event says which:
-  `book_merge_source: local | pds | pds_after_conflict`.
-- **The write is compare-and-swapped** (`bookRecordWrite.ts`): `putRecord` with
-  `swapRecord` = the cid we merged against. A merge computed from local state
-  must fail if the PDS holds something we have not seen (another device, the
-  iOS app, a third-party client). On `InvalidSwap` the record is re-read once,
-  re-merged with the same pure `buildBookRecord`, and re-written; a second
-  conflict throws. `applyWrites` was not usable here — it only offers
-  `swapCommit`, which is the whole repo and fails on any unrelated write.
-  `getBookRecord` no longer pins a cid for the same reason: a stale pin 404s,
-  which the old code read as "no record" and answered with a duplicate create.
-- **Cover and catalogue link are patched in after the response**
-  (`userBookFollowUp.ts`). BookHive renders neither from the record (covers
-  come from `hive_book`), so the person waiting on a click should not pay for
-  them. The request path reads `hive_book.hiveBookAtUri` only
-  (`getCatalogedBookUri`); the follow-up runs the full `ensureBookCataloged`
-  and `uploadImageBlob`, then one CAS `putRecord` on the cid the request wrote.
-  On conflict the patch is **dropped, not forced** — the next write to a
-  still-incomplete record schedules it again, and `refetchBooks` back-fills
-  `hiveBookUri` regardless. One in-flight task per record URI, 2 per process,
-  60s deadline. The request's wide event is written long before this resolves,
-  so `bookhive_user_book_follow_up_total{outcome}` is the only signal; a rising
-  `failed` there is the thing to look at when covers stop appearing on records.
-
-`updateBookRecord` returns `{ book, userBook, followUp }`; `followUp` never
-rejects. Handlers drop it, `src/utils/getBook.test.ts` awaits it. The bulk
-import path (`updateBookRecords`) is unchanged apart from setting `record`.
+- **The merge source is the local row, not the PDS.** `user_book.record` (migration 025) holds
+  the last record seen, because it carries three fields the columns don't — `cover`,
+  `identifiers`, `hiveBookUri` — and merging without them strips them. `recordFromUserBook`
+  rebuilds it with **columns winning**: KOSync progress and `owned` from an upload reach the row
+  before the PDS. Every full-record writer sets the column; a null one falls back to `getRecord`.
+  The wide event says which: `book_merge_source: local | pds | pds_after_conflict`.
+- **The write is compare-and-swapped** on the cid we merged against (`bookRecordWrite.ts`). On
+  `InvalidSwap` the record is re-read once and re-merged. `applyWrites` only offers `swapCommit`
+  (the whole repo), hence `putRecord`.
+- **Partial payloads must not invent state.** The island sends only what changed, so
+  `inferBookStatusAndDates` reads status _and_ dates off the record too: a missing status is not
+  "no status" (that downgraded finished books on a date edit), and a date is restamped only when
+  the book actually enters that status (else a rating save rewrote the user's start date).
+- **Cover and catalogue link are patched in after the response** (`userBookFollowUp.ts`), CAS'd
+  on the cid the request wrote and dropped on conflict. It writes only `cid`/`indexedAt`/`record`
+  — replaying the whole row reverted column-only writes. Outcomes land in
+  `bookhive_user_book_follow_up_total`; the request's wide event is gone by then.
 
 ### The upload core (`src/utils/uploadPersonalBook.ts`)
 

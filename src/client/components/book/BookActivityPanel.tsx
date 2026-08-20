@@ -96,11 +96,14 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
 }) => {
   const { view, confirmed, pending, savedAt } = useUserBook(store);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(view, props.numPages));
-  // Fields the user has edited since the last save. Everything else follows
-  // the server, so a status click that sets finishedAt shows up in the date
-  // box without wiping a half-written review.
+  // Edited-since-save fields. Everything else follows the server, so a status
+  // click's new date appears without wiping a half-written review.
   const [touched, setTouched] = useState<Set<keyof Draft>>(() => new Set());
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [removing, setRemoving] = useState(false);
+  /** Latest draft, for callbacks that must not close over a stale render. */
+  const draftRef = useRef<Draft>(draft);
+  draftRef.current = draft;
   const lastConfirmedCid = useRef(confirmed?.cid ?? null);
 
   useEffect(() => {
@@ -150,25 +153,25 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
       if (Object.values(progress).some((v) => v !== undefined)) fields.bookProgress = progress;
     }
     if (Object.keys(fields).length === 0 && view) return;
-    // Cleared only once the write lands. Clearing up front left a failed save
-    // with the user's text on screen and a Save button that built an empty
-    // payload and did nothing, with no way to retry but a reload.
+    // `touched` clears only once the write lands: clearing up front left a
+    // failed save showing the user's text with a Save button that did nothing.
     const sent = new Set(touched);
     const sentValues = { ...draft };
     void store.update(fields, { explicitSave: true }).then((ok) => {
       if (!ok) return;
+      // Re-sync sent fields from what was actually stored — an emptied review
+      // or date is not a clear. A field edited again mid-flight keeps its new
+      // text *and* its dirty flag, or that text becomes unsaveable.
+      const confirmedNow = store.getSnapshot().confirmed;
+      const fresh = draftFrom(confirmedNow, props.numPages);
+      const stillAsSent = (key: keyof Draft) =>
+        (draftRef.current ?? draft)[key] === sentValues[key];
       setTouched((t) => {
         const next = new Set(t);
-        for (const key of sent) next.delete(key);
+        for (const key of sent) if (stillAsSent(key)) next.delete(key);
         return next;
       });
-      // Re-sync the fields we just sent from what the server actually stored —
-      // an emptied review or date is not a clear, and leaving the box blank
-      // would misreport the record until some later change resynced it. A
-      // field edited again while the write was in flight keeps the new text.
-      const confirmedNow = store.getSnapshot().confirmed;
       setDraft((d) => {
-        const fresh = draftFrom(confirmedNow, props.numPages);
         const next = { ...d };
         for (const key of sent) {
           if (d[key] === sentValues[key]) next[key] = fresh[key];
@@ -200,9 +203,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
               <StarRating
                 initialRating={view?.stars ?? 0}
                 onChange={(stars) => {
-                  // The leftmost sliver of the widget yields 0, and the server
-                  // reads 0 as "leave the rating alone" — sending it would
-                  // clear the stars on screen and then snap them back.
+                  // The server reads 0 as "leave the rating alone".
                   if (!stars) return;
                   void store.update({ stars });
                 }}
@@ -453,8 +454,11 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
               <button
                 type="button"
                 class="btn btn-destructive"
+                disabled={removing}
                 onClick={async () => {
+                  setRemoving(true);
                   const ok = await store.remove();
+                  setRemoving(false);
                   dialogRef.current?.close();
                   if (ok) {
                     setTouched(new Set());
@@ -462,7 +466,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   }
                 }}
               >
-                Remove
+                {removing ? "Removing…" : "Remove"}
               </button>
             </div>
           </dialog>

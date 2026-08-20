@@ -61,12 +61,9 @@ export async function updateUserBook({
 }
 
 /**
- * The PDS record as far as this row knows; null on a pre-025 row.
- *
- * Columns win over the stored record: some local writes are still on their
- * way to the PDS (KOSync progress via `sync_pending:`, `owned` from a library
- * upload), and merging against the record alone would revert them on the
- * user's next click.
+ * The PDS record as far as this row knows; null on a pre-025 row. Columns win:
+ * some writes (KOSync progress, `owned` from an upload) reach the row before
+ * the PDS, and merging against the record alone would revert them.
  */
 export function recordFromUserBook(userBook: UserBook): BookRecordValue | null {
   const record = userBook.record;
@@ -85,8 +82,7 @@ export function recordFromUserBook(userBook: UserBook): BookRecordValue | null {
     stars: userBook.stars ?? undefined,
     bookProgress: userBook.bookProgress ?? undefined,
     previousReads: userBook.previousReads ?? undefined,
-    // The merge defaults an unset `owned` to true; a column 0 must not turn
-    // an old record's unset into false.
+    // The merge defaults unset `owned` to true, so a column 0 must not make it false.
     owned: userBook.owned === 1 ? true : record.owned === undefined ? undefined : false,
   };
 }

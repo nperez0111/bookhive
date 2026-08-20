@@ -1,16 +1,11 @@
 /**
- * Client state for "my relationship to this book" on /books/:id.
+ * Client state for "my relationship to this book" on /books/:id, shared by the
+ * three islands. Changes apply optimistically and are replaced by the server's
+ * `UserBookView`; on failure `view` snaps back to `confirmed`.
  *
- * One store per page, shared by the islands in the hero card and the
- * activity card. Every change is applied to `view` at once, then sent; the
- * server's `UserBookView` replaces `view` when it lands, which is how
- * server-side inference (auto dates, re-read rotation, 100% on finish) shows
- * up without a reload. On failure `view` snaps back to `confirmed`.
- *
- * Mutations are serialised: the server holds a per-user lock and the merge
- * is CAS'd on the previous write's cid, so two in-flight writes would only
- * race each other. While later writes are still queued a response does not
- * overwrite `view` — it would briefly undo what the user just did.
+ * Writes are serialised because the server CASes each one on the previous
+ * write's cid, and a response never overwrites `view` while later writes are
+ * still queued — it would undo what the user just did.
  */
 import type { UserBookView } from "../../../utils/userBookView";
 
@@ -67,12 +62,10 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-/** Mirrors `dateInputToISO` on the server: a date input's value plus the current time of day. */
+/** Mirrors the server's `dateInputToISO`. */
 function dateInputToIso(value: string | undefined): string | null | undefined {
   if (value === undefined) return undefined;
-  // The server's `normalizeDate("")` yields undefined and the merge then keeps
-  // the recorded date, so an emptied box is a no-op, not a clear. Mirroring
-  // that here is what stops the UI from showing a clear that never happened.
+  // An emptied box is a no-op server-side, not a clear.
   if (value === "") return undefined;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [y, m, d] = value.split("-").map(Number) as [number, number, number];
@@ -84,11 +77,7 @@ function dateInputToIso(value: string | undefined): string | null | undefined {
   return value;
 }
 
-/**
- * The server's `inferBookStatusAndDates` + re-read rules, approximated so the
- * optimistic frame looks like the confirmed one will. The server's answer
- * always wins.
- */
+/** Mirrors the server's `inferBookStatusAndDates`; its answer always wins. */
 export function applyOptimistic(
   current: UserBookView | null,
   fields: UpdateFields,
@@ -122,21 +111,37 @@ export function applyOptimistic(
   if (startedAt !== undefined) next.startedAt = startedAt;
   if (finishedAt !== undefined) next.finishedAt = finishedAt;
 
-  let status = fields.status ?? base.status;
-  if (fields.bookProgress !== undefined) {
+  // `sent` is the status this payload asserts. A payload asserting none leaves
+  // the server's status and dates untouched, so guessing here paints a frame
+  // the response would take back.
+  let sent = fields.status;
+  if (fields.bookProgress !== undefined && !sent) {
     next.bookProgress = fields.bookProgress
       ? { ...fields.bookProgress, updatedAt: nowIso() }
       : null;
-    // `/api/update-book` forces READING on any progress write that carries no
-    // status of its own — including on an abandoned book.
-    if (!fields.status) status = STATUS.READING;
+    // `/api/update-book` stamps READING onto a statusless progress write.
+    sent = STATUS.READING;
+  } else if (fields.bookProgress !== undefined) {
+    next.bookProgress = fields.bookProgress
+      ? { ...fields.bookProgress, updatedAt: nowIso() }
+      : null;
   }
-  if (startedAt && (!status || status === STATUS.WANT_TO_READ)) status = STATUS.READING;
-  if (finishedAt && (!status || status === STATUS.WANT_TO_READ || status === STATUS.READING)) {
-    status = STATUS.FINISHED;
+  const currentStatus = fields.status ?? base.status;
+  if (startedAt && (!currentStatus || currentStatus === STATUS.WANT_TO_READ)) {
+    sent = STATUS.READING;
   }
+  if (
+    finishedAt &&
+    (!currentStatus || currentStatus === STATUS.WANT_TO_READ || currentStatus === STATUS.READING)
+  ) {
+    sent = STATUS.FINISHED;
+  }
+  const status = sent ?? base.status;
 
   const isReread = fields.status === STATUS.READING && base.status === STATUS.FINISHED;
+  // Only a real transition stamps a date, matching the server.
+  const alreadyReading = base.status === STATUS.READING && !!base.startedAt;
+  const alreadyFinished = base.status === STATUS.FINISHED && !!base.finishedAt;
   if (isReread) {
     if (base.finishedAt) {
       next.previousReads = [
@@ -146,9 +151,9 @@ export function applyOptimistic(
     }
     next.startedAt = nowIso();
     next.finishedAt = null;
-  } else if (status === STATUS.READING && !next.startedAt) {
+  } else if (sent === STATUS.READING && !fields.startedAt && !alreadyReading) {
     next.startedAt = nowIso();
-  } else if (status === STATUS.FINISHED && !next.finishedAt) {
+  } else if (sent === STATUS.FINISHED && !fields.finishedAt && !alreadyFinished) {
     next.finishedAt = nowIso();
   }
 
@@ -178,18 +183,13 @@ export function createUserBookStore(props: BookActionsProps) {
     listeners.forEach((l) => l());
   };
   let queue: Promise<unknown> = Promise.resolve();
-  // Set synchronously for the whole removal, because `updateBookRecord`
-  // *creates* a record when no `user_book` row exists: a write that starts
-  // during the DELETE would put the book back on the user's PDS. Awaiting the
-  // queue is not enough — `queue` is reassigned by every `update`, so a click
-  // during the round trip would slip past it. Cleared when the removal
-  // settles, so re-adding the book afterwards still works.
+  // `updateBookRecord` creates a record when no row exists, so a write starting
+  // during the DELETE would put the book back. Awaiting `queue` is not enough:
+  // every `update` reassigns it. Cleared on settle, so re-adding still works.
   let deleting = false;
 
   async function send(fields: UpdateFields, explicitSave: boolean): Promise<boolean> {
-    // Everything runs through one queue and `pending` only drops when a send
-    // settles, so a request the browser never times out would wedge the Save
-    // button and block every later change on the page.
+    // A request the browser never times out would wedge the queue.
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -216,8 +216,7 @@ export function createUserBookStore(props: BookActionsProps) {
       });
       return true;
     } catch (e) {
-      // The server's message names CIDs and lexicon paths; that belongs in
-      // the console, not next to the button.
+      // The server's message names CIDs and lexicon paths.
       console.error("[book] save failed:", e);
       set({
         pending: state.pending - 1,
@@ -252,8 +251,6 @@ export function createUserBookStore(props: BookActionsProps) {
       if (deleting) return false;
       deleting = true;
       set({ error: null });
-      // Queued writes first: a delete that overtakes them would be undone by
-      // whichever one lands last.
       await queue.catch(() => {});
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);

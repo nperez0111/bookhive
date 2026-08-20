@@ -127,14 +127,17 @@ const app = new Hono<AppEnv>()
         normalizedProgress.totalPages &&
         normalizedProgress.currentPage > normalizedProgress.totalPages
       ) {
-        throw new Error("Current page cannot exceed total pages");
+        return c.json({ success: false, message: "Current page cannot exceed total pages" }, 400);
       }
       if (
         normalizedProgress.currentChapter &&
         normalizedProgress.totalChapters &&
         normalizedProgress.currentChapter > normalizedProgress.totalChapters
       ) {
-        throw new Error("Current chapter cannot exceed total chapters");
+        return c.json(
+          { success: false, message: "Current chapter cannot exceed total chapters" },
+          400,
+        );
       }
     }
     if (normalizedProgress !== undefined) {

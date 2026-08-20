@@ -76,8 +76,12 @@ function inferBookStatusAndDates(
     existing,
   }: {
     skipAutoDate?: boolean;
-    /** Dates the record already carries, so a partial update can't restamp them. */
-    existing?: { startedAt?: string | undefined; finishedAt?: string | undefined };
+    /** What the record already says, so a partial update can't rewrite it. */
+    existing?: {
+      status?: string | undefined;
+      startedAt?: string | undefined;
+      finishedAt?: string | undefined;
+    };
   } = {},
 ): {
   status: string | undefined;
@@ -88,17 +92,22 @@ function inferBookStatusAndDates(
   let autoFinishedAt = updates.finishedAt;
   let autoStatus = updates.status;
 
+  // "unset" must mean unset on the *record*, not merely absent from this
+  // payload: the island posts only what changed, so reading a missing status
+  // as "none" downgraded a finished book to Reading on a date edit.
+  const currentStatus = updates.status ?? existing?.status;
+
   // If user sets startedAt and status is "want to read" or unset, infer they're reading
-  if (updates.startedAt && (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)) {
+  if (updates.startedAt && (!currentStatus || currentStatus === BOOK_STATUS.WANTTOREAD)) {
     autoStatus = BOOK_STATUS.READING;
   }
 
   // If user sets finishedAt and status is "want to read", "reading", or unset, infer they're finished
   if (
     updates.finishedAt &&
-    (!updates.status ||
-      updates.status === BOOK_STATUS.WANTTOREAD ||
-      updates.status === BOOK_STATUS.READING)
+    (!currentStatus ||
+      currentStatus === BOOK_STATUS.WANTTOREAD ||
+      currentStatus === BOOK_STATUS.READING)
   ) {
     autoStatus = BOOK_STATUS.FINISHED;
   }
@@ -107,18 +116,15 @@ function inferBookStatusAndDates(
   // Use the current full timestamp so we record when the action happened,
   // matching the behavior of createdAt.
   // Imports pass skipAutoDate to avoid stamping today when the source has no date.
-  // "if not already provided" means by the caller *or* by the record. The
-  // island sends only what changed, so a status click carries no dates — and
-  // stamping today over the date the user already has silently rewrites their
-  // reading history on their PDS.
+  // Stamp when a book *enters* a status, not whenever it is in one: a rating
+  // save on an already-Reading book carries no dates and must not restamp
+  // them, while a book finished in 2020 and read again now must not keep 2020.
+  const alreadyReading = existing?.status === BOOK_STATUS.READING && !!existing.startedAt;
+  const alreadyFinished = existing?.status === BOOK_STATUS.FINISHED && !!existing.finishedAt;
   if (!skipAutoDate) {
-    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt && !existing?.startedAt) {
+    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt && !alreadyReading) {
       autoStartedAt = new Date().toISOString();
-    } else if (
-      autoStatus === BOOK_STATUS.FINISHED &&
-      !updates.finishedAt &&
-      !existing?.finishedAt
-    ) {
+    } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt && !alreadyFinished) {
       autoFinishedAt = new Date().toISOString();
     }
   }
@@ -135,10 +141,7 @@ function inferBookStatusAndDates(
   };
 }
 
-/**
- * Current version of the record on the PDS. Not pinned to a cid: a stale pin
- * 404s, which used to read as "no record" and produce a duplicate create.
- */
+/** Current record on the PDS. Not pinned to a cid: a stale pin 404s and looked like "no record". */
 export async function getBookRecord({
   agent,
   uri,
@@ -154,12 +157,11 @@ export async function getBookRecord({
     },
   });
   const payload = res.ok ? (res.data as { value?: unknown; cid?: string }) : null;
-  // Both are required: without a cid there is nothing to compare-and-swap on.
+  // A cid is required: there is nothing to compare-and-swap on without one.
   if (!payload?.value || !payload.cid) return null;
+  // A record failing our validator is still the user's record; merging onto it
+  // is how the offending field gets overwritten. Refusing bricks the book.
   const parsed = BookRecord.validateRecord(payload.value);
-  // A record that fails our validator is still the record the user has, and
-  // merging onto it is how a bad field gets healed by the write that
-  // overwrites it. Refusing would make that book permanently unwritable.
   return {
     value: (parsed.success ? parsed.value : payload.value) as BookRecord.Record,
     cid: payload.cid,
@@ -195,7 +197,7 @@ function buildBookRecord({
         startedAt: originalBook.startedAt,
         finishedAt: originalBook.finishedAt,
       },
-      ...(originalBook.previousReads ?? []),
+      ...(Array.isArray(originalBook.previousReads) ? originalBook.previousReads : []),
     ];
   }
 
@@ -221,6 +223,7 @@ function buildBookRecord({
         {
           skipAutoDate,
           existing: {
+            status: originalBook?.status,
             startedAt: originalBook?.startedAt,
             finishedAt: originalBook?.finishedAt,
           },
@@ -246,7 +249,7 @@ function buildBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    // A missing cover is patched in off the request path (userBookFollowUp.ts).
+    // Patched in off the request path (userBookFollowUp.ts).
     cover: originalBook?.cover,
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
@@ -300,13 +303,11 @@ function buildBookRecord({
 }
 
 /**
- * Write one change to a book in the user's PDS and mirror it to `user_book`.
+ * Write one change to a book's PDS record and mirror it to `user_book`.
  *
- * Every status click goes through here, so it is one PDS round-trip: the
- * merge reads the local row (the PDS only on a pre-025 row or a CAS
- * conflict), and the cover blob and catalogue link — which BookHive never
- * renders from the record — are patched in after the response. `followUp`
- * is that deferred work; it never rejects.
+ * One PDS round-trip: the merge reads the local row (the PDS only on a pre-025
+ * row or a CAS conflict), and the cover and catalogue link are patched in
+ * afterwards by `followUp`, which never rejects.
  */
 export async function updateBookRecord({
   ctx,
@@ -337,9 +338,8 @@ export async function updateBookRecord({
     ctx.addWideEventContext({ book_merge_source: local ? "local" : "pds" });
   }
 
-  // A row with a URI already has a record at that rkey, so we must not fall
-  // through to the create branch below. Bail before building anything, so the
-  // reason surfaces instead of a downstream validation error masking it.
+  // A row with a URI has a record at that rkey; falling through to the create
+  // branch would write over it. Bail early so this reason isn't masked.
   if (userBook && !original) {
     ctx.addWideEventContext({ book_record_read: "unusable" });
     throw new Error(`Failed to record book: could not read the current record for ${hiveId}`);
@@ -494,6 +494,7 @@ export async function updateBookRecords({
       {
         skipAutoDate,
         existing: {
+          status: originalBook?.status,
           startedAt: originalBook?.startedAt,
           finishedAt: originalBook?.finishedAt,
         },

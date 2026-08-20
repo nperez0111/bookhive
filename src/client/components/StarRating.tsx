@@ -23,8 +23,7 @@ export function calculateStars(rating: number): StarType[] {
 
 export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange }) => {
   const [rating, setRating] = useState(initialRating);
-  // Follow the prop: the book page's store replaces it with the server's
-  // answer, and a rollback after a failed write has to be visible here too.
+  // Follow the prop so a server reconcile or a rollback is visible here.
   useEffect(() => setRating(initialRating), [initialRating]);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,6 +62,10 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
   const handleMouseDown = (event: MouseEvent) => {
     setIsDragging(true);
     const newRating = calculateRatingFromEvent(event);
+    // A click on the leftmost sliver computes 0, which consumers treat as "no
+    // change" — painting it would strand the widget at empty, since the prop
+    // never moves back.
+    if (!newRating) return;
     setRating(newRating);
     onChange?.(newRating);
   };

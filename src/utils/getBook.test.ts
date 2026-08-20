@@ -7,7 +7,7 @@ import memoryDriver from "unstorage/drivers/memory";
 import type { SessionClient } from "../auth/client";
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import type { BookUtilContext } from "../context";
-import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../constants";
+import { FINISHED, READING, WANTTOREAD } from "../constants";
 import { migrateToLatest, type Database, type DatabaseSchema } from "../db";
 import type { BookRecordValue, HiveId } from "../types";
 import { getBookRecord, getUserBook, updateBookRecord } from "./getBook";
@@ -423,28 +423,50 @@ describe("updateBookRecord", () => {
     }
   });
 
-  it("keeps the recorded start date when a partial update re-asserts Reading", async () => {
-    // The island sends only what changed, so `startedAt` is absent here. It
-    // must not be re-stamped to today over a date the user already has.
-    const original = baseRecord({ status: ABANDONED, startedAt: "2026-03-01T09:00:00.000Z" });
+  it("keeps the start date when a partial update touches a book already Reading", async () => {
+    // The common case: a rating or review save carries no dates at all.
+    const original = baseRecord({ status: READING, startedAt: "2026-03-01T09:00:00.000Z" });
     const { agent } = fakePds({ value: original, cid: "cid0" });
-    await seedRow(original, "cid0", { status: ABANDONED, startedAt: "2026-03-01T09:00:00.000Z" });
+    await seedRow(original, "cid0", { status: READING, startedAt: "2026-03-01T09:00:00.000Z" });
 
+    const { book } = await updateBookRecord({ ctx, agent, hiveId: HIVE_ID, updates: { stars: 8 } });
+
+    expect(book.startedAt).toBe("2026-03-01T09:00:00.000Z");
+    expect(book.status).toBe(READING);
+  });
+
+  it("keeps the start date when progress is saved on a book already Reading", async () => {
+    const original = baseRecord({ status: READING, startedAt: "2026-03-01T09:00:00.000Z" });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0", { status: READING, startedAt: "2026-03-01T09:00:00.000Z" });
+
+    // `/api/update-book` forces READING onto any progress write.
     const { book } = await updateBookRecord({
       ctx,
       agent,
       hiveId: HIVE_ID,
-      updates: { status: READING },
+      updates: {
+        status: READING,
+        bookProgress: { currentPage: 40, updatedAt: "2026-08-20T00:00:00.000Z" },
+      },
     });
 
-    expect(book.status).toBe(READING);
     expect(book.startedAt).toBe("2026-03-01T09:00:00.000Z");
   });
 
-  it("keeps the recorded finish date when a partial update re-asserts Read", async () => {
-    const original = baseRecord({ status: ABANDONED, finishedAt: "2026-04-02T09:00:00.000Z" });
+  it("stamps a fresh finish date when a book is finished again after an earlier read", async () => {
+    // Dates left over from a previous read must not be presented as this one.
+    const original = baseRecord({
+      status: READING,
+      startedAt: "2026-05-01T09:00:00.000Z",
+      finishedAt: "2020-02-01T09:00:00.000Z",
+    });
     const { agent } = fakePds({ value: original, cid: "cid0" });
-    await seedRow(original, "cid0", { status: ABANDONED, finishedAt: "2026-04-02T09:00:00.000Z" });
+    await seedRow(original, "cid0", {
+      status: READING,
+      startedAt: "2026-05-01T09:00:00.000Z",
+      finishedAt: "2020-02-01T09:00:00.000Z",
+    });
 
     const { book } = await updateBookRecord({
       ctx,
@@ -453,7 +475,8 @@ describe("updateBookRecord", () => {
       updates: { status: FINISHED },
     });
 
-    expect(book.finishedAt).toBe("2026-04-02T09:00:00.000Z");
+    expect(book.finishedAt).not.toBe("2020-02-01T09:00:00.000Z");
+    expect(new Date(book.finishedAt!).getUTCFullYear()).toBeGreaterThan(2020);
   });
 
   it("still stamps a start date when the book has none", async () => {
@@ -469,6 +492,48 @@ describe("updateBookRecord", () => {
     });
 
     expect(book.startedAt).toBeTruthy();
+  });
+
+  it("does not downgrade a finished book when only a date is edited", async () => {
+    // The island sends `{ startedAt }` alone; reading that as "no status" used
+    // to infer Reading and write it over the user's Finished.
+    const original = baseRecord({
+      status: FINISHED,
+      startedAt: "2026-02-01T09:00:00.000Z",
+      finishedAt: "2026-03-01T09:00:00.000Z",
+    });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0", {
+      status: FINISHED,
+      startedAt: "2026-02-01T09:00:00.000Z",
+      finishedAt: "2026-03-01T09:00:00.000Z",
+    });
+
+    const { book } = await updateBookRecord({
+      ctx,
+      agent,
+      hiveId: HIVE_ID,
+      updates: { startedAt: "2026-02-05" },
+    });
+
+    expect(book.status).toBe(FINISHED);
+    expect(book.finishedAt).toBe("2026-03-01T09:00:00.000Z");
+    expect(book.startedAt?.startsWith("2026-02-05")).toBe(true);
+  });
+
+  it("still infers Reading when a start date is set on a want-to-read book", async () => {
+    const original = baseRecord({ status: WANTTOREAD });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0");
+
+    const { book } = await updateBookRecord({
+      ctx,
+      agent,
+      hiveId: HIVE_ID,
+      updates: { startedAt: "2026-02-05" },
+    });
+
+    expect(book.status).toBe(READING);
   });
 
   it("refuses to create over an existing rkey when the record cannot be read", async () => {

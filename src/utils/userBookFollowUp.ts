@@ -1,13 +1,11 @@
 /**
  * Patch `cover` and `hiveBookUri` onto a book record after the response.
  *
- * Neither is rendered by BookHive (covers come from `hive_book`), but the
- * cover costs three network hops plus a decode and the catalogue link can
- * mean a 20s scrape — the user waiting on a status click should pay for
- * neither. The patch is CAS'd on the cid the request wrote; on conflict it is
- * dropped, not forced, since the next write to a still-incomplete record
- * schedules it again. The request's wide event is gone by the time this
- * resolves, so the counter is the only signal.
+ * BookHive renders neither from the record, but the cover costs three network
+ * hops plus a decode and the catalogue link can mean a 20s scrape — nobody
+ * clicking a status should wait for that. The patch is CAS'd on the cid the
+ * request wrote and dropped on conflict. The request's wide event is long
+ * gone by the time this resolves, so the counter is the only signal.
  */
 import type { SessionClient } from "../auth/client";
 import type { BookUtilContext } from "../context";
@@ -87,11 +85,11 @@ export function completeUserBookRecord({
       if (written.error === INVALID_SWAP) return "conflict";
       throw new Error(`follow-up write failed: ${written.error} ${written.message ?? ""}`);
     }
-    // Only the three fields this task owns, and only if the row is still the
-    // one we patched. Replaying the whole row would revert column-only writes
-    // made during the up-to-60s window — `owned` from a library upload (whose
-    // `WHERE owned = 0` guard means it never re-fires) and KOSync progress.
-    // The CAS is not enough on its own: those columns are not in the record.
+    // Only the fields this task owns, and only while the row is the one we
+    // patched. Replaying the whole row reverted column-only writes made during
+    // the window — `owned` from an upload (guarded on `owned = 0`, so it never
+    // re-fires) and KOSync progress. Those columns aren't in the record, so
+    // the CAS can't protect them.
     await ctx.db
       .updateTable("user_book")
       .set({
@@ -106,9 +104,8 @@ export function completeUserBookRecord({
   };
 
   const task: Promise<FollowUpOutcome> = (async () => {
-    // The slot is held until the work really settles, not until the deadline:
-    // nothing in `run` is cancellable, so releasing on timeout would let a new
-    // follow-up start alongside one still fetching and uploading.
+    // Held until the work settles, not until the deadline: nothing in `run` is
+    // cancellable, so releasing early lets a new follow-up start alongside it.
     const release = await slots.acquireSlot();
     const running = run();
     void running.then(release, release);
