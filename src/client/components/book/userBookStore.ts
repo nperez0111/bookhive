@@ -60,6 +60,9 @@ export type StoreState = {
 
 export type UserBookStore = ReturnType<typeof createUserBookStore>;
 
+/** Bounds how long one mutation can hold the queue. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -170,13 +173,23 @@ export function createUserBookStore(props: BookActionsProps) {
     listeners.forEach((l) => l());
   };
   let queue: Promise<unknown> = Promise.resolve();
+  // Set once the book has been removed. `updateBookRecord` *creates* a record
+  // when no `user_book` row exists, so a write that lands after the DELETE
+  // would put the book back on the user's PDS and in their library.
+  let removed = false;
 
-  async function send(fields: UpdateFields, explicitSave: boolean) {
+  async function send(fields: UpdateFields, explicitSave: boolean): Promise<boolean> {
+    // Everything runs through one queue and `pending` only drops when a send
+    // settles, so a request the browser never times out would wedge the Save
+    // button and block every later change on the page.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
     try {
       const res = await fetch("/api/update-book", {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ hiveId: props.hiveId, ...fields }),
+        signal: abort.signal,
       });
       const body = (await res.json().catch(() => ({}))) as {
         success?: boolean;
@@ -193,6 +206,7 @@ export function createUserBookStore(props: BookActionsProps) {
         view: pending === 0 ? body.userBook : state.view,
         savedAt: explicitSave ? Date.now() : state.savedAt,
       });
+      return true;
     } catch (e) {
       // The server's message names CIDs and lexicon paths; that belongs in
       // the console, not next to the button.
@@ -202,6 +216,9 @@ export function createUserBookStore(props: BookActionsProps) {
         view: state.confirmed,
         error: "That change could not be saved. Your library was left as it was.",
       });
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -211,8 +228,9 @@ export function createUserBookStore(props: BookActionsProps) {
       return () => listeners.delete(listener);
     },
     getSnapshot: () => state,
-    /** Apply at once, send in order. Resolves when this write has settled. */
-    update: (fields: UpdateFields, { explicitSave = false } = {}): Promise<void> => {
+    /** Apply at once, send in order. Resolves to whether the write landed. */
+    update: (fields: UpdateFields, { explicitSave = false } = {}): Promise<boolean> => {
+      if (removed) return Promise.resolve(false);
       set({
         view: applyOptimistic(state.view, fields, props),
         pending: state.pending + 1,
@@ -220,10 +238,13 @@ export function createUserBookStore(props: BookActionsProps) {
       });
       const run = () => send(fields, explicitSave);
       queue = queue.then(run, run);
-      return queue as Promise<void>;
+      return queue as Promise<boolean>;
     },
     remove: async (): Promise<boolean> => {
       set({ error: null });
+      // Queued writes first, for the reason above: a delete that overtakes
+      // them would be undone by whichever one lands last.
+      await queue.catch(() => {});
       try {
         const res = await fetch(`/books/${props.hiveId}`, {
           method: "DELETE",
@@ -231,6 +252,7 @@ export function createUserBookStore(props: BookActionsProps) {
         });
         const body = (await res.json().catch(() => ({}))) as { success?: boolean };
         if (!res.ok || !body.success) throw new Error(`Could not remove (${res.status})`);
+        removed = true;
         set({ view: null, confirmed: null });
         return true;
       } catch (e) {

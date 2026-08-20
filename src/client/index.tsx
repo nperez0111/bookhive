@@ -67,11 +67,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // three mounts; see components/book/index.tsx.
   const bookActions = document.getElementById("mount-book-actions");
   if (bookActions) {
-    const props = JSON.parse(bookActions.dataset["props"] || "null");
+    let props = null;
+    try {
+      props = JSON.parse(bookActions.dataset["props"] || "null");
+    } catch (err) {
+      console.error("[book] could not read island props:", err);
+    }
     if (props) {
-      void import("./components/book/index").then(({ mountBookIslands }) => {
-        mountBookIslands(props);
-      });
+      void import("./components/book/index")
+        .then(({ mountBookIslands }) => mountBookIslands(props))
+        .catch((err) => console.error("[book] island failed to load:", err));
     }
   }
 

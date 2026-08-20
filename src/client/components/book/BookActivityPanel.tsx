@@ -149,9 +149,19 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
       };
       if (Object.values(progress).some((v) => v !== undefined)) fields.bookProgress = progress;
     }
-    setTouched(new Set());
     if (Object.keys(fields).length === 0 && view) return;
-    void store.update(fields, { explicitSave: true });
+    // Cleared only once the write lands. Clearing up front left a failed save
+    // with the user's text on screen and a Save button that built an empty
+    // payload and did nothing, with no way to retry but a reload.
+    const sent = new Set(touched);
+    void store.update(fields, { explicitSave: true }).then((ok) => {
+      if (!ok) return;
+      setTouched((t) => {
+        const next = new Set(t);
+        for (const key of sent) next.delete(key);
+        return next;
+      });
+    });
   };
 
   const justSaved = savedAt !== null && Date.now() - savedAt < 2500;
@@ -239,8 +249,11 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   </div>
                 )}
                 <div class="flex items-center gap-2">
-                  <label class="text-sm text-muted-foreground">Page</label>
+                  <label class="text-sm text-muted-foreground" htmlFor="progress-current-page">
+                    Page
+                  </label>
                   <input
+                    id="progress-current-page"
                     type="number"
                     min={0}
                     class={inputClass}
@@ -250,6 +263,8 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   />
                   <span class="text-muted-foreground">/</span>
                   <input
+                    id="progress-total-pages"
+                    aria-label="Total pages"
                     type="number"
                     min={1}
                     class={inputClass}
@@ -264,8 +279,14 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   </summary>
                   <div class="mt-3 space-y-3">
                     <div class="flex items-center gap-2">
-                      <label class="text-sm text-muted-foreground">Chapter</label>
+                      <label
+                        class="text-sm text-muted-foreground"
+                        htmlFor="progress-current-chapter"
+                      >
+                        Chapter
+                      </label>
                       <input
+                        id="progress-current-chapter"
                         type="number"
                         min={1}
                         class={inputClass}
@@ -277,6 +298,8 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                       />
                       <span class="text-muted-foreground">/</span>
                       <input
+                        id="progress-total-chapters"
+                        aria-label="Total chapters"
                         type="number"
                         min={1}
                         class={inputClass}
@@ -286,8 +309,11 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                       />
                     </div>
                     <div class="flex items-center gap-2">
-                      <label class="text-sm text-muted-foreground">Percent</label>
+                      <label class="text-sm text-muted-foreground" htmlFor="progress-percent">
+                        Percent
+                      </label>
                       <input
+                        id="progress-percent"
                         type="number"
                         min={0}
                         max={100}
@@ -311,8 +337,11 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
               <label class="mb-2 block text-sm font-semibold text-foreground">Reading Dates</label>
               <div class="flex flex-wrap items-center gap-4">
                 <div class="flex items-center gap-2">
-                  <label class="text-sm text-muted-foreground">Started</label>
+                  <label class="text-sm text-muted-foreground" htmlFor="reading-started-at">
+                    Started
+                  </label>
                   <input
+                    id="reading-started-at"
                     type="date"
                     class={dateClass}
                     value={draft.startedAt}
@@ -320,8 +349,11 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
                   />
                 </div>
                 <div class="flex items-center gap-2">
-                  <label class="text-sm text-muted-foreground">Finished</label>
+                  <label class="text-sm text-muted-foreground" htmlFor="reading-finished-at">
+                    Finished
+                  </label>
                   <input
+                    id="reading-finished-at"
                     type="date"
                     class={dateClass}
                     value={draft.finishedAt}

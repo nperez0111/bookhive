@@ -533,13 +533,29 @@ export async function refetchBooks({
         }));
 
       for (let i = 0; i < writes.length; i += 200) {
+        const batch = writes.slice(i, i + 200);
         const response = await agent.post("com.atproto.repo.applyWrites", {
-          input: { repo: agent.did, writes: writes.slice(i, i + 200) },
+          input: { repo: agent.did, writes: batch },
         });
         if (!response.ok) {
           throw new Error(
             `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
           );
+        }
+        // Mirror what we just wrote onto the rows. Skipping this leaves every
+        // backfilled row holding a superseded cid, so the user's next edit
+        // spends a CAS failure and a re-read before it can land.
+        const results =
+          (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
+        for (const [index, write] of batch.entries()) {
+          const result = results[index];
+          if (!result?.uri || !result.cid) continue;
+          await ctx.db
+            .updateTable("user_book")
+            .set({ cid: result.cid, record: JSON.stringify(write.value) })
+            .where("uri", "=", result.uri)
+            .where("userDid", "=", agent.did)
+            .execute();
         }
       }
     }

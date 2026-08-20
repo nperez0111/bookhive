@@ -251,7 +251,8 @@ Personal library: ebook uploads, e-reader credentials, sync documents. All auth-
 ### `src/routes/api.tsx` (mounted at `/api`)
 
 - GET `/user-book?hiveId=` → `{ userBook: UserBookView | null }` for the signed-in viewer. Cookie DID only (`getSessionDid`) — no OAuth restore, it never touches the PDS
-- POST `/update-book` → JSON write; returns `{ success, message, userBook: UserBookView }`. `/update-comment`
+- POST `/update-book` → JSON write; returns `{ success, message, userBook: UserBookView }`
+- POST `/update-comment` → create/update a buzz on a book
 
 **`UserBookView`** (`src/utils/userBookView.ts`) is the one shape every book-state write returns and the read answers with — the `user_book` row minus `userDid` and the raw PDS `record`, with `owned` as a boolean. It exists so a client can update optimistically and reconcile with what was actually written instead of reloading the page.
 

@@ -311,6 +311,18 @@ export async function updateBookRecord({
     ctx.addWideEventContext({ book_merge_source: local ? "local" : "pds" });
   }
 
+  // A row whose record we could not read (pre-025 and the PDS read failed or
+  // the stored record no longer validates) still knows the book's identity.
+  // Without this the merge has no title/authors and every write 400s.
+  if (userBook && !original) {
+    Object.assign(recordUpdates, {
+      title: userBook.title,
+      authors: userBook.authors,
+      createdAt: userBook.createdAt,
+      ...recordUpdates,
+    });
+  }
+
   let coverSource = coverImage;
   if (!original && !userBook) {
     const hiveBook = await ctx.db
@@ -346,6 +358,12 @@ export async function updateBookRecord({
 
   let record = build(original?.value ?? null);
   const rkey = userBook ? userBook.uri.split("/").at(-1)! : TID.now();
+  // `swapRecord: null` is a create. A row with a URI already has a record at
+  // this rkey, so falling into the create branch because we could not read it
+  // would write over whatever is actually there.
+  if (userBook && !original) {
+    throw new Error(`Failed to record book: could not read the current record for ${hiveId}`);
+  }
   let written = await writeBookRecord({
     agent,
     rkey,

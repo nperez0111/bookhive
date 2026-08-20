@@ -25,7 +25,13 @@ const FOLLOW_UP_CONCURRENCY = 2;
 /** Cover fetch (10s) + resize + upload, or enrich (10s) + catalog (10s), then one write. */
 const FOLLOW_UP_DEADLINE_MS = 60_000;
 
-const slots = new Semaphore(FOLLOW_UP_CONCURRENCY, { label: "user_book_follow_up" });
+/** Shed rather than queue without bound; each waiter holds a record. */
+const FOLLOW_UP_MAX_PENDING = 64;
+
+const slots = new Semaphore(FOLLOW_UP_CONCURRENCY, {
+  label: "user_book_follow_up",
+  maxPending: FOLLOW_UP_MAX_PENDING,
+});
 const inFlight = new Map<string, Promise<FollowUpOutcome>>();
 
 export function followUpNeeds(
@@ -94,8 +100,15 @@ export function completeUserBookRecord({
     return "completed";
   };
 
-  const task: Promise<FollowUpOutcome> = slots
-    .run(() => withTimeout(run(), FOLLOW_UP_DEADLINE_MS, `follow-up ${userBook.uri}`))
+  const task: Promise<FollowUpOutcome> = (async () => {
+    // The slot is held until the work really settles, not until the deadline:
+    // nothing in `run` is cancellable, so releasing on timeout would let a new
+    // follow-up start alongside one still fetching and uploading.
+    const release = await slots.acquireSlot();
+    const running = run();
+    void running.then(release, release);
+    return withTimeout(running, FOLLOW_UP_DEADLINE_MS, `follow-up ${userBook.uri}`);
+  })()
     .catch((): FollowUpOutcome => "failed")
     .then((outcome) => {
       userBookFollowUpTotal.inc(LABEL.userBookFollowUp[outcome]);

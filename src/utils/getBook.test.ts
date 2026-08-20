@@ -341,6 +341,19 @@ describe("updateBookRecord", () => {
     }
   });
 
+  it("refuses to create over an existing rkey when the record cannot be read", async () => {
+    // Pre-025 row (no stored record) whose record the PDS will not give us.
+    const { agent, names } = fakePds();
+    await seedRow(null, "cid0");
+
+    await expect(
+      updateBookRecord({ ctx, agent, hiveId: HIVE_ID, updates: { status: FINISHED } }),
+    ).rejects.toThrow(/could not read the current record/);
+
+    // A create here would have written over whatever is actually at that rkey.
+    expect(names()).toEqual(["getRecord"]);
+  });
+
   it("surfaces a write failure that is not a swap conflict", async () => {
     const original = baseRecord();
     const { agent } = fakePds({ value: original, cid: "cid0" });
