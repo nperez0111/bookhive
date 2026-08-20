@@ -12,7 +12,8 @@ import type { AppEnv } from "../context";
 import { ids, validateMain } from "../bsky/lexicon";
 import { BOOK_STATUS } from "../constants";
 import type { BookProgress, HiveId } from "../types";
-import { updateBookRecord } from "../utils/getBook";
+import { getUserBook, updateBookRecord } from "../utils/getBook";
+import { toUserBookView } from "../utils/userBookView";
 
 /**
  * Convert a date-input value to a full ISO datetime. YYYY-MM-DD inputs are
@@ -84,7 +85,26 @@ const updateBookSchema = z.object({
     .optional(),
 });
 
+const userBookQuerySchema = z.object({
+  hiveId: z.string().regex(/^bk_[A-Za-z0-9]+$/),
+});
+
 const app = new Hono<AppEnv>()
+  // Read half of the update-book contract. Cookie DID only — no OAuth
+  // restore, since nothing here touches the PDS.
+  .get("/user-book", zValidator("query", userBookQuerySchema), async (c) => {
+    const did = await c.get("ctx").getSessionDid();
+    if (!did) {
+      return c.json({ success: false, message: "Invalid Session" }, 401);
+    }
+    const { hiveId } = c.req.valid("query");
+    const userBook = await getUserBook({
+      ctx: c.get("ctx"),
+      agent: { did },
+      hiveId: hiveId as HiveId,
+    });
+    return c.json({ success: true, userBook: userBook ? toUserBookView(userBook) : null });
+  })
   .post("/update-book", zValidator("json", updateBookSchema), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
@@ -130,7 +150,7 @@ const app = new Hono<AppEnv>()
     try {
       await c.get("ctx").kv.setItem(bookLockKey, hiveId);
       startTime(c, "pds_update_book");
-      await updateBookRecord({
+      const { userBook } = await updateBookRecord({
         ctx: c.get("ctx"),
         agent,
         hiveId: hiveId as HiveId,
@@ -142,7 +162,7 @@ const app = new Hono<AppEnv>()
         hiveId,
         userDid: agent.did,
       });
-      return c.json({ success: true, message: "Book updated" });
+      return c.json({ success: true, message: "Book updated", userBook: toUserBookView(userBook) });
     } catch (e) {
       c.get("ctx").addWideEventContext({
         api_update_book: "failed",

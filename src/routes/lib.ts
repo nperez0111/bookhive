@@ -459,6 +459,7 @@ export async function refetchBooks({
       stars: book.stars,
       bookProgress: book.bookProgress ?? null,
       previousReads: book.previousReads ?? null,
+      record: book,
     });
   });
 
@@ -483,6 +484,7 @@ export async function refetchBooks({
           stars: c.ref("excluded.stars"),
           bookProgress: c.ref("excluded.bookProgress"),
           previousReads: c.ref("excluded.previousReads"),
+          record: c.ref("excluded.record"),
         })),
       )
       .execute();

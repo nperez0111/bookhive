@@ -14,6 +14,7 @@ import { CommentsSection } from "../pages/comments";
 import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
 import { updateBookRecord } from "../utils/getBook";
+import { toUserBookView } from "../utils/userBookView";
 import { enrichBookWithDetailedData } from "../utils/enrichBookData";
 import { enqueueEnrichment } from "../utils/enrichQueue";
 import { withTimeout } from "../utils/semaphore";
@@ -341,7 +342,7 @@ const app = new Hono<AppEnv>()
         try {
           await c.get("ctx").kv.setItem(bookLockKey, hiveId);
           startTime(c, "pds_update_book");
-          await updateBookRecord({
+          const { userBook } = await updateBookRecord({
             ctx: c.get("ctx"),
             agent,
             hiveId: hiveId as HiveId,
@@ -360,6 +361,11 @@ const app = new Hono<AppEnv>()
             } as Partial<BookRecord.Record> & { coverImage?: string },
           });
           endTime(c, "pds_update_book");
+          // Same form, two clients: a fetch() caller gets the view back and
+          // stays on the page; a plain <form> still gets the redirect.
+          if (c.req.header("accept")?.includes("application/json")) {
+            return c.json({ success: true, userBook: toUserBookView(userBook) });
+          }
         } catch (e) {
           c.set("requestError", e);
           c.get("ctx").addWideEventContext({ write_book: "failed" });

@@ -260,6 +260,14 @@ export const ogRenderShedTotal = registry.register(
   new Counter("bookhive_og_render_shed_total", "OG renders rejected because the queue was full"),
 );
 
+/** Deferred book-record completions run after the wide event is written; this is their only signal. */
+export const userBookFollowUpTotal = registry.register(
+  new Counter(
+    "bookhive_user_book_follow_up_total",
+    "Deferred book-record completions (cover upload, catalog uri) by outcome",
+  ),
+);
+
 // ─── Cluster-wide gauges (primary worker only) ──────────────────────────────
 // Deliberately unlabelled by worker: these describe shared SQLite state, not
 // this process. Only the primary publishes them, so a scrape landing on
@@ -364,6 +372,12 @@ export const LABEL = {
   },
   /** For metrics that are per-process but carry no other dimension. */
   worker: labelKey(workerLabels()),
+  userBookFollowUp: {
+    completed: labelKey({ outcome: "completed" }),
+    nothing: labelKey({ outcome: "nothing" }),
+    conflict: labelKey({ outcome: "conflict" }),
+    failed: labelKey({ outcome: "failed" }),
+  },
   enrichQueue: {
     total: labelKey({ state: "total" }),
     claimed: labelKey({ state: "claimed" }),

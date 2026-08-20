@@ -214,7 +214,7 @@ Two traps this encodes, both of which caused real bugs:
 
 - GET `/:hiveId` → `src/pages/bookInfo.tsx` — book detail. `hiveId` must match `^bk_[A-Za-z0-9]+$`. Stale books (>30d) queued for enrichment; `?force-refresh=true` enriches inline with 15s ceiling
 - DELETE `/:hiveId` → delete book from PDS + DB
-- POST `/` → add/update book (zValidator form); per-DID `book_lock` KV, 429 if locked
+- POST `/` → add/update book (zValidator form); per-DID `book_lock` KV, 429 if locked. Answers `{ success, userBook: UserBookView }` when the request's `Accept` includes `application/json`, otherwise a 302 back to the book (the no-JS path)
 - GET `/:hiveId/comments` → `src/pages/comments.tsx`
 
 ### `src/routes/comments.tsx` (mounted at `/comments`)
@@ -250,7 +250,11 @@ Personal library: ebook uploads, e-reader credentials, sync documents. All auth-
 
 ### `src/routes/api.tsx` (mounted at `/api`)
 
-- POST `/update-book`, `/update-comment`
+- GET `/user-book?hiveId=` → `{ userBook: UserBookView | null }` for the signed-in viewer. Cookie DID only (`getSessionDid`) — no OAuth restore, it never touches the PDS
+- POST `/update-book` → JSON write; returns `{ success, message, userBook: UserBookView }`. `/update-comment`
+
+**`UserBookView`** (`src/utils/userBookView.ts`) is the one shape every book-state write returns and the read answers with — the `user_book` row minus `userDid` and the raw PDS `record`, with `owned` as a boolean. It exists so a client can update optimistically and reconcile with what was actually written instead of reloading the page.
+
 - POST `/follow`, `/follow-form`, `/unfollow`, `/unfollow-form`
 
 ### `src/routes/rss.ts` (mounted at `/rss`)
@@ -464,13 +468,13 @@ Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`, `icons.tsx`, `debounc
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–024) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
+SQLite via Kysely. Schema + all migrations (001–025) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
 
 That wrapper also decides `statement.reader`, which is how Kysely picks `all()` (rows) over `run()` (changes). **It asks SQLite — `stmt.columnNames` is empty for anything that doesn't produce rows — rather than pattern-matching the SQL text.** The old regex was anchored on a leading `SELECT`, so `WITH cte AS (…) SELECT …` was classified as a write and Kysely got **zero rows with no error of any kind**; the author-directory cover lookup is a window function over a CTE and silently returned nothing. `columnNames` also gets the converse right, which a regex struggles with: `WITH cte AS (…) INSERT INTO …` is not a reader.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_book`           | User's book records       | uri (PK), userDid, hiveId, title, authors, status, **stars** (not `rating`), review, startedAt, finishedAt, **owned** (bool), bookProgress, previousReads (JSON)                                         |
+| `user_book`           | User's book records       | uri (PK), userDid, hiveId, title, authors, status, **stars** (not `rating`), review, startedAt, finishedAt, **owned** (bool), bookProgress, previousReads (JSON), **record** (JSON, mig 025 — see below) |
 | `hive_book`           | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, enrichAttempts, enrichFailedAt, identifiers, hiveBookAtUri, language |
 | `hive_book_genre`     | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here**                                                                                                                                                   |
 | `hive_book_fts`       | FTS5 search index         | External-content FTS5 over `hive_book(title, rawTitle, authors)`, trigger-maintained. Never written directly. **Rebuilt after VACUUM** — see below                                                       |
@@ -522,7 +526,11 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 | File                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getBook.ts`            | Book record CRUD against user's PDS                                                                                                                                                                                                                                                                                                                                                                                           |
+| `getBook.ts`            | Book record CRUD against user's PDS. `updateBookRecord` is the interactive write — see "The book write path" below                                                                                                                                                                                                                                                                                                            |
+| `userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook` (local merge source). Apart from `getBook.ts` so the follow-up can import it without a cycle                                                                                                                                                                                                                                                                               |
+| `bookRecordWrite.ts`    | CAS write of a book record (`putRecord` + `swapRecord`, `createRecord` for new). There is deliberately no unguarded variant                                                                                                                                                                                                                                                                                                   |
+| `userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd on the cid the request wrote, dropped on conflict. Outcomes in `bookhive_user_book_follow_up_total`                                                                                                                                                                                                                                                |
+| `userBookView.ts`       | `UserBookView` + `toUserBookView` — the wire shape for book-state reads/writes                                                                                                                                                                                                                                                                                                                                                |
 | `getProfile.ts`         | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `getFollows.ts`         | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `enrichBookData.ts`     | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                                                                                                                                                                                                        |
@@ -552,6 +560,53 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `manifest.ts`           | Vite manifest → asset URLs                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `xml.ts`                | XML utilities                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Other                   | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`                                                                                                                                                                                              |
+
+### The book write path (`src/utils/getBook.ts` → `updateBookRecord`)
+
+Every status click, rating and review edit goes through here, so it is built to
+be **one PDS round-trip**. It used to be two to four plus a scrape: `getRecord`
+to read the original, `ensureBookCataloged` (up to 20s inline when the book was
+not catalogued), a cover fetch from Goodreads' CDN + `Bun.Image` resize +
+`uploadBlob` on first add, then `applyWrites`. Three things replaced that, and
+each is load-bearing:
+
+- **The merge source is the local row, not the PDS.** `user_book.record`
+  (migration 025) holds the last record seen for the row, verbatim, because the
+  record carries three fields the columns don't — `cover`, `identifiers`,
+  `hiveBookUri` — and merging without them would silently strip them.
+  `recordFromUserBook` rebuilds the record with **columns winning** over it:
+  KOSync progress (`syncBridge`, queued in `sync_pending:`) and `owned` from a
+  library upload are written to the columns before they reach the PDS, and
+  merging against the stored record alone would revert them on the next click.
+  Every full-record writer sets the column — the ingester (backfill + live),
+  `refetchBooks`, the admin backfill, and this path — and a null column (a row
+  older than the migration) falls back to `getRecord`. The wide event says which:
+  `book_merge_source: local | pds | pds_after_conflict`.
+- **The write is compare-and-swapped** (`bookRecordWrite.ts`): `putRecord` with
+  `swapRecord` = the cid we merged against. A merge computed from local state
+  must fail if the PDS holds something we have not seen (another device, the
+  iOS app, a third-party client). On `InvalidSwap` the record is re-read once,
+  re-merged with the same pure `buildBookRecord`, and re-written; a second
+  conflict throws. `applyWrites` was not usable here — it only offers
+  `swapCommit`, which is the whole repo and fails on any unrelated write.
+  `getBookRecord` no longer pins a cid for the same reason: a stale pin 404s,
+  which the old code read as "no record" and answered with a duplicate create.
+- **Cover and catalogue link are patched in after the response**
+  (`userBookFollowUp.ts`). BookHive renders neither from the record (covers
+  come from `hive_book`), so the person waiting on a click should not pay for
+  them. The request path reads `hive_book.hiveBookAtUri` only
+  (`getCatalogedBookUri`); the follow-up runs the full `ensureBookCataloged`
+  and `uploadImageBlob`, then one CAS `putRecord` on the cid the request wrote.
+  On conflict the patch is **dropped, not forced** — the next write to a
+  still-incomplete record schedules it again, and `refetchBooks` back-fills
+  `hiveBookUri` regardless. One in-flight task per record URI, 2 per process,
+  60s deadline. The request's wide event is written long before this resolves,
+  so `bookhive_user_book_follow_up_total{outcome}` is the only signal; a rising
+  `failed` there is the thing to look at when covers stop appearing on records.
+
+`updateBookRecord` returns `{ book, userBook, followUp }`; `followUp` never
+rejects. Handlers drop it, `src/utils/getBook.test.ts` awaits it. The bulk
+import path (`updateBookRecords`) is unchanged apart from setting `record`.
 
 ### The upload core (`src/utils/uploadPersonalBook.ts`)
 
