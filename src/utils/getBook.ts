@@ -194,22 +194,44 @@ export async function getBookRecord({
 }
 
 /**
- * Update a book in the user's PDS
+ * Update a book in the user's PDS.
+ *
+ * Identify the target by either `hiveId` (canonical / hive-backed books) or
+ * `bookUri` (user-scoped, useful when no `hive_book` row exists yet — see
+ * `/profile/:handle/book/:rkey`). Exactly one is required.
  */
 export async function updateBookRecord({
   ctx,
   agent,
   hiveId,
+  bookUri,
   updates,
   skipAutoDate = false,
 }: {
   ctx: BookUtilContext;
   agent: SessionClient;
-  hiveId: HiveId;
+  hiveId?: HiveId;
+  bookUri?: string;
   updates: Partial<BookRecord.Record> & { coverImage?: string };
   skipAutoDate?: boolean;
 }): Promise<{ book: BookRecord.Record; userBook: UserBook }> {
-  const userBook = await getUserBook({ ctx, agent, hiveId });
+  if (!hiveId && !bookUri) {
+    throw new Error("updateBookRecord requires either hiveId or bookUri");
+  }
+
+  let userBook: UserBook | null = null;
+  if (bookUri) {
+    const row = await ctx.db
+      .selectFrom("user_book")
+      .selectAll()
+      .where("uri", "=", bookUri)
+      .where("userDid", "=", agent.did)
+      .executeTakeFirst();
+    if (!row) throw new Error("Book not found in your library");
+    userBook = hydrateUserBook(row);
+  } else {
+    userBook = await getUserBook({ ctx, agent, hiveId: hiveId! });
+  }
 
   let originalBook: BookRecord.Record | null = null;
   if (userBook) {
@@ -220,11 +242,20 @@ export async function updateBookRecord({
     });
   }
 
+  // The PDS record is the source of truth for hiveId on uri-based updates,
+  // since we may not have it in our DB (orphan rows), and the lexicon
+  // guarantees the field is always present.
+  const effectiveHiveId =
+    hiveId ?? (originalBook?.hiveId as HiveId | undefined) ?? userBook?.hiveId ?? null;
+  if (!effectiveHiveId) {
+    throw new Error("Could not resolve hiveId for book update");
+  }
+
   if (!originalBook && !userBook) {
     const hiveBook = await ctx.db
       .selectFrom("hive_book")
       .selectAll()
-      .where("id", "=", hiveId)
+      .where("id", "=", effectiveHiveId)
       .executeTakeFirst();
     if (hiveBook) {
       Object.assign(updates, {
@@ -287,20 +318,22 @@ export async function updateBookRecord({
   // Determine the final status (use auto-inferred status or original status)
   const finalStatus = autoStatus || originalBook?.status;
 
-  const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
+  const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId: effectiveHiveId });
   const identifiers = toBookIdentifiersOutput(identifiersRow);
 
   // Ensure the book is cataloged before writing to the user's PDS so we can embed
   // hiveBookUri. Fast path (expected): already cataloged, one DB read, no network.
   // Slow path (last resort): enrich + catalog with timeouts if it slipped through.
-  const hiveBookAtUri = await ensureBookCataloged(ctx, hiveId);
+  // For orphan rows (no hive_book), this returns undefined and we just preserve
+  // whatever hiveBookUri was already on the PDS record.
+  const hiveBookAtUri = await ensureBookCataloged(ctx, effectiveHiveId);
 
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
     title: originalBook?.title || updates.title,
     authors: originalBook?.authors || updates.authors,
-    hiveId: originalBook?.hiveId || hiveId,
+    hiveId: originalBook?.hiveId || effectiveHiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
     cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent, 800)),
     // Always prefer new values (including auto-inferred status)

@@ -110,7 +110,7 @@
     },
     "activity": {
       "type": "object",
-      "required": ["type", "createdAt", "hiveId", "title", "userDid", "userHandle"],
+      "required": ["type", "createdAt", "title", "userDid", "userHandle"],
       "properties": {
         "type": {
           "type": "string",
@@ -122,7 +122,11 @@
         },
         "hiveId": {
           "type": "string",
-          "description": "The hive id of the book"
+          "description": "The hive id of the book. Absent for foreign-lexicon or unresolved records — clients should fall back to the user-scoped record (uri) for navigation."
+        },
+        "uri": {
+          "type": "string",
+          "description": "AT-URI of the user's PDS record for this book. Always present; use this as a stable identifier when hiveId is missing."
         },
         "title": {
           "type": "string",
@@ -140,7 +144,7 @@
     },
     "userBook": {
       "type": "object",
-      "required": ["userDid", "title", "authors", "hiveId", "createdAt", "thumbnail"],
+      "required": ["userDid", "title", "authors", "createdAt", "thumbnail"],
       "properties": {
         "userDid": {
           "type": "string",
@@ -164,7 +168,11 @@
         },
         "hiveId": {
           "type": "string",
-          "description": "The book's hive id, used to correlate user's books with the hive"
+          "description": "The book's hive id, used to correlate the user's book with the hive catalog. Absent for foreign-lexicon imports (e.g. Popfeed) or records the catalog hasn't yet matched. Clients should fall back to `uri` for stable identity."
+        },
+        "uri": {
+          "type": "string",
+          "description": "AT-URI of the user's PDS record. Always present; use as a stable identifier and for the user-scoped detail page when hiveId is missing."
         },
         "createdAt": {
           "type": "string",

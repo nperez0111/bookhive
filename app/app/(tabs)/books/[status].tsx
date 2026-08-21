@@ -451,7 +451,7 @@ function FilteredBooksContent({ status, did }: { status: string; did?: string })
         <FlatList
           data={filteredBooks}
           renderItem={renderBook}
-          keyExtractor={(item) => item.hiveId}
+          keyExtractor={(item) => item.uri ?? item.hiveId ?? `${item.userDid}-${item.title}`}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
         />

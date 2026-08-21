@@ -134,37 +134,29 @@ async function backfillUserRepo(
           });
 
           if (validBooks.length > 0) {
-            // Batch-fetch which hiveIds exist
-            const requestedHiveIds = validBooks.map((r) => r.book.hiveId as HiveId);
-            const existingBooks = await db
-              .selectFrom("hive_book")
-              .select("id")
-              .where("id", "in", requestedHiveIds)
-              .execute();
-            const existingHiveIds = new Set(existingBooks.map((b) => b.id));
-
-            const rowsToInsert = validBooks
-              .filter(({ book }) => existingHiveIds.has(book.hiveId as HiveId))
-              .map(({ record, book }) =>
-                serializeUserBook({
-                  uri: record.uri,
-                  cid: record.cid,
-                  userDid: did,
-                  hiveId: book.hiveId as HiveId,
-                  createdAt: book.createdAt,
-                  indexedAt: now.toISOString(),
-                  title: book.title,
-                  authors: book.authors,
-                  startedAt: book.startedAt ?? null,
-                  finishedAt: book.finishedAt ?? null,
-                  status: book.status ?? null,
-                  owned: book.owned ? 1 : 0,
-                  review: book.review ?? null,
-                  stars: book.stars ?? null,
-                  bookProgress: book.bookProgress ?? null,
-                  previousReads: book.previousReads ?? null,
-                } satisfies UserBook),
-              );
+            // Insert every valid record. hive_book is a denormalized cache that
+            // gets populated asynchronously via searchBooks; rows whose hiveId
+            // doesn't yet have a hive_book row will join cleanly once it does.
+            const rowsToInsert = validBooks.map(({ record, book }) =>
+              serializeUserBook({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                hiveId: book.hiveId as HiveId,
+                createdAt: book.createdAt,
+                indexedAt: now.toISOString(),
+                title: book.title,
+                authors: book.authors,
+                startedAt: book.startedAt ?? null,
+                finishedAt: book.finishedAt ?? null,
+                status: book.status ?? null,
+                owned: book.owned ? 1 : 0,
+                review: book.review ?? null,
+                stars: book.stars ?? null,
+                bookProgress: book.bookProgress ?? null,
+                previousReads: book.previousReads ?? null,
+              } satisfies UserBook),
+            );
             for (let i = 0; i < rowsToInsert.length; i += 100) {
               await db
                 .insertInto("user_book")
@@ -191,7 +183,7 @@ async function backfillUserRepo(
             const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
 
             const buzzRows = validBuzzes
-              .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
+              .filter(({ buzz }) => uriToHiveId.get(buzz.book.uri) != null)
               .map(
                 ({ record, buzz }) =>
                   ({
@@ -386,6 +378,10 @@ export function createIngester(
               .where("id", "=", (record as Record<string, unknown>)["hiveId"] as HiveId)
               .executeTakeFirst()
           )?.id;
+          // Missing hive_book row no longer blocks ingestion. We still insert
+          // the user_book using the PDS record's embedded title/authors/cover
+          // (the lexicon guarantees those + hiveId), and kick off a background
+          // search so a future hive_book row resolves the join.
           if (!hiveId) {
             tracked("searchBooks", evt.did, () =>
               searchBooks({
@@ -393,12 +389,6 @@ export function createIngester(
                 ctx: { db, kv, addWideEventContext: () => {} },
               }),
             );
-            wideEvent["outcome"] = "error";
-            wideEvent["error"] = {
-              message: "hiveId not found, triggered search",
-              record_uri: evt.uri.toString(),
-            };
-            return;
           }
           const isNewDid = !backfilledDids.has(evt.did);
           await db
@@ -444,7 +434,7 @@ export function createIngester(
             )
             .execute();
 
-          if (serviceAccountAgent) {
+          if (hiveId && serviceAccountAgent) {
             tracked("writeCatalogBook", evt.did, () =>
               writeCatalogBookIfNeeded({ db, serviceAccountAgent }, hiveId),
             );
@@ -460,7 +450,7 @@ export function createIngester(
             });
           }
 
-          wideEvent["outcome"] = "success";
+          wideEvent["outcome"] = hiveId ? "success" : "success_unresolved";
           return;
         }
         if (evt.collection === ids.BuzzBookhiveBuzz) {

@@ -10,9 +10,11 @@ import { endTime, startTime } from "hono/timing";
 import { sql } from "kysely";
 import type { AppEnv } from "../context";
 import { BookFields } from "../db";
+import { ids } from "../bsky/lexicon";
 import { Error as ErrorPage } from "../pages/error";
 import { ProfilePage } from "../pages/profile";
 import { ReadingStatsPage } from "../pages/readingStats";
+import { UserBookInfo } from "../pages/userBookInfo";
 import { getProfile, getProfiles } from "../utils/getProfile";
 import { hydrateUserBook } from "../utils/bookProgress";
 import {
@@ -250,6 +252,119 @@ const app = new Hono<AppEnv>()
         image: `${new URL(c.req.url).origin}/og/profile/${handle}/stats/${year}`,
       },
     );
+  })
+  .get("/profile/:handle/book/:rkey", async (c) => {
+    const handle = c.req.param("handle");
+    const rkey = c.req.param("rkey");
+
+    startTime(c, "resolveDid");
+    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    endTime(c, "resolveDid");
+
+    if (!did) {
+      c.status(404);
+      return c.render(
+        <ErrorPage
+          message="Profile not found"
+          description="This profile does not exist or has no books on BookHive."
+          statusCode={404}
+        />,
+        { title: "Profile Not Found" },
+      );
+    }
+
+    const uri = `at://${did}/${ids.BuzzBookhiveBook}/${rkey}`;
+    const rawUserBook = await c
+      .get("ctx")
+      .db.selectFrom("user_book")
+      .selectAll()
+      .where("uri", "=", uri)
+      .executeTakeFirst();
+
+    if (!rawUserBook) {
+      c.status(404);
+      return c.render(
+        <ErrorPage
+          message="Book not found"
+          description="This book is not in this user's library."
+          statusCode={404}
+        />,
+        { title: "Book Not Found" },
+      );
+    }
+
+    // Prefer the canonical /books/:hiveId page when we have one — it has full
+    // metadata, comments, recommendations, etc.
+    if (rawUserBook.hiveId) {
+      const hiveBook = await c
+        .get("ctx")
+        .db.selectFrom("hive_book")
+        .select("id")
+        .where("id", "=", rawUserBook.hiveId)
+        .executeTakeFirst();
+      if (hiveBook) {
+        return c.redirect(`/books/${rawUserBook.hiveId}`);
+      }
+    }
+
+    const sessionAgent = await c.get("ctx").getSessionAgent();
+    const userBook = hydrateUserBook(rawUserBook);
+
+    return c.render(
+      <UserBookInfo
+        userBook={userBook}
+        ownerHandle={handle}
+        isOwnProfile={sessionAgent?.did === did}
+      />,
+      {
+        title: `BookHive | ${userBook.title}`,
+        description: `${userBook.title} by ${userBook.authors.split("\t").join(", ")} — @${handle}'s library on BookHive`,
+      },
+    );
+  })
+  .post("/profile/:handle/book/:rkey/delete", async (c) => {
+    const agent = await c.get("ctx").getSessionAgent();
+    if (!agent) {
+      c.status(401);
+      return c.render(
+        <ErrorPage
+          message="Invalid Session"
+          description="Login to delete a book"
+          statusCode={401}
+        />,
+        { title: "Unauthorized" },
+      );
+    }
+    const handle = c.req.param("handle");
+    const rkey = c.req.param("rkey");
+    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    if (!did || did !== agent.did) {
+      c.status(403);
+      return c.render(
+        <ErrorPage
+          message="Forbidden"
+          description="You can only delete books from your own library."
+          statusCode={403}
+        />,
+        { title: "Forbidden" },
+      );
+    }
+
+    const uri = `at://${did}/${ids.BuzzBookhiveBook}/${rkey}`;
+    await agent.post("com.atproto.repo.deleteRecord", {
+      input: { repo: agent.did, collection: ids.BuzzBookhiveBook, rkey },
+    });
+    await c
+      .get("ctx")
+      .db.deleteFrom("user_book")
+      .where("userDid", "=", agent.did)
+      .where("uri", "=", uri)
+      .execute();
+
+    if (c.req.header("accept") === "application/json") {
+      return c.json({ success: true, uri });
+    }
+    return c.redirect(`/profile/${handle}`);
   })
   .get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");

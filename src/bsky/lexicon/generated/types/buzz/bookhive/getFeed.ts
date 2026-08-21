@@ -7,7 +7,10 @@ const _feedActivitySchema = /*#__PURE__*/ v.object({
   authors: /*#__PURE__*/ v.string(),
   cover: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   createdAt: /*#__PURE__*/ v.datetimeString(),
-  hiveId: /*#__PURE__*/ v.string(),
+  /**
+   * Optional — absent for foreign-lexicon or unresolved records. Fall back to `uri` for navigation.
+   */
+  hiveId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   review: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * @minimum 1
@@ -19,6 +22,10 @@ const _feedActivitySchema = /*#__PURE__*/ v.object({
   status: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   thumbnail: /*#__PURE__*/ v.string(),
   title: /*#__PURE__*/ v.string(),
+  /**
+   * AT-URI of the user's PDS record; always present and unique per row.
+   */
+  uri: /*#__PURE__*/ v.string(),
   userAvatar: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   userDid: /*#__PURE__*/ v.string(),
   userHandle: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),

@@ -127,7 +127,9 @@ const app = new Hono<AppEnv>()
       query = query.where("user_book.status", "in", statusFilter) as typeof query;
     }
 
-    const rows = await query.execute();
+    const rows = (await query.execute()).filter(
+      (r): r is typeof r & { hiveId: HiveId } => r.hiveId !== null,
+    );
 
     const handle = isDid(handleParam)
       ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)
@@ -259,7 +261,9 @@ ${itemsXml}
       query = query.where("user_book.status", "in", statusFilter) as typeof query;
     }
 
-    const rows = await query.execute();
+    const rows = (await query.execute()).filter(
+      (r): r is typeof r & { hiveId: HiveId } => r.hiveId !== null,
+    );
 
     const handle = isDid(handleParam)
       ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)

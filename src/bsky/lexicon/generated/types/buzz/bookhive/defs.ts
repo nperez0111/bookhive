@@ -7,14 +7,18 @@ const _activitySchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.defs#activity")),
   createdAt: /*#__PURE__*/ v.datetimeString(),
   /**
-   * The hive id of the book
+   * The hive id of the book. Absent for foreign-lexicon or unresolved records — clients should fall back to the user-scoped record (uri) for navigation.
    */
-  hiveId: /*#__PURE__*/ v.string(),
+  hiveId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * The title of the book
    */
   title: /*#__PURE__*/ v.string(),
   type: /*#__PURE__*/ v.string<"finished" | "rated" | "review" | "started" | (string & {})>(),
+  /**
+   * AT-URI of the user's PDS record for this book. Always present; use this as a stable identifier when hiveId is missing.
+   */
+  uri: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * The DID of the user who added the book
    */
@@ -223,9 +227,9 @@ const _userBookSchema = /*#__PURE__*/ v.object({
    */
   genres: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(/*#__PURE__*/ v.string())),
   /**
-   * The book's hive id, used to correlate user's books with the hive
+   * The book's hive id, used to correlate the user's book with the hive catalog. Absent for foreign-lexicon imports (e.g. Popfeed) or records the catalog hasn't yet matched. Clients should fall back to `uri` for stable identity.
    */
-  hiveId: /*#__PURE__*/ v.string(),
+  hiveId: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * External identifiers for the book
    */
@@ -297,6 +301,10 @@ const _userBookSchema = /*#__PURE__*/ v.object({
   title: /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.string(), [
     /*#__PURE__*/ v.stringLength(1, 512),
   ]),
+  /**
+   * AT-URI of the user's PDS record. Always present; use as a stable identifier and for the user-scoped detail page when hiveId is missing.
+   */
+  uri: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.string()),
   /**
    * The DID of the user who added the book
    */

@@ -34,19 +34,22 @@ const MAX_BOOKS_PER_SECTION = 20;
 function BookGrid({ books }: { books: UserBook[]; colors: any }) {
   return (
     <View style={styles.gridContainer}>
-      {books.map((book, index) => (
-        <View key={book.hiveId} style={styles.gridItem}>
-          <AnimatedListItem index={index}>
-            <BookCard
-              title={book.title}
-              authors={book.authors}
-              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
-              onPress={() => router.push(`/book/${book.hiveId}`)}
-              variant="dense"
-            />
-          </AnimatedListItem>
-        </View>
-      ))}
+      {books.map((book, index) => {
+        const key = book.uri ?? book.hiveId ?? `${book.userDid}-${book.title}-${index}`;
+        return (
+          <View key={key} style={styles.gridItem}>
+            <AnimatedListItem index={index}>
+              <BookCard
+                title={book.title}
+                authors={book.authors}
+                imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+                onPress={() => (book.hiveId ? router.push(`/book/${book.hiveId}`) : undefined)}
+                variant="dense"
+              />
+            </AnimatedListItem>
+          </View>
+        );
+      })}
     </View>
   );
 }

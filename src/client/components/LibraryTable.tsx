@@ -11,7 +11,14 @@ import {
 } from "./bookActions";
 
 type LibraryBook = {
-  hiveId: string;
+  /** Null for orphan rows (no hive_book yet); use bookUri to identify in API calls. */
+  hiveId: string | null;
+  /** AT-URI of the user's PDS record. Always present. Used as React key + identifier. */
+  bookUri: string;
+  /** Pre-computed link target: /books/:hiveId when hive-backed, else /profile/:handle/book/:rkey. */
+  bookHref: string;
+  /** Pre-computed delete target: same path conventions as bookHref. */
+  deleteUrl: string;
   title: string;
   authors: string;
   cover?: string | null;
@@ -27,6 +34,14 @@ type LibraryBook = {
 
 const FINISHED = "buzz.bookhive.defs#finished";
 
+function bookIdentifier(book: LibraryBook): { hiveId: string } | { bookUri: string } {
+  return book.hiveId ? { hiveId: book.hiveId } : { bookUri: book.bookUri };
+}
+
+function deleteIdentifier(book: LibraryBook): { hiveId: string } | { deleteUrl: string } {
+  return book.hiveId ? { hiveId: book.hiveId } : { deleteUrl: book.deleteUrl };
+}
+
 // --- Desktop row ---
 
 const TableRow: FC<{
@@ -36,7 +51,7 @@ const TableRow: FC<{
 }> = ({ book, onUpdate, onDelete }) => (
   <tr
     className="cursor-pointer transition-[background-color] duration-150 hover:bg-muted/60 active:bg-muted/80"
-    onClick={() => (window.location.href = `/books/${book.hiveId}`)}
+    onClick={() => (window.location.href = book.bookHref)}
   >
     <td className="overflow-hidden px-4 py-2">
       <div className="flex items-center space-x-3">
@@ -58,7 +73,7 @@ const TableRow: FC<{
         status={book.status}
         onChange={(status) => {
           onUpdate({ status });
-          void updateBook(book.hiveId, { status });
+          void updateBook(bookIdentifier(book), { status });
         }}
       />
     </td>
@@ -67,7 +82,7 @@ const TableRow: FC<{
         stars={book.stars}
         onChange={(stars) => {
           onUpdate({ stars });
-          void updateBook(book.hiveId, { stars });
+          void updateBook(bookIdentifier(book), { stars });
         }}
       />
     </td>
@@ -92,7 +107,7 @@ const TableRow: FC<{
             value={book.startedAt}
             onChange={(startedAt) => {
               onUpdate({ startedAt });
-              void updateBook(book.hiveId, { startedAt });
+              void updateBook(bookIdentifier(book), { startedAt });
             }}
           />
         </div>
@@ -115,7 +130,7 @@ const TableRow: FC<{
             value={book.finishedAt}
             onChange={(finishedAt) => {
               onUpdate({ finishedAt });
-              void updateBook(book.hiveId, { finishedAt });
+              void updateBook(bookIdentifier(book), { finishedAt });
             }}
           />
         </div>
@@ -125,7 +140,7 @@ const TableRow: FC<{
       <DeleteButton
         onDelete={() => {
           onDelete();
-          void deleteBook(book.hiveId);
+          void deleteBook(deleteIdentifier(book));
         }}
       />
     </td>
@@ -141,7 +156,7 @@ const MobileCard: FC<{
 }> = ({ book, onUpdate, onDelete }) => (
   <div className="card transition-[box-shadow] duration-150 active:shadow-none">
     <div className="card-body flex gap-3">
-      <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
+      <a href={book.bookHref} className="flex flex-1 min-w-0 gap-3">
         <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
@@ -162,7 +177,7 @@ const MobileCard: FC<{
           status={book.status}
           onChange={(status) => {
             onUpdate({ status });
-            void updateBook(book.hiveId, { status });
+            void updateBook(bookIdentifier(book), { status });
           }}
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -191,7 +206,7 @@ const MobileCard: FC<{
               value={book.startedAt}
               onChange={(startedAt) => {
                 onUpdate({ startedAt });
-                void updateBook(book.hiveId, { startedAt });
+                void updateBook(bookIdentifier(book), { startedAt });
               }}
             />
           </div>
@@ -214,7 +229,7 @@ const MobileCard: FC<{
               value={book.finishedAt}
               onChange={(finishedAt) => {
                 onUpdate({ finishedAt });
-                void updateBook(book.hiveId, { finishedAt });
+                void updateBook(bookIdentifier(book), { finishedAt });
               }}
             />
           </div>
@@ -224,7 +239,7 @@ const MobileCard: FC<{
           className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
           onClick={() => {
             onDelete();
-            void deleteBook(book.hiveId);
+            void deleteBook(deleteIdentifier(book));
           }}
         >
           Remove
@@ -253,12 +268,12 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
     });
   }, [books]);
 
-  const updateBook_ = (hiveId: string, fields: Partial<LibraryBook>) => {
-    setBooks((prev) => prev.map((b) => (b.hiveId === hiveId ? { ...b, ...fields } : b)));
+  const updateBook_ = (bookUri: string, fields: Partial<LibraryBook>) => {
+    setBooks((prev) => prev.map((b) => (b.bookUri === bookUri ? { ...b, ...fields } : b)));
   };
 
-  const deleteBook_ = (hiveId: string) => {
-    setBooks((prev) => prev.filter((b) => b.hiveId !== hiveId));
+  const deleteBook_ = (bookUri: string) => {
+    setBooks((prev) => prev.filter((b) => b.bookUri !== bookUri));
   };
 
   if (!books.length) {
@@ -313,10 +328,10 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           <tbody className="divide-y divide-border bg-card">
             {sortedBooks.map((book) => (
               <TableRow
-                key={book.hiveId}
+                key={book.bookUri}
                 book={book}
-                onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-                onDelete={() => deleteBook_(book.hiveId)}
+                onUpdate={(fields) => updateBook_(book.bookUri, fields)}
+                onDelete={() => deleteBook_(book.bookUri)}
               />
             ))}
           </tbody>
@@ -327,10 +342,10 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
       <div className="space-y-4 md:hidden">
         {sortedBooks.map((book) => (
           <MobileCard
-            key={book.hiveId}
+            key={book.bookUri}
             book={book}
-            onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-            onDelete={() => deleteBook_(book.hiveId)}
+            onUpdate={(fields) => updateBook_(book.bookUri, fields)}
+            onDelete={() => deleteBook_(book.bookUri)}
           />
         ))}
       </div>

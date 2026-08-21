@@ -17,19 +17,23 @@ export const STATUS_LABELS: Record<string, string> = {
 const selectClass =
   "w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none";
 
-export async function updateBook(hiveId: string, fields: Record<string, unknown>) {
+export async function updateBook(
+  identifier: { hiveId: string } | { bookUri: string },
+  fields: Record<string, unknown>,
+) {
   try {
     await fetch("/api/update-book", {
       method: "POST",
       headers: { "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ hiveId, ...fields }),
+      body: JSON.stringify({ ...identifier, ...fields }),
     });
   } catch {}
 }
 
-export async function deleteBook(hiveId: string) {
+export async function deleteBook(identifier: { hiveId: string } | { deleteUrl: string }) {
   try {
-    await fetch(`/books/${hiveId}`, {
+    const url = "hiveId" in identifier ? `/books/${identifier.hiveId}` : identifier.deleteUrl;
+    await fetch(url, {
       method: "DELETE",
       headers: { accept: "application/json" },
     });

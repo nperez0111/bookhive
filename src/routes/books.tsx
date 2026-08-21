@@ -231,7 +231,8 @@ const app = new Hono<AppEnv>()
       z.object({
         authors: z.string(),
         title: z.string(),
-        hiveId: z.string(),
+        hiveId: z.string().optional(),
+        bookUri: z.string().optional(),
         status: z.string().optional(),
         coverImage: z.string().optional(),
         startedAt: z.string().optional(),
@@ -284,6 +285,7 @@ const app = new Hono<AppEnv>()
           status,
           owned,
           hiveId,
+          bookUri,
           coverImage,
           startedAt,
           finishedAt,
@@ -295,6 +297,18 @@ const app = new Hono<AppEnv>()
           totalChapters,
           percent,
         } = c.req.valid("form");
+
+        if (!hiveId && !bookUri) {
+          c.status(400);
+          return c.render(
+            <ErrorPage
+              message="Missing book identifier"
+              description="Either hiveId or bookUri is required."
+              statusCode={400}
+            />,
+            { title: "Bad Request" },
+          );
+        }
 
         let bookProgress: Record<string, unknown> | undefined;
         if (currentPage || totalPages || currentChapter || totalChapters || percent !== undefined) {
@@ -339,18 +353,19 @@ const app = new Hono<AppEnv>()
         }
 
         try {
-          await c.get("ctx").kv.setItem(bookLockKey, hiveId);
+          await c.get("ctx").kv.setItem(bookLockKey, hiveId ?? bookUri!);
           startTime(c, "pds_update_book");
           await updateBookRecord({
             ctx: c.get("ctx"),
             agent,
-            hiveId: hiveId as HiveId,
+            hiveId: hiveId ? (hiveId as HiveId) : undefined,
+            bookUri,
             updates: {
               authors,
               title,
               status,
               owned,
-              hiveId,
+              ...(hiveId ? { hiveId } : {}),
               coverImage,
               startedAt,
               finishedAt,
@@ -375,7 +390,15 @@ const app = new Hono<AppEnv>()
         } finally {
           await c.get("ctx").kv.del(bookLockKey);
         }
-        const redirectTo = c.req.query("redirect") || `/books/${hiveId}`;
+        let defaultRedirect: string;
+        if (hiveId) {
+          defaultRedirect = `/books/${hiveId}`;
+        } else {
+          const handle = (await c.get("ctx").resolver.resolveDidToHandle(agent.did)) ?? agent.did;
+          const rkey = bookUri!.split("/").at(-1)!;
+          defaultRedirect = `/profile/${handle}/book/${rkey}`;
+        }
+        const redirectTo = c.req.query("redirect") || defaultRedirect;
         return c.redirect(redirectTo);
       } catch (err) {
         c.set("requestError", err);

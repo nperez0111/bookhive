@@ -8,6 +8,7 @@ import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
+import type { HiveId } from "../types";
 import { BookFields } from "../db";
 import { createContextMiddleware } from "../context";
 import { loginRouter } from "../auth/router";
@@ -30,7 +31,6 @@ import {
   proxyImageResponse,
   queryToModifiers,
 } from "../utils/imageProxy";
-import type { HiveId } from "../types";
 import { createXrpcRouter } from "../xrpc/router";
 import {
   searchBooks,
@@ -221,9 +221,13 @@ export function mainRouter(deps: AppDeps): HonoServer {
             .selectFrom("user_book")
             .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
             .select(BookFields)
+            .where("user_book.hiveId", "is not", null)
             .orderBy("user_book.createdAt", "desc")
             .limit(10)
-            .execute(),
+            .execute()
+            .then((rows) =>
+              rows.filter((r): r is typeof r & { hiveId: HiveId } => r.hiveId !== null),
+            ),
         ]);
         endTime(c, "marketing_trending");
         endTime(c, "marketing_recent");
