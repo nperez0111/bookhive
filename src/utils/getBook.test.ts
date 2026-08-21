@@ -390,18 +390,11 @@ describe("updateBookRecord", () => {
     expect(names()).toEqual(["putRecord"]);
   });
 
-  it("drops a follow-up patch that loses the CAS race", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch: () =>
-        new Response(
-          Buffer.from(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-            "base64",
-          ),
-          { headers: { "content-type": "image/png" } },
-        ),
-    });
+  it("re-reads and re-applies the patch after losing the CAS race", async () => {
+    // The common race: the user's next edit (a rating click) lands while the
+    // cover is still uploading. Dropping the patch here lost the cover for
+    // good — no later write re-supplies it.
+    const server = coverServer();
     try {
       const { pds, agent, names } = fakePds();
       const { followUp } = await updateBookRecord({
@@ -411,12 +404,57 @@ describe("updateBookRecord", () => {
         updates: { status: WANTTOREAD, coverImage: `${server.url}cover.png` },
       });
       // Someone else writes before the cover lands.
-      pds.record = { value: pds.record!.value, cid: "cid-elsewhere" };
+      pds.record = { value: { ...pds.record!.value, stars: 9 }, cid: "cid-elsewhere" };
 
-      await expect(followUp).resolves.toBe("conflict");
-      expect(names()).toEqual(["createRecord", "uploadBlob", "putRecord"]);
+      await expect(followUp).resolves.toBe("completed");
+      expect(names()).toEqual([
+        "createRecord",
+        "uploadBlob",
+        "putRecord",
+        "getRecord",
+        "putRecord",
+      ]);
+      // The winner's change survives, with the cover patched on top of it.
+      expect(pds.record?.value.stars).toBe(9);
+      expect(pds.record?.value.cover).toEqual(COVER as BookRecordValue["cover"]);
+      // The blob was uploaded once; only the write retried.
+      expect(pds.blobsUploaded).toBe(1);
+      // The row was not ours to update (its cid predates the winner); the
+      // user's next write CAS-fails once, re-reads, and self-heals.
       const row = await getUserBook({ ctx, agent, hiveId: HIVE_ID });
       expect(row?.cid).toBe("cid1");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it("gives up as a conflict when the CAS race never resolves", async () => {
+    const server = coverServer();
+    try {
+      const { agent, names } = fakePds();
+      const { followUp, userBook } = await updateBookRecord({
+        ctx,
+        agent,
+        hiveId: HIVE_ID,
+        updates: { status: WANTTOREAD, coverImage: `${server.url}cover.png` },
+      });
+      // A pathological PDS that refuses every swap, however fresh the cid.
+      let putAttempts = 0;
+      const rawPost = agent.post.bind(agent);
+      (agent as { post: unknown }).post = async (name: string, opts?: Record<string, unknown>) => {
+        if (name === "com.atproto.repo.putRecord") {
+          putAttempts++;
+          return { ok: false, data: { error: "InvalidSwap", message: "never" } };
+        }
+        return rawPost(name as Parameters<typeof rawPost>[0], opts as never);
+      };
+
+      await expect(followUp).resolves.toBe("conflict");
+      // Bounded: three write attempts, a re-read between each.
+      expect(putAttempts).toBe(3);
+      expect(names().filter((n) => n === "getRecord")).toHaveLength(2);
+      const row = await getUserBook({ ctx, agent, hiveId: HIVE_ID });
+      expect(row?.cid).toBe(userBook.cid);
       expect(row?.record?.cover).toBeUndefined();
     } finally {
       await server.stop(true);

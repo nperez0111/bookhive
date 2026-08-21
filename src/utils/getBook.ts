@@ -11,7 +11,7 @@ import { findBookIdentifiersByLookup } from "../bsky/bookLookup";
 import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
-import { INVALID_SWAP, writeBookRecord } from "./bookRecordWrite";
+import { getBookRecord, INVALID_SWAP, writeBookRecord } from "./bookRecordWrite";
 import { ensureBookCataloged, getCatalogedBookUri } from "./ensureBookCataloged";
 import { completeUserBookRecord, type FollowUpOutcome } from "./userBookFollowUp";
 import {
@@ -23,6 +23,7 @@ import {
 
 // Re-exported: the import worker and its tests import these from here.
 export { getUserBook, updateUserBook } from "./userBookStore";
+export { getBookRecord } from "./bookRecordWrite";
 
 /**
  * Normalize a date string to a full ISO datetime.
@@ -138,33 +139,6 @@ function inferBookStatusAndDates(
     status: autoStatus,
     startedAt: autoStartedAt,
     finishedAt: autoFinishedAt,
-  };
-}
-
-/** Current record on the PDS. Not pinned to a cid: a stale pin 404s and looked like "no record". */
-export async function getBookRecord({
-  agent,
-  uri,
-}: {
-  agent: Pick<SessionClient, "did" | "get">;
-  uri: string;
-}): Promise<{ value: BookRecord.Record; cid: string } | null> {
-  const res = await agent.get("com.atproto.repo.getRecord", {
-    params: {
-      repo: agent.did,
-      collection: ids.BuzzBookhiveBook,
-      rkey: uri.split("/").at(-1)!,
-    },
-  });
-  const payload = res.ok ? (res.data as { value?: unknown; cid?: string }) : null;
-  // A cid is required: there is nothing to compare-and-swap on without one.
-  if (!payload?.value || !payload.cid) return null;
-  // A record failing our validator is still the user's record; merging onto it
-  // is how the offending field gets overwritten. Refusing bricks the book.
-  const parsed = BookRecord.validateRecord(payload.value);
-  return {
-    value: (parsed.success ? parsed.value : payload.value) as BookRecord.Record,
-    cid: payload.cid,
   };
 }
 

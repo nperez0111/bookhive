@@ -547,7 +547,7 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `getBook.ts`            | Book record CRUD against user's PDS. `updateBookRecord` is the interactive write — see "The book write path" below                                                                                                                                                                                                                                                                                                            |
 | `userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook` (local merge source). Apart from `getBook.ts` so the follow-up can import it without a cycle                                                                                                                                                                                                                                                                               |
 | `bookRecordWrite.ts`    | CAS write of a book record (`putRecord` + `swapRecord`, `createRecord` for new). There is deliberately no unguarded variant                                                                                                                                                                                                                                                                                                   |
-| `userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd on the cid the request wrote, dropped on conflict. Outcomes in `bookhive_user_book_follow_up_total`                                                                                                                                                                                                                                                |
+| `userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, and on conflict re-read and re-applied (3 attempts) — see the write-path note. Outcomes in `bookhive_user_book_follow_up_total`                                                                                                                                                                                                                   |
 | `userBookView.ts`       | `UserBookView` + `toUserBookView` — the wire shape for book-state reads/writes                                                                                                                                                                                                                                                                                                                                                |
 | `getProfile.ts`         | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `getFollows.ts`         | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -598,9 +598,16 @@ It used to be two to four plus a scrape. Four things keep it correct:
   "no status" (that downgraded finished books on a date edit), and a date is restamped only when
   the book actually enters that status (else a rating save rewrote the user's start date).
 - **Cover and catalogue link are patched in after the response** (`userBookFollowUp.ts`), CAS'd
-  on the cid the request wrote and dropped on conflict. It writes only `cid`/`indexedAt`/`record`
-  — replaying the whole row reverted column-only writes. Outcomes land in
-  `bookhive_user_book_follow_up_total`; the request's wide event is gone by then.
+  on the cid the request wrote. **A lost CAS race is re-read and re-applied (3 attempts), not
+  dropped** — losing to the user's own next edit is the _common_ case (first add, then a rating
+  click while the cover uploads), and nothing ever re-supplies the cover: the island sends no
+  `coverImage` and the merge builds from a record without one, so a dropped patch lost the
+  cover for good. The blob upload/scrape run once; only the write retries, patching only the
+  fields the fresh record still lacks. The row update stays guarded on the cid that was
+  swapped on, so a row that moved on is left alone (the next write CAS-heals it). It writes
+  only `cid`/`indexedAt`/`record` — replaying the whole row reverted column-only writes.
+  Outcomes land in `bookhive_user_book_follow_up_total`; the request's wide event is gone by
+  then.
 
 ### The upload core (`src/utils/uploadPersonalBook.ts`)
 
