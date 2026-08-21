@@ -1,4 +1,4 @@
-import { useState, useRef, type FC } from "hono/jsx/dom";
+import { useEffect, useState, useRef, type FC } from "hono/jsx/dom";
 
 type StarType = "full" | "half" | "empty";
 
@@ -23,6 +23,8 @@ export function calculateStars(rating: number): StarType[] {
 
 export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange }) => {
   const [rating, setRating] = useState(initialRating);
+  // Follow the prop so a server reconcile or a rollback is visible here.
+  useEffect(() => setRating(initialRating), [initialRating]);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -58,8 +60,13 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
   };
 
   const handleMouseDown = (event: MouseEvent) => {
-    setIsDragging(true);
     const newRating = calculateRatingFromEvent(event);
+    // A click on the leftmost sliver computes 0, which consumers treat as "no
+    // change" — painting it would strand the widget at empty, since the prop
+    // never moves back. Bail before entering the drag state: a no-op click
+    // that set it left hover previews suppressed until the next mouseup.
+    if (!newRating) return;
+    setIsDragging(true);
     setRating(newRating);
     onChange?.(newRating);
   };

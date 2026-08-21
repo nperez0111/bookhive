@@ -1066,6 +1066,18 @@ migrations["024"] = {
   },
 };
 
+migrations["025"] = {
+  async up(db: Kysely<unknown>) {
+    // Last PDS record seen for the row, so a write can merge locally instead
+    // of a getRecord round-trip per status click. Nullable: older rows fall
+    // back to the network read until the ingester refreshes them.
+    await db.schema.alterTable("user_book").addColumn("record", "text").execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("user_book").dropColumn("record").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

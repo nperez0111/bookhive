@@ -52,7 +52,7 @@ Worker threads (bundled to .output/server/workers/):
 
 **Key patterns:**
 
-- Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`). Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
+- Server components (`src/pages/`) render full HTML. Only 6 islands are hydrated client-side (`src/client/`); one of them, the book page's `BookIslands`, renders into three mount points. Most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
 - **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — the code defaults to 4, but the deployed container sets **3** (verified on the host), which is the number every memory ceiling in this document is derived from. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
 - **Enrichment is queued, never inline**: routes call `enqueueEnrichment`/`enqueueEnrichmentBatch` (`src/utils/enrichQueue.ts`). The primary worker drains it every 5s at concurrency 3, with exponential backoff. `enrichBookWithDetailedData` holds its own semaphore (4) + 45s deadline. That drain interval × concurrency is also the **only** rate limit on requests to Goodreads — 36 fetches/min, healthy or not. Don't add a second one.
 - **`enrich_queue.attempts` counts answers from Goodreads, not failures.** A run reports `enrich_retry` in the wide-event bag: `retry` spends an attempt, `defer` costs nothing and re-queues on a decaying schedule, `dead` tombstones the book immediately. Anything the app decided on its own — a WAF challenge, a timeout, a transport error — is a `defer`. Getting this wrong is expensive: when refusals counted as attempts, one 6h window wrote off 2,854 books for 7 days apiece **without sending a single request on their behalf** (98% of everything the queue gave up on). The bound on defers is `MAX_QUEUE_AGE_MS` (7d from `enqueuedAt`, which survives re-enqueue), not the attempt counter.
@@ -95,13 +95,13 @@ Wide content (the library/import tables) already clips itself, so `<main>` does 
 
 ## Entry Points
 
-| File                   | Purpose                                                             |
-| ---------------------- | ------------------------------------------------------------------- |
-| `src/index.ts`         | Bun.serve — HTML bundle route + Hono fetch handler                  |
-| `src/server.ts`        | Wires deps via `createAppDeps()` + `createApp()`; graceful shutdown |
-| `src/app.ts`           | Hono app factory — all middleware + route mounting                  |
-| `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)                     |
-| `src/client/index.tsx` | Client bundle entry — mounts 6 hydrated components                  |
+| File                   | Purpose                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `src/index.ts`         | Bun.serve — HTML bundle route + Hono fetch handler                             |
+| `src/server.ts`        | Wires deps via `createAppDeps()` + `createApp()`; graceful shutdown            |
+| `src/app.ts`           | Hono app factory — all middleware + route mounting                             |
+| `src/entry.html`       | Bun HTML bundle entry (imports CSS + client JS)                                |
+| `src/client/index.tsx` | Client bundle entry — mounts the hydrated islands (see Client-Side Components) |
 
 ## Routes
 
@@ -214,7 +214,7 @@ Two traps this encodes, both of which caused real bugs:
 
 - GET `/:hiveId` → `src/pages/bookInfo.tsx` — book detail. `hiveId` must match `^bk_[A-Za-z0-9]+$`. Stale books (>30d) queued for enrichment; `?force-refresh=true` enriches inline with 15s ceiling
 - DELETE `/:hiveId` → delete book from PDS + DB
-- POST `/` → add/update book (zValidator form); per-DID `book_lock` KV, 429 if locked
+- POST `/` → add/update book (zValidator form); per-DID `book_lock` KV, 429 if locked. Answers `{ success, userBook: UserBookView }` when the request's `Accept` includes `application/json`, otherwise a 302 back to the book (the no-JS path)
 - GET `/:hiveId/comments` → `src/pages/comments.tsx`
 
 ### `src/routes/comments.tsx` (mounted at `/comments`)
@@ -250,7 +250,12 @@ Personal library: ebook uploads, e-reader credentials, sync documents. All auth-
 
 ### `src/routes/api.tsx` (mounted at `/api`)
 
-- POST `/update-book`, `/update-comment`
+- GET `/user-book?hiveId=` → `{ userBook: UserBookView | null }` for the signed-in viewer. Cookie DID only (`getSessionDid`) — no OAuth restore, it never touches the PDS
+- POST `/update-book` → JSON write; returns `{ success, message, userBook: UserBookView }`
+- POST `/update-comment` → create/update a buzz on a book
+
+**`UserBookView`** (`src/utils/userBookView.ts`) is the one shape every book-state write returns and the read answers with — the `user_book` row minus `userDid` and the raw PDS `record`, with `owned` as a boolean. It exists so a client can update optimistically and reconcile with what was actually written instead of reloading the page.
+
 - POST `/follow`, `/follow-form`, `/unfollow`, `/unfollow-form`
 
 ### `src/routes/rss.ts` (mounted at `/rss`)
@@ -444,14 +449,31 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 
 6 hydration islands, mounted in `src/client/index.tsx`:
 
-| Component        | Mount Point              | File                                              |
-| ---------------- | ------------------------ | ------------------------------------------------- |
-| `SearchTrigger`  | `#mount-search-box`      | `src/client/components/SearchBox.tsx`             |
-| `SearchPalette`  | `#mount-search-palette`  | `src/client/components/SearchPalette.tsx`         |
-| `StarRating`     | `#star-rating`           | `src/client/components/StarRating.tsx`            |
-| `ImportTableApp` | `#import-table`          | `src/client/components/import/ImportTableApp.tsx` |
-| `LibraryTable`   | `#mount-library-table`   | `src/client/components/LibraryTable.tsx`          |
-| `LibraryManager` | `#mount-library-manager` | `src/client/components/LibraryManager.tsx`        |
+| Component        | Mount Point                                                               | File                                              |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------------------------- |
+| `SearchTrigger`  | `#mount-search-box`                                                       | `src/client/components/SearchBox.tsx`             |
+| `SearchPalette`  | `#mount-search-palette`                                                   | `src/client/components/SearchPalette.tsx`         |
+| `BookIslands`    | `#mount-book-actions` (+ `#mount-book-timestamp`, `#mount-book-activity`) | `src/client/components/book/index.tsx`            |
+| `ImportTableApp` | `#import-table`                                                           | `src/client/components/import/ImportTableApp.tsx` |
+| `LibraryTable`   | `#mount-library-table`                                                    | `src/client/components/LibraryTable.tsx`          |
+| `LibraryManager` | `#mount-library-manager`                                                  | `src/client/components/LibraryManager.tsx`        |
+
+**`BookIslands`** (`src/client/components/book/`) is the signed-in half of `/books/:id`: status
+and owned in the hero card, the timestamp line, and the whole "Your Activity" card. One
+`createUserBookStore` per page holds `{ view, confirmed, pending, error }` and the three
+components subscribe with `useSyncExternalStore` — they can't share a root, being cards apart.
+Props are JSON in `#mount-book-actions[data-props]`, built in `src/pages/bookInfo.tsx`.
+
+- **Changes are optimistic and replaced by the server's `UserBookView`.** `applyOptimistic`
+  mirrors `inferBookStatusAndDates`, so it must be updated whenever that is: a payload asserting
+  no status must leave status and dates alone, or the frame flickers back.
+- **Writes are serialised**, and a response never overwrites `view` while later ones are queued.
+  A delete blocks writes for its whole duration — the server re-creates the record otherwise.
+- **The server-rendered forms inside the mounts are the pre-hydration paint** and all a no-JS
+  visitor gets, so they keep their own inline `<Script>` handlers. Don't delete those again.
+
+`StarRating` is no longer mounted on its own; the activity panel renders it, and it follows its
+`initialRating` prop so a rollback or reconcile shows in the stars.
 
 `LibraryManager` sub-components in `src/client/components/library/`: `AnchoredMenu.tsx`, `ShelfTabs.tsx`, `PersonalBookCard.tsx`, `SyncDocumentSections.tsx`, `types.ts`.
 
@@ -464,13 +486,13 @@ Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`, `icons.tsx`, `debounc
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–024) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
+SQLite via Kysely. Schema + all migrations (001–025) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
 
 That wrapper also decides `statement.reader`, which is how Kysely picks `all()` (rows) over `run()` (changes). **It asks SQLite — `stmt.columnNames` is empty for anything that doesn't produce rows — rather than pattern-matching the SQL text.** The old regex was anchored on a leading `SELECT`, so `WITH cte AS (…) SELECT …` was classified as a write and Kysely got **zero rows with no error of any kind**; the author-directory cover lookup is a window function over a CTE and silently returned nothing. `columnNames` also gets the converse right, which a regex struggles with: `WITH cte AS (…) INSERT INTO …` is not a reader.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_book`           | User's book records       | uri (PK), userDid, hiveId, title, authors, status, **stars** (not `rating`), review, startedAt, finishedAt, **owned** (bool), bookProgress, previousReads (JSON)                                         |
+| `user_book`           | User's book records       | uri (PK), userDid, hiveId, title, authors, status, **stars** (not `rating`), review, startedAt, finishedAt, **owned** (bool), bookProgress, previousReads (JSON), **record** (JSON, mig 025 — see below) |
 | `hive_book`           | Canonical book data       | id (HiveId, PK), title, authors (**tab-separated**), cover, thumbnail, description, rating, ratingsCount, series, meta, enrichedAt, enrichAttempts, enrichFailedAt, identifiers, hiveBookAtUri, language |
 | `hive_book_genre`     | Genre-to-book mapping     | hiveId, genre (UNIQUE pair). **Genres live ONLY here**                                                                                                                                                   |
 | `hive_book_fts`       | FTS5 search index         | External-content FTS5 over `hive_book(title, rawTitle, authors)`, trigger-maintained. Never written directly. **Rebuilt after VACUUM** — see below                                                       |
@@ -522,7 +544,11 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 | File                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getBook.ts`            | Book record CRUD against user's PDS                                                                                                                                                                                                                                                                                                                                                                                           |
+| `getBook.ts`            | Book record CRUD against user's PDS. `updateBookRecord` is the interactive write — see "The book write path" below                                                                                                                                                                                                                                                                                                            |
+| `userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook` (local merge source). Apart from `getBook.ts` so the follow-up can import it without a cycle                                                                                                                                                                                                                                                                               |
+| `bookRecordWrite.ts`    | CAS write of a book record (`putRecord` + `swapRecord`, `createRecord` for new). There is deliberately no unguarded variant                                                                                                                                                                                                                                                                                                   |
+| `userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, and on conflict re-read and re-applied (3 attempts) — see the write-path note. Outcomes in `bookhive_user_book_follow_up_total`                                                                                                                                                                                                                   |
+| `userBookView.ts`       | `UserBookView` + `toUserBookView` — the wire shape for book-state reads/writes                                                                                                                                                                                                                                                                                                                                                |
 | `getProfile.ts`         | Profile fetching from Bluesky                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `getFollows.ts`         | Follow graph sync                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `enrichBookData.ts`     | Goodreads enrichment (semaphore-bounded, 45s deadline)                                                                                                                                                                                                                                                                                                                                                                        |
@@ -552,6 +578,36 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `manifest.ts`           | Vite manifest → asset URLs                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `xml.ts`                | XML utilities                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Other                   | `getLanguages.ts`, `catalogBookService.ts`, `deleteAccount.ts`, `dbExport.ts`, `generateInitialsAvatar.ts`, `htmlToText.ts`, `batchTransform.ts`, `lazy.ts`, `hiveBookGenres.ts`, `ensureBookCataloged.ts`, `uploadImageBlob.ts`                                                                                                                                                                                              |
+
+### The book write path (`src/utils/getBook.ts` → `updateBookRecord`)
+
+Every status click, rating and review edit goes through here, so it is **one PDS round-trip**.
+It used to be two to four plus a scrape. Four things keep it correct:
+
+- **The merge source is the local row, not the PDS.** `user_book.record` (migration 025) holds
+  the last record seen, because it carries three fields the columns don't — `cover`,
+  `identifiers`, `hiveBookUri` — and merging without them strips them. `recordFromUserBook`
+  rebuilds it with **columns winning**: KOSync progress and `owned` from an upload reach the row
+  before the PDS. Every full-record writer sets the column; a null one falls back to `getRecord`.
+  The wide event says which: `book_merge_source: local | pds | pds_after_conflict`.
+- **The write is compare-and-swapped** on the cid we merged against (`bookRecordWrite.ts`). On
+  `InvalidSwap` the record is re-read once and re-merged. `applyWrites` only offers `swapCommit`
+  (the whole repo), hence `putRecord`.
+- **Partial payloads must not invent state.** The island sends only what changed, so
+  `inferBookStatusAndDates` reads status _and_ dates off the record too: a missing status is not
+  "no status" (that downgraded finished books on a date edit), and a date is restamped only when
+  the book actually enters that status (else a rating save rewrote the user's start date).
+- **Cover and catalogue link are patched in after the response** (`userBookFollowUp.ts`), CAS'd
+  on the cid the request wrote. **A lost CAS race is re-read and re-applied (3 attempts), not
+  dropped** — losing to the user's own next edit is the _common_ case (first add, then a rating
+  click while the cover uploads), and nothing ever re-supplies the cover: the island sends no
+  `coverImage` and the merge builds from a record without one, so a dropped patch lost the
+  cover for good. The blob upload/scrape run once; only the write retries, patching only the
+  fields the fresh record still lacks. The row update stays guarded on the cid that was
+  swapped on, so a row that moved on is left alone (the next write CAS-heals it). It writes
+  only `cid`/`indexedAt`/`record` — replaying the whole row reverted column-only writes.
+  Outcomes land in `bookhive_user_book_follow_up_total`; the request's wide event is gone by
+  then.
 
 ### The upload core (`src/utils/uploadPersonalBook.ts`)
 

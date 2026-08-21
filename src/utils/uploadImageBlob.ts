@@ -6,7 +6,7 @@ export type { BlobRef };
 
 export async function uploadImageBlob(
   image: string | undefined | null,
-  agent: SessionClient,
+  agent: Pick<SessionClient, "post">,
   maxWidth?: number,
 ): Promise<BlobRef | undefined> {
   if (!image) return undefined;

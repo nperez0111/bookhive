@@ -6,13 +6,24 @@ import { parseISO, isValid } from "date-fns";
 
 import type { BookUtilContext } from "../context";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
-import type { HiveId, UserBook, UserBookRow } from "../types";
+import type { BookIdentifiers, HiveId, UserBook } from "../types";
 import { findBookIdentifiersByLookup } from "../bsky/bookLookup";
 import { toBookIdentifiersOutput } from "./bookIdentifiers";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
-import { hydrateUserBook, serializeUserBook } from "./bookProgress";
-import { ensureBookCataloged } from "./ensureBookCataloged";
+import { getBookRecord, INVALID_SWAP, writeBookRecord } from "./bookRecordWrite";
+import { ensureBookCataloged, getCatalogedBookUri } from "./ensureBookCataloged";
+import { completeUserBookRecord, type FollowUpOutcome } from "./userBookFollowUp";
+import {
+  getUserBook,
+  recordFromUserBook,
+  updateUserBook,
+  userBookFromRecord,
+} from "./userBookStore";
+
+// Re-exported: the import worker and its tests import these from here.
+export { getUserBook, updateUserBook } from "./userBookStore";
+export { getBookRecord } from "./bookRecordWrite";
 
 /**
  * Normalize a date string to a full ISO datetime.
@@ -61,7 +72,18 @@ function inferBookStatusAndDates(
     startedAt?: string;
     finishedAt?: string;
   },
-  { skipAutoDate = false }: { skipAutoDate?: boolean } = {},
+  {
+    skipAutoDate = false,
+    existing,
+  }: {
+    skipAutoDate?: boolean;
+    /** What the record already says, so a partial update can't rewrite it. */
+    existing?: {
+      status?: string | undefined;
+      startedAt?: string | undefined;
+      finishedAt?: string | undefined;
+    };
+  } = {},
 ): {
   status: string | undefined;
   startedAt: string | undefined;
@@ -71,17 +93,22 @@ function inferBookStatusAndDates(
   let autoFinishedAt = updates.finishedAt;
   let autoStatus = updates.status;
 
+  // "unset" must mean unset on the *record*, not merely absent from this
+  // payload: the island posts only what changed, so reading a missing status
+  // as "none" downgraded a finished book to Reading on a date edit.
+  const currentStatus = updates.status ?? existing?.status;
+
   // If user sets startedAt and status is "want to read" or unset, infer they're reading
-  if (updates.startedAt && (!updates.status || updates.status === BOOK_STATUS.WANTTOREAD)) {
+  if (updates.startedAt && (!currentStatus || currentStatus === BOOK_STATUS.WANTTOREAD)) {
     autoStatus = BOOK_STATUS.READING;
   }
 
   // If user sets finishedAt and status is "want to read", "reading", or unset, infer they're finished
   if (
     updates.finishedAt &&
-    (!updates.status ||
-      updates.status === BOOK_STATUS.WANTTOREAD ||
-      updates.status === BOOK_STATUS.READING)
+    (!currentStatus ||
+      currentStatus === BOOK_STATUS.WANTTOREAD ||
+      currentStatus === BOOK_STATUS.READING)
   ) {
     autoStatus = BOOK_STATUS.FINISHED;
   }
@@ -90,10 +117,15 @@ function inferBookStatusAndDates(
   // Use the current full timestamp so we record when the action happened,
   // matching the behavior of createdAt.
   // Imports pass skipAutoDate to avoid stamping today when the source has no date.
+  // Stamp when a book *enters* a status, not whenever it is in one: a rating
+  // save on an already-Reading book carries no dates and must not restamp
+  // them, while a book finished in 2020 and read again now must not keep 2020.
+  const alreadyReading = existing?.status === BOOK_STATUS.READING && !!existing.startedAt;
+  const alreadyFinished = existing?.status === BOOK_STATUS.FINISHED && !!existing.finishedAt;
   if (!skipAutoDate) {
-    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt) {
+    if (autoStatus === BOOK_STATUS.READING && !updates.startedAt && !alreadyReading) {
       autoStartedAt = new Date().toISOString();
-    } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt) {
+    } else if (autoStatus === BOOK_STATUS.FINISHED && !updates.finishedAt && !alreadyFinished) {
       autoFinishedAt = new Date().toISOString();
     }
   }
@@ -110,132 +142,22 @@ function inferBookStatusAndDates(
   };
 }
 
-export async function getUserBook({
-  ctx,
-  agent,
-  hiveId,
-}: {
-  ctx: Pick<BookUtilContext, "db">;
-  agent: SessionClient;
-  hiveId: HiveId;
-}): Promise<UserBook | null> {
-  const rawUserBook = await ctx.db
-    .selectFrom("user_book")
-    .selectAll()
-    .where("userDid", "=", agent.did)
-    .where("hiveId", "=", hiveId)
-    .executeTakeFirst();
-
-  if (!rawUserBook) {
-    return null;
-  }
-
-  return hydrateUserBook(rawUserBook);
-}
-
-export async function updateUserBook({
-  ctx,
-  userBook,
-}: {
-  ctx: Pick<BookUtilContext, "db">;
-  userBook: UserBook;
-}): Promise<void> {
-  const row: UserBookRow = serializeUserBook(userBook);
-  await ctx.db
-    .insertInto("user_book")
-    .values(row)
-    .onConflict((oc) =>
-      oc.column("uri").doUpdateSet((c) => ({
-        indexedAt: c.ref("excluded.indexedAt"),
-        cid: c.ref("excluded.cid"),
-        authors: c.ref("excluded.authors"),
-        title: c.ref("excluded.title"),
-        hiveId: c.ref("excluded.hiveId"),
-        status: c.ref("excluded.status"),
-        owned: c.ref("excluded.owned"),
-        startedAt: c.ref("excluded.startedAt"),
-        finishedAt: c.ref("excluded.finishedAt"),
-        review: c.ref("excluded.review"),
-        stars: c.ref("excluded.stars"),
-        bookProgress: c.ref("excluded.bookProgress"),
-        previousReads: c.ref("excluded.previousReads"),
-      })),
-    )
-    .execute();
-}
-/**
- * Get a book from the user's PDS
- */
-export async function getBookRecord({
-  agent,
-  cid,
-  uri,
-}: {
-  agent: SessionClient;
-  cid: string;
-  uri: string;
-}): Promise<BookRecord.Record | null> {
-  const res = await agent.get("com.atproto.repo.getRecord", {
-    params: {
-      repo: agent.did,
-      collection: ids.BuzzBookhiveBook,
-      rkey: uri.split("/").at(-1)!,
-      cid,
-    },
-  });
-  const payload = res.ok ? (res.data as { value?: unknown }) : null;
-  const originalBook = payload?.value as BookRecord.Record | undefined;
-
-  if (!originalBook) {
-    return null;
-  }
-
-  return originalBook;
-}
-
-/**
- * Update a book in the user's PDS
- */
-export async function updateBookRecord({
-  ctx,
-  agent,
-  hiveId,
+/** Pure, so a CAS conflict can re-run it against what the PDS actually holds. */
+function buildBookRecord({
+  originalBook,
   updates,
-  skipAutoDate = false,
+  hiveId,
+  identifiers,
+  hiveBookUri,
+  skipAutoDate,
 }: {
-  ctx: BookUtilContext;
-  agent: SessionClient;
+  originalBook: BookRecord.Record | null;
+  updates: Partial<BookRecord.Record>;
   hiveId: HiveId;
-  updates: Partial<BookRecord.Record> & { coverImage?: string };
-  skipAutoDate?: boolean;
-}): Promise<{ book: BookRecord.Record; userBook: UserBook }> {
-  const userBook = await getUserBook({ ctx, agent, hiveId });
-
-  let originalBook: BookRecord.Record | null = null;
-  if (userBook) {
-    originalBook = await getBookRecord({
-      agent,
-      cid: userBook.cid,
-      uri: userBook.uri,
-    });
-  }
-
-  if (!originalBook && !userBook) {
-    const hiveBook = await ctx.db
-      .selectFrom("hive_book")
-      .selectAll()
-      .where("id", "=", hiveId)
-      .executeTakeFirst();
-    if (hiveBook) {
-      Object.assign(updates, {
-        coverImage: (hiveBook.cover || hiveBook.thumbnail) as string,
-        title: hiveBook.title,
-        authors: hiveBook.authors,
-        ...updates,
-      });
-    }
-  }
-
+  identifiers: BookIdentifiers;
+  hiveBookUri: string | undefined;
+  skipAutoDate: boolean;
+}): BookRecord.Record {
   // Re-Read: selecting "Reading" on an already-finished book means the user
   // is starting another pass. Push the current started/finished dates into
   // previousReads (keeping existing history), then reset: status=Reading,
@@ -249,7 +171,7 @@ export async function updateBookRecord({
         startedAt: originalBook.startedAt,
         finishedAt: originalBook.finishedAt,
       },
-      ...(originalBook.previousReads ?? []),
+      ...(Array.isArray(originalBook.previousReads) ? originalBook.previousReads : []),
     ];
   }
 
@@ -272,7 +194,14 @@ export async function updateBookRecord({
           startedAt: updates.startedAt,
           finishedAt: updates.finishedAt,
         },
-        { skipAutoDate },
+        {
+          skipAutoDate,
+          existing: {
+            status: originalBook?.status,
+            startedAt: originalBook?.startedAt,
+            finishedAt: originalBook?.finishedAt,
+          },
+        },
       );
 
   if (autoStartedAt && autoFinishedAt) {
@@ -287,14 +216,6 @@ export async function updateBookRecord({
   // Determine the final status (use auto-inferred status or original status)
   const finalStatus = autoStatus || originalBook?.status;
 
-  const identifiersRow = await findBookIdentifiersByLookup({ ctx, hiveId });
-  const identifiers = toBookIdentifiersOutput(identifiersRow);
-
-  // Ensure the book is cataloged before writing to the user's PDS so we can embed
-  // hiveBookUri. Fast path (expected): already cataloged, one DB read, no network.
-  // Slow path (last resort): enrich + catalog with timeouts if it slipped through.
-  const hiveBookAtUri = await ensureBookCataloged(ctx, hiveId);
-
   const bookData = {
     $type: ids.BuzzBookhiveBook,
     // Always prefer original values
@@ -302,7 +223,8 @@ export async function updateBookRecord({
     authors: originalBook?.authors || updates.authors,
     hiveId: originalBook?.hiveId || hiveId,
     createdAt: originalBook?.createdAt || new Date().toISOString(),
-    cover: originalBook?.cover || (await uploadImageBlob(updates.coverImage, agent, 800)),
+    // Patched in off the request path (userBookFollowUp.ts).
+    cover: originalBook?.cover,
     // Always prefer new values (including auto-inferred status)
     status: finalStatus,
     startedAt:
@@ -337,8 +259,8 @@ export async function updateBookRecord({
           : originalBook?.bookProgress,
     // Default to owned when first adding a book to library
     owned: updates.owned ?? originalBook?.owned ?? true,
-    identifiers: Object.keys(identifiers).length > 0 ? identifiers : undefined,
-    hiveBookUri: hiveBookAtUri ?? originalBook?.hiveBookUri,
+    identifiers: Object.keys(identifiers).length > 0 ? identifiers : originalBook?.identifiers,
+    hiveBookUri: hiveBookUri ?? originalBook?.hiveBookUri,
     // Preserve re-read history across partial updates (rating/review edits);
     // on a re-read request, replace it with the rotated list so the old dates
     // are archived in history and the book starts fresh.
@@ -351,63 +273,126 @@ export async function updateBookRecord({
     throw new Error("Book incomplete or invalid: " + book.error.message);
   }
 
-  const record = book.value as BookRecord.Record;
+  return book.value as BookRecord.Record;
+}
 
-  const response = await agent.post("com.atproto.repo.applyWrites", {
-    input: {
-      repo: agent.did,
-      writes: [
-        {
-          $type: originalBook
-            ? "com.atproto.repo.applyWrites#update"
-            : "com.atproto.repo.applyWrites#create",
-          collection: ids.BuzzBookhiveBook,
-          rkey: userBook ? userBook.uri.split("/").at(-1)! : TID.now(),
-          value: record,
-        },
-      ],
-    },
+/**
+ * Write one change to a book's PDS record and mirror it to `user_book`.
+ *
+ * One PDS round-trip: the merge reads the local row (the PDS only on a pre-025
+ * row or a CAS conflict), and the cover and catalogue link are patched in
+ * afterwards by `followUp`, which never rejects.
+ */
+export async function updateBookRecord({
+  ctx,
+  agent,
+  hiveId,
+  updates,
+  skipAutoDate = false,
+}: {
+  ctx: BookUtilContext;
+  agent: SessionClient;
+  hiveId: HiveId;
+  updates: Partial<BookRecord.Record> & { coverImage?: string };
+  skipAutoDate?: boolean;
+}): Promise<{
+  book: BookRecord.Record;
+  userBook: UserBook;
+  followUp: Promise<FollowUpOutcome>;
+}> {
+  const { coverImage, ...recordUpdates } = updates;
+  const userBook = await getUserBook({ ctx, agent, hiveId });
+
+  let original: { value: BookRecord.Record; cid: string } | null = null;
+  if (userBook) {
+    const local = recordFromUserBook(userBook);
+    original = local
+      ? { value: local, cid: userBook.cid }
+      : await getBookRecord({ agent, uri: userBook.uri });
+    ctx.addWideEventContext({ book_merge_source: local ? "local" : "pds" });
+  }
+
+  // A row with a URI has a record at that rkey; falling through to the create
+  // branch would write over it. Bail early so this reason isn't masked.
+  if (userBook && !original) {
+    ctx.addWideEventContext({ book_record_read: "unusable" });
+    throw new Error(`Failed to record book: could not read the current record for ${hiveId}`);
+  }
+
+  let coverSource = coverImage;
+  if (!original && !userBook) {
+    const hiveBook = await ctx.db
+      .selectFrom("hive_book")
+      .selectAll()
+      .where("id", "=", hiveId)
+      .executeTakeFirst();
+    if (hiveBook) {
+      coverSource ??= (hiveBook.cover || hiveBook.thumbnail) ?? undefined;
+      Object.assign(recordUpdates, {
+        title: hiveBook.title,
+        authors: hiveBook.authors,
+        ...recordUpdates,
+      });
+    }
+  }
+
+  const [identifiersRow, hiveBookUri] = await Promise.all([
+    findBookIdentifiersByLookup({ ctx, hiveId }),
+    getCatalogedBookUri(ctx, hiveId),
+  ]);
+  const identifiers = toBookIdentifiersOutput(identifiersRow);
+
+  const build = (originalBook: BookRecord.Record | null) =>
+    buildBookRecord({
+      originalBook,
+      updates: recordUpdates,
+      hiveId,
+      identifiers,
+      hiveBookUri,
+      skipAutoDate,
+    });
+
+  let record = build(original?.value ?? null);
+  const rkey = userBook ? userBook.uri.split("/").at(-1)! : TID.now();
+  let written = await writeBookRecord({
+    agent,
+    rkey,
+    record,
+    swapRecord: original?.cid ?? null,
   });
 
-  type ApplyOut = {
-    results?: Array<{ $type: string; uri?: string; cid?: string }>;
-  };
-  const applyData = response.ok ? (response.data as ApplyOut) : null;
-  const firstResult = applyData?.results?.[0];
-  if (
-    !response.ok ||
-    !applyData?.results ||
-    applyData.results.length === 0 ||
-    !firstResult ||
-    !(
-      firstResult.$type === "com.atproto.repo.applyWrites#updateResult" ||
-      firstResult.$type === "com.atproto.repo.applyWrites#createResult"
-    )
-  ) {
-    throw new Error("Failed to record book");
+  if (!written.ok && written.error === INVALID_SWAP && userBook) {
+    // Another client wrote first. Re-merge once; a second conflict is an error.
+    const fresh = await getBookRecord({ agent, uri: userBook.uri });
+    ctx.addWideEventContext({ book_merge_source: "pds_after_conflict" });
+    if (fresh) {
+      record = build(fresh.value);
+      written = await writeBookRecord({ agent, rkey, record, swapRecord: fresh.cid });
+    }
   }
-  const nextUserBook = {
-    uri: firstResult.uri!,
-    cid: firstResult.cid!,
-    userDid: agent.did,
-    createdAt: record.createdAt,
-    authors: record.authors,
-    title: record.title,
-    indexedAt: new Date().toISOString(),
-    hiveId: record.hiveId as HiveId,
-    status: record.status || null,
-    owned: record.owned ? 1 : 0,
-    startedAt: record.startedAt || null,
-    finishedAt: record.finishedAt || null,
-    review: record.review || null,
-    stars: record.stars || null,
-    bookProgress: record.bookProgress ?? null,
-    previousReads: record.previousReads ?? null,
-  };
 
+  if (!written.ok) {
+    throw new Error(
+      `Failed to record book: ${written.error}${written.message ? ` (${written.message})` : ""}`,
+    );
+  }
+
+  const nextUserBook = userBookFromRecord({
+    uri: written.uri,
+    cid: written.cid,
+    userDid: agent.did,
+    record,
+  });
   await updateUserBook({ ctx, userBook: nextUserBook });
 
-  return { book: record, userBook: nextUserBook };
+  const followUp = completeUserBookRecord({
+    ctx,
+    agent,
+    userBook: nextUserBook,
+    coverImage: coverSource,
+  });
+
+  return { book: record, userBook: nextUserBook, followUp };
 }
 
 /**
@@ -480,7 +465,14 @@ export async function updateBookRecords({
         startedAt: update.startedAt,
         finishedAt: update.finishedAt,
       },
-      { skipAutoDate },
+      {
+        skipAutoDate,
+        existing: {
+          status: originalBook?.status,
+          startedAt: originalBook?.startedAt,
+          finishedAt: originalBook?.finishedAt,
+        },
+      },
     );
 
     if (autoStartedAt && autoFinishedAt) {
@@ -571,6 +563,7 @@ export async function updateBookRecords({
         stars: record.stars || null,
         bookProgress: record.bookProgress ?? null,
         previousReads: record.previousReads ?? null,
+        record,
       },
       originalUpdate: update,
     });

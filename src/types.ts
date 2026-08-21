@@ -5,6 +5,10 @@ export type BlobRef = { ref: { $link: string }; mimeType: string };
 
 export type ProfileViewDetailed = AppBskyActorDefs.ProfileViewDetailed;
 
+import type { Main as BookRecordValue } from "./bsky/lexicon/generated/types/buzz/bookhive/book";
+
+/** The `buzz.bookhive.book` record as it lives on a PDS. */
+export type { BookRecordValue };
 export type * as GetBook from "./bsky/lexicon/generated/types/buzz/bookhive/getBook";
 export type * as GetBookIdentifiers from "./bsky/lexicon/generated/types/buzz/bookhive/getBookIdentifiers";
 export type * as GetProfile from "./bsky/lexicon/generated/types/buzz/bookhive/getProfile";
@@ -104,11 +108,18 @@ export type UserBook = {
    * History of prior reads (re-reads), most recent first. JSON in DB.
    */
   previousReads: PreviousRead[] | null;
+  /**
+   * Last PDS record seen for this row (mig 025): carries `cover`, `identifiers`
+   * and `hiveBookUri`, which the columns don't, so a write can merge locally
+   * instead of reading the PDS first. Null on rows older than the column.
+   */
+  record: BookRecordValue | null;
 };
 
-export type UserBookRow = Omit<UserBook, "bookProgress" | "previousReads"> & {
+export type UserBookRow = Omit<UserBook, "bookProgress" | "previousReads" | "record"> & {
   bookProgress: string | null;
   previousReads: string | null;
+  record: string | null;
 };
 
 export type Buzz = {

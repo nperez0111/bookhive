@@ -459,6 +459,7 @@ export async function refetchBooks({
       stars: book.stars,
       bookProgress: book.bookProgress ?? null,
       previousReads: book.previousReads ?? null,
+      record: book,
     });
   });
 
@@ -483,6 +484,7 @@ export async function refetchBooks({
           stars: c.ref("excluded.stars"),
           bookProgress: c.ref("excluded.bookProgress"),
           previousReads: c.ref("excluded.previousReads"),
+          record: c.ref("excluded.record"),
         })),
       )
       .execute();
@@ -531,14 +533,33 @@ export async function refetchBooks({
         }));
 
       for (let i = 0; i < writes.length; i += 200) {
+        const batch = writes.slice(i, i + 200);
         const response = await agent.post("com.atproto.repo.applyWrites", {
-          input: { repo: agent.did, writes: writes.slice(i, i + 200) },
+          input: { repo: agent.did, writes: batch },
         });
         if (!response.ok) {
           throw new Error(
             `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
           );
         }
+        // Mirror what we wrote onto the rows: a superseded cid costs the
+        // user's next edit a CAS failure and a re-read.
+        const results =
+          (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
+        // One transaction: as autocommits this measured ~1.8s of worker CPU
+        // for a 5k-book library.
+        await ctx.db.transaction().execute(async (trx) => {
+          for (const [index, write] of batch.entries()) {
+            const result = results[index];
+            if (!result?.uri || !result.cid) continue;
+            await trx
+              .updateTable("user_book")
+              .set({ cid: result.cid, record: JSON.stringify(write.value) })
+              .where("uri", "=", result.uri)
+              .where("userDid", "=", agent.did)
+              .execute();
+          }
+        });
       }
     }
   }

@@ -11,6 +11,20 @@ import { withTimeout } from "./semaphore";
 const ENRICH_TIMEOUT_MS = 10_000;
 const CATALOG_TIMEOUT_MS = 10_000;
 
+/** Fast path only — a status click must never wait on a scrape. The follow-up runs the rest. */
+export async function getCatalogedBookUri(
+  ctx: Pick<BookUtilContext, "db" | "serviceAccountAgent">,
+  hiveId: HiveId,
+): Promise<string | undefined> {
+  if (!ctx.serviceAccountAgent) return undefined;
+  const row = await ctx.db
+    .selectFrom("hive_book")
+    .select("hiveBookAtUri")
+    .where("id", "=", hiveId)
+    .executeTakeFirst();
+  return row?.hiveBookAtUri ?? undefined;
+}
+
 /**
  * Safety net called immediately before writing a book to a user's PDS.
  *

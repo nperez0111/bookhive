@@ -10,6 +10,8 @@ import type { HiveBook } from "../types";
 import { normalizeBookMeta } from "../utils/bookMeta";
 import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
 import { hydrateUserBook } from "../utils/bookProgress";
+import { toUserBookView } from "../utils/userBookView";
+import type { BookActionsProps } from "../client/components/book/userBookStore";
 import { getUserLists } from "../utils/lists";
 import { getProfiles } from "../utils/getProfile";
 import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
@@ -256,6 +258,18 @@ export const BookInfo: FC<{
   if (meta?.publisher) pubDetails.push(meta.publisher);
   if (meta?.language) pubDetails.push(meta.language);
 
+  // Initial state for the islands (src/client/components/book). The forms
+  // below are the pre-hydration paint, and all a no-JS visitor gets.
+  const actionProps: BookActionsProps | null = did
+    ? {
+        hiveId: book.id,
+        title: book.title,
+        authors: book.authors,
+        numPages: meta?.numPages ? Number(meta.numPages) : null,
+        userBook: usersBook ? toUserBookView(usersBook) : null,
+      }
+    : null;
+
   return (
     <div class="mx-auto max-w-4xl space-y-8">
       {/* ===== SECTION 1: Book Hero ===== */}
@@ -334,188 +348,199 @@ export const BookInfo: FC<{
 
               {/* === Action Row === */}
               <div class="mb-5 space-y-3">
-                <div class="flex items-center gap-2">
-                  {/* Status dropdown */}
-                  {did && (
-                    <div class="relative">
-                      <form action="/books" method="post" id="status-form">
+                <div class="flex flex-wrap items-center gap-2">
+                  {actionProps && (
+                    <div
+                      id="mount-book-actions"
+                      class="contents"
+                      data-props={JSON.stringify(actionProps)}
+                    >
+                      {/* Status dropdown */}
+                      <div class="relative">
+                        <form action="/books" method="post" id="status-form">
+                          <input type="hidden" name="authors" value={book.authors} />
+                          <input type="hidden" name="title" value={book.title} />
+                          <input type="hidden" name="hiveId" value={book.id} />
+                          {book.cover && (
+                            <input type="hidden" name="coverImage" value={book.cover} />
+                          )}
+                          {usersBook?.stars && (
+                            <input type="hidden" name="stars" value={String(usersBook.stars)} />
+                          )}
+                          {usersBook?.review && (
+                            <input type="hidden" name="review" value={usersBook.review} />
+                          )}
+                          {usersBook?.owned ? <input type="hidden" name="owned" value="1" /> : null}
+                          {usersBook?.startedAt ? (
+                            <input type="hidden" name="startedAt" value={usersBook.startedAt} />
+                          ) : (
+                            <input type="hidden" name="startedAt" id="auto-started-at" value="" />
+                          )}
+                          {usersBook?.finishedAt ? (
+                            <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
+                          ) : (
+                            <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
+                          )}
+
+                          <button
+                            type="button"
+                            aria-haspopup="listbox"
+                            aria-expanded="false"
+                            id="status-dropdown"
+                            class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
+                              usersBook?.status
+                                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                : "bg-accent text-accent-foreground hover:bg-accent/80"
+                            }`}
+                          >
+                            <span class="flex items-center gap-1.5 capitalize">
+                              <span>
+                                {(usersBook?.status &&
+                                  (usersBook.status in BOOK_STATUS_MAP
+                                    ? BOOK_STATUS_MAP[
+                                        usersBook.status as keyof typeof BOOK_STATUS_MAP
+                                      ]
+                                    : usersBook.status)) ||
+                                  "Want to Read"}
+                              </span>
+                              <svg
+                                class="h-4 w-4 opacity-70"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </span>
+                          </button>
+
+                          <div
+                            role="listbox"
+                            id="status-dropdown-menu"
+                            class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
+                          >
+                            <div class="p-1">
+                              {[
+                                { value: BOOK_STATUS.FINISHED, label: "Read" },
+                                { value: BOOK_STATUS.READING, label: "Reading" },
+                                { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
+                                { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
+                              ].map((status) => (
+                                <button
+                                  key={status.value}
+                                  type="submit"
+                                  role="option"
+                                  aria-selected={usersBook?.status === status.value}
+                                  name="status"
+                                  value={status.value}
+                                  class={`relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
+                                    usersBook?.status === status.value
+                                      ? "bg-primary text-primary-foreground"
+                                      : "text-foreground hover:bg-muted"
+                                  }`}
+                                >
+                                  <span class="block truncate">{status.label}</span>
+                                  {usersBook?.status === status.value && (
+                                    <span
+                                      class="absolute inset-y-0 right-2 flex items-center"
+                                      aria-hidden="true"
+                                    >
+                                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                          clipRule="evenodd"
+                                        />
+                                      </svg>
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </form>
+
+                        {/* Makes the fallback dropdown work before the island
+                            loads; hydration detaches these nodes. */}
+                        <Script
+                          script={(document) => {
+                            const dropdown = document.getElementById("status-dropdown");
+                            const menu = document.getElementById("status-dropdown-menu");
+                            if (!dropdown || !menu) return;
+                            dropdown.addEventListener("click", () => {
+                              dropdown.setAttribute(
+                                "aria-expanded",
+                                dropdown.getAttribute("aria-expanded") === "true"
+                                  ? "false"
+                                  : "true",
+                              );
+                            });
+                            document.addEventListener("click", (e) => {
+                              if (
+                                dropdown.getAttribute("aria-expanded") === "true" &&
+                                !dropdown.contains(e.target as any) &&
+                                !menu.contains(e.target as any)
+                              ) {
+                                dropdown.setAttribute("aria-expanded", "false");
+                              }
+                            });
+                          }}
+                        />
+                      </div>
+
+                      {/* Owned toggle */}
+                      <form action="/books" method="post">
                         <input type="hidden" name="authors" value={book.authors} />
                         <input type="hidden" name="title" value={book.title} />
                         <input type="hidden" name="hiveId" value={book.id} />
                         {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
+                        {usersBook?.status && (
+                          <input type="hidden" name="status" value={usersBook.status} />
+                        )}
                         {usersBook?.stars && (
                           <input type="hidden" name="stars" value={String(usersBook.stars)} />
                         )}
                         {usersBook?.review && (
                           <input type="hidden" name="review" value={usersBook.review} />
                         )}
-                        {usersBook?.owned ? <input type="hidden" name="owned" value="1" /> : null}
-                        {usersBook?.startedAt ? (
+                        {usersBook?.startedAt && (
                           <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                        ) : (
-                          <input type="hidden" name="startedAt" id="auto-started-at" value="" />
                         )}
-                        {usersBook?.finishedAt ? (
+                        {usersBook?.finishedAt && (
                           <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                        ) : (
-                          <input type="hidden" name="finishedAt" id="auto-finished-at" value="" />
                         )}
-
                         <button
-                          type="button"
-                          aria-haspopup="listbox"
-                          aria-expanded="false"
-                          id="status-dropdown"
-                          class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
-                            usersBook?.status
+                          type="submit"
+                          name="owned"
+                          value={usersBook?.owned ? "false" : "true"}
+                          class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
+                            usersBook?.owned
                               ? "bg-primary text-primary-foreground hover:bg-primary/90"
                               : "bg-accent text-accent-foreground hover:bg-accent/80"
                           }`}
                         >
-                          <span class="flex items-center gap-1.5 capitalize">
-                            <span>
-                              {(usersBook?.status &&
-                                (usersBook.status in BOOK_STATUS_MAP
-                                  ? BOOK_STATUS_MAP[
-                                      usersBook.status as keyof typeof BOOK_STATUS_MAP
-                                    ]
-                                  : usersBook.status)) ||
-                                "Want to Read"}
-                            </span>
+                          <span class="flex items-center gap-1.5">
                             <svg
-                              class="h-4 w-4 opacity-70"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              aria-hidden="true"
+                              class="h-4 w-4"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
                             >
-                              <path
-                                fillRule="evenodd"
-                                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                                clipRule="evenodd"
-                              />
+                              <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
                             </svg>
+                            {usersBook?.owned ? "Owned" : "Own"}
                           </span>
                         </button>
-
-                        <div
-                          role="listbox"
-                          id="status-dropdown-menu"
-                          class="invisible absolute z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                        >
-                          <div class="p-1">
-                            {[
-                              { value: BOOK_STATUS.FINISHED, label: "Read" },
-                              { value: BOOK_STATUS.READING, label: "Reading" },
-                              { value: BOOK_STATUS.WANTTOREAD, label: "Want to Read" },
-                              { value: BOOK_STATUS.ABANDONED, label: "Abandoned" },
-                            ].map((status) => (
-                              <button
-                                key={status.value}
-                                type="submit"
-                                role="option"
-                                aria-selected={usersBook?.status === status.value}
-                                name="status"
-                                value={status.value}
-                                class={`relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
-                                  usersBook?.status === status.value
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-foreground hover:bg-muted"
-                                }`}
-                              >
-                                <span class="block truncate">{status.label}</span>
-                                {usersBook?.status === status.value && (
-                                  <span
-                                    class="absolute inset-y-0 right-2 flex items-center"
-                                    aria-hidden="true"
-                                  >
-                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  </span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                       </form>
-
-                      <Script
-                        script={(document) => {
-                          const dropdown = document.getElementById("status-dropdown")!;
-                          const dropdownMenu = document.getElementById("status-dropdown-menu")!;
-                          dropdown.addEventListener("click", () => {
-                            dropdown.setAttribute(
-                              "aria-expanded",
-                              dropdown.getAttribute("aria-expanded") === "true" ? "false" : "true",
-                            );
-                          });
-                          document.addEventListener("click", (e) => {
-                            if (
-                              dropdown.getAttribute("aria-expanded") === "true" &&
-                              !dropdown.contains(e.target as any) &&
-                              !dropdownMenu.contains(e.target as any)
-                            ) {
-                              dropdown.setAttribute("aria-expanded", "false");
-                            }
-                          });
-                        }}
-                      />
                     </div>
-                  )}
-
-                  {/* Owned toggle */}
-                  {did && (
-                    <form action="/books" method="post">
-                      <input type="hidden" name="authors" value={book.authors} />
-                      <input type="hidden" name="title" value={book.title} />
-                      <input type="hidden" name="hiveId" value={book.id} />
-                      {book.cover && <input type="hidden" name="coverImage" value={book.cover} />}
-                      {usersBook?.status && (
-                        <input type="hidden" name="status" value={usersBook.status} />
-                      )}
-                      {usersBook?.stars && (
-                        <input type="hidden" name="stars" value={String(usersBook.stars)} />
-                      )}
-                      {usersBook?.review && (
-                        <input type="hidden" name="review" value={usersBook.review} />
-                      )}
-                      {usersBook?.startedAt && (
-                        <input type="hidden" name="startedAt" value={usersBook.startedAt} />
-                      )}
-                      {usersBook?.finishedAt && (
-                        <input type="hidden" name="finishedAt" value={usersBook.finishedAt} />
-                      )}
-                      <button
-                        type="submit"
-                        name="owned"
-                        value={usersBook?.owned ? "false" : "true"}
-                        class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
-                          usersBook?.owned
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "bg-accent text-accent-foreground hover:bg-accent/80"
-                        }`}
-                      >
-                        <span class="flex items-center gap-1.5">
-                          <svg
-                            class="h-4 w-4"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                          >
-                            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-                          </svg>
-                          {usersBook?.owned ? "Owned" : "Own"}
-                        </span>
-                      </button>
-                    </form>
                   )}
 
                   {/* Logged-out CTA. Without this the action row holds nothing but the
@@ -661,13 +686,17 @@ export const BookInfo: FC<{
               </div>
 
               {/* Timestamp for logged-in users */}
-              {usersBook && (
-                <p class="mb-4 text-sm text-muted-foreground">
-                  {`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
-                    usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
-                    { addSuffix: true },
-                  )}`}
-                </p>
+              {did && (
+                <div id="mount-book-timestamp">
+                  {usersBook && (
+                    <p class="mb-4 text-sm text-muted-foreground">
+                      {`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
+                        usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
+                        { addSuffix: true },
+                      )}`}
+                    </p>
+                  )}
+                </div>
               )}
 
               {/* Metadata row */}
@@ -775,7 +804,7 @@ export const BookInfo: FC<{
 
       {/* ===== SECTION 3: Your Activity (auth'd, unified form) ===== */}
       {did && (
-        <div class="card">
+        <div class="card" id="mount-book-activity">
           <div class="card-body space-y-6">
             <h2 class="card-title">Your Activity</h2>
 
@@ -1058,7 +1087,7 @@ export const BookInfo: FC<{
                     const btn = document.getElementById("delete-book-btn");
                     const dialog = document.getElementById(
                       "delete-book-dialog",
-                    ) as HTMLDialogElement;
+                    ) as HTMLDialogElement | null;
                     btn?.addEventListener("click", () => dialog?.showModal());
                   }}
                 />
@@ -1066,56 +1095,6 @@ export const BookInfo: FC<{
             )}
           </div>
         </div>
-      )}
-
-      {/* Progress auto-calc script */}
-      {did && (
-        <Script
-          script={(document) => {
-            const pageCurrent = document.getElementById(
-              "progress-pages-current",
-            ) as HTMLInputElement;
-            const pageTotal = document.getElementById("progress-pages-total") as HTMLInputElement;
-            const chapterCurrent = document.getElementById(
-              "progress-chapters-current",
-            ) as HTMLInputElement;
-            const chapterTotal = document.getElementById(
-              "progress-chapters-total",
-            ) as HTMLInputElement;
-            const percentInput = document.getElementById("progress-percent") as HTMLInputElement;
-            function parseNumber(value: string | null) {
-              const parsed = Number(value);
-              return Number.isFinite(parsed) ? parsed : null;
-            }
-            function updatePercent() {
-              if (!percentInput) return;
-              const currentPage = parseNumber(pageCurrent?.value);
-              const totalPages = parseNumber(pageTotal?.value);
-              const currentChapter = parseNumber(chapterCurrent?.value);
-              const totalChapters = parseNumber(chapterTotal?.value);
-              let percent = null;
-              if (currentPage !== null && totalPages && totalPages > 0) {
-                percent = Math.min(100, Math.max(0, Math.round((currentPage / totalPages) * 100)));
-              } else if (currentChapter !== null && totalChapters && totalChapters > 0) {
-                percent = Math.min(
-                  100,
-                  Math.max(0, Math.round((currentChapter / totalChapters) * 100)),
-                );
-              }
-              if (percent !== null) {
-                percentInput.value = percent.toString();
-              }
-              // Update progress bar
-              const bar = document.querySelector("[data-progress-bar]") as HTMLElement;
-              if (bar && percent !== null) {
-                bar.style.width = `${percent}%`;
-              }
-            }
-            [pageCurrent, pageTotal, chapterCurrent, chapterTotal].forEach((input) => {
-              input?.addEventListener("input", updatePercent);
-            });
-          }}
-        />
       )}
 
       {/* ===== SECTION 4: About the Author ===== */}
