@@ -60,12 +60,13 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
   };
 
   const handleMouseDown = (event: MouseEvent) => {
-    setIsDragging(true);
     const newRating = calculateRatingFromEvent(event);
     // A click on the leftmost sliver computes 0, which consumers treat as "no
     // change" — painting it would strand the widget at empty, since the prop
-    // never moves back.
+    // never moves back. Bail before entering the drag state: a no-op click
+    // that set it left hover previews suppressed until the next mouseup.
     if (!newRating) return;
+    setIsDragging(true);
     setRating(newRating);
     onChange?.(newRating);
   };
