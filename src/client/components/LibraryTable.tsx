@@ -1,4 +1,4 @@
-import { useMemo, useState, type FC } from "hono/jsx/dom";
+import { useMemo, useState, useRef, type FC } from "hono/jsx/dom";
 import {
   StatusSelect,
   RatingSelect,
@@ -9,6 +9,15 @@ import {
   updateBook,
   deleteBook,
 } from "./bookActions";
+
+type BookProgressData = {
+  percent?: number;
+  totalPages?: number;
+  currentPage?: number;
+  totalChapters?: number;
+  currentChapter?: number;
+  updatedAt?: string;
+} | null;
 
 type LibraryBook = {
   hiveId: string;
@@ -23,9 +32,12 @@ type LibraryBook = {
   createdAt: string;
   owned: number;
   review: string | null;
+  bookProgress: BookProgressData;
+  totalPages: number | null;
 };
 
 const FINISHED = "buzz.bookhive.defs#finished";
+const READING = "buzz.bookhive.defs#reading";
 
 type SortKey = "default" | "title" | "status" | "rating" | "date";
 type SortDir = "asc" | "desc";
@@ -63,6 +75,10 @@ function compareBooks(a: LibraryBook, b: LibraryBook, key: SortKey, dir: SortDir
       break;
     }
     default: {
+      const aIsReading = a.status === READING;
+      const bIsReading = b.status === READING;
+      if (aIsReading !== bIsReading) return aIsReading ? -1 : 1;
+
       const aIsFinished = a.status === FINISHED;
       const bIsFinished = b.status === FINISHED;
       if (aIsFinished && bIsFinished) {
@@ -86,6 +102,88 @@ const SortArrow: FC<{ active: boolean; dir: SortDir }> = ({ active, dir }) => (
     {dir === "asc" ? <path d="M6 2L10 8H2L6 2Z" /> : <path d="M6 10L2 4H10L6 10Z" />}
   </svg>
 );
+
+// --- Progress input ---
+
+const PageInput: FC<{
+  book: LibraryBook;
+  onUpdate: (fields: Partial<LibraryBook>) => void;
+}> = ({ book, onUpdate }) => {
+  const total = book.bookProgress?.totalPages ?? book.totalPages;
+  const [currentPage, setCurrentPage] = useState(book.bookProgress?.currentPage ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const percent =
+    book.status === FINISHED
+      ? 100
+      : currentPage && total
+        ? Math.round((Number(currentPage) / total) * 100)
+        : (book.bookProgress?.percent ?? 0);
+
+  const submitProgress = () => {
+    const page = Number(currentPage);
+    if (!page && page !== 0) return;
+    if (page === book.bookProgress?.currentPage) return;
+
+    const progress = {
+      currentPage: page || undefined,
+      totalPages: total || undefined,
+      percent: total ? Math.round((page / total) * 100) : undefined,
+    };
+    onUpdate({
+      bookProgress: { ...book.bookProgress, ...progress, updatedAt: new Date().toISOString() },
+    });
+    void updateBook(book.hiveId, {
+      bookProgress: progress,
+      status: book.status,
+    });
+  };
+
+  if (book.status === FINISHED) {
+    return (
+      <div>
+        <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-green-500" style="width: 100%" />
+        </div>
+        <span className="text-xs text-green-600 dark:text-green-400">Finished</span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {percent > 0 && (
+        <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-300"
+            style={`width: ${Math.min(100, percent)}%`}
+          />
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          type="number"
+          className="w-14 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs tabular-nums text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+          value={currentPage}
+          min={0}
+          max={total || undefined}
+          placeholder="Pg"
+          onInput={(e) => setCurrentPage((e.target as HTMLInputElement).value)}
+          onBlur={submitProgress}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+        {total ? (
+          <span className="text-xs tabular-nums text-muted-foreground">/ {total}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 // --- Desktop row ---
 
@@ -130,6 +228,9 @@ const TableRow: FC<{
           void updateBook(book.hiveId, { stars });
         }}
       />
+    </td>
+    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+      <PageInput book={book} onUpdate={onUpdate} />
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
       <div className="space-y-1">
@@ -198,101 +299,122 @@ const MobileCard: FC<{
   book: LibraryBook;
   onUpdate: (fields: Partial<LibraryBook>) => void;
   onDelete: () => void;
-}> = ({ book, onUpdate, onDelete }) => (
-  <div className="card transition-[box-shadow] duration-150 active:shadow-none">
-    <div className="card-body flex gap-3">
-      <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
-        <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
-          <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
-        </div>
-        <div className="min-w-0 flex-1 flex flex-col justify-center">
-          <div className="text-foreground font-semibold text-sm line-clamp-2">{book.title}</div>
-          <div className="text-muted-foreground text-xs mt-0.5">
-            {book.authors.split("\t").join(", ")}
+}> = ({ book, onUpdate, onDelete }) => {
+  const total = book.bookProgress?.totalPages ?? book.totalPages;
+  const currentPage = book.bookProgress?.currentPage;
+  const percent =
+    book.status === FINISHED
+      ? 100
+      : currentPage && total
+        ? Math.round((currentPage / total) * 100)
+        : (book.bookProgress?.percent ?? 0);
+
+  return (
+    <div className="card transition-[box-shadow] duration-150 active:shadow-none">
+      <div className="card-body flex gap-3">
+        <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
+          <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
+            <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
           </div>
-          {book.status && (
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="badge capitalize">{STATUS_LABELS[book.status] || book.status}</span>
+          <div className="min-w-0 flex-1 flex flex-col justify-center">
+            <div className="text-foreground font-semibold text-sm line-clamp-2">{book.title}</div>
+            <div className="text-muted-foreground text-xs mt-0.5">
+              {book.authors.split("\t").join(", ")}
+            </div>
+            {book.status && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="badge capitalize">
+                  {STATUS_LABELS[book.status] || book.status}
+                </span>
+                {percent > 0 && book.status !== FINISHED && (
+                  <span className="text-xs tabular-nums text-muted-foreground">{percent}%</span>
+                )}
+              </div>
+            )}
+          </div>
+        </a>
+        <div className="shrink-0 flex flex-col items-stretch" onClick={(e) => e.stopPropagation()}>
+          <StatusSelect
+            status={book.status}
+            onChange={(status) => {
+              onUpdate({ status });
+              void updateBook(book.hiveId, { status });
+            }}
+          />
+          {book.status === READING && (
+            <div className="mt-2">
+              <PageInput book={book} onUpdate={onUpdate} />
             </div>
           )}
-        </div>
-      </a>
-      <div className="shrink-0 flex flex-col items-stretch" onClick={(e) => e.stopPropagation()}>
-        <StatusSelect
-          status={book.status}
-          onChange={(status) => {
-            onUpdate({ status });
-            void updateBook(book.hiveId, { status });
-          }}
-        />
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <div className="flex items-center gap-1">
-            <svg
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              title="Started"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-1">
+              <svg
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                title="Started"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <DateInput
+                value={book.startedAt}
+                onChange={(startedAt) => {
+                  onUpdate({ startedAt });
+                  void updateBook(book.hiveId, { startedAt });
+                }}
               />
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            </div>
+            <div className="flex items-center gap-1">
+              <svg
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                title="Finished"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <DateInput
+                value={book.finishedAt}
+                onChange={(finishedAt) => {
+                  onUpdate({ finishedAt });
+                  void updateBook(book.hiveId, { finishedAt });
+                }}
               />
-            </svg>
-            <DateInput
-              value={book.startedAt}
-              onChange={(startedAt) => {
-                onUpdate({ startedAt });
-                void updateBook(book.hiveId, { startedAt });
-              }}
-            />
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <svg
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              title="Finished"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <DateInput
-              value={book.finishedAt}
-              onChange={(finishedAt) => {
-                onUpdate({ finishedAt });
-                void updateBook(book.hiveId, { finishedAt });
-              }}
-            />
-          </div>
+          <button
+            type="button"
+            className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
+            onClick={() => {
+              onDelete();
+              void deleteBook(book.hiveId);
+            }}
+          >
+            Remove
+          </button>
         </div>
-        <button
-          type="button"
-          className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
-          onClick={() => {
-            onDelete();
-            void deleteBook(book.hiveId);
-          }}
-        >
-          Remove
-        </button>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // --- Main component ---
 
@@ -341,7 +463,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
             <tr>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "34%" }}
+                style={{ width: "30%" }}
                 onClick={() => toggleSort("title")}
               >
                 Book
@@ -352,7 +474,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "14%" }}
+                style={{ width: "13%" }}
                 onClick={() => toggleSort("status")}
               >
                 Status
@@ -363,7 +485,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "14%", minWidth: "120px" }}
+                style={{ width: "13%", minWidth: "120px" }}
                 onClick={() => toggleSort("rating")}
               >
                 Rating
@@ -371,6 +493,12 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                   active={sortKey === "rating"}
                   dir={sortKey === "rating" ? sortDir : "asc"}
                 />
+              </th>
+              <th
+                className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                style={{ width: "12%" }}
+              >
+                Progress
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground transition-colors hover:text-primary"
@@ -382,7 +510,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="px-4 py-2 text-left text-sm font-semibold text-foreground"
-                style={{ width: "8%" }}
+                style={{ width: "6%" }}
               >
                 Actions
               </th>
@@ -415,8 +543,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
             }}
           >
             <option value="default:asc">Recent</option>
-            <option value="title:asc">Title A–Z</option>
-            <option value="title:desc">Title Z–A</option>
+            <option value="title:asc">Title A-Z</option>
+            <option value="title:desc">Title Z-A</option>
             <option value="status:asc">Status</option>
             <option value="rating:asc">Rating ↑</option>
             <option value="rating:desc">Rating ↓</option>

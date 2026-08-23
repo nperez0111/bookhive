@@ -60,6 +60,37 @@ Worker threads (bundled to .output/server/workers/):
 - **The `/explore` aggregates say `INDEXED BY idx_hive_book_stats`, and that is not decoration.** Each groups the whole of `hive_book_author`/`hive_book_genre` joined to `hive_book`, and migration 024 added `hive_book(id, ratingsCount, rating, language)` so that join can be index-only. But **this database has never been `ANALYZE`d** — with no `sqlite_stat1` the planner prefers the UNIQUE `sqlite_autoindex_hive_book_1` for an `id = ?` equality and fetches the whole row from the 1.62 GB table anyway, so the index does nothing unless the query names it. Measured at 350k books: `/explore/authors` 2742ms → 260ms, `/explore`'s genre list 209ms → 21ms. Don't "clean up" the hint, and don't reach for `ANALYZE` instead — it would re-plan every query in an app whose indexes were all tuned against the no-stats planner. `src/utils/authorStats.test.ts` asserts the plans.
 - **`bun:sqlite` is synchronous, so a slow query is a whole-worker outage.** `stmt.all()` blocks the event loop, and production runs 3 processes — a 3s aggregate on a request path stalls a third of _all_ traffic, not just that route. Hence the explore aggregates are cached with **stale-while-revalidate** (`ttl: 24h, revalidateAfter: 1h`), not a plain TTL: a plain TTL makes every expiry a synchronous cliff for whichever request draws the short straw. The caching lives _inside_ `src/utils/authorStats.ts` / `src/utils/exploreGenres.ts`, not at the call sites — the three consumers (`/explore`, `/explore/authors`, XRPC `getExplore`) used to wrap the same query in three different policies, one of which was no cache at all.
 - **Library re-sync** fans out at most `REFETCH_SEARCH_CONCURRENCY` (3) searches.
+- **The activity feed sorts by `indexedAt`, and whatever it sorts by is what it must display.** It used
+  to order by `user_book.createdAt` while every card rendered `formatDistanceToNow(indexedAt)`. The two
+  disagreed on the day for **55% of rows**, so the visible timestamps ran non-monotonically — "2h ago,
+  3d ago, 10m ago, 1y ago" — and users reasonably read the feed as randomly shuffled. `createdAt`
+  cannot be the key: it mirrors a frozen field of the user's PDS record (`getBook.ts` — "Always prefer
+  original values"), so finishing a book or writing a review never moved it. Three things now hold
+  this together, and they only work together:
+  - **`feedActivityIndexedAt`** (`src/db.ts`) is the `ON CONFLICT` expression every `user_book` upsert
+    uses for `indexedAt`. It advances only when a field the feed renders actually changed
+    (`status`/`stars`/`review`/`finishedAt`/`owned`), because `refetchBooks` stamps **one** timestamp
+    across a whole library re-sync — which used to re-date a user's entire back catalogue to "a few
+    seconds ago". Do **not** simplify it to a `cid` comparison: `cid` also moves for cover re-uploads,
+    `hiveBookUri` backfill, title normalisation and every KOReader progress ping. And it must stay
+    `IS NOT`, not `<>` — `<>` against NULL yields NULL, the `CASE` takes the `ELSE`, and rating a book
+    for the first time stops counting as activity. `src/db.feedActivity.test.ts` pins all of this.
+  - **Migration 025's clamp**, which is what makes the _existing_ rows usable. Fixing only the write
+    path leaves the feed monotonic but wrong: ordered by who re-synced most recently.
+  - **The migration-025 indexes** (`user_book(indexedAt, uri)` and the `userDid`/`hiveId` composites).
+    Not optional: measured on production data, the `all` tab ordered by `indexedAt` without them
+    degrades to a full scan plus a temp B-tree, **33ms against 1ms**, and `bun:sqlite` is synchronous
+    across three processes. `uri` is in each one as the keyset tiebreaker — 5,262 distinct timestamps
+    were shared by 2+ rows, and SQLite may order ties differently between two identical requests,
+    which silently drops rows from a paginated feed. `src/utils/activityFeed.test.ts` asserts the plans.
+- **Feed bursts are collapsed by actor alone, in JS, after the fetch.** One user's CSV import held
+  **19 of the 25 slots** on feed page 1, and the worst measured burst was 513 books inside one minute.
+  Grouping by `(actor, verb)` does **not** work — verified against a live re-sync, which interleaves
+  "finished" and "wants to read" row by row, so a verb-sensitive key broke the run every one or two
+  rows and left the flood in place; a mixed burst is labelled "logged" instead. Collapsing in SQL is
+  also wrong: knowing where a run _ends_ means reading past the page boundary, which defeats the
+  `LIMIT` the keyset scan depends on. **The cursor must come from the last raw row consumed, never the
+  last display row** — a cursor taken from a collapsed burst's newest row re-serves that burst forever.
 
 **The app shell scroller — never put `overflow-*-auto` on `<main>`.** The `jsxRenderer` in
 `src/routes/main.tsx` wraps every app page in
@@ -210,7 +241,7 @@ Two traps this encodes, both of which caused real bugs:
 ### `src/routes/pages.tsx` (mounted at `/`)
 
 - `/home` → `src/pages/home.tsx` — authenticated home (redirects to `/login` if no profile)
-- `/feed` → `src/pages/feed.tsx` — activity feed (friends/all/tracking, paginated 25/page)
+- `/feed` → `src/pages/feed.tsx` — activity feed (friends/all/tracking, keyset-paginated 25/page via `?cursor=`). A thin adapter over `getActivityFeed` (`src/utils/activityFeed.ts`); see **The activity feed sorts by `indexedAt`** below
 - `/app` → `src/pages/app.tsx` — iOS app landing
 - `/import` → `src/pages/import.tsx` — CSV import page, SSE progress
 - `/search` → `src/pages/searchResults.tsx` (zValidator query `q`/`page`/`lang`)
@@ -283,6 +314,14 @@ Personal library: ebook uploads, e-reader credentials, sync documents. All auth-
 ### `src/routes/rss.ts` (mounted at `/rss`)
 
 - GET `/user/:handle`, `/book/:hiveId`, `/friends/:handle` → RSS 2.0 feeds
+
+**Ordered by, and dated with, `indexedAt`** — the same activity time the site's feed uses. Both must
+move together: emitting `createdAt` as `<pubDate>` while ordering by `indexedAt` reproduces the
+sorted-by-one-column-labelled-with-another bug, just in XML. Safe to re-date because
+`<guid isPermaLink="false">` is the AT URI and does not change, so readers dedupe on it and nothing
+re-notifies as unread — only the sort position moves, which is what you want when someone finally
+finishes a book. Migration 025's clamp must land first, or every row still carries a re-sync stamp
+and subscribers see one wholesale reorder on deploy.
 
 ### `src/routes/opds.ts` (mounted at `/opds`) — e-reader catalog
 
@@ -492,19 +531,19 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 
 ### Shared Page Components (`src/pages/components/`)
 
-| File                       | What                                                                     |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `book.tsx`                 | Book card component                                                      |
-| `BookCard.tsx`             | Composable book card (`dense` takes `showAuthor` for search/genre grids) |
-| `buzz.tsx`                 | Buzz/comment display                                                     |
-| `BookReview.tsx`           | Book review form/display                                                 |
-| `EditableLibraryTable.tsx` | Library table with inline editing                                        |
-| `ProfileHeader.tsx`        | Profile header with avatar/stats                                         |
-| `LanguageSelect.tsx`       | Language picker                                                          |
-| `modal.tsx`                | Modal dialog (CSS-based)                                                 |
-| `fallbackCover.tsx`        | Placeholder book cover                                                   |
-| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                   |
-| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                        |
+| File                       | What                                                                      |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `book.tsx`                 | Book card component                                                       |
+| `BookCard.tsx`             | Composable book card (`dense` takes `showAuthor` for search/genre grids)  |
+| `activityTimeline.tsx`     | `/feed`'s chronological `<ol>` — single rows, burst rows, date separators |
+| `BookReview.tsx`           | Book review form/display                                                  |
+| `EditableLibraryTable.tsx` | Library table with inline editing                                         |
+| `ProfileHeader.tsx`        | Profile header with avatar/stats                                          |
+| `LanguageSelect.tsx`       | Language picker                                                           |
+| `modal.tsx`                | Modal dialog (CSS-based)                                                  |
+| `fallbackCover.tsx`        | Placeholder book cover                                                    |
+| `AtTags.tsx`               | AT Tags `<meta name="at:...">` builder                                    |
+| `cards/`                   | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                         |
 
 **AT Tags** (`AtTags.tsx`): emits `<meta>` tags declaring ATProto records/identities a page maps to. Built with hono's `html` template (not JSX `<meta>`) because hono/jsx dedupes by `name`. Routes pass tags via `c.render(..., { atTags })`.
 
@@ -570,6 +609,7 @@ That wrapper also decides `statement.reader`, which is how Kysely picks `all()` 
 | `personal_book`       | Uploaded ebook files      | id (PK, autoincrement), UNIQUE (userDid, contentHash), filename, **filenameHash**, **filenameKey**, title, authors, format, hiveId (nullable), **sizeBytes**                                             |
 | `personal_shelf`      | User's personal shelves   | id (PK, autoincrement), userDid, name, description                                                                                                                                                       |
 | `personal_shelf_item` | Books in personal shelves | shelfId, **personalBookId** (UNIQUE pair) — the row id, not the content hash                                                                                                                             |
+| `progress_history`    | Reading progress log      | id (PK, autoincrement), userDid, hiveId, currentPage, totalPages, percent, createdAt. Deduped on insert: skipped when the latest entry for the same user+book has the same `currentPage`                 |
 
 Notes: `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface as `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
@@ -621,6 +661,7 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 | `bookIdentifiers.ts`    | ISBN/ID normalization + persistence                                                                                                                                                                                                                                                                                                                                                                                           |
 | `bookProgress.ts`       | BookProgress serialization                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `readThroughCache.ts`   | KV read-through with TTL + optional `revalidateAfter` (stale-while-revalidate). Prefer SWR for anything expensive — a plain TTL makes every expiry a blocking recompute on a request path. The entry is stamped **after** the fetch resolves, so a slow fetch isn't born stale                                                                                                                                                |
+| `activityFeed.ts`       | **The one** activity-feed implementation — keyset pagination, tab predicates, burst collapsing, `feedQuerySchema`. `/feed` and XRPC `getFeed` are both thin adapters; they used to be line-for-line copies that had already drifted. Errors are a discriminated result (`{ok: false, reason}`), never a throw                                                                                                                 |
 | `authorStats.ts`        | `getAuthorStats` / `getFeaturedAuthors` — the `/explore` author aggregates, SWR-cached inside the helper, `INDEXED BY idx_hive_book_stats`. Featured is a strict prefix of the directory list, not its own query                                                                                                                                                                                                              |
 | `exploreGenres.ts`      | `getTopGenres` — same, for genres. Only joins `hive_book` when a language is given                                                                                                                                                                                                                                                                                                                                            |
 | `csv.ts`                | Goodreads/StoryGraph CSV parsers                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -868,6 +909,13 @@ same way the OG worker ships takumi's.
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
 
 **XRPC queries**: `searchBooks`, `listGenres`, `getBookIdentifiers`, `getBook`, `getProfile`, `getLanguages`, `getExplore`, `getFeed`, `getAuthorBooks`, `getReadingStats`, `getUserLists`, `getList`.
+
+**`getFeed` is paginated by `cursor`, not `page`.** `page` is still declared and accepted so shipped
+iOS builds (`app/hooks/useBookhiveQuery.ts` calls `?tab=&page=`) degrade to page 1 instead of 400ing;
+it is otherwise ignored. The output carries **both** a flat `activities` array (bursts expanded, so
+existing clients keep working) and a `groups` array with the collapsed rows, plus `collapse=false` to
+opt out of grouping entirely. `indexedAt` was added to `feedActivity` and is the field to display —
+the handler used to return only `createdAt`, so web and iOS showed different times for the same item.
 
 **XRPC list procedures**: `createList`, `updateList`, `deleteList`, `addToList`, `removeFromList`, `reorderList`.
 

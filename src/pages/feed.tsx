@@ -1,42 +1,33 @@
 import type { FC } from "hono/jsx";
-import type { Book, ProfileViewDetailed } from "../types";
-import { BuzzSection } from "./components/buzz";
+
+import type { ProfileViewDetailed } from "../types";
+import {
+  type FeedGroup,
+  type FeedTab,
+  FEED_TABS,
+  TAB_EMPTY,
+  TAB_LABELS,
+} from "../utils/activityFeed";
+import { ActivityTimeline } from "./components/activityTimeline";
+import { Script } from "./utils/script";
 
 export interface FeedPageProps {
-  activities: Book[];
-  currentTab: "friends" | "all" | "tracking";
-  currentPage: number;
-  hasMore: boolean;
+  groups: FeedGroup[];
+  currentTab: FeedTab;
+  nextCursor: string | null;
   profileByDid: Record<string, ProfileViewDetailed>;
   didHandleMap: Record<string, string>;
   currentUserHandle?: string;
 }
 
-const TAB_LABELS: Record<"friends" | "all" | "tracking", string> = {
-  friends: "Friends",
-  all: "All",
-  tracking: "Books I Track",
-};
-
-const TAB_EMPTY: Record<"friends" | "all" | "tracking", string> = {
-  friends: "Follow users to see their activity",
-  all: "Check back later",
-  tracking: "Add books to your library to see activity on books you track",
-};
-
 export const FeedPage: FC<FeedPageProps> = ({
-  activities,
+  groups,
   currentTab,
-  currentPage,
-  hasMore,
+  nextCursor,
   profileByDid,
   didHandleMap,
   currentUserHandle,
 }) => {
-  const profileMap = Object.fromEntries(
-    Object.entries(profileByDid).map(([did, p]) => [did, { avatar: p.avatar }]),
-  );
-
   return (
     <div class="space-y-6 px-4 py-8 lg:px-8">
       <div class="flex items-center justify-between">
@@ -45,7 +36,7 @@ export const FeedPage: FC<FeedPageProps> = ({
           <a
             href={`/rss/friends/${currentUserHandle}`}
             title="RSS feed for friends' activity"
-            class="btn btn-ghost flex items-center justify-center gap-1.5 min-h-10 min-w-10"
+            class="btn btn-ghost flex min-h-10 min-w-10 items-center justify-center gap-1.5"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -61,13 +52,14 @@ export const FeedPage: FC<FeedPageProps> = ({
       </div>
 
       {/* Tabs: link-based, no JS */}
-      <div class="flex gap-2 border-b border-border">
-        {(["friends", "all", "tracking"] as const).map((t) => (
+      <div class="border-border flex gap-2 border-b">
+        {FEED_TABS.map((t) => (
           <a
             href={`/feed?tab=${t}`}
-            class={`tab-label cursor-pointer px-3 py-2 text-sm font-medium min-h-10 flex items-center transition-[color,border-color] duration-150 active:scale-[0.96] ${
+            aria-current={currentTab === t ? "page" : undefined}
+            class={`tab-label focus-ring flex min-h-10 cursor-pointer items-center px-3 py-2 text-sm font-medium transition-[color,border-color] duration-150 active:scale-[0.96] ${
               currentTab === t
-                ? "border-b-2 border-primary text-foreground"
+                ? "border-primary text-foreground border-b-2"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -76,32 +68,50 @@ export const FeedPage: FC<FeedPageProps> = ({
         ))}
       </div>
 
-      {activities.length === 0 ? (
+      {groups.length === 0 ? (
         <div class="empty">
           <div class="empty-title">No activity yet</div>
           <div class="empty-description">{TAB_EMPTY[currentTab]}</div>
         </div>
       ) : (
-        <BuzzSection
-          title=""
-          subtitle=""
-          books={activities}
-          didHandleMap={didHandleMap}
-          profileMap={profileMap}
-          showDetails
-        />
+        <ActivityTimeline groups={groups} didHandleMap={didHandleMap} profileByDid={profileByDid} />
       )}
 
-      {hasMore && (
+      {nextCursor && (
         <div class="text-center">
           <a
-            href={`/feed?tab=${currentTab}&page=${currentPage + 1}`}
-            class="btn btn-secondary tabular-nums min-h-10"
+            href={`/feed?tab=${currentTab}&cursor=${encodeURIComponent(nextCursor)}`}
+            class="btn btn-secondary min-h-10 tabular-nums"
           >
             Load more
           </a>
         </div>
       )}
+
+      {/*
+        Relabel the newest date separators to Today/Yesterday, but only when the
+        server's UTC bucket matches the viewer's local date. The server has no
+        timezone for the viewer, so it renders real dates; this upgrades them
+        rather than correcting them, and with JS off the dates stand on their own.
+      */}
+      <Script
+        script={(document) => {
+          const localKey = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+              d.getDate(),
+            ).padStart(2, "0")}`;
+          const now = new Date();
+          const today = localKey(now);
+          const yesterday = localKey(new Date(now.getTime() - 86400000));
+          document.querySelectorAll("[data-feed-day]").forEach((el) => {
+            const day = el.getAttribute("data-feed-day");
+            const label = el.querySelector("time");
+            if (!label) return;
+            if (day === today) label.textContent = "Today";
+            else if (day === yesterday) label.textContent = "Yesterday";
+          });
+        }}
+      />
     </div>
   );
 };

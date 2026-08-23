@@ -49,6 +49,8 @@ type FeedItem = {
   stars: number | null;
   review: string | null;
   createdAt: string;
+  /** The activity time — what `pubDate` and the ordering both use. */
+  indexedAt: string;
   userDid: string;
 };
 
@@ -58,10 +60,23 @@ type ChannelMeta = {
   description: string;
 };
 
+/**
+ * Ordered by, and dated with, `indexedAt` — the same activity time the site's
+ * feed uses (see migration 025). Both must move together: emitting `createdAt`
+ * as `pubDate` while ordering by `indexedAt` would reproduce the exact
+ * sorted-by-one-column-labelled-with-another bug this replaced, just in XML.
+ *
+ * Safe because `<guid isPermaLink="false">` is the AT URI and does not change,
+ * so readers dedupe on it and nothing re-notifies as unread; only the sort
+ * position moves, which is what you want when someone finally finishes a book.
+ * Migration 025's clamp must land first, though — without it every row still
+ * carries a library re-sync stamp and subscribers would see one wholesale
+ * reorder on deploy.
+ */
 function buildRssXml(items: FeedItem[], channel: ChannelMeta): string {
   const lastBuildDate =
     items.length > 0 && items[0]
-      ? toRfc2822(items[0].createdAt)
+      ? toRfc2822(items[0].indexedAt)
       : toRfc2822(new Date().toISOString());
 
   const itemsXml = items
@@ -82,7 +97,7 @@ function buildRssXml(items: FeedItem[], channel: ChannelMeta): string {
       <title>${escapeXml(`${actionText} "${item.title}"`)}</title>
       <link>https://bookhive.buzz/books/${escapeXml(item.hiveId)}</link>
       <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
-      <pubDate>${toRfc2822(item.createdAt)}</pubDate>
+      <pubDate>${toRfc2822(item.indexedAt)}</pubDate>
       <description><![CDATA[${descHtml}]]></description>
     </item>`;
     })
@@ -120,7 +135,8 @@ const app = new Hono<AppEnv>()
       .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
       .select(BookFields)
       .where("user_book.userDid", "=", did)
-      .orderBy("user_book.createdAt", "desc")
+      .orderBy("user_book.indexedAt", "desc")
+      .orderBy("user_book.uri", "desc")
       .limit(limit);
 
     if (statusFilter) {
@@ -165,7 +181,8 @@ const app = new Hono<AppEnv>()
       .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
       .select(BookFields)
       .where("user_book.hiveId", "=", hiveId)
-      .orderBy("user_book.createdAt", "desc")
+      .orderBy("user_book.indexedAt", "desc")
+      .orderBy("user_book.uri", "desc")
       .limit(limit);
 
     if (statusFilter) {
@@ -198,7 +215,7 @@ const app = new Hono<AppEnv>()
       <title>${escapeXml(`@${handle} ${actionText}`)}</title>
       <link>https://bookhive.buzz/profile/${escapeXml(handle)}</link>
       <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
-      <pubDate>${toRfc2822(item.createdAt)}</pubDate>
+      <pubDate>${toRfc2822(item.indexedAt)}</pubDate>
       <description><![CDATA[${descHtml}]]></description>
     </item>`;
       })
@@ -206,7 +223,7 @@ const app = new Hono<AppEnv>()
 
     const lastBuildDate =
       rows.length > 0 && rows[0]
-        ? toRfc2822(rows[0].createdAt)
+        ? toRfc2822(rows[0].indexedAt)
         : toRfc2822(new Date().toISOString());
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -252,7 +269,8 @@ ${itemsXml}
           .where("user_follows.isActive", "=", 1)
           .select("user_follows.followsDid"),
       )
-      .orderBy("user_book.createdAt", "desc")
+      .orderBy("user_book.indexedAt", "desc")
+      .orderBy("user_book.uri", "desc")
       .limit(limit);
 
     if (statusFilter) {

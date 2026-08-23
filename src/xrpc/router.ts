@@ -65,6 +65,13 @@ import type { HiveId } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
 import { getFeaturedAuthors } from "../utils/authorStats";
+import {
+  DEFAULT_FEED_LIMIT,
+  FEED_TABS,
+  getActivityFeed,
+  type FeedItem,
+  type FeedTab,
+} from "../utils/activityFeed";
 import { getTopGenres } from "../utils/exploreGenres";
 import { resolveLanguage } from "../utils/getLanguages";
 import { getAvailableLanguages } from "../utils/getLanguages";
@@ -971,76 +978,76 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetFeed, {
+    /**
+     * Thin adapter over `getActivityFeed` (`src/utils/activityFeed.ts`). This
+     * used to be a line-for-line copy of the `/feed` page handler and had
+     * already drifted: it returned `createdAt` where the web page rendered
+     * `indexedAt` (so the same item showed two different times on web and iOS),
+     * and it never populated the `userAvatar` the lexicon has always declared.
+     */
     async handler({ params: _params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
       const params = _params as BuzzBookhiveGetFeed.$params;
 
-      const tab = (params.tab as "friends" | "all" | "tracking") || "friends";
-      const page = Math.max(1, params.page ?? 1);
-      const limit = Math.min(50, params.limit ?? 25);
-      const offset = (page - 1) * limit;
+      const tab = FEED_TABS.includes(params.tab as FeedTab) ? (params.tab as FeedTab) : "friends";
 
-      if ((tab === "friends" || tab === "tracking") && !agent) {
+      const feed = await getActivityFeed({
+        ctx,
+        viewerDid: agent?.did ?? null,
+        tab,
+        limit: params.limit ?? DEFAULT_FEED_LIMIT,
+        cursor: params.cursor,
+        collapse: params.collapse ?? true,
+      });
+
+      if (!feed.ok) {
         throw new AuthRequiredError({
           message: `The ${tab} feed requires authentication`,
         });
       }
 
-      let query = ctx.db
-        .selectFrom("user_book")
-        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .select(BookFields)
-        .orderBy("user_book.createdAt", "desc")
-        .limit(limit + 1)
-        .offset(offset);
+      const toActivity = (item: FeedItem) => ({
+        userDid: item.actorDid,
+        userHandle: feed.didHandleMap[item.actorDid] ?? item.actorDid,
+        userAvatar: feed.profileByDid[item.actorDid]?.avatar ?? undefined,
+        hiveId: item.book.hiveId,
+        title: item.book.title,
+        authors: item.book.authors,
+        status: item.book.status ?? undefined,
+        stars: item.book.stars ?? undefined,
+        review: item.book.review ?? undefined,
+        createdAt: item.book.createdAt,
+        indexedAt: item.ts,
+        thumbnail: item.book.thumbnail || "",
+        cover: item.book.cover ?? item.book.thumbnail ?? undefined,
+      });
 
-      if (tab === "friends" && agent) {
-        query = query.where(
-          "user_book.userDid",
-          "in",
-          ctx.db
-            .selectFrom("user_follows")
-            .where("user_follows.userDid", "=", agent.did)
-            .where("user_follows.isActive", "=", 1)
-            .select("user_follows.followsDid"),
-        ) as typeof query;
-      } else if (tab === "tracking" && agent) {
-        query = query.where(
-          "user_book.hiveId",
-          "in",
-          ctx.db
-            .selectFrom("user_book as ub2")
-            .where("ub2.userDid", "=", agent.did)
-            .select("ub2.hiveId"),
-        ) as typeof query;
-      }
-
-      const rows = await query.execute();
-      const hasMore = rows.length > limit;
-      const activities = rows.slice(0, limit);
-
-      const allDids = [...new Set(activities.map((a) => a.userDid))];
-      const didToHandle =
-        allDids.length > 0 ? await ctx.resolver.resolveDidsToHandles(allDids) : {};
+      const groups = feed.groups.map((g) =>
+        g.kind === "single"
+          ? {
+              kind: "single" as const,
+              verb: g.item.verb,
+              total: 1,
+              activities: [toActivity(g.item)],
+            }
+          : {
+              kind: "burst" as const,
+              verb: g.verb,
+              total: g.total,
+              truncated: g.truncated,
+              activities: g.items.map(toActivity),
+            },
+      );
 
       return json({
-        activities: activities.map((a) => ({
-          userDid: a.userDid,
-          userHandle: didToHandle[a.userDid] ?? a.userDid,
-          hiveId: a.hiveId,
-          title: a.title,
-          authors: a.authors,
-          status: a.status ?? undefined,
-          stars: a.stars ?? undefined,
-          review: a.review ?? undefined,
-          createdAt: a.createdAt,
-          thumbnail: a.thumbnail || "",
-          cover: a.cover ?? a.thumbnail ?? undefined,
-        })),
-        hasMore,
-        page,
-      });
+        // Flat list kept populated so shipped clients that only read
+        // `activities` keep working; bursts are expanded here.
+        activities: groups.flatMap((g) => g.activities),
+        groups,
+        cursor: feed.nextCursor ?? undefined,
+        hasMore: feed.nextCursor != null,
+      } satisfies BuzzBookhiveGetFeed.$output);
     },
   });
 

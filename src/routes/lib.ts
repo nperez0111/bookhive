@@ -21,6 +21,7 @@ import { NO_STORE, hasSessionCookie } from "../utils/cacheHeaders";
 import { findBookDetails } from "../scrapers";
 import { enqueueEnrichment, enqueueEnrichmentBatch } from "../utils/enrichQueue";
 import { serializeUserBook } from "../utils/bookProgress";
+import { feedActivityIndexedAt } from "../db";
 import { upsertBookIdentifiers, upsertBookIdentifiersBatch } from "../utils/bookIdentifiers";
 import { Semaphore } from "../utils/semaphore";
 import { ftsMatchQuery, isUsefulFtsQuery } from "../utils/ftsQuery";
@@ -472,7 +473,7 @@ export async function refetchBooks({
           cid: c.ref("excluded.cid"),
           userDid: c.ref("excluded.userDid"),
           createdAt: c.ref("excluded.createdAt"),
-          indexedAt: c.ref("excluded.indexedAt"),
+          indexedAt: feedActivityIndexedAt,
           title: c.ref("excluded.title"),
           authors: c.ref("excluded.authors"),
           status: c.ref("excluded.status"),

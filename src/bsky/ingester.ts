@@ -1,6 +1,6 @@
 import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
-import type { Database } from "../db";
+import { feedActivityIndexedAt, type Database } from "../db";
 import { env } from "../env";
 import {
   ingesterEventDuration,
@@ -427,7 +427,7 @@ export function createIngester(
             )
             .onConflict((oc) =>
               oc.column("uri").doUpdateSet((c) => ({
-                indexedAt: c.ref("excluded.indexedAt"),
+                indexedAt: feedActivityIndexedAt,
                 cid: c.ref("excluded.cid"),
                 hiveId: c.ref("excluded.hiveId"),
                 status: c.ref("excluded.status"),

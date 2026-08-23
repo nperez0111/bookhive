@@ -14,6 +14,7 @@ import { backfillCatalogBooks, getBackfillProgress } from "../utils/catalogBookS
 import { createActorResolver } from "../bsky/id-resolver";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
 import { serializeUserBook } from "../utils/bookProgress";
+import { feedActivityIndexedAt } from "../db";
 import { searchBooks } from "./lib";
 import type { HiveId, UserBook, Buzz } from "../types";
 
@@ -305,7 +306,7 @@ const admin = new Hono<AppEnv>()
                 cid: c.ref("excluded.cid"),
                 userDid: c.ref("excluded.userDid"),
                 createdAt: c.ref("excluded.createdAt"),
-                indexedAt: c.ref("excluded.indexedAt"),
+                indexedAt: feedActivityIndexedAt,
                 title: c.ref("excluded.title"),
                 authors: c.ref("excluded.authors"),
                 status: c.ref("excluded.status"),
