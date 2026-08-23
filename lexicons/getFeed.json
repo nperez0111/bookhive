@@ -15,9 +15,38 @@
         "stars": { "type": "integer", "minimum": 1, "maximum": 10 },
         "review": { "type": "string" },
         "createdAt": { "type": "string", "format": "datetime" },
+        "indexedAt": {
+          "type": "string",
+          "format": "datetime",
+          "description": "When this activity happened, and the feed's sort key. Prefer this over createdAt for display: createdAt is frozen at record creation, so it does not move when a book is finished or reviewed."
+        },
         "thumbnail": { "type": "string" },
         "cover": { "type": "string" },
         "userAvatar": { "type": "string" }
+      }
+    },
+    "feedGroup": {
+      "type": "object",
+      "description": "One row of the feed. A burst collapses a run of same-actor, same-verb activity (a CSV import or library re-sync) into a single row.",
+      "required": ["kind", "activities"],
+      "properties": {
+        "kind": { "type": "string", "knownValues": ["single", "burst"] },
+        "verb": {
+          "type": "string",
+          "description": "Display verb for the row, e.g. \"finished\", \"wants to read\", or \"logged\" when a burst spans several statuses."
+        },
+        "total": {
+          "type": "integer",
+          "description": "Number of activities in a burst. Absent or 1 for a single."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when the burst was force-closed at a page boundary, so total is a floor rather than an exact count."
+        },
+        "activities": {
+          "type": "array",
+          "items": { "type": "ref", "ref": "buzz.bookhive.getFeed#feedActivity" }
+        }
       }
     },
     "main": {
@@ -31,11 +60,21 @@
             "knownValues": ["friends", "all", "tracking"],
             "description": "Which feed tab to show. Defaults to friends."
           },
+          "cursor": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Opaque pagination cursor from a previous response. Preferred over page."
+          },
+          "collapse": {
+            "type": "boolean",
+            "default": true,
+            "description": "Collapse import/re-sync bursts into grouped rows. Pass false for a flat activity list."
+          },
           "page": {
             "type": "integer",
             "minimum": 1,
             "default": 1,
-            "description": "Page number for pagination"
+            "description": "Deprecated and ignored: use cursor. Retained so existing clients get page 1 rather than an error."
           },
           "limit": {
             "type": "integer",
@@ -53,7 +92,16 @@
           "properties": {
             "activities": {
               "type": "array",
+              "description": "Flat activity list, newest first. Bursts are expanded here so existing clients keep working; read groups for the collapsed view.",
               "items": { "type": "ref", "ref": "buzz.bookhive.getFeed#feedActivity" }
+            },
+            "groups": {
+              "type": "array",
+              "items": { "type": "ref", "ref": "buzz.bookhive.getFeed#feedGroup" }
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Pass as cursor to fetch the next page. Absent when the feed is exhausted."
             },
             "hasMore": { "type": "boolean" },
             "page": { "type": "integer" }

@@ -30,5 +30,19 @@ export const BOOK_STATUS_PAST_TENSE_MAP = {
   [FINISHED]: "has read this book",
 } as const;
 
+/**
+ * Verbs for an activity-feed sentence: "@alice finished Dune".
+ *
+ * `BOOK_STATUS_PAST_TENSE_MAP` above is phrased for a card where the book is
+ * implicit ("has read this book") and reads redundantly in a timeline row that
+ * already names the title. Both are live; pick by surface.
+ */
+export const BOOK_STATUS_FEED_VERB_MAP = {
+  [ABANDONED]: "gave up on",
+  [READING]: "started reading",
+  [WANTTOREAD]: "wants to read",
+  [FINISHED]: "finished",
+} as const;
+
 /** DID of the @bookhive.buzz service account / site identity. */
 export const BOOKHIVE_DID = "did:plc:enu2j5xjlqsjaylv3du4myh4";

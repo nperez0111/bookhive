@@ -67,7 +67,10 @@ export async function getProfiles({
   dids,
   publicOnly,
 }: {
-  ctx: AppContext;
+  // Narrowed to what this actually touches, so callers holding a partial
+  // context (`XrpcContext`, or the feed core's `FeedCtx`) can pass it directly
+  // instead of casting a structurally-compatible object to the full AppContext.
+  ctx: Pick<AppContext, "kv" | "getSessionAgent">;
   dids: string[];
   publicOnly?: boolean;
 }): Promise<ProfileViewDetailed[]> {

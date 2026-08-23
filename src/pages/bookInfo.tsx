@@ -232,6 +232,18 @@ export const BookInfo: FC<{
   endTime(c, "db_parallel_queries");
   const reviewCount = reviewCountResult?.count ?? 0;
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
+  const progressHistory =
+    did && usersBook
+      ? await c
+          .get("ctx")
+          .db.selectFrom("progress_history")
+          .select(["currentPage", "totalPages", "percent", "createdAt"])
+          .where("userDid", "=", did)
+          .where("hiveId", "=", book.id)
+          .orderBy("createdAt", "desc")
+          .limit(20)
+          .execute()
+      : [];
   const meta = normalizeBookMeta(book.meta);
   const seriesData = book.series ? JSON.parse(book.series) : null;
   const bookUrl = `${env.PUBLIC_URL}/books/${book.id}`;
@@ -1044,6 +1056,36 @@ export const BookInfo: FC<{
                         </li>
                       );
                     })}
+                </ul>
+              </div>
+            )}
+
+            {/* Reading Timeline */}
+            {progressHistory.length > 0 && (
+              <div>
+                <p class="mb-2 block text-sm font-semibold text-foreground">Reading Timeline</p>
+                <ul class="space-y-1.5 text-sm">
+                  {progressHistory.map((entry, i) => (
+                    <li
+                      key={`${entry.createdAt}-${i}`}
+                      class="flex items-baseline justify-between gap-2"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      <span class="text-foreground">
+                        Page {entry.currentPage}
+                        {entry.totalPages ? ` of ${entry.totalPages}` : ""}
+                        {entry.percent != null && (
+                          <span class="text-muted-foreground ml-1">({entry.percent}%)</span>
+                        )}
+                      </span>
+                      <time
+                        datetime={entry.createdAt}
+                        class="shrink-0 text-xs text-muted-foreground"
+                      >
+                        {format(new Date(entry.createdAt), "MMM d, yyyy")}
+                      </time>
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}

@@ -149,6 +149,34 @@ const app = new Hono<AppEnv>()
         updates,
       });
       endTime(c, "pds_update_book");
+      if (normalizedProgress && (normalizedProgress as BookProgress).currentPage != null) {
+        const p = normalizedProgress as BookProgress;
+        const db = c.get("ctx").db;
+        const last = db
+          .selectFrom("progress_history")
+          .select("currentPage")
+          .where("userDid", "=", agent.did)
+          .where("hiveId", "=", hiveId)
+          .orderBy("createdAt", "desc")
+          .limit(1)
+          .executeTakeFirst();
+        last
+          .then((row) => {
+            if (row && row.currentPage === (p.currentPage ?? null)) return;
+            return db
+              .insertInto("progress_history")
+              .values({
+                userDid: agent.did,
+                hiveId,
+                currentPage: p.currentPage ?? null,
+                totalPages: p.totalPages ?? null,
+                percent: p.percent ?? null,
+                createdAt: new Date().toISOString(),
+              })
+              .execute();
+          })
+          .catch(() => {});
+      }
       c.get("ctx").addWideEventContext({
         api: "update_book",
         hiveId,

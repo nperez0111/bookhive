@@ -1,5 +1,5 @@
 import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely.js";
-import { Kysely, SqliteDialect, sql } from "kysely";
+import { Kysely, SqliteDialect, sql, type Generated } from "kysely";
 import { Migrator, type Migration, type MigrationProvider } from "kysely/migration";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { env } from "./env";
@@ -38,6 +38,17 @@ export type DatabaseSchema = {
   personal_shelf: PersonalShelfRow;
   personal_shelf_item: PersonalShelfItemRow;
   enrich_queue: EnrichQueueRow;
+  progress_history: ProgressHistoryRow;
+};
+
+export type ProgressHistoryRow = {
+  id: Generated<number>;
+  userDid: string;
+  hiveId: string;
+  currentPage: number | null;
+  totalPages: number | null;
+  percent: number | null;
+  createdAt: string;
 };
 
 /** Pending Goodreads enrichment work — see src/utils/enrichQueue.ts. */
@@ -75,6 +86,37 @@ export const BookFields = [
   "hive_book.rawTitle",
   "hive_book.meta",
 ] as const;
+
+/**
+ * `indexedAt` for an `ON CONFLICT DO UPDATE` on `user_book`: advance the row's
+ * activity time only when a field the activity feed actually renders changed.
+ *
+ * `indexedAt` is the activity feed's sort key (see migration 025). Every upsert
+ * used to write `indexedAt = excluded.indexedAt` unconditionally, and
+ * `refetchBooks` computes ONE timestamp for a whole library re-sync
+ * (`src/routes/lib.ts`) — so a user re-syncing 400 unchanged books re-dated
+ * their entire back catalogue to "a few seconds ago" and flooded every
+ * follower's feed with books they added years ago.
+ *
+ * Gating on `cid` would stop the flood but not the churn: `cid` is a hash of
+ * the whole PDS record, so it also moves for cover-blob re-uploads,
+ * `hiveBookUri` backfill, title normalisation, and every KOReader
+ * `bookProgress` ping. A user reading for two hours would bump to the top of
+ * every follower's feed ~20 times. None of that is activity.
+ *
+ * `IS NOT`, not `<>` — `<>` against a NULL yields NULL, the CASE falls through
+ * to the ELSE, and "user cleared their rating" or "user set a status for the
+ * first time" silently stops counting as activity. `IS NOT` is SQLite's
+ * null-safe distinctness operator. This is the easiest part of this to get
+ * wrong, and `src/utils/getBook.test.ts` pins it.
+ */
+export const feedActivityIndexedAt = sql<string>`CASE WHEN
+     excluded.status     IS NOT user_book.status
+  OR excluded.stars      IS NOT user_book.stars
+  OR excluded.review     IS NOT user_book.review
+  OR excluded.finishedAt IS NOT user_book.finishedAt
+  OR excluded.owned      IS NOT user_book.owned
+  THEN excluded.indexedAt ELSE user_book.indexedAt END`;
 
 // Migrations
 
@@ -1095,6 +1137,127 @@ migrations["026"] = {
   async down(db: Kysely<unknown>) {
     await db.schema.alterTable("personal_book").dropColumn("epubPath").execute();
     await db.schema.alterTable("personal_book").dropColumn("epubSizeBytes").execute();
+  },
+};
+
+migrations["027"] = {
+  async up(db: Kysely<unknown>) {
+    // Make `user_book.indexedAt` usable as the activity feed's sort key.
+    //
+    // The feed sorted by `createdAt` and *labelled* every card with `indexedAt`
+    // (`src/pages/components/buzz.tsx`), so the relative times it displayed ran
+    // non-monotonically — "2h ago, 3d ago, 10m ago, 1y ago" — which is why
+    // users described it as randomly shuffled. Measured on a production
+    // snapshot, the two columns disagreed on the day for 55% of rows.
+    //
+    // `createdAt` cannot be the key: it mirrors a field of the user's
+    // `buzz.bookhive.book` PDS record and is deliberately frozen forever
+    // (`src/utils/getBook.ts` — "Always prefer original values"), so finishing a
+    // book or writing a review never moved it up the feed. `indexedAt` is the
+    // only column that tracks "something happened", and from here on the
+    // upserts advance it only on a real change (see `feedActivityIndexedAt`).
+    //
+    // The existing DATA is still junk, and fixing only the write path would
+    // leave the feed monotonic but wrong — ordered by who re-synced most
+    // recently, showing a wall of "2 days ago" for books added in 2019.
+    // `refetchBooks` stamps one timestamp across a whole library, so most rows
+    // currently say "the last time this user pressed sync". Clamp each row back
+    // down to the latest moment we have actual evidence for:
+    //
+    //     indexedAt := MIN(indexedAt, MAX(createdAt, finishedAt, progress.updatedAt))
+    //
+    // preferring a real edit over the record's creation time, and never letting
+    // a backdated Goodreads import or a mistyped future `finishedAt` push a row
+    // ABOVE its own re-sync stamp. `MAX`/`MIN` here are the scalar
+    // (multi-argument) forms, not the aggregates; they compare TEXT
+    // lexicographically, which is correct for ISO-8601, and a date-only
+    // `finishedAt` sorts as that day's midnight, which is the right answer.
+    // `COALESCE(…, '')` is what keeps a NULL from swallowing the whole MAX.
+    //
+    // The `WHERE indexedAt > createdAt` guard keeps this off rows that were
+    // already sane and makes the statement a no-op on a fresh database. It is
+    // lossy — an edit whose only evidence is in `review`/`stars` gets pulled
+    // back to `createdAt` — but it is lossy ONCE, for history, and the
+    // alternative is every user's back catalogue permanently claiming to be
+    // new. Measured at 60,181 rows: 99ms, which is acceptable inside the
+    // startup barrier.
+    await sql`
+      UPDATE user_book
+         SET indexedAt = MIN(
+               indexedAt,
+               MAX(createdAt,
+                   COALESCE(finishedAt, ''),
+                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
+       WHERE indexedAt > createdAt`.execute(db);
+
+    // `IF NOT EXISTS` throughout, as 012 and 024 do: migrations run inside the
+    // startup barrier, so "index already exists" against a half-applied state
+    // is a permanent crash loop rather than a degraded page.
+    //
+    // These are scanned in REVERSE for `ORDER BY indexedAt DESC, uri DESC` —
+    // SQLite reverses a fully-reversed ordering itself, so no DESC index is
+    // needed. `uri` is in every one of them because it is the keyset
+    // pagination tiebreaker: 5,262 distinct `createdAt` values were shared by
+    // two or more rows on the production snapshot, and without a unique final
+    // key SQLite may order ties differently between two identical requests,
+    // which silently drops rows from a paginated feed.
+    //
+    // Not optional: measured on the real database, the `all` tab ordered by
+    // `indexedAt` with no index degrades to a full scan plus a temp B-tree at
+    // 33ms against 1ms. `bun:sqlite` is synchronous and production runs three
+    // processes, so that is a third of all traffic stalled.
+    // `src/utils/activityFeed.test.ts` asserts the plans.
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_book_feed ON user_book(indexedAt, uri)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_book_user_feed ON user_book(userDid, indexedAt, uri)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_book_hive_feed ON user_book(hiveId, indexedAt, uri)`.execute(
+      db,
+    );
+
+    // `idx_user_book_hive_id` (migration 012, on `hiveId` alone) is a strict
+    // prefix of `idx_user_book_hive_feed` and has no remaining reader — same
+    // reasoning as 024 dropping `idx_hive_book_author_first`.
+    await sql`DROP INDEX IF EXISTS idx_user_book_hive_id`.execute(db);
+
+    // Deliberately NOT dropping `idx_user_book_created_at` or
+    // `idx_user_book_user_created`: eleven live call sites still order by
+    // `createdAt` (`src/pages/home.tsx`, `src/pages/comments.tsx`,
+    // `src/xrpc/router.ts`, …). Those mean "when did you add this to your
+    // shelf", which genuinely is `createdAt`.
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_book_hive_id ON user_book(hiveId)`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_user_book_hive_feed`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_user_book_user_feed`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_user_book_feed`.execute(db);
+    // The `indexedAt` clamp is not reversible — the original values were
+    // re-sync stamps carrying no information worth restoring.
+  },
+};
+
+migrations["028"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`CREATE TABLE IF NOT EXISTS progress_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userDid TEXT NOT NULL,
+      hiveId TEXT NOT NULL,
+      currentPage INTEGER,
+      totalPages INTEGER,
+      percent INTEGER,
+      createdAt TEXT NOT NULL
+    )`.execute(db);
+    await sql`CREATE INDEX IF NOT EXISTS idx_progress_history_user_book
+      ON progress_history(userDid, hiveId, createdAt DESC)`.execute(db);
+    await sql`CREATE INDEX IF NOT EXISTS idx_progress_history_user_recent
+      ON progress_history(userDid, createdAt DESC)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_progress_history_user_recent`.execute(db);
+    await sql`DROP INDEX IF EXISTS idx_progress_history_user_book`.execute(db);
+    await sql`DROP TABLE IF EXISTS progress_history`.execute(db);
   },
 };
 

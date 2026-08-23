@@ -1,4 +1,5 @@
 import { type FC } from "hono/jsx";
+import { formatDistanceToNowStrict } from "date-fns";
 import { type Book } from "../types";
 import type { BookListRow, ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
@@ -6,6 +7,7 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
 import { BOOK_STATUS } from "../constants";
 import { UserBlock } from "./components/cards";
+import { coverImageUrl } from "../utils/imageProxy";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -22,6 +24,16 @@ export const ProfilePage: FC<{
   followersProfiles?: ProfileViewDetailed[];
   genreStats?: { genre: string; count: number }[];
   userLists?: Array<BookListRow & { itemCount: number | null }>;
+  progressHistory?: {
+    hiveId: string;
+    title: string;
+    cover: string | null;
+    thumbnail: string;
+    currentPage: number | null;
+    totalPages: number | null;
+    percent: number | null;
+    createdAt: string;
+  }[];
 }> = ({
   handle,
   did,
@@ -37,6 +49,7 @@ export const ProfilePage: FC<{
   followersProfiles = [],
   genreStats = [],
   userLists = [],
+  progressHistory = [],
 }) => {
   const year = new Date().getFullYear();
   const booksThisYear = books.reduce((sum, b) => {
@@ -169,6 +182,64 @@ export const ProfilePage: FC<{
             </div>
           </div>
 
+          {/* Recent Reading Activity */}
+          {isOwnProfile && progressHistory.length > 0 && (
+            <section>
+              <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">
+                Recent Reading Activity
+              </h2>
+              <div class="card">
+                <div class="card-body">
+                  <ol class="divide-border divide-y">
+                    {progressHistory.map((entry, i) => (
+                      <li key={`${entry.hiveId}-${i}`} class="flex items-center gap-3 py-2.5">
+                        <a
+                          href={`/books/${entry.hiveId}`}
+                          class="book-cover-frame shrink-0 overflow-hidden rounded"
+                        >
+                          <img
+                            src={coverImageUrl(entry.hiveId, { width: 64 })}
+                            alt=""
+                            loading="lazy"
+                            width="32"
+                            height="48"
+                            class="book-cover h-12 w-8 rounded object-cover"
+                          />
+                        </a>
+                        <div class="min-w-0 flex-1">
+                          <p class="text-sm leading-snug">
+                            <span class="tabular-nums text-foreground font-medium">
+                              Page {entry.currentPage}
+                              {entry.totalPages ? ` of ${entry.totalPages}` : ""}
+                            </span>
+                            {entry.percent != null && (
+                              <span class="text-muted-foreground ml-1">({entry.percent}%)</span>
+                            )}
+                            <span class="text-muted-foreground"> &mdash; </span>
+                            <a
+                              href={`/books/${entry.hiveId}`}
+                              class="text-foreground hover:text-primary font-semibold"
+                            >
+                              {entry.title}
+                            </a>
+                          </p>
+                          <time
+                            datetime={entry.createdAt}
+                            class="text-muted-foreground mt-0.5 block text-xs tabular-nums"
+                          >
+                            {formatDistanceToNowStrict(new Date(entry.createdAt), {
+                              addSuffix: true,
+                            })}
+                          </time>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Library */}
           <section>
             <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
@@ -176,20 +247,31 @@ export const ProfilePage: FC<{
               <div
                 id="mount-library-table"
                 data-books={JSON.stringify(
-                  books.map((b) => ({
-                    hiveId: b.hiveId,
-                    title: b.title,
-                    authors: b.authors,
-                    cover: b.cover,
-                    thumbnail: b.thumbnail,
-                    status: b.status,
-                    stars: b.stars,
-                    startedAt: b.startedAt,
-                    finishedAt: b.finishedAt,
-                    createdAt: b.createdAt,
-                    owned: b.owned,
-                    review: b.review,
-                  })),
+                  books.map((b) => {
+                    let metaPages: number | null = null;
+                    if (b.meta) {
+                      try {
+                        const m = JSON.parse(b.meta);
+                        if (m.numPages != null && m.numPages > 0) metaPages = m.numPages;
+                      } catch {}
+                    }
+                    return {
+                      hiveId: b.hiveId,
+                      title: b.title,
+                      authors: b.authors,
+                      cover: b.cover,
+                      thumbnail: b.thumbnail,
+                      status: b.status,
+                      stars: b.stars,
+                      startedAt: b.startedAt,
+                      finishedAt: b.finishedAt,
+                      createdAt: b.createdAt,
+                      owned: b.owned,
+                      review: b.review,
+                      bookProgress: b.bookProgress,
+                      totalPages: b.bookProgress?.totalPages ?? metaPages,
+                    };
+                  }),
                 )}
               />
             ) : (

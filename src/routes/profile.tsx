@@ -424,6 +424,41 @@ const app = new Hono<AppEnv>()
     }
     endTime(c, "genreStats");
 
+    startTime(c, "progressHistory");
+    const isOwnProfile = sessionAgent?.did === did;
+    let progressHistory: {
+      hiveId: string;
+      title: string;
+      cover: string | null;
+      thumbnail: string;
+      currentPage: number | null;
+      totalPages: number | null;
+      percent: number | null;
+      createdAt: string;
+    }[] = [];
+    if (isOwnProfile && isBuzzer) {
+      const rows = await c
+        .get("ctx")
+        .db.selectFrom("progress_history")
+        .innerJoin("hive_book", "progress_history.hiveId", "hive_book.id")
+        .select([
+          "progress_history.hiveId",
+          "hive_book.title",
+          "hive_book.cover",
+          "hive_book.thumbnail",
+          "progress_history.currentPage",
+          "progress_history.totalPages",
+          "progress_history.percent",
+          "progress_history.createdAt",
+        ])
+        .where("progress_history.userDid", "=", did)
+        .orderBy("progress_history.createdAt", "desc")
+        .limit(10)
+        .execute();
+      progressHistory = rows;
+    }
+    endTime(c, "progressHistory");
+
     // Page renders viewer-specific UI (follow button / isOwnProfile), so use
     // `private` (browser cache only, never shared/CDN). Short TTL with
     // stale-while-revalidate avoids recomputing the ~7 queries on quick revisits.
@@ -438,13 +473,14 @@ const app = new Hono<AppEnv>()
         profile={profile}
         isFollowing={isFollowing}
         canFollow={Boolean(sessionAgent) && sessionAgent?.did !== did}
-        isOwnProfile={sessionAgent?.did === did}
+        isOwnProfile={isOwnProfile}
         followingCount={followingCount}
         followersCount={followersCount}
         followingProfiles={followingProfiles}
         followersProfiles={followersProfiles}
         genreStats={genreStats}
         userLists={userLists}
+        progressHistory={progressHistory}
       />,
       {
         title: "BookHive | @" + handle,

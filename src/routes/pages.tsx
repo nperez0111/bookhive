@@ -10,15 +10,12 @@ import { zValidator } from "@hono/zod-validator";
 
 import type { AppEnv } from "../context";
 import { BOOKHIVE_DID } from "../constants";
-import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
 import { SimpleNavbar } from "../pages/simple-navbar";
-import { getProfiles } from "../utils/getProfile";
-import { hydrateUserBook } from "../utils/bookProgress";
 import { LibraryImport } from "../pages/import";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
@@ -29,6 +26,7 @@ import { SearchResults } from "../pages/searchResults";
 import { searchBooks, cacheControl } from "./lib";
 import { NO_STORE } from "../utils/cacheHeaders";
 import { getAvailableLanguages, resolveLanguage } from "../utils/getLanguages";
+import { feedQuerySchema, getActivityFeed } from "../utils/activityFeed";
 
 const app = new Hono<AppEnv>()
   .get("/home", async (c) => {
@@ -42,69 +40,36 @@ const app = new Hono<AppEnv>()
     }
     return c.render(<Home />, { title: "BookHive | Home" });
   })
-  .get("/feed", async (c) => {
+  .get("/feed", zValidator("query", feedQuerySchema), async (c) => {
+    // Fully personalized (the friends and tracking tabs are follow-graph
+    // specific), and it previously set no Cache-Control at all — same exposure
+    // as /home above.
+    c.header("Cache-Control", NO_STORE);
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
       return c.redirect("/login", 302);
     }
-    const ctx = c.get("ctx");
-    const tab = (c.req.query("tab") as "friends" | "all" | "tracking") || "friends";
-    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const limit = 25;
-    const offset = (page - 1) * limit;
-
-    let query = ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .orderBy("user_book.createdAt", "desc")
-      .limit(limit + 1)
-      .offset(offset);
-
-    if (tab === "friends") {
-      query = query.where(
-        "user_book.userDid",
-        "in",
-        ctx.db
-          .selectFrom("user_follows")
-          .where("user_follows.userDid", "=", profile.did)
-          .where("user_follows.isActive", "=", 1)
-          .select("user_follows.followsDid"),
-      ) as typeof query;
-    } else if (tab === "tracking") {
-      query = query.where(
-        "user_book.hiveId",
-        "in",
-        ctx.db
-          .selectFrom("user_book as ub2")
-          .where("ub2.userDid", "=", profile.did)
-          .select("ub2.hiveId"),
-      ) as typeof query;
-    }
+    const { tab, cursor } = c.req.valid("query");
 
     startTime(c, "db_feed");
-    const rows = await query.execute();
+    const feed = await getActivityFeed({
+      ctx: c.get("ctx"),
+      viewerDid: profile.did,
+      tab,
+      cursor,
+    });
     endTime(c, "db_feed");
-    const hasMore = rows.length > limit;
-    const activities = rows.slice(0, limit).map((row) => hydrateUserBook(row));
-
-    const allDids = [...new Set(activities.map((a) => a.userDid))];
-    startTime(c, "feed_profiles");
-    const [didHandleMap, profiles] = await Promise.all([
-      ctx.resolver.resolveDidsToHandles(allDids),
-      allDids.length > 0 ? getProfiles({ ctx, dids: allDids }) : [],
-    ]);
-    endTime(c, "feed_profiles");
-    const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
+    if (!feed.ok) {
+      return c.redirect("/login", 302);
+    }
 
     return c.render(
       <FeedPage
-        activities={activities}
+        groups={feed.groups}
         currentTab={tab}
-        currentPage={page}
-        hasMore={hasMore}
-        profileByDid={profileByDid}
-        didHandleMap={didHandleMap}
+        nextCursor={feed.nextCursor}
+        profileByDid={feed.profileByDid}
+        didHandleMap={feed.didHandleMap}
         currentUserHandle={profile.handle}
       />,
       { title: "BookHive | Activity Feed" },
