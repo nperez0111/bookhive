@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, type FC } from "hono/jsx/dom";
+import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../../constants";
 import {
   StatusSelect,
   RatingSelect,
@@ -36,17 +37,14 @@ type LibraryBook = {
   totalPages: number | null;
 };
 
-const FINISHED = "buzz.bookhive.defs#finished";
-const READING = "buzz.bookhive.defs#reading";
-
 type SortKey = "default" | "title" | "status" | "rating" | "date";
 type SortDir = "asc" | "desc";
 
 const STATUS_ORDER: Record<string, number> = {
-  "buzz.bookhive.defs#reading": 0,
-  "buzz.bookhive.defs#wantToRead": 1,
-  "buzz.bookhive.defs#finished": 2,
-  "buzz.bookhive.defs#abandoned": 3,
+  [READING]: 0,
+  [WANTTOREAD]: 1,
+  [FINISHED]: 2,
+  [ABANDONED]: 3,
 };
 
 function compareBooks(a: LibraryBook, b: LibraryBook, key: SortKey, dir: SortDir): number {
@@ -63,15 +61,16 @@ function compareBooks(a: LibraryBook, b: LibraryBook, key: SortKey, dir: SortDir
       break;
     }
     case "rating":
-      cmp = (b.stars ?? -1) - (a.stars ?? -1);
+      cmp = (a.stars ?? -1) - (b.stars ?? -1);
       break;
     case "date": {
       const aDate = a.finishedAt || a.startedAt;
       const bDate = b.finishedAt || b.startedAt;
       if (!aDate && !bDate) cmp = 0;
-      else if (!aDate) cmp = 1;
-      else if (!bDate) cmp = -1;
-      else cmp = new Date(bDate).getTime() - new Date(aDate).getTime();
+      // Undated books sink to the bottom regardless of direction.
+      else if (!aDate) return 1;
+      else if (!bDate) return -1;
+      else cmp = new Date(aDate).getTime() - new Date(bDate).getTime();
       break;
     }
     default: {
@@ -121,21 +120,27 @@ const PageInput: FC<{
         : (book.bookProgress?.percent ?? 0);
 
   const submitProgress = () => {
+    // An empty field is "no change", not page 0 — Number("") is 0, which would
+    // silently overwrite the recorded percent with 0.
+    if (currentPage === "" || currentPage == null) return;
     const page = Number(currentPage);
-    if (!page && page !== 0) return;
+    if (!Number.isFinite(page) || page <= 0) return;
     if (page === book.bookProgress?.currentPage) return;
 
     const progress = {
-      currentPage: page || undefined,
+      currentPage: page,
       totalPages: total || undefined,
       percent: total ? Math.round((page / total) * 100) : undefined,
     };
     onUpdate({
       bookProgress: { ...book.bookProgress, ...progress, updatedAt: new Date().toISOString() },
     });
+    // Omit a null status: the server schema is z.optional(z.string()), which
+    // rejects an explicit null with a 400 the fire-and-forget call never surfaces.
+    // The server defaults status to READING when progress is present.
     void updateBook(book.hiveId, {
       bookProgress: progress,
-      status: book.status,
+      ...(book.status ? { status: book.status } : {}),
     });
   };
 
@@ -428,7 +433,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDir("asc");
+      // Rating and date start highest/newest first; text columns start A-Z.
+      setSortDir(key === "rating" || key === "date" ? "desc" : "asc");
     }
   };
 
@@ -546,9 +552,9 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
             <option value="title:asc">Title A-Z</option>
             <option value="title:desc">Title Z-A</option>
             <option value="status:asc">Status</option>
-            <option value="rating:asc">Rating ↑</option>
-            <option value="rating:desc">Rating ↓</option>
-            <option value="date:asc">Date read</option>
+            <option value="rating:desc">Rating high-low</option>
+            <option value="rating:asc">Rating low-high</option>
+            <option value="date:desc">Date read</option>
           </select>
         </div>
       </div>

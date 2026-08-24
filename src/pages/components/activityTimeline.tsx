@@ -76,7 +76,7 @@ const RowCover: FC<{ item: FeedItem }> = ({ item }) => (
 const Timestamp: FC<{ ts: string; class?: string }> = ({ ts, class: className }) => (
   <time
     datetime={ts}
-    title={format(new Date(ts), "PPPp")}
+    title={format(new Date(ts), "PPPp XXX")}
     class={`text-muted-foreground text-xs tabular-nums ${className ?? ""}`}
   >
     {formatDistanceToNowStrict(new Date(ts), { addSuffix: true })}
@@ -214,6 +214,7 @@ export const ActivityTimeline: FC<{
             {separator && (
               <li
                 data-feed-day={separator}
+                role="presentation"
                 class="bg-background/85 sticky top-0 z-20 -mx-2 px-2 py-2 backdrop-blur"
               >
                 <h2 class="text-muted-foreground text-xs font-semibold tracking-wide uppercase">

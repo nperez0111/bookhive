@@ -317,13 +317,17 @@ export function collapseBursts(
  *
  * Measured against a production snapshot with the migration-025 indexes:
  * `all` 0ms, `friends` 6ms at 1,099 follows, `tracking` 23ms at 8,180 tracked
- * books — all three on covering-index scans. No recency window is needed at
+ * books. `all` reads the feed index in order; the IN-driven tabs do indexed
+ * per-key lookups plus a temp B-tree over the matches, which is inherent —
+ * rows for many DIDs interleave, so no index can hand back the order. The
+ * AGENTS.md-documented failure mode is a full scan, not the sort. No recency
+ * window is needed at
  * this scale; if `tracking` grows past a few tens of ms, bound it by
  * `indexedAt >= cursorTs - window` with a widening retry before reaching for
  * anything cleverer, since `bun:sqlite` is synchronous and a slow query here
  * stalls a third of all traffic.
  */
-async function fetchFeedRows({
+export function buildFeedQuery({
   ctx,
   viewerDid,
   tab,
@@ -371,7 +375,11 @@ async function fetchFeedRows({
     ) as typeof query;
   }
 
-  return query.execute();
+  return query;
+}
+
+function fetchFeedRows(args: Parameters<typeof buildFeedQuery>[0]) {
+  return buildFeedQuery(args).execute();
 }
 
 export async function getActivityFeed({

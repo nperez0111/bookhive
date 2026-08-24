@@ -193,9 +193,12 @@ export const ProfilePage: FC<{
                   <ol class="divide-border divide-y">
                     {progressHistory.map((entry, i) => (
                       <li key={`${entry.hiveId}-${i}`} class="flex items-center gap-3 py-2.5">
+                        {/* Redundant with the title link below — hidden from AT and tab order. */}
                         <a
                           href={`/books/${entry.hiveId}`}
                           class="book-cover-frame shrink-0 overflow-hidden rounded"
+                          aria-hidden="true"
+                          tabindex={-1}
                         >
                           <img
                             src={coverImageUrl(entry.hiveId, { width: 64 })}

@@ -1120,6 +1120,20 @@ migrations["025"] = {
   },
 };
 
+/**
+ * Migration 026's one-time `indexedAt` repair, exported so
+ * `src/db.feedActivity.test.ts` executes the exact production statement
+ * instead of a hand-copied one that could drift.
+ */
+export const FEED_INDEXED_AT_REPAIR_SQL = `
+      UPDATE user_book
+         SET indexedAt = MIN(
+               indexedAt,
+               MAX(createdAt,
+                   COALESCE(finishedAt, ''),
+                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
+       WHERE indexedAt > createdAt`;
+
 migrations["026"] = {
   async up(db: Kysely<unknown>) {
     // Path to a derived EPUB for a book whose own format an e-reader may not
@@ -1181,14 +1195,7 @@ migrations["027"] = {
     // alternative is every user's back catalogue permanently claiming to be
     // new. Measured at 60,181 rows: 99ms, which is acceptable inside the
     // startup barrier.
-    await sql`
-      UPDATE user_book
-         SET indexedAt = MIN(
-               indexedAt,
-               MAX(createdAt,
-                   COALESCE(finishedAt, ''),
-                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
-       WHERE indexedAt > createdAt`.execute(db);
+    await sql.raw(FEED_INDEXED_AT_REPAIR_SQL).execute(db);
 
     // `IF NOT EXISTS` throughout, as 012 and 024 do: migrations run inside the
     // startup barrier, so "index already exists" against a half-applied state
