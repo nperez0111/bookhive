@@ -992,6 +992,20 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const tab = FEED_TABS.includes(params.tab as FeedTab) ? (params.tab as FeedTab) : "friends";
 
+      // Shipped iOS builds paginate with `page`, which is otherwise ignored: a
+      // page-2 request would get page 1 again with hasMore still true, and the
+      // app's onEndReached would re-request forever (its dedup hides the
+      // repeats). Ending the feed is the honest degradation for those builds.
+      const legacyPage = params.page ?? 1;
+      if (!params.cursor && legacyPage > 1) {
+        return json({
+          activities: [],
+          groups: [],
+          hasMore: false,
+          page: legacyPage,
+        } satisfies BuzzBookhiveGetFeed.$output);
+      }
+
       const feed = await getActivityFeed({
         ctx,
         viewerDid: agent?.did ?? null,
@@ -1040,11 +1054,22 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             },
       );
 
+      // A burst row renders a few covers plus `total`; carrying every collapsed
+      // item (up to 250) in each group multiplies the payload for nothing. The
+      // flat `activities` array stays complete: the cursor advances past every
+      // raw row consumed, so trimming it would drop activities flat-list
+      // clients (iOS) can never see again.
+      const BURST_PREVIEW_ITEMS = 8;
+
       return json({
         // Flat list kept populated so shipped clients that only read
         // `activities` keep working; bursts are expanded here.
         activities: groups.flatMap((g) => g.activities),
-        groups,
+        groups: groups.map((g) =>
+          g.activities.length > BURST_PREVIEW_ITEMS
+            ? { ...g, activities: g.activities.slice(0, BURST_PREVIEW_ITEMS) }
+            : g,
+        ),
         cursor: feed.nextCursor ?? undefined,
         hasMore: feed.nextCursor != null,
       } satisfies BuzzBookhiveGetFeed.$output);

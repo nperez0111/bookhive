@@ -29,6 +29,9 @@ const _feedActivitySchema = /*#__PURE__*/ v.object({
 });
 const _feedGroupSchema = /*#__PURE__*/ v.object({
   $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.getFeed#feedGroup")),
+  /**
+   * For a burst, a preview of up to 8 activities; total carries the full count. The top-level activities array holds the complete expansion.
+   */
   get activities() {
     return /*#__PURE__*/ v.array(feedActivitySchema);
   },
@@ -70,7 +73,8 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getFeed", {
       25,
     ),
     /**
-     * Deprecated and ignored: use cursor. Retained so existing clients get page 1 rather than an error.
+     * Deprecated: use cursor. Page 1 answers normally; a later page without a cursor returns an empty page with hasMore false so old clients stop paging.
+     * @deprecated
      * @minimum 1
      * @default 1
      */

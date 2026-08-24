@@ -24,7 +24,13 @@ function dateInputToISO(val: string): string {
   if (!val || val === "") return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
     const [year, month, day] = val.split("-").map(Number) as [number, number, number];
-    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0)).toISOString();
+    const parsed = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+    if (parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+      // 2025-02-31 rolls over to March 3 in Date.UTC — return the raw value so
+      // the downstream datetime() check rejects it instead of storing the wrong day.
+      return val;
+    }
+    return parsed.toISOString();
   }
   return val;
 }
@@ -152,18 +158,21 @@ const app = new Hono<AppEnv>()
       if (normalizedProgress && (normalizedProgress as BookProgress).currentPage != null) {
         const p = normalizedProgress as BookProgress;
         const db = c.get("ctx").db;
-        const last = db
-          .selectFrom("progress_history")
-          .select("currentPage")
-          .where("userDid", "=", agent.did)
-          .where("hiveId", "=", hiveId)
-          .orderBy("createdAt", "desc")
-          .limit(1)
-          .executeTakeFirst();
-        last
-          .then((row) => {
-            if (row && row.currentPage === (p.currentPage ?? null)) return;
-            return db
+        // Awaited, not fire-and-forget: a detached chain outlives the handler
+        // (and the book_lock release in `finally`), and a swallowed error makes
+        // lost history undiagnosable. Failure is reported but never fails the
+        // book update itself — the PDS write already succeeded.
+        try {
+          const last = await db
+            .selectFrom("progress_history")
+            .select("currentPage")
+            .where("userDid", "=", agent.did)
+            .where("hiveId", "=", hiveId)
+            .orderBy("createdAt", "desc")
+            .limit(1)
+            .executeTakeFirst();
+          if (!last || last.currentPage !== (p.currentPage ?? null)) {
+            await db
               .insertInto("progress_history")
               .values({
                 userDid: agent.did,
@@ -174,8 +183,13 @@ const app = new Hono<AppEnv>()
                 createdAt: new Date().toISOString(),
               })
               .execute();
-          })
-          .catch(() => {});
+          }
+        } catch (historyError) {
+          c.get("ctx").addWideEventContext({
+            progress_history_write: "failed",
+            progress_history_error: (historyError as Error).message,
+          });
+        }
       }
       c.get("ctx").addWideEventContext({
         api: "update_book",

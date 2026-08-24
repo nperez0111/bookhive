@@ -51,6 +51,8 @@ type FeedActivity = {
   stars?: number;
   review?: string;
   createdAt: string;
+  /** The activity time and the feed's sort key — prefer over createdAt. */
+  indexedAt?: string;
   thumbnail: string;
   cover?: string;
 };
@@ -58,7 +60,7 @@ type FeedActivity = {
 export default function FeedScreen() {
   const [activeTab, setActiveTab] = useState<FeedTab>("friends");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [page, setPage] = useState(1);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [allActivities, setAllActivities] = useState<FeedActivity[]>([]);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -66,45 +68,48 @@ export default function FeedScreen() {
   const bottom = useBottomTabOverflow();
   const { top } = useSafeAreaInsets();
 
-  const feed = useFeed(activeTab, page);
+  const feed = useFeed(activeTab, cursor);
 
   // Merge activities from all pages
   const activities = useMemo(() => {
     const currentPageActivities = feed.data?.activities ?? [];
-    if (page === 1) return currentPageActivities;
+    if (!cursor) return currentPageActivities;
     // Deduplicate by composite key
     const seen = new Set(allActivities.map((a) => `${a.hiveId}_${a.userDid}_${a.createdAt}`));
     const newItems = currentPageActivities.filter(
       (a) => !seen.has(`${a.hiveId}_${a.userDid}_${a.createdAt}`),
     );
     return [...allActivities, ...newItems];
-  }, [feed.data?.activities, page, allActivities]);
+  }, [feed.data?.activities, cursor, allActivities]);
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    setPage(1);
+    setCursor(undefined);
     setAllActivities([]);
     void feed.refetch().finally(() => setIsRefreshing(false));
   }, [feed.refetch]);
 
   const onTabChange = useCallback((tab: FeedTab) => {
     setActiveTab(tab);
-    setPage(1);
+    setCursor(undefined);
     setAllActivities([]);
   }, []);
 
   const onEndReached = useCallback(() => {
-    if (feed.data?.hasMore && !feed.isFetching) {
+    const nextCursor = feed.data?.cursor;
+    if (nextCursor && !feed.isFetching) {
       setAllActivities(activities);
-      setPage((p) => p + 1);
+      setCursor(nextCursor);
     }
-  }, [feed.data?.hasMore, feed.isFetching, activities]);
+  }, [feed.data?.cursor, feed.isFetching, activities]);
 
   const renderItem = useCallback(
     ({ item }: { item: FeedActivity }) => {
       const timeAgo = (() => {
         try {
-          return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
+          return formatDistanceToNow(new Date(item.indexedAt ?? item.createdAt), {
+            addSuffix: true,
+          });
         } catch {
           return "";
         }
@@ -183,11 +188,11 @@ export default function FeedScreen() {
         ))}
       </View>
 
-      {feed.isLoading && !isRefreshing && page === 1 ? (
+      {feed.isLoading && !isRefreshing && !cursor ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : feed.error && page === 1 ? (
+      ) : feed.error && !cursor ? (
         <QueryErrorHandler
           error={feed.error}
           onRetry={() => feed.refetch()}
@@ -235,7 +240,7 @@ export default function FeedScreen() {
           }
           renderItem={renderItem}
           ListFooterComponent={
-            feed.isFetching && page > 1 ? (
+            feed.isFetching && cursor ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>

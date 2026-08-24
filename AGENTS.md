@@ -911,10 +911,14 @@ same way the OG worker ships takumi's.
 **XRPC queries**: `searchBooks`, `listGenres`, `getBookIdentifiers`, `getBook`, `getProfile`, `getLanguages`, `getExplore`, `getFeed`, `getAuthorBooks`, `getReadingStats`, `getUserLists`, `getList`.
 
 **`getFeed` is paginated by `cursor`, not `page`.** `page` is still declared and accepted so shipped
-iOS builds (`app/hooks/useBookhiveQuery.ts` calls `?tab=&page=`) degrade to page 1 instead of 400ing;
-it is otherwise ignored. The output carries **both** a flat `activities` array (bursts expanded, so
-existing clients keep working) and a `groups` array with the collapsed rows, plus `collapse=false` to
-opt out of grouping entirely. `indexedAt` was added to `feedActivity` and is the field to display —
+iOS builds (which called `?tab=&page=`) don't 400: page 1 answers normally, and a page-2+ request
+without a cursor returns an **empty page with `hasMore: false`** — returning page 1 again kept
+`hasMore` true and those builds' `onEndReached` re-requested forever behind their dedup. The app now
+paginates by cursor (`app/hooks/useBookhiveQuery.ts`). The output carries **both** a flat
+`activities` array (bursts expanded, so existing clients keep working — never trim it, the cursor
+has already advanced past every row in it) and a `groups` array with the collapsed rows, where a
+burst's `activities` is capped at an 8-item preview (`total` is the real count); `collapse=false`
+opts out of grouping entirely. `indexedAt` was added to `feedActivity` and is the field to display —
 the handler used to return only `createdAt`, so web and iOS showed different times for the same item.
 
 **XRPC list procedures**: `createList`, `updateList`, `deleteList`, `addToList`, `removeFromList`, `reorderList`.

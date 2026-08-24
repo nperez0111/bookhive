@@ -45,6 +45,7 @@
         },
         "activities": {
           "type": "array",
+          "description": "For a burst, a preview of up to 8 activities; total carries the full count. The top-level activities array holds the complete expansion.",
           "items": { "type": "ref", "ref": "buzz.bookhive.getFeed#feedActivity" }
         }
       }
@@ -74,7 +75,7 @@
             "type": "integer",
             "minimum": 1,
             "default": 1,
-            "description": "Deprecated and ignored: use cursor. Retained so existing clients get page 1 rather than an error."
+            "description": "Deprecated: use cursor. Page 1 answers normally; a later page without a cursor returns an empty page with hasMore false so old clients stop paging."
           },
           "limit": {
             "type": "integer",

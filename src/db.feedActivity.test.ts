@@ -3,7 +3,13 @@ import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect } from "kysely";
 
 import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
-import { feedActivityIndexedAt, migrateToLatest, type Database, type DatabaseSchema } from "./db";
+import {
+  FEED_INDEXED_AT_REPAIR_SQL,
+  feedActivityIndexedAt,
+  migrateToLatest,
+  type Database,
+  type DatabaseSchema,
+} from "./db";
 import { BOOK_STATUS } from "./constants";
 import type { HiveId, UserBookRow } from "./types";
 
@@ -192,14 +198,7 @@ describe("migration 025 indexedAt repair", () => {
       ])
       .execute();
 
-    raw.exec(`
-      UPDATE user_book
-         SET indexedAt = MIN(
-               indexedAt,
-               MAX(createdAt,
-                   COALESCE(finishedAt, ''),
-                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
-       WHERE indexedAt > createdAt`);
+    raw.exec(FEED_INDEXED_AT_REPAIR_SQL);
 
     const after = Object.fromEntries(
       (await k.selectFrom("user_book").select(["uri", "indexedAt"]).execute()).map((r) => [

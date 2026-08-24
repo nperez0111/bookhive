@@ -337,10 +337,10 @@ export const useExplore = (language?: string | null) => {
   });
 };
 
-export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", page: number = 1) => {
+export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", cursor?: string) => {
   return useQuery({
-    queryKey: ["feed", tab, page] as const,
-    queryFn: async ({ queryKey: [, t, p] }) => {
+    queryKey: ["feed", tab, cursor] as const,
+    queryFn: async ({ queryKey: [, t, cur] }) => {
       return await enhancedAuthFetch<{
         activities: {
           userDid: string;
@@ -352,12 +352,15 @@ export const useFeed = (tab: "friends" | "all" | "tracking" = "friends", page: n
           stars?: number;
           review?: string;
           createdAt: string;
+          /** The activity time and sort key — prefer over createdAt for display. */
+          indexedAt?: string;
           thumbnail: string;
           cover?: string;
         }[];
+        /** Pass back as `cursor` to fetch the next page; absent when exhausted. */
+        cursor?: string;
         hasMore: boolean;
-        page: number;
-      }>(`/xrpc/buzz.bookhive.getFeed?tab=${t}&page=${p}`);
+      }>(`/xrpc/buzz.bookhive.getFeed?tab=${t}${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`);
     },
     staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
