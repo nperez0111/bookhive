@@ -120,8 +120,30 @@ Because those routes skip `etag()`, **they must answer `If-None-Match`
 themselves** — the middleware is what turns a validator into a 304, and setting
 the header alone does nothing. `streamPersonalBook`
 (`src/utils/personalLibrary.ts`) takes the request's `If-None-Match` and returns
-`{ notModified: true }` before it opens the file; both download routes turn that
-into a 304. Without it an e-reader re-downloads every book on every sync.
+a `304` before it opens the file. Without it an e-reader re-downloads every book
+on every sync.
+
+**`streamPersonalBook` owns range requests too**, for the same reason — nothing
+upstream will do it, and the three callers (OPDS, `/library`, XRPC
+`getPersonalBookFile`) are thin adapters that just forward `Range`/`If-Range`
+and return `new Response(stream, { status, headers })`. It returns one of
+200/206/304/416 and always advertises `Accept-Ranges: bytes`, including on the
+304 — the client that needs to resume is exactly the one that has seen a
+validator before. Without resume, **any interrupted transfer is a total loss**:
+CrossPoint reads exactly `Content-Length` bytes and hard-fails a short body
+(`HttpDownloader.cpp`, "incomplete: got X of Y bytes") with no retry. `If-Range`
+is honoured because our validator is a content hash, so a mismatch means a
+genuinely different file and only the whole of the new one is a correct answer.
+`Bun.file().slice()` seeks rather than reading the skipped prefix, so resuming
+near the end of a 100 MB book costs nothing.
+
+**`Content-Disposition` is built by `attachmentDisposition`
+(`src/utils/contentDisposition.ts`), never by hand.** Two traps, both of which
+shipped: `filename*=UTF-8''…` cannot be built with `encodeURIComponent`, which
+leaves `' ( ) * ! ~` unescaped — and `'` is the ext-value's own delimiter, so
+`The Handmaid's Tale.epub` parsed as the filename `The Handmaid`. And
+`filename*` alone is not enough: a client that implements only the plain
+`filename` has nothing to fall back to but the URL's last path segment.
 
 **Anonymous page cache** (`src/middleware/anon-page-cache.ts`): serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV (gzipped HTML, 1h TTL). Prod-only.
 
@@ -269,7 +291,48 @@ Serves personal library to e-readers. Auth via `src/middleware/opds-auth.ts` (HT
 - GET `/` → root navigation feed
 - GET `/all`, `/shelves/:id`, `/search/results` → acquisition feeds (paginated at 24)
 - GET `/search` → OpenSearch description. Accepts both `q` and `query` params.
-- GET `/books/:hash/download`, `/books/:hash/cover`
+- GET `/books/:hash/download/{name}.ext`, `/books/:hash/cover`
+
+**The trailing name is ignored by the route** — the content hash identifies the
+file and `personal_book.format` decides what we serve. It is a _required_
+segment rather than an optional suffix, and there is deliberately no name-less
+or `/download.ext` fallback: readers follow the href out of the feed on each
+sync rather than storing it, so there is no older spelling to keep alive.
+
+The name is there because clients dispatch on the URL, not the Content-Type:
+CrossPoint's OPDS parser scores an acquisition link higher when its href
+contains `.epub` (`lib/OpdsParser/OpdsParser.cpp`), Kobo's built-in browser uses
+the extension alone, and anything that falls back to the last path segment for a
+filename gets a real title instead of the word `download`.
+
+**`canonicalDownloadFilename` (`src/utils/downloadFilename.ts`) is the one
+source of that name**, and it is deliberately used in two places: the URL
+segment and the _plain_ `filename` in `Content-Disposition`. A client that reads
+the header and one that scrapes the URL then agree byte for byte. It reduces to
+`[A-Za-z0-9._-]` so it needs no percent-encoding anywhere (which also means it
+cannot emit a `/` into the path), folds Latin diacritics rather than dropping
+the word, and falls back to `book` for scripts with no ASCII form — `filename*`
+is what carries the real name for those.
+
+**The acquisition rel is `.../acquisition/open-access`, not the bare
+`.../acquisition`.** The bare form is the _generic_ relation — it says only that
+some acquisition is possible, leaving a strict reader entitled to wait for an
+`indirectAcquisition` that never comes. Every client that accepts the generic
+form accepts this one, because they all substring-match the
+`opds-spec.org/acquisition` prefix.
+
+**Feed links are built from the request's own origin** (`requestOrigin`, honouring
+`x-forwarded-proto`/`x-forwarded-host`), not `PUBLIC_URL` — a reader that reached us on one
+hostname keeps following that hostname through pagination and search.
+
+**The acquisition (download) link is the one exception**: `OPDS_DOWNLOAD_BASE_URL`, when set,
+replaces its scheme+host (`downloadOrigin`), leaving `/opds/books/{hash}/download/{name}.ext` untouched.
+That exists so an e-reader's multi-MB transfer can go straight at the app instead of through
+whatever proxies the public host — the redirect-through-Cloudflare arrangement it replaced was
+producing HTTP/2 stream resets mid-download. Only the download moves; feed, nav and cover links
+stay on the requested host, and Basic credentials are per-request so the reader re-sends them to
+the download host unchanged. Unset means unchanged behaviour, and the download origin must serve
+the same `/opds` router with the same auth.
 
 ### `src/routes/og.tsx` (mounted at `/og`) — OG images
 
@@ -662,6 +725,56 @@ for a measured reason:
 9. `rename` into place — same filesystem, zero bytes copied. The row commits
    _before_ the bytes move, which beats writing 100 MB and then discovering a
    problem.
+10. **Derive an EPUB** for a MOBI/AZW3, after the rename so the converter reads
+    the committed file rather than a temp path about to be unlinked. Non-fatal
+    in every branch — see below.
+
+### EPUB conversion (`src/utils/convertToEpub.ts`)
+
+Uploads in a format an e-reader may refuse get a derived EPUB, and **every
+download path serves the derivative when one exists**. That is what makes a MOBI
+usable from CrossPoint at all: its OPDS parser requires
+`type == "application/epub+zip"` **exactly** (`lib/OpdsParser/OpdsParser.cpp`),
+so a MOBI entry is invisible to it otherwise.
+
+- **The original is never deleted.** Conversion is lossy — boko drops
+  stylesheets while leaving `<link>` references to them, so output fails
+  `epubcheck` though every reader opens it — and a derived file must stay
+  re-derivable.
+- **`servedRepresentation()` (`src/utils/personalLibrary.ts`) is the single
+  source of "which bytes and which type".** `streamPersonalBook` and the OPDS
+  feed builder both use it; a feed advertising `x-mobipocket` for a link that
+  returns an EPUB is exactly the mismatch a reader silently refuses to act on.
+- **The ETag must differ between the two representations.** `contentHash` hashes
+  the _original_, so serving the EPUB under it tells a client holding the MOBI
+  that it is already current, and it keeps the stale file forever. Converted
+  books serve `"{contentHash}-epub"`.
+- **The quota is unchanged.** `epubSizeBytes` is tracked but excluded from
+  `SUM(sizeBytes)`, the same way stored covers already are — so the quota keeps
+  meaning "bytes the user uploaded". Budget disk accordingly.
+- **It runs in a single-shot Worker** (`convert-worker.ts`), because
+  `boko.convert` is a _synchronous_ WASM call holding the whole input and whole
+  output at once. On the request thread that is a stalled event loop plus
+  ~200 MB of live buffers in a process serving a third of all traffic. Only
+  paths cross the boundary; the worker reads and writes the files itself.
+- **`azw3` is tried before `mobi`,** and that is a quality choice, not
+  redundancy. `personal_book.format` is `"mobi"` for `.mobi`/`.azw`/`.azw3`
+  alike, but a dual-format Kindle file holds both an old MOBI 6 part and a
+  modern KF8 part and boko converts whichever you name. Measured on Pride and
+  Prejudice: `azw3` gives 76 chapters / 246 files, `mobi` gives 64 / 234.
+- **FB2 and CBZ are the remaining gap** — boko reads neither, so they still
+  reach e-readers in their own format.
+
+**boko is GPL-3.0-or-later and BookHive is MIT.** The WASM module is linked into
+our process, which makes the _distributed_ artifact a combined work; this repo
+is public and publishes ghcr.io images. That was a deliberate, informed choice.
+`vendor/boko/` holds the build, the upstream version, the rebuild recipe and the
+GPL text that must travel with the binary — read its README before touching any
+of this. The `.wasm` is checked in so a clone needs no Rust toolchain and CI
+compiles nothing; `vite.config.ts` copies it next to the bundled worker, because
+the glue loads it from its own directory at runtime — a path the bundler cannot
+see, whose absence fails at conversion time and looks like a converter bug
+rather than a missing file.
 
 Sync-doc linking is **exact first, fuzzy only on a miss**. The XRPC path used to
 run `matchSyncDocument` first, which let a title/author guess beat a byte-exact
@@ -772,15 +885,15 @@ Same reasoning applies to any new sort added here.
 
 **The personal library is fully reachable over XRPC, not just over `/opds`.** Parity map:
 
-| OPDS route                          | XRPC method                                        |
-| ----------------------------------- | -------------------------------------------------- |
-| `GET /opds` (root nav + counts)     | `listPersonalShelves` — the root call, one request |
-| `GET /opds/all`                     | `getPersonalLibrary`                               |
-| `GET /opds/shelves/:id`             | `getPersonalLibrary?shelfId=`                      |
-| `GET /opds/search/results`          | `getPersonalLibrary?q=&sort=title` (same SQL)      |
-| `GET /opds/books/:hash/download`    | `getPersonalBookFile`                              |
-| `GET /opds/books/:hash/cover`       | `getPersonalBookCover`                             |
-| `GET /opds/search` (OpenSearch doc) | n/a — an XRPC client reads the lexicon instead     |
+| OPDS route                              | XRPC method                                        |
+| --------------------------------------- | -------------------------------------------------- |
+| `GET /opds` (root nav + counts)         | `listPersonalShelves` — the root call, one request |
+| `GET /opds/all`                         | `getPersonalLibrary`                               |
+| `GET /opds/shelves/:id`                 | `getPersonalLibrary?shelfId=`                      |
+| `GET /opds/search/results`              | `getPersonalLibrary?q=&sort=title` (same SQL)      |
+| `GET /opds/books/:hash/download/{name}` | `getPersonalBookFile`                              |
+| `GET /opds/books/:hash/cover`           | `getPersonalBookCover`                             |
+| `GET /opds/search` (OpenSearch doc)     | n/a — an XRPC client reads the lexicon instead     |
 
 **Two methods declare non-JSON bodies**, which is what makes upload and download work at all:
 
@@ -978,16 +1091,17 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 
 ## Build & Dev
 
-| Command             | What                                                         |
-| ------------------- | ------------------------------------------------------------ |
-| `bun run dev`       | Dev server (`bunx --bun vp dev`)                             |
-| `bun run build`     | Production build (`lexgen` + `vp build`) → `.output/server/` |
-| `bun run start`     | Run built server (`bun run .output/server/index.mjs`)        |
-| `bun test`          | Run tests (`bun test src server`)                            |
-| `bun run typecheck` | `vp lint src --type-aware --type-check` + `vp fmt --write`   |
-| `bun run lint`      | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)         |
-| `bun run format`    | `vp fmt`                                                     |
-| `bun run lexgen`    | Regenerate AT Protocol XRPC types from lexicons              |
+| Command              | What                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| `bun run dev`        | Dev server (`bunx --bun vp dev`)                                                                    |
+| `bun run build`      | Production build (`lexgen` + `vp build`) → `.output/server/`                                        |
+| `bun run start`      | Run built server (`bun run .output/server/index.mjs`)                                               |
+| `bun test`           | Run tests (`bun test src server`)                                                                   |
+| `bun run typecheck`  | `vp lint src --type-aware --type-check` + `vp fmt --write`                                          |
+| `bun run lint`       | Same as typecheck (oxlint/oxfmt via vp, **not** tsc)                                                |
+| `bun run format`     | `vp fmt`                                                                                            |
+| `bun run lexgen`     | Regenerate AT Protocol XRPC types from lexicons                                                     |
+| `bun run build:boko` | Rebuild the vendored boko WASM in `vendor/boko/` (needs Rust + wasm-pack; only to bump the version) |
 
 **Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 

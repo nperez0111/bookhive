@@ -48,6 +48,7 @@ import { parseBookInWorker } from "../workers/parse-client";
 import {
   bookFilePath,
   coverFilePath,
+  epubFilePath,
   ensureDir,
   getLibraryTmpDir,
   getStorageQuota,
@@ -55,6 +56,7 @@ import {
   personalBookDir,
   MAX_PERSONAL_BOOK_BYTES,
 } from "./personalLibrary";
+import { convertToEpub, isConvertibleToEpub } from "./convertToEpub";
 import { matchSyncDocument, NO_HIVE_MATCH } from "./syncMatching";
 import { bridgeProgressToUserBook } from "./syncBridge";
 import { filenameKey, koreaderFilenameHash } from "./filenameMatching";
@@ -103,8 +105,27 @@ export type PersonalBookView = {
   coverUrl?: string | undefined;
 };
 
+/**
+ * What happened to the EPUB derivation, for the caller's wide event. Reported
+ * rather than logged because this module deliberately has no logger — both
+ * adapters already own a request-scoped one.
+ */
+export type UploadConvertOutcome =
+  | "not-applicable"
+  | "ok"
+  | "unsupported"
+  | "unavailable"
+  | "timeout"
+  | "failed";
+
 export type UploadPersonalBookResult =
-  | { ok: true; book: PersonalBookView; storageUsedBytes: number; storageQuotaBytes: number }
+  | {
+      ok: true;
+      book: PersonalBookView;
+      storageUsedBytes: number;
+      storageQuotaBytes: number;
+      convert: UploadConvertOutcome;
+    }
   | { ok: false; reason: "empty" }
   | { ok: false; reason: "too-large"; limitBytes: number }
   | { ok: false; reason: "unsupported-format"; filename: string }
@@ -485,6 +506,32 @@ export async function uploadPersonalBook(
       }
     }
 
+    // ── 9b. Derive an EPUB for formats an e-reader may refuse ──
+    //
+    // After the rename, so the converter reads the committed file rather than a
+    // temp path that the `finally` is about to unlink. Non-fatal in every
+    // branch: the book is already stored and downloadable in its own format,
+    // and `epubPath` staying null simply means "serve the original".
+    let convertOutcome: UploadConvertOutcome = "not-applicable";
+    if (isConvertibleToEpub(formatInfo.format)) {
+      const epubPath = epubFilePath(userDid, contentHash);
+      const converted = await convertToEpub(filePath, epubPath, formatInfo.format);
+      if (converted.ok) {
+        await db
+          .updateTable("personal_book")
+          .set({ epubPath, epubSizeBytes: converted.sizeBytes })
+          .where("userDid", "=", userDid)
+          .where("contentHash", "=", contentHash)
+          .execute();
+      } else {
+        // Best-effort: a converter that failed halfway may still have created
+        // the file, and a half-written EPUB that nothing points at is just
+        // wasted disk.
+        await rm(epubPath, { force: true }).catch(() => {});
+      }
+      convertOutcome = converted.ok ? "ok" : converted.reason;
+    }
+
     // ── 10. Propagate the link outward ──
     if (hiveId) {
       // Any document the device has been pushing progress for that never
@@ -534,6 +581,7 @@ export async function uploadPersonalBook(
 
     return {
       ok: true,
+      convert: convertOutcome,
       book: {
         contentHash,
         title: metadata.title,

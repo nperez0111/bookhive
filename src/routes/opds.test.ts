@@ -10,7 +10,7 @@ import type { AppContext, AppEnv } from "../context";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
 import { currentSyncPassword } from "../middleware/sync-auth";
 import type { HiveId } from "../types";
-import opdsRouter from "./opds";
+import opdsRouter, { downloadOrigin } from "./opds";
 
 const DID = "did:plc:testuser";
 const HANDLE = "test.bsky.social";
@@ -67,6 +67,9 @@ async function seedBook(
     hiveId?: HiveId | null;
     coverPath?: string | null;
     language?: string | null;
+    format?: string;
+    mime?: string;
+    filename?: string;
   },
 ) {
   const inserted = await db
@@ -75,12 +78,12 @@ async function seedBook(
       userDid: DID,
       contentHash: opts.contentHash,
       hiveId: opts.hiveId ?? null,
-      filename: `${opts.contentHash}.epub`,
+      filename: opts.filename ?? `${opts.contentHash}.epub`,
       title: opts.title ?? "A Personal Book",
       authors: opts.authors === undefined ? "An Author" : opts.authors,
       language: opts.language ?? "en",
-      format: "epub",
-      mime: "application/epub+zip",
+      format: opts.format ?? "epub",
+      mime: opts.mime ?? "application/epub+zip",
       filePath: `/tmp/${opts.contentHash}.epub`,
       coverPath: opts.coverPath ?? null,
       coverMime: opts.coverPath ? "image/jpeg" : null,
@@ -206,8 +209,16 @@ describe("OPDS 2.0 content negotiation", () => {
     const acq = pub.links.find((l: { rel: string }) =>
       l.rel.startsWith("http://opds-spec.org/acquisition"),
     );
-    expect(acq.href).toContain("/opds/books/hash-a/download");
+    // The extension is decoration for us and load-bearing for the client:
+    // CrossPoint's parser prefers an acquisition href containing ".epub" and
+    // Kobo's browser dispatches on it alone.
+    expect(acq.href).toContain("/opds/books/hash-a/download/hash-a.epub");
+    expect(acq.rel).toBe("http://opds-spec.org/acquisition/open-access");
     expect(acq.type).toBe("application/epub+zip");
+    // OPDS_DOWNLOAD_BASE_URL is unset here, so the download stays on the
+    // origin the feed itself was served from.
+    const self = body.links.find((l: { rel: string }) => l.rel === "self");
+    expect(acq.href.startsWith(new URL(self.href).origin)).toBe(true);
   });
 
   it("omits images for a book with no cover and no hive book", async () => {
@@ -345,5 +356,132 @@ describe("OPDS 2.0 content negotiation", () => {
       });
       expect(res.status).toBe(200);
     });
+  });
+
+  describe("acquisition links", () => {
+    it("emits the open-access rel and an extension in the 1.2 feed", async () => {
+      await seedBook(db, { contentHash: "hash-a", format: "epub" });
+      const res = await app.request("/opds/all", { headers: { authorization: auth } });
+      const xml = await res.text();
+      expect(xml).toContain('rel="http://opds-spec.org/acquisition/open-access"');
+      expect(xml).toContain("/opds/books/hash-a/download/hash-a.epub");
+    });
+
+    it("advertises the derived EPUB's type and extension, not the original's", async () => {
+      // CrossPoint's parser requires type == "application/epub+zip" exactly, so
+      // a MOBI entry is invisible to it until the feed points at the EPUB.
+      await seedBook(db, {
+        contentHash: "hash-m",
+        filename: "Dune.mobi",
+        format: "mobi",
+        mime: "application/x-mobipocket-ebook",
+      });
+      await db
+        .updateTable("personal_book")
+        .set({ epubPath: "/tmp/hash-m.epub", epubSizeBytes: 10 })
+        .where("contentHash", "=", "hash-m")
+        .execute();
+
+      const xml = await (
+        await app.request("/opds/all", { headers: { authorization: auth } })
+      ).text();
+      expect(xml).toContain('type="application/epub+zip"');
+      expect(xml).not.toContain("x-mobipocket");
+      expect(xml).toContain("/opds/books/hash-m/download/Dune.epub");
+    });
+
+    it("still advertises the original format when nothing was derived", async () => {
+      await seedBook(db, {
+        contentHash: "hash-m2",
+        filename: "Dune.mobi",
+        format: "mobi",
+        mime: "application/x-mobipocket-ebook",
+      });
+      const xml = await (
+        await app.request("/opds/all", { headers: { authorization: auth } })
+      ).text();
+      expect(xml).toContain('type="application/x-mobipocket-ebook"');
+      expect(xml).toContain("/opds/books/hash-m2/download/Dune.mobi");
+    });
+
+    it("uses the book's own format for the extension", async () => {
+      await seedBook(db, {
+        contentHash: "hash-b",
+        format: "cbz",
+        mime: "application/vnd.comicbook+zip",
+      });
+      const xml = await (
+        await app.request("/opds/all", { headers: { authorization: auth } })
+      ).text();
+      expect(xml).toContain("/opds/books/hash-b/download/hash-b.cbz");
+    });
+
+    it("puts a canonicalized version of the user's own filename in the URL", async () => {
+      await seedBook(db, {
+        contentHash: "hash-c",
+        filename: "The Handmaid's Tale (Anniversary Ed.).epub",
+      });
+      const xml = await (
+        await app.request("/opds/all", { headers: { authorization: auth } })
+      ).text();
+      // No apostrophe, no parens, no spaces — nothing needing percent-encoding.
+      expect(xml).toContain("/opds/books/hash-c/download/The_Handmaid_s_Tale_Anniversary_Ed.epub");
+    });
+
+    it("serves the file at the URL the feed advertises", async () => {
+      await seedBook(db, { contentHash: "hash-a" });
+      await Bun.write("/tmp/hash-a.epub", "epub bytes");
+      const res = await app.request("/opds/books/hash-a/download/hash-a.epub", {
+        headers: { authorization: auth },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("accept-ranges")).toBe("bytes");
+    });
+
+    it("ignores the trailing name — the hash is what identifies the file", async () => {
+      await seedBook(db, { contentHash: "hash-a" });
+      await Bun.write("/tmp/hash-a.epub", "epub bytes");
+      const res = await app.request("/opds/books/hash-a/download/anything-at-all.epub", {
+        headers: { authorization: auth },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("no longer answers the name-less download URL", async () => {
+      await seedBook(db, { contentHash: "hash-a" });
+      const res = await app.request("/opds/books/hash-a/download", {
+        headers: { authorization: auth },
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("answers a Range request with a 206 over HTTP", async () => {
+      await seedBook(db, { contentHash: "hash-a" });
+      await Bun.write("/tmp/hash-a.epub", "epub bytes");
+      const res = await app.request("/opds/books/hash-a/download/hash-a.epub", {
+        headers: { authorization: auth, range: "bytes=0-3" },
+      });
+      expect(res.status).toBe(206);
+      expect(res.headers.get("content-range")).toMatch(/^bytes 0-3\/\d+$/);
+    });
+  });
+});
+
+describe("downloadOrigin", () => {
+  it("falls back to the request origin when OPDS_DOWNLOAD_BASE_URL is unset", () => {
+    expect(downloadOrigin("https://bookhive.buzz", "")).toBe("https://bookhive.buzz");
+    expect(downloadOrigin("https://bookhive.buzz", "   ")).toBe("https://bookhive.buzz");
+  });
+
+  it("replaces the scheme+host when configured, leaving the path to the caller", () => {
+    expect(downloadOrigin("https://bookhive.buzz", "https://dl.bookhive.buzz")).toBe(
+      "https://dl.bookhive.buzz",
+    );
+  });
+
+  it("trims a trailing slash so the joined path never doubles up", () => {
+    expect(downloadOrigin("https://bookhive.buzz", "https://dl.bookhive.buzz/")).toBe(
+      "https://dl.bookhive.buzz",
+    );
   });
 });

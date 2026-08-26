@@ -307,6 +307,10 @@ export type PersonalBookRow = {
   coverPath: string | null;
   coverMime: string | null;
   sizeBytes: number;
+  /** Derived EPUB for a format e-readers may not read. Null = serve the original. */
+  epubPath: string | null;
+  /** Size of that derived file. Deliberately outside the storage quota. */
+  epubSizeBytes: number | null;
   createdAt: string;
   updatedAt: string;
 };

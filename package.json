@@ -23,7 +23,8 @@
     "android": "bun run --cwd app android",
     "ios:build": "bun run --cwd app ios:build",
     "ios:submit": "bun run --cwd app ios:submit",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "build:boko": "bun run scripts/build-boko-wasm.ts"
   },
   "dependencies": {
     "@atcute/password-session": "1.0.1",

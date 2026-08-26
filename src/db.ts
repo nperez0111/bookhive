@@ -1078,6 +1078,26 @@ migrations["025"] = {
   },
 };
 
+migrations["026"] = {
+  async up(db: Kysely<unknown>) {
+    // Path to a derived EPUB for a book whose own format an e-reader may not
+    // read (MOBI/AZW3). Nullable: null means "serve the original", which is
+    // what every pre-existing row and every already-EPUB upload wants.
+    //
+    // The original file is deliberately kept — conversion is lossy (boko drops
+    // stylesheets today) and a derived file must always be re-derivable.
+    await db.schema.alterTable("personal_book").addColumn("epubPath", "text").execute();
+    // Tracked separately from `sizeBytes` so the storage quota keeps meaning
+    // "bytes of books the user uploaded". Derived files are extra, the same
+    // way stored covers already are.
+    await db.schema.alterTable("personal_book").addColumn("epubSizeBytes", "integer").execute();
+  },
+  async down(db: Kysely<unknown>) {
+    await db.schema.alterTable("personal_book").dropColumn("epubPath").execute();
+    await db.schema.alterTable("personal_book").dropColumn("epubSizeBytes").execute();
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
