@@ -43,6 +43,14 @@ export type BookIdentifiers = {
   openLibraryId?: string;
 };
 
+export const BookStatus = {
+  finished: "buzz.bookhive.defs#finished",
+  reading: "buzz.bookhive.defs#reading",
+  wantToRead: "buzz.bookhive.defs#wantToRead",
+} as const;
+
+export type BookStatus = (typeof BookStatus)[keyof typeof BookStatus];
+
 export type UserBook = {
   /**
    * Most recent time the book was indexed

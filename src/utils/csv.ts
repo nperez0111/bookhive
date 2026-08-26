@@ -304,3 +304,152 @@ export function getGoodreadsCsvParser() {
     },
   });
 }
+
+export interface HardcoverBook {
+  title: string;
+  author: string;
+  series: string;
+  status: string;
+  privacy: string;
+  hardcoverBookId: string;
+  hardcoverEditionId: string;
+  isbn10: string;
+  isbn13: string;
+  asin: string;
+  media: string;
+  countryCode: string;
+  languageCode: string;
+  binding: string;
+  pages: number;
+  durationInSeconds: number;
+  publishDate: Date | null;
+  publisher: string;
+  genres: string;
+  moods: string;
+  tags: string;
+  contentWarnings: string;
+  lists: string;
+  dateAdded: Date | null;
+  dateStarted: Date | null;
+  dateFinished: Date | null;
+  rating: number;
+  review: string;
+  reviewContainsSpoilers: boolean;
+  sponsoredReview: boolean;
+  reviewDate: Date | null;
+  reviewUrl: string;
+  reviewMediaUrl: string;
+  privateNotes: string;
+  owned: boolean;
+  compilation: boolean;
+  reviewSlate: string;
+}
+
+function get(record: Record<string, string>, key: string): string {
+  return record[key] || "";
+}
+
+function parseDate(date: string): Date | null {
+  const newDate = new Date(date);
+  if (isNaN(newDate.getTime())) return null;
+  return newDate;
+}
+
+function parseBoolean(input: string): boolean {
+  return input.toLowerCase() === "true";
+}
+
+export function parseHardcoverRecord(record: Record<string, string>): HardcoverBook {
+  return {
+    title: get(record, "Title"),
+    author: get(record, "Author"),
+    series: get(record, "Series"),
+    status: get(record, "Status"),
+    privacy: get(record, "Privacy"),
+    hardcoverBookId: get(record, "Hardcover Book ID"),
+    hardcoverEditionId: get(record, "Hardcover Edition ID"),
+    isbn10: get(record, "ISBN 10"),
+    isbn13: get(record, "ISBN 13"),
+    asin: get(record, "ASIN"),
+    media: get(record, "Media"),
+    countryCode: get(record, "Country Code"),
+    languageCode: get(record, "Language Code"),
+    binding: get(record, "Binding"),
+    pages: parseInt(get(record, "Pages")) || 0,
+    durationInSeconds: parseInt(get(record, "Duration in Seconds")) || 0,
+    publishDate: parseDate(get(record, "Publish Date")),
+    publisher: get(record, "Publisher"),
+    genres: get(record, "Genres"),
+    moods: get(record, "Moods"),
+    tags: get(record, "Tags"),
+    contentWarnings: get(record, "Content Warnings"),
+    lists: get(record, "Lists"),
+    dateAdded: parseDate(get(record, "Date Added")),
+    dateStarted: parseDate(get(record, "Date Started")),
+    dateFinished: parseDate(get(record, "Date Finished")),
+    rating: parseInt(`${parseFloat(get(record, "Rating")) * 2}`) || 0,
+    review: get(record, "Review"),
+    reviewContainsSpoilers: parseBoolean(get(record, "Review Contains Spoilers")),
+    sponsoredReview: parseBoolean(get(record, "Sponsored Review")),
+    reviewDate: parseDate(get(record, "Review Date")),
+    reviewUrl: get(record, "Review Url"),
+    reviewMediaUrl: get(record, "Review Media Url"),
+    privateNotes: get(record, "Private Notes"),
+    owned: parseBoolean(get(record, "Owned")),
+    compilation: get(record, "Compilation").toLowerCase() === "yes",
+    reviewSlate: get(record, "Review Slate"),
+  };
+}
+
+export function getHardcoverCsvParser() {
+  const parser = parse({
+    columns: true,
+    skip_records_with_error: true,
+    relax_column_count: true,
+    relax_quotes: true,
+    cast: (value?: string): string => {
+      if (!value) return "";
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+      return value;
+    },
+  });
+
+  return new TransformStream<Uint8Array, HardcoverBook>({
+    transform(chunk, controller) {
+      try {
+        parser.write(chunk);
+
+        // Process any records that are ready
+        let record: Record<string, string> | undefined;
+        while ((record = parser.read())) {
+          if (record && "Title" in record && "Author" in record) {
+            controller.enqueue(parseHardcoverRecord(record));
+          } else {
+            console.warn("Skipping invalid Hardcover record:", record);
+          }
+        }
+      } catch (error) {
+        console.warn("Error processing CSV chunk:", error);
+      }
+    },
+    flush(controller) {
+      try {
+        parser.end();
+
+        // Get any remaining records
+        let record: any;
+        while ((record = parser.read())) {
+          if (record && "Title" in record && "Author" in record) {
+            controller.enqueue(parseHardcoverRecord(record));
+          } else {
+            console.warn("Skipping invalid Hardcover record during flush:", record);
+          }
+        }
+      } catch (error) {
+        console.warn("Error during CSV parser flush:", error);
+      }
+    },
+  });
+}
