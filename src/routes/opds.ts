@@ -1,8 +1,15 @@
 import { Hono, type Context } from "hono";
 import type { AppEnv } from "../context";
 import { opdsAuthMiddleware } from "../middleware/opds-auth";
+import { env } from "../env";
 import { escapeXml } from "../utils/xml";
-import { etagMatches, OPDS_PAGE_SIZE, streamPersonalBook } from "../utils/personalLibrary";
+import {
+  etagMatches,
+  OPDS_PAGE_SIZE,
+  servedRepresentation,
+  streamPersonalBook,
+} from "../utils/personalLibrary";
+import { canonicalDownloadFilename } from "../utils/downloadFilename";
 import type { Selectable } from "kysely";
 import type { PersonalBookRow } from "../types";
 
@@ -13,7 +20,15 @@ const OPDS_ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisitio
 // OPDS 2.0 JSON feed content type (https://specs.opds.io/opds-2.0.html)
 const OPDS2_TYPE = "application/opds+json";
 
-const ACQUISITION_REL = "http://opds-spec.org/acquisition";
+/**
+ * Open-access acquisition: the file is retrievable as-is, with no purchase,
+ * loan or DRM step in between. The bare `.../acquisition` relation we used to
+ * emit is the *generic* one, which tells a client only that some acquisition is
+ * possible — a strict reader is entitled to wait for an indirectAcquisition
+ * that never comes. Every client that accepts the generic form matches this one
+ * too, because they all substring-match the `opds-spec.org/acquisition` prefix.
+ */
+const ACQUISITION_REL = "http://opds-spec.org/acquisition/open-access";
 const IMAGE_REL = "http://opds-spec.org/image";
 const THUMBNAIL_REL = "http://opds-spec.org/image/thumbnail";
 
@@ -28,7 +43,10 @@ type BookForEntry = Pick<
   | "title"
   | "authors"
   | "language"
+  | "filename"
+  | "format"
   | "mime"
+  | "epubPath"
   | "coverPath"
   | "coverMime"
   | "updatedAt"
@@ -52,6 +70,47 @@ function requestOrigin(c: {
     c.req.header("host") ||
     new URL(c.req.url).host;
   return `${proto}://${host}`;
+}
+
+/**
+ * Origin for acquisition (download) links only.
+ *
+ * A feed's own links have to stay on the host the reader asked for — they carry
+ * the pagination and search the client follows — but the file transfer itself
+ * can be pointed at an origin that reaches this app directly, bypassing whatever
+ * proxy fronts the public host. HTTP Basic credentials are per-request, so the
+ * e-reader re-sends them to the download host unchanged.
+ *
+ * `configured` is a parameter rather than read inline because envalid freezes
+ * `env` at import; tests can't set the variable, so they call this directly.
+ */
+export function downloadOrigin(
+  origin: string,
+  configured: string = env.OPDS_DOWNLOAD_BASE_URL,
+): string {
+  const base = configured.trim().replace(/\/+$/, "");
+  return base || origin;
+}
+
+/**
+ * Acquisition URL for a book: `.../books/{hash}/download/{Canonical_Name}.epub`.
+ *
+ * Everything after `/download/` is decoration as far as this server is
+ * concerned — the content hash identifies the file and the route ignores the
+ * segment — but it is load-bearing on the client side, because readers
+ * routinely decide what to do with a response from its URL rather than its
+ * Content-Type. CrossPoint's OPDS parser scores an acquisition link higher when
+ * its href contains `.epub` (`lib/OpdsParser/OpdsParser.cpp`), Kobo's built-in
+ * browser dispatches on the extension alone, and anything falling back to the
+ * last path segment for a filename gets a real one instead of `download`.
+ *
+ * The name is the canonical ASCII form of what the user uploaded, so it needs
+ * no percent-encoding and matches the plain `filename` in `Content-Disposition`
+ * byte for byte.
+ */
+function acquisitionHref(origin: string, book: BookForEntry): string {
+  const name = canonicalDownloadFilename(book.filename, servedRepresentation(book).format);
+  return `${downloadOrigin(origin)}/opds/books/${book.contentHash}/download/${name}`;
 }
 
 function isoDate(d: string | number | Date): string {
@@ -101,7 +160,7 @@ function opdsEntry(origin: string, book: BookForEntry): string {
     lang +
     summary +
     coverLinks +
-    `<link rel="http://opds-spec.org/acquisition" href="${origin}/opds/books/${book.contentHash}/download" type="${escapeXml(book.mime || "application/epub+zip")}"/>` +
+    `<link rel="${ACQUISITION_REL}" href="${escapeXml(acquisitionHref(origin, book))}" type="${escapeXml(servedRepresentation(book).mime)}"/>` +
     `</entry>`
   );
 }
@@ -226,8 +285,8 @@ function opds2Publication(origin: string, book: BookForEntry) {
     links: [
       {
         rel: ACQUISITION_REL,
-        href: `${origin}/opds/books/${book.contentHash}/download`,
-        type: book.mime || "application/epub+zip",
+        href: acquisitionHref(origin, book),
+        type: servedRepresentation(book).mime,
       },
     ],
   };
@@ -405,6 +464,7 @@ app.get("/all", async (c) => {
       "personal_book.filePath",
       "personal_book.coverPath",
       "personal_book.coverMime",
+      "personal_book.epubPath",
       "personal_book.sizeBytes",
       "personal_book.createdAt",
       "personal_book.updatedAt",
@@ -493,6 +553,7 @@ app.get("/shelves/:id", async (c) => {
       "personal_book.filePath",
       "personal_book.coverPath",
       "personal_book.coverMime",
+      "personal_book.epubPath",
       "personal_book.sizeBytes",
       "personal_book.createdAt",
       "personal_book.updatedAt",
@@ -532,19 +593,32 @@ app.get("/shelves/:id", async (c) => {
   return c.body(feed, 200, { "Content-Type": OPDS_ACQ_TYPE });
 });
 
-// GET /books/:hash/download — Stream book file
-app.get("/books/:hash/download", async (c) => {
+// GET /books/:hash/download/{name}.ext — Stream book file.
+//
+// The trailing name is ignored: the content hash identifies the file and the
+// row's own `format` decides what we serve. It exists purely for the client,
+// which is why it is a required segment rather than an optional suffix — see
+// `acquisitionHref`. Readers follow the href out of the feed on every sync
+// rather than storing it, so there is no older spelling to keep alive.
+app.get("/books/:hash/download/:filename", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
   const hash = c.req.param("hash");
 
-  const download = await streamPersonalBook(db, userDid, hash, c.req.header("if-none-match"));
+  const download = await streamPersonalBook(db, userDid, hash, c.req.header("if-none-match"), {
+    range: c.req.header("range"),
+    ifRange: c.req.header("if-range"),
+  });
   if (!download) {
     return c.body("Not found", 404);
   }
-  if (download.notModified) return c.body(null, 304, download.headers);
-
-  return c.body(download.stream, 200, download.headers);
+  // A bare Response rather than `c.body()`: hono types the latter's status
+  // against ContentfulStatusCode, which excludes the 304 this can return.
+  // Middleware that adjusts headers after `next()` reads `c.res` either way.
+  return new Response(download.stream, {
+    status: download.status,
+    headers: download.headers,
+  });
 });
 
 // GET /books/:hash/cover — Serve cover image
@@ -676,6 +750,7 @@ app.get("/search/results", async (c) => {
       "personal_book.filePath",
       "personal_book.coverPath",
       "personal_book.coverMime",
+      "personal_book.epubPath",
       "personal_book.sizeBytes",
       "personal_book.createdAt",
       "personal_book.updatedAt",

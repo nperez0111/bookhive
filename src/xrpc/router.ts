@@ -1688,15 +1688,16 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         userDid,
         contentHash,
         request.headers.get("if-none-match"),
+        {
+          range: request.headers.get("range"),
+          ifRange: request.headers.get("if-range"),
+        },
       );
       // 404 rather than 403 for someone else's book — don't leak existence.
       if (!download) {
         throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
       }
-      if (download.notModified) {
-        return new Response(null, { status: 304, headers: download.headers });
-      }
-      return new Response(download.stream, { status: 200, headers: download.headers });
+      return new Response(download.stream, { status: download.status, headers: download.headers });
     },
   });
 

@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import { copyFileSync } from "fs";
 import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
 import { defineConfig, type Plugin } from "vite-plus";
@@ -52,6 +53,30 @@ function standaloneBundles(): Plugin {
       name: "parse-worker.js",
       label: "Ebook parse worker",
     },
+    {
+      entrypoint: "./src/workers/convert-worker.ts",
+      outdir: "./.output/server/workers",
+      name: "convert-worker.js",
+      label: "EPUB convert worker",
+    },
+  ];
+
+  /**
+   * Files that must sit *beside* a bundled worker rather than inside it.
+   *
+   * `vendor/boko/boko.js` loads its WASM with
+   * `readFileSync(`${__dirname}/boko_bg.wasm`)` — a runtime path, invisible to
+   * the bundler — and in the built output `__dirname` is the worker's own
+   * directory. Without this copy the bundle is emitted happily and every
+   * conversion then fails at runtime with ENOENT, which looks like a converter
+   * bug rather than a missing file.
+   */
+  const assets = [
+    {
+      from: "./vendor/boko/boko_bg.wasm",
+      to: "./.output/server/workers/boko_bg.wasm",
+      label: "boko WASM module",
+    },
   ];
 
   return {
@@ -62,6 +87,10 @@ function standaloneBundles(): Plugin {
         const cmd = `bun build ${bundle.entrypoint} --outdir ${bundle.outdir} --entry-naming ${bundle.name} --target bun --minify-whitespace --minify-identifiers`;
         execSync(cmd, { stdio: "inherit" });
         console.log(`${bundle.label} written to ${bundle.outdir}/${bundle.name}`);
+      }
+      for (const asset of assets) {
+        copyFileSync(asset.from, asset.to);
+        console.log(`${asset.label} copied to ${asset.to}`);
       }
     },
   };

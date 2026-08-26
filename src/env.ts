@@ -86,6 +86,10 @@ export const env = cleanEnv(process.env, {
     default: "",
     desc: "Root directory for personal-library files. Empty derives it from dirname(DB_PATH)/library. Set explicitly to put the library on a different volume from the DB — and by the test preload, so tests can never write ebooks into the repo.",
   }),
+  OPDS_DOWNLOAD_BASE_URL: str({
+    default: "",
+    desc: "Scheme+host to emit on OPDS acquisition (download) links instead of the request's own origin, e.g. https://dl.bookhive.buzz. The path is unchanged, and only the download link moves — feed/nav/cover links stay on the requested host. Point it at an origin that reaches this app directly (same auth, no CDN), so an e-reader's long-lived download isn't subject to whatever sits in front of the public host. Empty means unchanged behaviour.",
+  }),
   PERSONAL_LIBRARY_QUOTA_BYTES: num({
     default: 2 * 1024 * 1024 * 1024,
     desc: "Total bytes of personal-library files one user may store. Enforced as SUM(personal_book.sizeBytes) evaluated *inside* the INSERT, so two concurrent uploads can't both observe the pre-insert total. The per-file ceiling (MAX_PERSONAL_BOOK_BYTES, 100 MB) applies on top. Excludes stored cover images, which are <1% of the total.",

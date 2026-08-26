@@ -204,11 +204,16 @@ app.get("/books/:hash/download", async (c) => {
     userDid,
     c.req.param("hash"),
     c.req.header("if-none-match"),
+    { range: c.req.header("range"), ifRange: c.req.header("if-range") },
   );
   if (!download) return c.notFound();
-  if (download.notModified) return c.body(null, 304, download.headers);
-
-  return c.body(download.stream, 200, download.headers);
+  // A bare Response rather than `c.body()`: hono types the latter's status
+  // against ContentfulStatusCode, which excludes the 304 this can return.
+  // Middleware that adjusts headers after `next()` reads `c.res` either way.
+  return new Response(download.stream, {
+    status: download.status,
+    headers: download.headers,
+  });
 });
 
 app.get("/shelves", async (c) => {
