@@ -77,6 +77,21 @@ function standaloneBundles(): Plugin {
       to: "./.output/server/workers/boko_bg.wasm",
       label: "boko WASM module",
     },
+    // boko is GPL-3.0-or-later and the published ghcr.io image is a combined
+    // work, so §4 wants the license travelling with the binary and §6 wants the
+    // corresponding source identified. Only `.output/` is copied into the final
+    // image — `vendor/` is not — so without these two the obligation is met in
+    // the repo and broken in the artifact people actually receive.
+    {
+      from: "./vendor/boko/LICENSE",
+      to: "./.output/server/workers/boko.LICENSE",
+      label: "boko license (GPL-3 §4)",
+    },
+    {
+      from: "./vendor/boko/manifest.json",
+      to: "./.output/server/workers/boko.manifest.json",
+      label: "boko source manifest (GPL-3 §6)",
+    },
   ];
 
   return {

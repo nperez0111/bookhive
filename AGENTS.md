@@ -326,7 +326,7 @@ form accepts this one, because they all substring-match the
 hostname keeps following that hostname through pagination and search.
 
 **The acquisition (download) link is the one exception**: `OPDS_DOWNLOAD_BASE_URL`, when set,
-replaces its scheme+host (`downloadOrigin`), leaving `/opds/books/{hash}/download` untouched.
+replaces its scheme+host (`downloadOrigin`), leaving `/opds/books/{hash}/download/{name}.ext` untouched.
 That exists so an e-reader's multi-MB transfer can go straight at the app instead of through
 whatever proxies the public host — the redirect-through-Cloudflare arrangement it replaced was
 producing HTTP/2 stream resets mid-download. Only the download moves; feed, nav and cover links
@@ -885,15 +885,15 @@ Same reasoning applies to any new sort added here.
 
 **The personal library is fully reachable over XRPC, not just over `/opds`.** Parity map:
 
-| OPDS route                          | XRPC method                                        |
-| ----------------------------------- | -------------------------------------------------- |
-| `GET /opds` (root nav + counts)     | `listPersonalShelves` — the root call, one request |
-| `GET /opds/all`                     | `getPersonalLibrary`                               |
-| `GET /opds/shelves/:id`             | `getPersonalLibrary?shelfId=`                      |
-| `GET /opds/search/results`          | `getPersonalLibrary?q=&sort=title` (same SQL)      |
-| `GET /opds/books/:hash/download`    | `getPersonalBookFile`                              |
-| `GET /opds/books/:hash/cover`       | `getPersonalBookCover`                             |
-| `GET /opds/search` (OpenSearch doc) | n/a — an XRPC client reads the lexicon instead     |
+| OPDS route                              | XRPC method                                        |
+| --------------------------------------- | -------------------------------------------------- |
+| `GET /opds` (root nav + counts)         | `listPersonalShelves` — the root call, one request |
+| `GET /opds/all`                         | `getPersonalLibrary`                               |
+| `GET /opds/shelves/:id`                 | `getPersonalLibrary?shelfId=`                      |
+| `GET /opds/search/results`              | `getPersonalLibrary?q=&sort=title` (same SQL)      |
+| `GET /opds/books/:hash/download/{name}` | `getPersonalBookFile`                              |
+| `GET /opds/books/:hash/cover`           | `getPersonalBookCover`                             |
+| `GET /opds/search` (OpenSearch doc)     | n/a — an XRPC client reads the lexicon instead     |
 
 **Two methods declare non-JSON bodies**, which is what makes upload and download work at all:
 

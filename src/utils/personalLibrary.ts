@@ -223,9 +223,16 @@ export async function streamPersonalBook(
   // it is that an e-reader may not read the original (CrossPoint's OPDS parser
   // requires `type == "application/epub+zip"` exactly). The original stays on
   // disk, but nothing serves it.
-  const served = servedRepresentation(book);
-  const serveEpub = Boolean(book.epubPath);
-  const servePath = book.epubPath ?? book.filePath;
+  //
+  // Unless it has gone missing. `epubPath` is a row pointing at a second file
+  // that the quota does not account for and that nothing re-derives, so a
+  // half-restored volume or a stray cleanup leaves the column set with no file
+  // behind it — and failing the whole download then loses the user the
+  // original as well, which is right there. Everything downstream keys off the
+  // representation, so this has to resolve *before* the ETag and the filename.
+  const serveEpub = book.epubPath ? await Bun.file(book.epubPath).exists() : false;
+  const served = servedRepresentation(serveEpub ? book : { ...book, epubPath: null });
+  const servePath = serveEpub && book.epubPath ? book.epubPath : book.filePath;
   const { format: serveFormat, mime: serveMime } = served;
 
   // The validator has to distinguish the two representations. `contentHash` is

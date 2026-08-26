@@ -1667,7 +1667,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  // The XRPC equivalent of GET /opds/books/:hash/download.
+  // The XRPC equivalent of GET /opds/books/:hash/download/{name}.ext.
   //
   // Returns a bare `Response` rather than `json(...)`: the lexicon declares a
   // blob output, so the router passes whatever we return straight through and

@@ -193,8 +193,8 @@ app.get("/covers/:hash", async (c) => {
 });
 
 // Session-authenticated download for the web UI. OPDS serves the same bytes at
-// /opds/books/:hash/download, but that route is behind HTTP Basic auth, which a
-// logged-in browser doesn't have.
+// /opds/books/:hash/download/{name}.ext, but that route is behind HTTP Basic
+// auth, which a logged-in browser does not have.
 app.get("/books/:hash/download", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();
   if (!userDid) return c.json({ error: "Unauthorized" }, 401);

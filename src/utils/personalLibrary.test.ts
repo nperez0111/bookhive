@@ -240,6 +240,15 @@ describe("Content-Disposition", () => {
     expect(/filename="([^"]*)"/.exec(header)![1]).toBe("a_b_c.epub");
   });
 
+  // The plain parameter is a quoted-string. A caller passing something other
+  // than `canonicalDownloadFilename` (which cannot produce either character)
+  // must not be able to close the quote and append parameters of its own.
+  it("escapes a quote or backslash reaching the plain filename", () => {
+    const header = attachmentDisposition("x.epub", 'a".epub"; x=y\\z');
+    expect(/filename="((?:[^"\\]|\\.)*)"/.exec(header)![1]).toBe('a\\".epub\\"; x=y\\\\z');
+    expect(header).not.toContain("\r");
+  });
+
   it("never emits an empty plain filename", () => {
     expect(
       /filename="([^"]*)"/.exec(
@@ -288,6 +297,28 @@ describe("serving a derived EPUB", () => {
     // ...and the EPUB's own validator still earns its 304.
     const fresh = await streamPersonalBook(db, DID, HASH, `"${HASH}-epub"`);
     expect(fresh!.status).toBe(304);
+  });
+
+  // `epubPath` points at a second file the quota does not account for and that
+  // nothing re-derives. If it goes missing, failing the download would lose the
+  // user the original too — which is right there on disk.
+  it("falls back to the original when the derived EPUB has gone missing", async () => {
+    await db
+      .updateTable("personal_book")
+      .set({ format: "mobi", mime: "application/x-mobipocket-ebook" })
+      .where("contentHash", "=", HASH)
+      .execute();
+    await linkEpub();
+    await rm(epubPath, { force: true });
+
+    const result = await streamPersonalBook(db, DID, HASH);
+    expect(result!.status).toBe(200);
+    expect(await new Response(result!.stream).text()).toBe("epub bytes");
+    // ...as the original representation throughout, not an EPUB label over
+    // MOBI bytes: a client that cached under the `-epub` validator must not be
+    // told these are the same thing.
+    expect(result!.headers["ETag"]).toBe(`"${HASH}"`);
+    expect(result!.headers["Content-Type"]).toBe("application/x-mobipocket-ebook");
   });
 
   it("names the download with the served extension", async () => {
