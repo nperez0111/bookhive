@@ -20,10 +20,10 @@ import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
 // ─── Realistic delay constants (from measured latencies) ────────────────────
-const SEARCH_DELAY_P50 = 50; // Scaled down for test speed; real p50 ~270ms
-const SEARCH_DELAY_P90 = 120; // Scaled down; real p90 ~650ms
-const PDS_BATCH_DELAY = 80; // Scaled down; real ~500-2000ms
-const PDS_INDIVIDUAL_DELAY = 40; // Scaled down; real ~200-500ms
+const SEARCH_DELAY_P50 = 15; // Scaled down for test speed; real p50 ~270ms
+const SEARCH_DELAY_P90 = 35; // Scaled down; real p90 ~650ms
+const PDS_BATCH_DELAY = 25; // Scaled down; real ~500-2000ms
+const PDS_INDIVIDUAL_DELAY = 12; // Scaled down; real ~200-500ms
 
 /** Returns a delay in ms that roughly follows p50/p90 distribution. */
 function realisticSearchDelay(): number {

@@ -134,8 +134,11 @@ describe("createCrossProcessLock", () => {
   // lock alive via the heartbeat, and waiters spun for 37.5s issuing 750
   // synchronous SQLite statements each — enough concurrent waiters and the
   // worker stopped servicing its event loop at all.
-  it("gives up on a permanently held lock within a few seconds", async () => {
-    const lock = createCrossProcessLock(db);
+  it("gives up on a permanently held lock within its wait budget", async () => {
+    // A short wait budget stands in for MAX_WAIT_MS: the invariant is that a
+    // waiter gives up rather than spinning forever, not the exact budget.
+    const maxWaitMs = 300;
+    const lock = createCrossProcessLock(db, { maxWaitMs });
     await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('wedged', 'other-pid-999', ${Date.now()})`.execute(
       db,
     );
@@ -146,14 +149,15 @@ describe("createCrossProcessLock", () => {
     );
     const elapsed = Date.now() - start;
 
-    expect(elapsed).toBeLessThan(6_000);
+    expect(elapsed).toBeGreaterThanOrEqual(maxWaitMs);
+    expect(elapsed).toBeLessThan(maxWaitMs + 3_000);
     // The other owner's lock must survive — we only ever delete our own.
     const rows = await sql`SELECT * FROM auth_refresh_lock WHERE id = 'wedged'`.execute(db);
     expect(rows.rows).toHaveLength(1);
   });
 
   it("backs off exponentially rather than polling at a fixed interval", async () => {
-    const lock = createCrossProcessLock(db);
+    const lock = createCrossProcessLock(db, { maxWaitMs: 300 });
     await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('counted', 'other-pid-999', ${Date.now()})`.execute(
       db,
     );

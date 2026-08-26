@@ -5,7 +5,6 @@ import {
   PdsUnavailableError,
   resetRestoreGuards,
   restoreGuardStates,
-  RESTORE_TIMEOUT_MS,
   MAX_BREAKERS,
 } from "./restore-guard";
 
@@ -39,15 +38,17 @@ describe("guardedRestore", () => {
     expect(restoreGuardStates()[0]?.state).toBe("closed");
   });
 
-  it(
-    "times out a hung restore instead of hanging the request",
-    async () => {
-      const start = Date.now();
-      await expect(guardedRestore("dead.example", blackhole)).rejects.toThrow("timed out");
-      expect(Date.now() - start).toBeLessThan(RESTORE_TIMEOUT_MS + 2_000);
-    },
-    RESTORE_TIMEOUT_MS + 5_000,
-  );
+  it("times out a hung restore instead of hanging the request", async () => {
+    // A short override stands in for RESTORE_TIMEOUT_MS: the invariant under
+    // test is that a blackholing host is bounded by the timeout, not that the
+    // timeout is any particular length.
+    const timeoutMs = 200;
+    const start = Date.now();
+    await expect(guardedRestore("dead.example", blackhole, undefined, timeoutMs)).rejects.toThrow(
+      "timed out",
+    );
+    expect(Date.now() - start).toBeLessThan(timeoutMs + 2_000);
+  });
 
   it("stops dispatching to a host that keeps failing", async () => {
     for (let i = 0; i < 3; i++) {

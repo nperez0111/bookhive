@@ -132,6 +132,12 @@ export async function guardedRestore<T>(
   key: string,
   restore: () => Promise<T>,
   onOutcome?: (outcome: RestoreOutcome) => void,
+  /**
+   * Overrides `RESTORE_TIMEOUT_MS`. Production never sets this; it exists so the
+   * regression tests can exercise the same bounded-wait architecture without
+   * sitting through a real 5 s timeout on every hung-restore case.
+   */
+  timeoutMs: number = RESTORE_TIMEOUT_MS,
 ): Promise<T> {
   const breaker = getBreaker(key);
   const startedAt = Date.now();
@@ -143,7 +149,7 @@ export async function guardedRestore<T>(
   }
 
   try {
-    const result = await withTimeout(restore(), RESTORE_TIMEOUT_MS, `oauth restore for ${key}`);
+    const result = await withTimeout(restore(), timeoutMs, `oauth restore for ${key}`);
     breaker.recordSuccess();
     onOutcome?.({ key, state: breaker.getState(), durationMs: Date.now() - startedAt });
     return result;

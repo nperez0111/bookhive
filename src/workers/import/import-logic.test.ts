@@ -21,6 +21,16 @@ void mock.module("../../utils/getBook", () => ({
   getBookRecord: mock(async () => null),
 }));
 
+// `logic.ts` calls `searchBooks`, whose real implementation scrapes Goodreads
+// (`findBookDetails`). Stub it so matching relies only on the seeded local
+// `hive_book` rows and the test never touches the network. Without this the
+// file only passed because another test file's process-wide `mock.module` for
+// the same path leaked in — which broke the moment tests ran isolated (e.g.
+// `bun test --parallel`, or this file on its own).
+void mock.module("../../routes/lib", () => ({
+  searchBooks: mock(async () => []),
+}));
+
 // Import after mocking
 const { processGoodreadsImport, processStorygraphImport } = await import("./logic");
 

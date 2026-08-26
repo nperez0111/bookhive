@@ -37,9 +37,25 @@ const MAX_WAIT_MS = 3_000;
 const INITIAL_POLL_MS = 25;
 const MAX_POLL_MS = 400;
 
+/**
+ * Poll/wait timings. Production never overrides these; the options exist so the
+ * regression tests can prove the same give-up-then-clean-up behaviour without
+ * spending the full real wait budget on every permanently-held-lock case.
+ */
+export type CrossProcessLockOptions = {
+  maxWaitMs?: number;
+  initialPollMs?: number;
+  maxPollMs?: number;
+};
+
 export function createCrossProcessLock(
   db: KvDb,
+  options: CrossProcessLockOptions = {},
 ): <T>(key: string, cb: () => Promise<T>) => Promise<T> {
+  const maxWaitMs = options.maxWaitMs ?? MAX_WAIT_MS;
+  const initialPollMs = options.initialPollMs ?? INITIAL_POLL_MS;
+  const maxPollMs = options.maxPollMs ?? MAX_POLL_MS;
+
   void sql`CREATE TABLE IF NOT EXISTS auth_refresh_lock (
     id TEXT PRIMARY KEY,
     owner TEXT NOT NULL,
@@ -47,8 +63,8 @@ export function createCrossProcessLock(
   )`.execute(db);
 
   return async function crossProcessLock<T>(key: string, cb: () => Promise<T>): Promise<T> {
-    const deadline = Date.now() + MAX_WAIT_MS;
-    let pollMs = INITIAL_POLL_MS;
+    const deadline = Date.now() + maxWaitMs;
+    let pollMs = initialPollMs;
 
     for (;;) {
       const now = Date.now();
@@ -93,7 +109,7 @@ export function createCrossProcessLock(
       if (remaining <= 0) break;
 
       await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
-      pollMs = Math.min(pollMs * 2, MAX_POLL_MS);
+      pollMs = Math.min(pollMs * 2, maxPollMs);
     }
 
     // Only clean up our own lock (defensive no-op — we never acquired one).
