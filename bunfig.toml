@@ -1,9 +1,13 @@
 [test]
 # Was "src", which silently made server/ untestable — server/worker-exit.ts
-# shipped a bug that mislabelled every OOM kill for a month. Scripts pass the
-# directories explicitly (`bun test src server`) so app/'s React Native suites,
-# which use the jest preset rather than bun's runner, stay out of the way.
+# shipped a bug that mislabelled every OOM kill for a month. The scripts pass the
+# directories explicitly (`bun test src server`), but a fresh cloner runs a bare
+# `bun test`, which walks from root — so ignore app/ here too. Its React Native
+# suites use the jest preset, not bun's runner, and fail to even parse under it
+# (Flow syntax in react-native/index.js), which is what made `bun test` "not
+# pass locally" in issue #213. Keep this in sync with the scripts' explicit dirs.
 root = "."
+pathIgnorePatterns = ["**/app/**"]
 
 # Runs before src/env.ts is imported, which is the only moment DB_PATH and
 # LIBRARY_DIR can still be set — envalid freezes `env` at import. Without it

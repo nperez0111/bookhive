@@ -1,0 +1,45 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+# A newer push to the same branch/PR cancels an in-flight run.
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      # --frozen-lockfile so a stale bun.lock fails CI instead of being silently
+      # rewritten. The app/ workspace is a dependency of the install even though
+      # its React Native suites don't run under bun (see bunfig.toml).
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The server + src suites only. app/'s React Native tests use the jest
+      # preset, not bun's runner; they're covered separately in that workspace.
+      # --parallel runs the files across worker processes (one isolated module
+      # registry each), which is both faster and stricter: a file that only
+      # passed by leaning on another file's process-wide mock.module now fails
+      # honestly instead of depending on load order.
+      - name: Run tests
+        run: bun test --parallel src server
