@@ -1,7 +1,7 @@
 /**
  * Simulated integration tests for the import pipeline.
  *
- * Uses real CSV rows from actual Goodreads/StoryGraph exports, with mocked
+ * Uses real CSV rows from actual Goodreads/StoryGraph/Hardcover exports, with mocked
  * network calls that use realistic delays based on measured latencies:
  *
  *   findBookDetails (Goodreads scraper):  p50 ~270ms, p90 ~650ms, max ~650ms

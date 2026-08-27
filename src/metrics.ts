@@ -341,12 +341,15 @@ export const LABEL = {
   import: {
     goodreads: labelKey({ source: "goodreads" }),
     storygraph: labelKey({ source: "storygraph" }),
+    hardcover: labelKey({ source: "hardcover" }),
   },
   importOutcome: {
     goodreadsMatched: labelKey({ source: "goodreads", outcome: "matched" }),
     goodreadsUnmatched: labelKey({ source: "goodreads", outcome: "unmatched" }),
     storygraphMatched: labelKey({ source: "storygraph", outcome: "matched" }),
     storygraphUnmatched: labelKey({ source: "storygraph", outcome: "unmatched" }),
+    hardcoverMatched: labelKey({ source: "hardcover", outcome: "matched" }),
+    hardcoverUnmatched: labelKey({ source: "hardcover", outcome: "unmatched" }),
   },
   followSync: {
     full: labelKey({ sync_type: "full" }),

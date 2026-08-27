@@ -32,21 +32,6 @@ export function mapStorygraphStatus(book: Pick<StorygraphBook, "readStatus">): B
   }
 }
 
-export function mapHardcoverStatus(
-  book: Pick<HardcoverBook, "dateFinished" | "status">,
-): BookStatus {
-  switch (book.status.toLowerCase()) {
-    case "read":
-      return BookStatus.finished;
-    case "currently reading":
-      return BookStatus.reading;
-    case "want to read":
-      return BookStatus.wantToRead;
-    default:
-      return book.dateFinished ? BookStatus.finished : BookStatus.wantToRead;
-  }
-}
-
 export function normalizeGoodreadsRating(myRating: number): number | undefined {
   return myRating ? myRating * 2 : undefined;
 }
@@ -110,22 +95,17 @@ export function mergeStorygraphIdentifiers(params: {
 }
 
 export function mergeHardcoverIdentifiers(params: {
-  isbn10: string;
-  isbn13: string;
+  book: HardcoverBook;
   existingIdentifiers: BookIdentifiers;
   hiveBookId: string;
 }): { identifiers: BookIdentifiers; changed: boolean } {
-  const { isbn10, isbn13, existingIdentifiers, hiveBookId } = params;
-  if (!isbn10 || !isbn13) {
-    return { identifiers: existingIdentifiers, changed: false };
-  }
-  const cleanIsbn10 = isbn10.replace(/[-\s]/g, "");
-  const cleanIsbn13 = isbn13.replace(/[-\s]/g, "");
+  const { book, existingIdentifiers, hiveBookId } = params;
+  const { isbn10, isbn13 } = book;
   const newIdentifiers: BookIdentifiers = {
     ...existingIdentifiers,
     hiveId: hiveBookId,
-    ...(cleanIsbn10.length === 10 ? { isbn10: cleanIsbn10 } : {}),
-    ...(cleanIsbn13.length === 13 ? { isbn13: cleanIsbn13 } : {}),
+    ...(isbn10.length === 10 ? { isbn10 } : {}),
+    ...(isbn13.length === 13 ? { isbn13 } : {}),
   };
   const changed =
     newIdentifiers.isbn10 !== existingIdentifiers.isbn10 ||
@@ -186,15 +166,16 @@ export function buildHardcoverBookRecord(params: {
   existingHiveIds: Set<string>;
 }) {
   const { book, hiveBook, existingHiveIds } = params;
-  const status = mapHardcoverStatus(book);
   return {
     title: hiveBook.title,
     authors: book.author,
-    status,
+    status: book.status,
     hiveId: hiveBook.id,
     coverImage: hiveBook.cover ?? undefined,
     finishedAt:
-      status === BookStatus.finished ? (book.dateFinished?.toISOString() ?? undefined) : undefined,
+      book.status === BookStatus.finished
+        ? (book.dateFinished?.toISOString() ?? undefined)
+        : undefined,
     stars: book.rating,
     review: book.review,
     owned: book.owned,

@@ -6,7 +6,7 @@
  * SSE progress so the user always sees what's happening.
  */
 import type { SessionClient } from "../../auth/client";
-import type { BookIdentifiers, HiveId } from "../../types";
+import { type BookIdentifiers, type HiveId } from "../../types";
 import { Book as BookRecord } from "../../bsky/lexicon";
 import {
   getGoodreadsCsvParser,
@@ -24,12 +24,11 @@ import {
   mapStorygraphStatus,
   mergeGoodreadsIdentifiers,
   mergeStorygraphIdentifiers,
+  mergeHardcoverIdentifiers,
   buildGoodreadsBookRecord,
   buildStorygraphBookRecord,
-  deduplicateUnmatchedWithDetails,
-  mergeHardcoverIdentifiers,
   buildHardcoverBookRecord,
-  mapHardcoverStatus,
+  deduplicateUnmatchedWithDetails,
 } from "../../utils/importBook";
 // Note: Worker threads get isolated metric registries, so metrics here won't appear
 // at the main /metrics endpoint. The main thread (routes/import.ts) tracks import
@@ -683,8 +682,13 @@ export async function processHardcoverImport({
   const hcFallback = (bu: BookUpdate): HardcoverBook => {
     return parseHardcoverRecord({
       Author: bu.authors || "Unknown",
-      Rating: `${bu.stars}`,
+      "Date Added": bu.createdAt ?? "",
+      "Date Started": bu.startedAt ?? "",
+      "Date Finished": bu.finishedAt ?? "",
+      Rating: `${(bu.stars || 0) / 2}`,
       Review: bu.review || "",
+      Status: bu.status || "",
+      Title: bu.title || "Unknown",
     });
   };
 
@@ -738,8 +742,7 @@ export async function processHardcoverImport({
         ? JSON.parse(hiveBook.identifiers)
         : {};
       const { identifiers: newIdentifiers, changed } = mergeHardcoverIdentifiers({
-        isbn10: book.isbn10,
-        isbn13: book.isbn13,
+        book,
         existingIdentifiers,
         hiveBookId: hiveBook.id,
       });
@@ -827,17 +830,17 @@ export async function processHardcoverImport({
         (b) => b.title,
         (b) => b.author,
         (b) => {
-          const cleanIsbn = b.book.isbn10?.replace(/[-\s]/g, "") || "";
+          const cleanIsbn10 = b.book.isbn10?.replace(/[-\s]/g, "") || "";
           const cleanIsbn13 = b.book.isbn13?.replace(/[-\s]/g, "") || "";
           return {
             title: b.book.title,
             author: b.book.author,
-            isbn10: cleanIsbn.length === 10 ? cleanIsbn : undefined,
+            isbn10: cleanIsbn10.length === 10 ? cleanIsbn10 : undefined,
             isbn13: cleanIsbn13.length === 13 ? cleanIsbn13 : undefined,
             stars: b.book.rating || undefined,
             review: b.book.review || undefined,
             finishedAt: b.book.dateFinished ? b.book.dateFinished.toISOString() : undefined,
-            status: mapHardcoverStatus(b.book),
+            status: b.book.status,
             reason: b.reason,
           };
         },

@@ -321,7 +321,7 @@ export const ProfilePage: FC<{
               </h2>
               <p class="empty-description">
                 {isOwnProfile
-                  ? "Search for a book to add your first read, or bring your history over from Goodreads or StoryGraph."
+                  ? "Search for a book to add your first read, or bring your history over from Goodreads or StoryGraph or Hardcover."
                   : `@${handle} hasn't added any books to BookHive yet.`}
               </p>
               {isOwnProfile && (

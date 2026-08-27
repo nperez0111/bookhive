@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { getGoodreadsCsvParser, getStorygraphCsvParser } from "./csv";
+import { getGoodreadsCsvParser, getHardcoverCsvParser, getStorygraphCsvParser } from "./csv";
+import { HARDCOVER_CSV } from "../workers/import/import-logic.test";
 
 describe("CSV Parsers", () => {
   describe("Goodreads CSV Parser", () => {
@@ -268,6 +269,224 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         contentWarningDescription: "Some violence",
         tags: "sci-fi",
         owned: true,
+      });
+    });
+  });
+
+  describe("Hardcover CSV Parser", () => {
+    it("should parse basic Hardcover CSV data correctly", async () => {
+      const parser = getHardcoverCsvParser();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(HARDCOVER_CSV));
+          controller.close();
+        },
+      });
+
+      const books = [];
+      const reader = stream.pipeThrough(parser).getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        books.push(value);
+      }
+
+      expect(books).toHaveLength(3);
+
+      // Test first book (want to read)
+      expect(books[0]).toMatchObject({
+        asin: "0374100144",
+        author: "Roberto Bolaño, Natasha Wimmer (Translator)",
+        binding: "",
+        compilation: false,
+        contentWarnings: "",
+        countryCode: "us",
+        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
+        dateFinished: null,
+        dateStarted: null,
+        durationInSeconds: 0,
+        genres: "",
+        hardcoverBookId: "75726",
+        hardcoverEditionId: "25012766",
+        isbn10: "0374100144",
+        isbn13: "9780374100148",
+        languageCode: "en",
+        lists: "",
+        media: "Book",
+        moods: "",
+        owned: false,
+        pages: 898,
+        privacy: "Public",
+        privateNotes: "",
+        publishDate: new Date("2008-11-11T00:00:00.000Z"),
+        publisher: "Farrar, Straus and Giroux",
+        rating: 0,
+        review: "",
+        reviewContainsSpoilers: false,
+        reviewDate: new Date("2025-01-15T13:56:31.000Z"),
+        reviewMediaUrl: "",
+        reviewSlate: "{}",
+        reviewUrl: "",
+        series: "2666 (#1.0)",
+        sponsoredReview: false,
+        status: "buzz.bookhive.defs#wantToRead",
+        title: "2666",
+      });
+
+      expect(books[0]!.dateAdded).toBeInstanceOf(Date);
+      expect(books[0]!.dateAdded?.getFullYear()).toBe(2025);
+
+      // Test second book (read with date finished)
+      expect(books[1]).toMatchObject({
+        asin: "B0036G94XY",
+        author: "William Gibson",
+        binding: "",
+        compilation: false,
+        contentWarnings: "",
+        countryCode: "us",
+        dateAdded: new Date("2025-01-10T00:00:00.000Z"),
+        dateFinished: new Date("2025-01-23T00:00:00.000Z"),
+        dateStarted: new Date("2025-01-01T00:00:00.000Z"),
+        durationInSeconds: 25686,
+        genres: "",
+        hardcoverBookId: "2440",
+        hardcoverEditionId: "31159321",
+        isbn10: "",
+        isbn13: "",
+        languageCode: "en",
+        lists: "Owned, Shelved By Genre Reading List (#19)",
+        media: "Audio",
+        moods: "",
+        owned: true,
+        pages: 191,
+        privacy: "Public",
+        privateNotes: "",
+        publishDate: new Date("1986-04-01T00:00:00.000Z"),
+        publisher: "Audible Frontiers",
+        rating: 9,
+        review: "",
+        reviewContainsSpoilers: false,
+        reviewDate: new Date("2025-01-10T17:21:40.000Z"),
+        reviewMediaUrl: "",
+        reviewSlate: "{}",
+        reviewUrl: "",
+        series: "Sprawl (#0.0)",
+        sponsoredReview: false,
+        status: "buzz.bookhive.defs#finished",
+        tags: "",
+        title: "Burning Chrome",
+      });
+
+      expect(books[1]!.dateFinished).toBeInstanceOf(Date);
+      expect(books[1]!.dateFinished?.getFullYear()).toBe(2025);
+
+      // Test third book (currently-read)
+      expect(books[2]).toMatchObject({
+        asin: "",
+        author: "Dan Simmons",
+        binding: "",
+        compilation: false,
+        contentWarnings: "",
+        countryCode: "us",
+        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
+        dateFinished: null,
+        dateStarted: new Date("2025-01-25T00:00:00.000Z"),
+        durationInSeconds: 0,
+        genres: "",
+        hardcoverBookId: "427460",
+        hardcoverEditionId: "30428122",
+        isbn10: "0385263481",
+        isbn13: "9780385263481",
+        languageCode: "en",
+        lists: "Owned",
+        media: "Book",
+        moods: "",
+        owned: true,
+        pages: 492,
+        privacy: "Public",
+        privateNotes: "",
+        publishDate: new Date("1989-05-26T00:00:00.000Z"),
+        publisher: "Crown",
+        rating: 0,
+        review: "",
+        reviewContainsSpoilers: false,
+        reviewDate: new Date("2025-01-15T13:56:57.000Z"),
+        reviewMediaUrl: "",
+        reviewSlate: "{}",
+        reviewUrl: "",
+        series: "Hyperion Cantos (#1.0)",
+        sponsoredReview: false,
+        status: "buzz.bookhive.defs#reading",
+        tags: "",
+        title: "Hyperion",
+      });
+    });
+
+    it("should handle empty values and different read statuses correctly", async () => {
+      const csvData = `
+Title,Author,Series,Status,Privacy,Hardcover Book ID,Hardcover Edition ID,ISBN 10,ISBN 13,ASIN,Media,Country Code,Language Code,Binding,Pages,Duration in Seconds,Publish Date,Publisher,Genres,Moods,Tags,Content Warnings,Lists,Date Added,Date Started,Date Finished,Rating,Review,Review Contains Spoilers,Sponsored Review,Review Date,Review URL,Review Media URL,Private Notes,Owned,Compilation,Review Slate
+Mistborn: The Final Empire,Brandon Sanderson,The Mistborn Saga: The Original Trilogy (#1.0),Stopped,Public,369692,30432878,0765377136,9780765377135,,Book,us,en,,541,,2006-07-17,Tor Teen,,,,,Owned,2025-01-15,2024-08-01,"",1.5,,false,false,2025-01-15T13:57:07Z,,,,true,No,{}
+`;
+
+      const parser = getHardcoverCsvParser();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(csvData));
+          controller.close();
+        },
+      });
+
+      const books = [];
+      const reader = stream.pipeThrough(parser).getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        books.push(value);
+      }
+
+      expect(books).toHaveLength(1);
+
+      // Test book with various filled fields
+      expect(books[0]).toMatchObject({
+        asin: "",
+        author: "Brandon Sanderson",
+        binding: "",
+        compilation: false,
+        contentWarnings: "",
+        countryCode: "us",
+        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
+        dateFinished: null,
+        dateStarted: new Date("2024-08-01T00:00:00.000Z"),
+        durationInSeconds: 0,
+        genres: "",
+        hardcoverBookId: "369692",
+        hardcoverEditionId: "30432878",
+        isbn10: "0765377136",
+        isbn13: "9780765377135",
+        languageCode: "en",
+        lists: "Owned",
+        media: "Book",
+        moods: "",
+        owned: true,
+        pages: 541,
+        privacy: "Public",
+        privateNotes: "",
+        publishDate: new Date("2006-07-17T00:00:00.000Z"),
+        publisher: "Tor Teen",
+        rating: 3,
+        review: "",
+        reviewContainsSpoilers: false,
+        reviewDate: new Date("2025-01-15T13:57:07.000Z"),
+        reviewMediaUrl: "",
+        reviewSlate: "{}",
+        reviewUrl: "",
+        series: "The Mistborn Saga: The Original Trilogy (#1.0)",
+        sponsoredReview: false,
+        status: "buzz.bookhive.defs#wantToRead",
+        tags: "",
+        title: "Mistborn: The Final Empire",
       });
     });
   });

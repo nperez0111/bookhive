@@ -1,4 +1,4 @@
-export type ImportService = "goodreads" | "storygraph";
+export type ImportService = "goodreads" | "storygraph" | "hardcover";
 
 export type ImportStage = "initializing" | "searching" | "uploading" | "complete";
 

@@ -3,9 +3,9 @@
  * Receives an ImportRequest via postMessage, processes the import,
  * and relays SSE events back to the main thread.
  */
-import type { ImportRequest, ImportWorkerMessage } from "./types";
+import { ImportType, type ImportRequest, type ImportWorkerMessage } from "./types";
 import { createWorkerContext } from "./context";
-import { processGoodreadsImport, processStorygraphImport } from "./logic";
+import { processGoodreadsImport, processStorygraphImport, processHardcoverImport } from "./logic";
 
 declare var self: Worker;
 
@@ -19,10 +19,12 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
       self.postMessage({ type: "sse", data } satisfies ImportWorkerMessage);
     };
 
-    if (type === "goodreads") {
+    if (type === ImportType.goodreads) {
       await processGoodreadsImport({ csvData, ctx, agent, onSSE });
-    } else if (type === "storygraph") {
+    } else if (type === ImportType.storygraph) {
       await processStorygraphImport({ csvData, ctx, agent, onSSE });
+    } else if (type === ImportType.hardcover) {
+      await processHardcoverImport({ csvData, ctx, agent, onSSE });
     } else {
       throw new Error(`Unknown import type: ${type as never as string}`);
     }

@@ -1,4 +1,5 @@
 import { parse } from "csv-parse";
+import { BookStatus } from "../types";
 
 export interface GoodreadsBook {
   bookId: string;
@@ -309,7 +310,7 @@ export interface HardcoverBook {
   title: string;
   author: string;
   series: string;
-  status: string;
+  status: BookStatus;
   privacy: string;
   hardcoverBookId: string;
   hardcoverEditionId: string;
@@ -359,17 +360,35 @@ function parseBoolean(input: string): boolean {
   return input.toLowerCase() === "true";
 }
 
+function parseStatus(status: string, dateFinished: Date | null): BookStatus {
+  switch (status.toLowerCase()) {
+    case "read":
+    case BookStatus.finished:
+      return BookStatus.finished;
+    case "currently reading":
+    case BookStatus.reading:
+      return BookStatus.reading;
+    case "want to read":
+    case BookStatus.wantToRead:
+      return BookStatus.wantToRead;
+    case "stopped":
+    default:
+      return dateFinished ? BookStatus.finished : BookStatus.wantToRead;
+  }
+}
+
 export function parseHardcoverRecord(record: Record<string, string>): HardcoverBook {
+  const dateFinished = parseDate(get(record, "Date Finished"));
   return {
     title: get(record, "Title"),
     author: get(record, "Author"),
     series: get(record, "Series"),
-    status: get(record, "Status"),
+    status: parseStatus(get(record, "Status"), dateFinished),
     privacy: get(record, "Privacy"),
     hardcoverBookId: get(record, "Hardcover Book ID"),
     hardcoverEditionId: get(record, "Hardcover Edition ID"),
-    isbn10: get(record, "ISBN 10"),
-    isbn13: get(record, "ISBN 13"),
+    isbn10: get(record, "ISBN 10").replace(/[-\s]/g, ""),
+    isbn13: get(record, "ISBN 13").replace(/[-\s]/g, ""),
     asin: get(record, "ASIN"),
     media: get(record, "Media"),
     countryCode: get(record, "Country Code"),
@@ -386,14 +405,14 @@ export function parseHardcoverRecord(record: Record<string, string>): HardcoverB
     lists: get(record, "Lists"),
     dateAdded: parseDate(get(record, "Date Added")),
     dateStarted: parseDate(get(record, "Date Started")),
-    dateFinished: parseDate(get(record, "Date Finished")),
+    dateFinished,
     rating: parseInt(`${parseFloat(get(record, "Rating")) * 2}`) || 0,
     review: get(record, "Review"),
     reviewContainsSpoilers: parseBoolean(get(record, "Review Contains Spoilers")),
     sponsoredReview: parseBoolean(get(record, "Sponsored Review")),
     reviewDate: parseDate(get(record, "Review Date")),
-    reviewUrl: get(record, "Review Url"),
-    reviewMediaUrl: get(record, "Review Media Url"),
+    reviewUrl: get(record, "Review URL"),
+    reviewMediaUrl: get(record, "Review Media URL"),
     privateNotes: get(record, "Private Notes"),
     owned: parseBoolean(get(record, "Owned")),
     compilation: get(record, "Compilation").toLowerCase() === "yes",
@@ -404,9 +423,13 @@ export function parseHardcoverRecord(record: Record<string, string>): HardcoverB
 export function getHardcoverCsvParser() {
   const parser = parse({
     columns: true,
-    skip_records_with_error: true,
     relax_column_count: true,
     relax_quotes: true,
+    skip_empty_lines: true,
+    skip_records_with_error: true,
+    trim: true,
+    // all coercion and parsing logic is handled in parseHardcoverRecord,
+    // this is merely to ensure everything is a string without wrapping quotes
     cast: (value?: string): string => {
       if (!value) return "";
       if (value.startsWith('"') && value.endsWith('"')) {
@@ -424,11 +447,14 @@ export function getHardcoverCsvParser() {
         // Process any records that are ready
         let record: Record<string, string> | undefined;
         while ((record = parser.read())) {
-          if (record && "Title" in record && "Author" in record) {
-            controller.enqueue(parseHardcoverRecord(record));
-          } else {
-            console.warn("Skipping invalid Hardcover record:", record);
+          if (record) {
+            const parsedRecord = parseHardcoverRecord(record);
+            if (parsedRecord.title !== "" && parsedRecord.author !== "") {
+              controller.enqueue(parsedRecord);
+              continue;
+            }
           }
+          console.warn("Skipping invalid Hardcover record:", record);
         }
       } catch (error) {
         console.warn("Error processing CSV chunk:", error);

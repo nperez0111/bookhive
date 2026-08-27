@@ -33,6 +33,12 @@ export const LibraryImport: FC = () => {
                   <span class="font-medium text-foreground">From StoryGraph</span>
                 </div>
               </label>
+              <label class="flex cursor-pointer">
+                <input type="radio" name="import-service" value="hardcover" class="peer sr-only" />
+                <div class="card flex flex-1 items-center px-4 py-3 shadow-sm min-h-[44px] transition-[box-shadow,background-color] duration-150 peer-checked:shadow-[0_0_0_2px_var(--primary)] peer-checked:bg-primary/5 hover:shadow-md min-w-[140px]">
+                  <span class="font-medium text-foreground">From Hardcover</span>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -64,6 +70,21 @@ export const LibraryImport: FC = () => {
                 User Export
               </a>{" "}
               page and export your library as CSV, then upload it below.
+            </p>
+          </div>
+
+          <div id="hardcover-instructions" class="mb-6 hidden">
+            <p class="text-muted-foreground text-sm">
+              To import your Hardcover library,{" "}
+              <a
+                href="https://hardcover.app/account/exports"
+                class="font-medium text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                export your library from Hardcover
+              </a>
+              , then upload the CSV file below.
             </p>
           </div>
 
@@ -121,17 +142,24 @@ export const LibraryImport: FC = () => {
                 ) as NodeListOf<HTMLInputElement>;
                 const goodreadsInstructions = document.getElementById("goodreads-instructions");
                 const storygraphInstructions = document.getElementById("storygraph-instructions");
+                const hardcoverInstructions = document.getElementById("hardcover-instructions");
 
                 function updateSelection() {
                   const selectedService = document.querySelector(
                     'input[name="import-service"]:checked',
                   ) as HTMLInputElement;
-                  if (selectedService?.value === "storygraph") {
-                    goodreadsInstructions?.classList.add("hidden");
-                    storygraphInstructions?.classList.remove("hidden");
-                  } else {
+                  if (selectedService?.value === "goodreads") {
                     goodreadsInstructions?.classList.remove("hidden");
                     storygraphInstructions?.classList.add("hidden");
+                    hardcoverInstructions?.classList.add("hidden");
+                  } else if (selectedService?.value === "storygraph") {
+                    goodreadsInstructions?.classList.add("hidden");
+                    storygraphInstructions?.classList.remove("hidden");
+                    hardcoverInstructions?.classList.add("hidden");
+                  } else {
+                    goodreadsInstructions?.classList.add("hidden");
+                    storygraphInstructions?.classList.add("hidden");
+                    hardcoverInstructions?.classList.remove("hidden");
                   }
                 }
 
@@ -157,9 +185,11 @@ export const LibraryImport: FC = () => {
                     'input[name="import-service"]:checked',
                   ) as HTMLInputElement;
                   const endpoint =
-                    selectedService?.value === "storygraph"
-                      ? "/import/storygraph"
-                      : "/import/goodreads";
+                    selectedService?.value === "goodreads"
+                      ? "/import/goodreads"
+                      : selectedService?.value === "storygraph"
+                        ? "/import/storygraph"
+                        : "/import/hardcover";
 
                   const form = new FormData();
                   form.append("export", files[0]!);

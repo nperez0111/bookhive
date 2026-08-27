@@ -5,7 +5,6 @@ import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
 import { migrateToLatest, type DatabaseSchema } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
-import { processHardcoverImport } from "./logic";
 
 // Mock getUserRepoRecords to avoid needing valid CAR data from a real PDS
 const mockGetUserRepoRecords = mock(async () => ({
@@ -33,7 +32,8 @@ void mock.module("../../routes/lib", () => ({
 }));
 
 // Import after mocking
-const { processGoodreadsImport, processStorygraphImport } = await import("./logic");
+const { processGoodreadsImport, processStorygraphImport, processHardcoverImport } =
+  await import("./logic");
 
 // --- Test helpers ---
 
@@ -280,7 +280,7 @@ Burning Chrome,William Gibson,Sprawl (#0.0),Read,Public,2440,31159321,,,B0036G94
 Hyperion,Dan Simmons,Hyperion Cantos (#1.0),Currently Reading,Public,427460,30428122,0385263481,9780385263481,,Book,us,en,,492,,1989-05-26,Crown,,,,,Owned,2025-01-15,2025-01-25,,,,false,false,2025-01-15T13:56:57Z,,,"",true,No,{}`;
 
 describe("processHardcoverImport", () => {
-  it("emits correct SSE lifecycle events for StoryGraph CSV", async () => {
+  it("emits correct SSE lifecycle events for Hardcover CSV", async () => {
     const { db, sqlite } = await createTestDb();
     seedHiveBook(
       sqlite,
