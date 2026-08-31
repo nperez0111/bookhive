@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { getGoodreadsCsvParser, getHardcoverCsvParser, getStorygraphCsvParser } from "./csv";
-import { HARDCOVER_CSV } from "../workers/import/import-logic.test";
+import { HARDCOVER_CSV } from "../workers/import/__fixtures__/hardcover-csv";
 
 describe("CSV Parsers", () => {
   describe("Goodreads CSV Parser", () => {
