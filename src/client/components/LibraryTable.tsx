@@ -402,7 +402,7 @@ const MobileCard: FC<{
           </div>
           <button
             type="button"
-            className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
+            className="focus-ring mt-1 inline-flex min-h-10 min-w-10 items-center justify-center self-end rounded-md px-2 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80"
             onClick={() => {
               onDelete();
               void deleteBook(book.hiveId);
@@ -474,6 +474,9 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           has to fit in that. */}
       <div className="hidden max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] xl:block">
         <table className="table w-full min-w-[880px] table-fixed">
+          {/* The only accessible name this table has: the visible "Library"
+              heading lives in the server-rendered page, outside the island. */}
+          <caption className="sr-only">Your library</caption>
           {/* The row scrolling under the pinned header needs an edge to
               disappear behind, or it dissolves into the header fill. */}
           <thead className="sticky top-0 z-10 bg-muted shadow-[inset_0_-1px_0_var(--border)]">

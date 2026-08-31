@@ -142,6 +142,21 @@ function devImageProxyPassthrough(): Plugin {
   };
 }
 
+// The hostname the dev server is reached on through a TLS-terminating proxy.
+// PUBLIC_URL is the same value the user's PDS fetches our OAuth client metadata
+// from, so there is nothing extra to configure. Loopback needs no entry — Vite
+// allows localhost and bare IPs unconditionally.
+const publicHostname = (() => {
+  const url = process.env["PUBLIC_URL"];
+  if (!url) return null;
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1" ? null : hostname;
+  } catch {
+    return null;
+  }
+})();
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- vite-plus extends the config type beyond what defineConfig accepts
 export default defineConfig(({ command }): any => ({
   staged: {
@@ -218,11 +233,20 @@ export default defineConfig(({ command }): any => ({
     // container-external proxy (see the dev-server note in AGENTS.md).
     host: process.env["DEV_HOST"] || "127.0.0.1",
     port: Number(process.env["PORT"]) || 8080,
-    allowedHosts: true,
-    // When reached through a TLS-terminating proxy the HMR client must be told
+    // The proxy routes a fixed port at us, so falling back to the next free one
+    // would leave the dev server running somewhere nothing is routed to. Only
+    // when PORT was chosen for us — the 8080 default keeps Vite's own fallback.
+    strictPort: Boolean(process.env["PORT"]),
+    // `true` disables host checking entirely, which is a DNS-rebinding hole for
+    // any dev server not on loopback. Vite always allows localhost and bare IPs,
+    // so this only has to name the proxy's hostname — which PUBLIC_URL already
+    // is, since the user's PDS has to fetch the client metadata from it.
+    allowedHosts: publicHostname ? [publicHostname] : [],
+    // When reached through a TLS-terminating proxy the WS client must be told
     // the scheme/port it should dial, since it can't infer them from the
-    // origin port the dev server itself is listening on.
-    hmr: process.env["DEV_HMR_CLIENT_PORT"]
+    // origin port the dev server itself is listening on. `server.hmr.protocol`
+    // and `.clientPort` are deprecated aliases of these in Vite 8.
+    ws: process.env["DEV_HMR_CLIENT_PORT"]
       ? {
           protocol: process.env["DEV_HMR_PROTOCOL"] || "wss",
           clientPort: Number(process.env["DEV_HMR_CLIENT_PORT"]),
