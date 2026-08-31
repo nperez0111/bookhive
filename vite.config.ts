@@ -215,7 +215,7 @@ export default defineConfig(({ command }): any => ({
   ],
   server: {
     // Loopback by default. Set DEV_HOST=0.0.0.0 to publish the dev server to a
-    // container-external proxy (see docs/dev-server.md).
+    // container-external proxy (see the dev-server note in AGENTS.md).
     host: process.env["DEV_HOST"] || "127.0.0.1",
     port: Number(process.env["PORT"]) || 8080,
     allowedHosts: true,
