@@ -21,7 +21,7 @@ export const LibraryImport: FC = () => {
                   name="import-service"
                   value="goodreads"
                   class="peer sr-only"
-                  defaultChecked
+                  checked
                 />
                 <div class="card flex flex-1 items-center px-4 py-3 shadow-sm min-h-[44px] transition-[box-shadow,background-color] duration-150 peer-checked:shadow-[0_0_0_2px_var(--primary)] peer-checked:bg-primary/5 hover:shadow-md min-w-[140px]">
                   <span class="font-medium text-foreground">From Goodreads</span>
