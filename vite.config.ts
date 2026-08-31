@@ -214,9 +214,20 @@ export default defineConfig(({ command }): any => ({
     }),
   ],
   server: {
-    host: "127.0.0.1",
-    port: 8080,
+    // Loopback by default. Set DEV_HOST=0.0.0.0 to publish the dev server to a
+    // container-external proxy (see docs/dev-server.md).
+    host: process.env["DEV_HOST"] || "127.0.0.1",
+    port: Number(process.env["PORT"]) || 8080,
     allowedHosts: true,
+    // When reached through a TLS-terminating proxy the HMR client must be told
+    // the scheme/port it should dial, since it can't infer them from the
+    // origin port the dev server itself is listening on.
+    hmr: process.env["DEV_HMR_CLIENT_PORT"]
+      ? {
+          protocol: process.env["DEV_HMR_PROTOCOL"] || "wss",
+          clientPort: Number(process.env["DEV_HMR_CLIENT_PORT"]),
+        }
+      : undefined,
   },
   root: ".",
   publicDir: "public",

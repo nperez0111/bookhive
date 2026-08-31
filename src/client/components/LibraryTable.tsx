@@ -207,7 +207,7 @@ const TableRow: FC<{
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-1 text-sm leading-tight font-medium text-foreground">
+          <h3 className="line-clamp-1 max-w-[16rem] text-sm leading-tight font-medium text-foreground">
             {book.title}
           </h3>
           <p className="line-clamp-1 text-xs text-muted-foreground">
@@ -462,9 +462,15 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
 
   return (
     <>
-      {/* Desktop: table view */}
-      <div className="hidden overflow-hidden rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] md:block">
-        <table className="table w-full table-fixed">
+      {/* Desktop: table view.
+          Bounded scroll container: caps height to the viewport so the header
+          pins reliably (sticky resolves against this box's scrollport, not the
+          document — the app shell scrolls at document level, and an
+          overflow-hidden ancestor here would sink the sticky thead with the
+          page). overflow-auto also gives horizontal overflow a scrollbar on
+          medium screens instead of clipping the table content off-screen. */}
+      <div className="hidden max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] md:block">
+        <table className="table w-full min-w-[720px] table-fixed">
           <thead className="sticky top-0 z-10 bg-muted">
             <tr>
               <th

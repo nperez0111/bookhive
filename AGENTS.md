@@ -1157,6 +1157,28 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 
 **Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
+**The dev server binds loopback by default and three env vars change that**
+(`server` block in `vite.config.ts`): `PORT` (default 8080), `DEV_HOST` (default
+`127.0.0.1`) and `DEV_HMR_CLIENT_PORT`/`DEV_HMR_PROTOCOL` (unset → Vite's own
+inference). They exist so the dev server can be published to a
+TLS-terminating reverse proxy without editing the config: the proxy sees plain
+HTTP on the origin port, so the HMR client has to be told the scheme and port to
+dial or the page loads and then never live-reloads. `paseo.json`'s `dev` service
+script sets all three (`PORT=$PASEO_PORT DEV_HOST=0.0.0.0
+DEV_HMR_CLIENT_PORT=443`).
+
+**`PUBLIC_URL` decides which OAuth client the dev server is**, and getting it
+wrong breaks sign-in in one of two ways. Empty or `127.0.0.1`/`localhost` takes
+the loopback branch in `src/auth/client.ts`, which sets **no `client_id` at
+all** — loopback clients need no metadata document, which is why plain local dev
+logs in with no setup. Any other value makes it a real public client identified
+by `<PUBLIC_URL>/oauth-client-metadata.json`, and that URL is fetched by the
+**user's PDS**, server-side and with no session — so it must be reachable and
+unauthenticated from the public internet, and the browser's origin must match it
+or the callback lands somewhere the browser cannot follow. `paseo.json` sets
+`PUBLIC_URL=https://$PASEO_PORT.dev.nickthesick.com` for that reason; the port
+is allocated per start, so the value is derived, never hardcoded.
+
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
 
 **`bunfig.toml` preloads `src/test/env-setup.ts`, and that is load-bearing.**

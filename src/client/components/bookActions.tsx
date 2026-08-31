@@ -66,8 +66,7 @@ export const RatingSelect: FC<{
     <option value="">-</option>
     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
       <option key={val} value={val}>
-        {"★".repeat(Math.floor(val / 2))}
-        {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
+        {(val / 2).toFixed(1)}
       </option>
     ))}
   </select>

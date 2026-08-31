@@ -1,0 +1,11 @@
+{
+  "worktree": {
+    "setup": "bun i"
+  },
+  "scripts": {
+    "dev": {
+      "type": "service",
+      "command": "PORT=$PASEO_PORT DEV_HOST=0.0.0.0 DEV_HMR_CLIENT_PORT=443 PUBLIC_URL=https://$PASEO_PORT.dev.nickthesick.com vp run dev"
+    }
+  }
+}
