@@ -185,7 +185,7 @@ export const LibraryImport: FC = () => {
                     'input[name="import-service"]:checked',
                   ) as HTMLInputElement;
                   const endpoint =
-                    selectedService?.value === "goodreads"
+                    (!selectedService || selectedService?.value === "goodreads")
                       ? "/import/goodreads"
                       : selectedService?.value === "storygraph"
                         ? "/import/storygraph"

@@ -298,14 +298,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
       // Test first book (want to read)
       expect(books[0]).toMatchObject({
         asin: "0374100144",
-        author: "Roberto Bolaño, Natasha Wimmer (Translator)",
+        author: "Roberto Bolaño",
         binding: "",
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
-        dateFinished: null,
-        dateStarted: null,
         durationInSeconds: 0,
         genres: "",
         hardcoverBookId: "75726",
@@ -320,12 +317,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 898,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("2008-11-11T00:00:00.000Z"),
         publisher: "Farrar, Straus and Giroux",
         rating: 0,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-15T13:56:31.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -335,8 +330,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         title: "2666",
       });
 
-      expect(books[0]!.dateAdded).toBeInstanceOf(Date);
-      expect(books[0]!.dateAdded?.getFullYear()).toBe(2025);
+      expect(books[0]!.dateAdded?.toISOString()).toBe("2025-01-15T00:00:00.000Z");
+      expect(books[0]!.dateFinished).toBe(null);
+      expect(books[0]!.dateStarted).toBe(null);
+      expect(books[0]!.publishDate?.toISOString()).toBe("2008-11-11T00:00:00.000Z");
+      expect(books[0]!.reviewDate?.toISOString()).toBe("2025-01-15T13:56:31.000Z");
 
       // Test second book (read with date finished)
       expect(books[1]).toMatchObject({
@@ -346,9 +344,6 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-10T00:00:00.000Z"),
-        dateFinished: new Date("2025-01-23T00:00:00.000Z"),
-        dateStarted: new Date("2025-01-01T00:00:00.000Z"),
         durationInSeconds: 25686,
         genres: "",
         hardcoverBookId: "2440",
@@ -363,12 +358,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 191,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("1986-04-01T00:00:00.000Z"),
         publisher: "Audible Frontiers",
         rating: 9,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-10T17:21:40.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -379,8 +372,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         title: "Burning Chrome",
       });
 
-      expect(books[1]!.dateFinished).toBeInstanceOf(Date);
-      expect(books[1]!.dateFinished?.getFullYear()).toBe(2025);
+      expect(books[1]!.dateAdded?.toISOString()).toBe("2025-01-10T00:00:00.000Z");
+      expect(books[1]!.dateFinished?.toISOString()).toBe("2025-01-23T00:00:00.000Z");
+      expect(books[1]!.dateStarted?.toISOString()).toBe("2025-01-01T00:00:00.000Z");
+      expect(books[1]!.publishDate?.toISOString()).toBe("1986-04-01T00:00:00.000Z");
+      expect(books[1]!.reviewDate?.toISOString()).toBe("2025-01-10T17:21:40.987Z");
 
       // Test third book (currently-read)
       expect(books[2]).toMatchObject({
@@ -390,9 +386,6 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
-        dateFinished: null,
-        dateStarted: new Date("2025-01-25T00:00:00.000Z"),
         durationInSeconds: 0,
         genres: "",
         hardcoverBookId: "427460",
@@ -407,12 +400,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 492,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("1989-05-26T00:00:00.000Z"),
         publisher: "Crown",
         rating: 0,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-15T13:56:57.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -422,6 +413,12 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         tags: "",
         title: "Hyperion",
       });
+
+      expect(books[2]!.dateAdded?.toISOString()).toBe("2025-01-31T00:00:00.000Z");
+      expect(books[2]!.dateFinished).toBe(null);
+      expect(books[2]!.dateStarted?.toISOString()).toBe("2023-09-01T00:00:00.000Z");
+      expect(books[2]!.publishDate?.toISOString()).toBe("1989-05-26T00:00:00.000Z");
+      expect(books[2]!.reviewDate?.toISOString()).toBe("2025-01-15T13:56:57.000Z");
     });
 
     it("should handle empty values and different read statuses correctly", async () => {
