@@ -62,14 +62,14 @@ type ChannelMeta = {
 
 /**
  * Ordered by, and dated with, `indexedAt` — the same activity time the site's
- * feed uses (see migration 025). Both must move together: emitting `createdAt`
+ * feed uses (see migration 027). Both must move together: emitting `createdAt`
  * as `pubDate` while ordering by `indexedAt` would reproduce the exact
  * sorted-by-one-column-labelled-with-another bug this replaced, just in XML.
  *
  * Safe because `<guid isPermaLink="false">` is the AT URI and does not change,
  * so readers dedupe on it and nothing re-notifies as unread; only the sort
  * position moves, which is what you want when someone finally finishes a book.
- * Migration 025's clamp must land first, though — without it every row still
+ * Migration 027's clamp must land first, though — without it every row still
  * carries a library re-sync stamp and subscribers would see one wholesale
  * reorder on deploy.
  */
