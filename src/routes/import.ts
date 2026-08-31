@@ -1,7 +1,7 @@
 /**
- * Import routes: Goodreads and StoryGraph CSV upload.
+ * Import routes: Goodreads and StoryGraph and Hardcover CSV upload.
  * Spawns a Bun Worker for the heavy processing and relays SSE events.
- * Mount at /import so paths are /import/goodreads, /import/storygraph.
+ * Mount at /import so paths are /import/goodreads, /import/storygraph, /import/hardcover.
  */
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -10,7 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import type { ImportRequest, ImportWorkerMessage } from "../workers/import/types";
+import { ImportType, type ImportRequest, type ImportWorkerMessage } from "../workers/import/types";
 import { env } from "../env";
 import { activeOperations, importBatchDuration, LABEL } from "../metrics";
 
@@ -41,7 +41,14 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
   const csvData = await exportFile.arrayBuffer();
 
   return streamSSE(c, async (stream) => {
-    const importKey = type === "goodreads" ? LABEL.import.goodreads : LABEL.import.storygraph;
+    // default to goodreads
+    const importKey =
+      type === ImportType.storygraph
+        ? LABEL.import.storygraph
+        : type === ImportType.hardcover
+          ? LABEL.import.hardcover
+          : LABEL.import.goodreads;
+
     const end = importBatchDuration.startTimer(importKey);
     activeOperations.inc(LABEL.op.import);
 
@@ -147,11 +154,15 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
 const importApp = new Hono<AppEnv>();
 
 importApp.post("/goodreads", zValidator("form", formSchema), async (c) =>
-  handleImport(c, c.req.valid("form").export, "goodreads"),
+  handleImport(c, c.req.valid("form").export, ImportType.goodreads),
 );
 
 importApp.post("/storygraph", zValidator("form", formSchema), async (c) =>
-  handleImport(c, c.req.valid("form").export, "storygraph"),
+  handleImport(c, c.req.valid("form").export, ImportType.storygraph),
+);
+
+importApp.post("/hardcover", zValidator("form", formSchema), async (c) =>
+  handleImport(c, c.req.valid("form").export, ImportType.hardcover),
 );
 
 export default importApp;

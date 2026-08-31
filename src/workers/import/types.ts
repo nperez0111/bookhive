@@ -4,9 +4,17 @@ import type { BookUtilContext } from "../../context";
 /** Narrow context for import processing — identical to BookUtilContext. */
 export type ImportContext = BookUtilContext;
 
+export const ImportType = {
+  goodreads: "goodreads",
+  storygraph: "storygraph",
+  hardcover: "hardcover",
+} as const;
+
+export type ImportType = (typeof ImportType)[keyof typeof ImportType];
+
 /** Main thread → worker: start an import job. */
 export type ImportRequest = {
-  type: "goodreads" | "storygraph";
+  type: ImportType;
   storedSession: StoredSession;
   csvData: ArrayBuffer;
   dbPath: string;

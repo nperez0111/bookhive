@@ -5,6 +5,7 @@ import { wrapBunSqliteForKysely } from "../../bun-sqlite-kysely";
 import { migrateToLatest, type DatabaseSchema } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
+import { HARDCOVER_CSV } from "./__fixtures__/hardcover-csv";
 
 // Mock getUserRepoRecords to avoid needing valid CAR data from a real PDS
 const mockGetUserRepoRecords = mock(async () => ({
@@ -32,7 +33,8 @@ void mock.module("../../routes/lib", () => ({
 }));
 
 // Import after mocking
-const { processGoodreadsImport, processStorygraphImport } = await import("./logic");
+const { processGoodreadsImport, processStorygraphImport, processHardcoverImport } =
+  await import("./logic");
 
 // --- Test helpers ---
 
@@ -270,5 +272,52 @@ describe("processStorygraphImport", () => {
     expect(complete.stageProgress.total).toBe(2);
     expect(complete.failedBooks).toHaveLength(1);
     expect(complete.failedBooks[0].title).toBe("The Left Hand of Darkness");
+  });
+});
+
+describe("processHardcoverImport", () => {
+  it("emits correct SSE lifecycle events for Hardcover CSV", async () => {
+    const { db, sqlite } = await createTestDb();
+    seedHiveBook(sqlite, "bk_omw", "Hyperion", "Dan Simmons", "https://covers.example/omw.jpg");
+
+    const ctx = createMockCtx(db);
+    const agent = createMockAgent();
+    const sseEvents: any[] = [];
+
+    await processHardcoverImport({
+      csvData: new TextEncoder().encode(HARDCOVER_CSV).buffer as ArrayBuffer,
+      ctx,
+      agent,
+      onSSE: (data) => {
+        sseEvents.push(JSON.parse(data));
+      },
+    });
+
+    const eventTypes = sseEvents.map((e) => e.event);
+    expect(eventTypes).toContain("import-start");
+    expect(eventTypes).toContain("import-complete");
+
+    const complete = sseEvents.find((e) => e.event === "import-complete");
+    expect(complete.stageProgress.current).toBe(1);
+    expect(complete.stageProgress.total).toBe(3);
+    expect(complete.failedBooks).toHaveLength(2);
+    expect(complete.failedBookDetails).toMatchObject([
+      {
+        title: "2666",
+        author: "Roberto Bolaño, Natasha Wimmer (Translator)",
+        isbn10: "0374100144",
+        isbn13: "9780374100148",
+        status: "buzz.bookhive.defs#wantToRead",
+        reason: "no_match",
+      },
+      {
+        title: "Burning Chrome",
+        author: "William Gibson",
+        stars: 9,
+        finishedAt: "2025-01-23T00:00:00.000Z",
+        status: "buzz.bookhive.defs#finished",
+        reason: "no_match",
+      },
+    ]);
   });
 });

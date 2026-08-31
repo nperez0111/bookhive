@@ -8,7 +8,7 @@ Routes are split by domain and mounted with `app.route()`.
 - **`main.tsx`** – Composes context, auth, jsx layout, images, methodOverride, then mounts domain routers and xrpc.
 - **`lib.ts`** – Shared helpers: `searchBooks`, `refetchBooks`, `refetchBuzzes`, `ensureBookIdentifiersCurrent`, `syncFollowsIfNeeded`.
 - **`admin.ts`** – `/admin/export`. Mounted at `/admin` from `app.ts`.
-- **`import.ts`** – `/import/goodreads`, `/import/storygraph`. Mounted at `/import` from `app.ts`.
+- **`import.ts`** – `/import/goodreads`, `/import/storygraph`, `/import/hardcover`. Mounted at `/import` from `app.ts`.
 - **`pages.tsx`** – `/`, `/.well-known/atproto-did`, `/app`, `/privacy-policy`, `/import`, `/genres`, `/genres/:genre`, `/authors/:author`. Mounted at `/` in main.
 - **`profile.tsx`** – `/profile`, `/profile/:handle`, `/profile/:handle/image`, `/refresh-books`. Mounted at `/` in main.
 - **`books.tsx`** – `/:hiveId`, `/:hiveId/comments`, POST `/`, DELETE `/:hiveId`. Mounted at `/books` in main.

@@ -1,4 +1,5 @@
 import { parse } from "csv-parse";
+import { BookStatus } from "../types";
 
 export interface GoodreadsBook {
   bookId: string;
@@ -300,6 +301,180 @@ export function getGoodreadsCsvParser() {
       } catch (error) {
         console.warn("Error during CSV parser flush:", error);
         // Don't crash, just log the error
+      }
+    },
+  });
+}
+
+export interface HardcoverBook {
+  title: string;
+  author: string;
+  series: string;
+  status: BookStatus;
+  privacy: string;
+  hardcoverBookId: string;
+  hardcoverEditionId: string;
+  isbn10: string;
+  isbn13: string;
+  asin: string;
+  media: string;
+  countryCode: string;
+  languageCode: string;
+  binding: string;
+  pages: number;
+  durationInSeconds: number;
+  publishDate: Date | null;
+  publisher: string;
+  genres: string;
+  moods: string;
+  tags: string;
+  contentWarnings: string;
+  lists: string;
+  dateAdded: Date | null;
+  dateStarted: Date | null;
+  dateFinished: Date | null;
+  rating: number;
+  review: string;
+  reviewContainsSpoilers: boolean;
+  sponsoredReview: boolean;
+  reviewDate: Date | null;
+  reviewUrl: string;
+  reviewMediaUrl: string;
+  privateNotes: string;
+  owned: boolean;
+  compilation: boolean;
+  reviewSlate: string;
+}
+
+function get(record: Record<string, string>, key: string): string {
+  return record[key] || "";
+}
+
+function parseDate(date: string): Date | null {
+  const newDate = new Date(date);
+  if (isNaN(newDate.getTime())) return null;
+  return newDate;
+}
+
+function parseBoolean(input: string): boolean {
+  return input.toLowerCase() === "true";
+}
+
+function parseStatus(status: string, dateFinished: Date | null): BookStatus {
+  switch (status.toLowerCase()) {
+    case "read":
+    case BookStatus.finished:
+      return BookStatus.finished;
+    case "currently reading":
+    case BookStatus.reading:
+      return BookStatus.reading;
+    case "want to read":
+    case BookStatus.wantToRead:
+      return BookStatus.wantToRead;
+    case "stopped":
+    default:
+      return dateFinished ? BookStatus.finished : BookStatus.wantToRead;
+  }
+}
+
+export function parseHardcoverRecord(record: Record<string, string>): HardcoverBook {
+  const dateFinished = parseDate(get(record, "Date Finished"));
+  return {
+    title: get(record, "Title"),
+    author: get(record, "Author"),
+    series: get(record, "Series"),
+    status: parseStatus(get(record, "Status"), dateFinished),
+    privacy: get(record, "Privacy"),
+    hardcoverBookId: get(record, "Hardcover Book ID"),
+    hardcoverEditionId: get(record, "Hardcover Edition ID"),
+    isbn10: get(record, "ISBN 10").replace(/[-\s]/g, ""),
+    isbn13: get(record, "ISBN 13").replace(/[-\s]/g, ""),
+    asin: get(record, "ASIN"),
+    media: get(record, "Media"),
+    countryCode: get(record, "Country Code"),
+    languageCode: get(record, "Language Code"),
+    binding: get(record, "Binding"),
+    pages: parseInt(get(record, "Pages")) || 0,
+    durationInSeconds: parseInt(get(record, "Duration in Seconds")) || 0,
+    publishDate: parseDate(get(record, "Publish Date")),
+    publisher: get(record, "Publisher"),
+    genres: get(record, "Genres"),
+    moods: get(record, "Moods"),
+    tags: get(record, "Tags"),
+    contentWarnings: get(record, "Content Warnings"),
+    lists: get(record, "Lists"),
+    dateAdded: parseDate(get(record, "Date Added")),
+    dateStarted: parseDate(get(record, "Date Started")),
+    dateFinished,
+    rating: parseInt(`${parseFloat(get(record, "Rating")) * 2}`) || 0,
+    review: get(record, "Review"),
+    reviewContainsSpoilers: parseBoolean(get(record, "Review Contains Spoilers")),
+    sponsoredReview: parseBoolean(get(record, "Sponsored Review")),
+    reviewDate: parseDate(get(record, "Review Date")),
+    reviewUrl: get(record, "Review URL"),
+    reviewMediaUrl: get(record, "Review Media URL"),
+    privateNotes: get(record, "Private Notes"),
+    owned: parseBoolean(get(record, "Owned")),
+    compilation: get(record, "Compilation").toLowerCase() === "yes",
+    reviewSlate: get(record, "Review Slate"),
+  };
+}
+
+export function getHardcoverCsvParser() {
+  const parser = parse({
+    columns: true,
+    relax_column_count: true,
+    relax_quotes: true,
+    skip_empty_lines: true,
+    skip_records_with_error: true,
+    trim: true,
+    // all coercion and parsing logic is handled in parseHardcoverRecord,
+    // this is merely to ensure everything is a string without wrapping quotes
+    cast: (value?: string): string => {
+      if (!value) return "";
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+      return value;
+    },
+  });
+
+  return new TransformStream<Uint8Array, HardcoverBook>({
+    transform(chunk, controller) {
+      try {
+        parser.write(chunk);
+
+        // Process any records that are ready
+        let record: Record<string, string> | undefined;
+        while ((record = parser.read())) {
+          if (record) {
+            const parsedRecord = parseHardcoverRecord(record);
+            if (parsedRecord.title !== "" && parsedRecord.author !== "") {
+              controller.enqueue(parsedRecord);
+              continue;
+            }
+          }
+          console.warn("Skipping invalid Hardcover record:", record);
+        }
+      } catch (error) {
+        console.warn("Error processing CSV chunk:", error);
+      }
+    },
+    flush(controller) {
+      try {
+        parser.end();
+
+        // Get any remaining records
+        let record: any;
+        while ((record = parser.read())) {
+          if (record && "Title" in record && "Author" in record) {
+            controller.enqueue(parseHardcoverRecord(record));
+          } else {
+            console.warn("Skipping invalid Hardcover record during flush:", record);
+          }
+        }
+      } catch (error) {
+        console.warn("Error during CSV parser flush:", error);
       }
     },
   });

@@ -739,8 +739,9 @@ function ImportSection() {
               Bring your books <span class="text-primary">with you</span>
             </h2>
             <p class="text-muted-foreground mt-5 max-w-lg text-lg">
-              Already have years of reading history on Goodreads or StoryGraph? Don't start from
-              scratch. Export your data from closed platforms and import it straight into BookHive.
+              Already have years of reading history on Goodreads or StoryGraph or Hardcover? Don't
+              start from scratch. Export your data from closed platforms and import it straight into
+              BookHive.
             </p>
             <div class="mt-8 flex flex-wrap gap-3">
               <a href="/import" class="btn btn-primary">
@@ -759,6 +760,10 @@ function ImportSection() {
                   },
                   {
                     name: "StoryGraph",
+                    description: "Bring over your reading history and reviews",
+                  },
+                  {
+                    name: "Hardcover",
                     description: "Bring over your reading history and reviews",
                   },
                 ].map((source) => (

@@ -111,7 +111,7 @@ const app = new Hono<AppEnv>()
     }
     return c.render(<LibraryImport />, {
       title: "BookHive | Import",
-      description: "Import your library from Goodreads or StoryGraph to BookHive",
+      description: "Import your library from Goodreads, StoryGraph, or Hardcover to BookHive",
     });
   })
   // Search results page
