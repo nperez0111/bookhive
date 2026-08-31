@@ -75,9 +75,9 @@ Worker threads (bundled to .output/server/workers/):
     `hiveBookUri` backfill, title normalisation and every KOReader progress ping. And it must stay
     `IS NOT`, not `<>` — `<>` against NULL yields NULL, the `CASE` takes the `ELSE`, and rating a book
     for the first time stops counting as activity. `src/db.feedActivity.test.ts` pins all of this.
-  - **Migration 025's clamp**, which is what makes the _existing_ rows usable. Fixing only the write
+  - **Migration 027's clamp**, which is what makes the _existing_ rows usable. Fixing only the write
     path leaves the feed monotonic but wrong: ordered by who re-synced most recently.
-  - **The migration-025 indexes** (`user_book(indexedAt, uri)` and the `userDid`/`hiveId` composites).
+  - **The migration-027 indexes** (`user_book(indexedAt, uri)` and the `userDid`/`hiveId` composites).
     Not optional: measured on production data, the `all` tab ordered by `indexedAt` without them
     degrades to a full scan plus a temp B-tree, **33ms against 1ms**, and `bun:sqlite` is synchronous
     across three processes. `uri` is in each one as the keyset tiebreaker — 5,262 distinct timestamps
@@ -320,7 +320,7 @@ move together: emitting `createdAt` as `<pubDate>` while ordering by `indexedAt`
 sorted-by-one-column-labelled-with-another bug, just in XML. Safe to re-date because
 `<guid isPermaLink="false">` is the AT URI and does not change, so readers dedupe on it and nothing
 re-notifies as unread — only the sort position moves, which is what you want when someone finally
-finishes a book. Migration 025's clamp must land first, or every row still carries a re-sync stamp
+finishes a book. Migration 027's clamp must land first, or every row still carries a re-sync stamp
 and subscribers see one wholesale reorder on deploy.
 
 ### `src/routes/opds.ts` (mounted at `/opds`) — e-reader catalog
@@ -588,7 +588,7 @@ Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`, `icons.tsx`, `debounc
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–025) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
+SQLite via Kysely. Schema + all migrations (001–028) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes).
 
 That wrapper also decides `statement.reader`, which is how Kysely picks `all()` (rows) over `run()` (changes). **It asks SQLite — `stmt.columnNames` is empty for anything that doesn't produce rows — rather than pattern-matching the SQL text.** The old regex was anchored on a leading `SELECT`, so `WITH cte AS (…) SELECT …` was classified as a write and Kysely got **zero rows with no error of any kind**; the author-directory cover lookup is a window function over a CTE and silently returned nothing. `columnNames` also gets the converse right, which a regex struggles with: `WITH cte AS (…) INSERT INTO …` is not a reader.
 

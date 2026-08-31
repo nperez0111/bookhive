@@ -304,7 +304,7 @@ export function collapseBursts(
  * `indexedAt`, not `createdAt`: `createdAt` mirrors a frozen PDS record field,
  * so finishing a book or writing a review never moved it — and the UI displayed
  * `indexedAt` while the query ordered by `createdAt`, which is what made the
- * feed look randomly shuffled. See migration 025.
+ * feed look randomly shuffled. See migration 027.
  *
  * `uri` is the tiebreaker and it is load-bearing: thousands of rows share a
  * timestamp after a CSV import, and SQLite may order ties differently between
@@ -315,7 +315,7 @@ export function collapseBursts(
  * plans worse. `src/utils/activityFeed.test.ts` asserts the plans rather than
  * trusting them.
  *
- * Measured against a production snapshot with the migration-025 indexes:
+ * Measured against a production snapshot with the migration-027 indexes:
  * `all` 0ms, `friends` 6ms at 1,099 follows, `tracking` 23ms at 8,180 tracked
  * books. `all` reads the feed index in order; the IN-driven tabs do indexed
  * per-key lookups plus a temp B-tree over the matches, which is inherent —

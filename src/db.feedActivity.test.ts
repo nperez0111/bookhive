@@ -170,7 +170,7 @@ describe("feedActivityIndexedAt", () => {
   });
 });
 
-describe("migration 025 indexedAt repair", () => {
+describe("migration 027 indexedAt repair", () => {
   it("clamps a re-sync stamp back down to the newest real evidence", async () => {
     // Simulate the pre-migration state: a row created in January whose
     // indexedAt was rewritten to June by a library re-sync.

@@ -91,7 +91,7 @@ export const BookFields = [
  * `indexedAt` for an `ON CONFLICT DO UPDATE` on `user_book`: advance the row's
  * activity time only when a field the activity feed actually renders changed.
  *
- * `indexedAt` is the activity feed's sort key (see migration 025). Every upsert
+ * `indexedAt` is the activity feed's sort key (see migration 027). Every upsert
  * used to write `indexedAt = excluded.indexedAt` unconditionally, and
  * `refetchBooks` computes ONE timestamp for a whole library re-sync
  * (`src/routes/lib.ts`) — so a user re-syncing 400 unchanged books re-dated
@@ -108,7 +108,7 @@ export const BookFields = [
  * to the ELSE, and "user cleared their rating" or "user set a status for the
  * first time" silently stops counting as activity. `IS NOT` is SQLite's
  * null-safe distinctness operator. This is the easiest part of this to get
- * wrong, and `src/utils/getBook.test.ts` pins it.
+ * wrong, and `src/db.feedActivity.test.ts` pins it.
  */
 export const feedActivityIndexedAt = sql<string>`CASE WHEN
      excluded.status     IS NOT user_book.status
@@ -1120,20 +1120,6 @@ migrations["025"] = {
   },
 };
 
-/**
- * Migration 026's one-time `indexedAt` repair, exported so
- * `src/db.feedActivity.test.ts` executes the exact production statement
- * instead of a hand-copied one that could drift.
- */
-export const FEED_INDEXED_AT_REPAIR_SQL = `
-      UPDATE user_book
-         SET indexedAt = MIN(
-               indexedAt,
-               MAX(createdAt,
-                   COALESCE(finishedAt, ''),
-                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
-       WHERE indexedAt > createdAt`;
-
 migrations["026"] = {
   async up(db: Kysely<unknown>) {
     // Path to a derived EPUB for a book whose own format an e-reader may not
@@ -1153,6 +1139,20 @@ migrations["026"] = {
     await db.schema.alterTable("personal_book").dropColumn("epubSizeBytes").execute();
   },
 };
+
+/**
+ * Migration 027's one-time `indexedAt` repair, exported so
+ * `src/db.feedActivity.test.ts` executes the exact production statement
+ * instead of a hand-copied one that could drift.
+ */
+export const FEED_INDEXED_AT_REPAIR_SQL = `
+      UPDATE user_book
+         SET indexedAt = MIN(
+               indexedAt,
+               MAX(createdAt,
+                   COALESCE(finishedAt, ''),
+                   COALESCE(json_extract(bookProgress, '$.updatedAt'), '')))
+       WHERE indexedAt > createdAt`;
 
 migrations["027"] = {
   async up(db: Kysely<unknown>) {

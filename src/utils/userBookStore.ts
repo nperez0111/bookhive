@@ -3,6 +3,7 @@ import type { SessionClient } from "../auth/client";
 import type { BookUtilContext } from "../context";
 import { ids } from "../bsky/lexicon";
 import type { BookRecordValue, HiveId, UserBook, UserBookRow } from "../types";
+import { feedActivityIndexedAt } from "../db";
 import { hydrateUserBook, serializeUserBook } from "./bookProgress";
 
 export async function getUserBook({
@@ -41,7 +42,7 @@ export async function updateUserBook({
     .values(row)
     .onConflict((oc) =>
       oc.column("uri").doUpdateSet((c) => ({
-        indexedAt: c.ref("excluded.indexedAt"),
+        indexedAt: feedActivityIndexedAt,
         cid: c.ref("excluded.cid"),
         authors: c.ref("excluded.authors"),
         title: c.ref("excluded.title"),
