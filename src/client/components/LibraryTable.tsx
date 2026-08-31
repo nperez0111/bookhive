@@ -6,7 +6,6 @@ import {
   DeleteButton,
   BookCover,
   DateInput,
-  STATUS_LABELS,
   updateBook,
   deleteBook,
 } from "./bookActions";
@@ -207,7 +206,7 @@ const TableRow: FC<{
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-1 max-w-[16rem] text-sm leading-tight font-medium text-foreground">
+          <h3 className="line-clamp-1 text-sm leading-tight font-medium text-foreground">
             {book.title}
           </h3>
           <p className="line-clamp-1 text-xs text-muted-foreground">
@@ -316,29 +315,25 @@ const MobileCard: FC<{
 
   return (
     <div className="card transition-[box-shadow] duration-150 active:shadow-none">
-      <div className="card-body flex gap-3">
-        <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
-          <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
+      <div className="card-body flex flex-col items-start gap-3 sm:flex-row">
+        <a href={`/books/${book.hiveId}`} className="flex w-full min-w-0 gap-3 sm:flex-1">
+          <div className="aspect-[2/3] w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
             <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
           </div>
-          <div className="min-w-0 flex-1 flex flex-col justify-center">
+          <div className="min-w-0 flex-1">
             <div className="text-foreground font-semibold text-sm line-clamp-2">{book.title}</div>
             <div className="text-muted-foreground text-xs mt-0.5">
               {book.authors.split("\t").join(", ")}
             </div>
-            {book.status && (
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="badge capitalize">
-                  {STATUS_LABELS[book.status] || book.status}
-                </span>
-                {percent > 0 && book.status !== FINISHED && (
-                  <span className="text-xs tabular-nums text-muted-foreground">{percent}%</span>
-                )}
-              </div>
+            {percent > 0 && book.status !== FINISHED && (
+              <div className="mt-1 text-xs tabular-nums text-muted-foreground">{percent}% read</div>
             )}
           </div>
         </a>
-        <div className="shrink-0 flex flex-col items-stretch" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex w-full shrink-0 flex-col items-stretch sm:w-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           <StatusSelect
             status={book.status}
             onChange={(status) => {
@@ -467,15 +462,25 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           pins reliably (sticky resolves against this box's scrollport, not the
           document — the app shell scrolls at document level, and an
           overflow-hidden ancestor here would sink the sticky thead with the
-          page). overflow-auto also gives horizontal overflow a scrollbar on
-          medium screens instead of clipping the table content off-screen. */}
-      <div className="hidden max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] md:block">
-        <table className="table w-full min-w-[720px] table-fixed">
-          <thead className="sticky top-0 z-10 bg-muted">
+          page). overflow-auto is the safety net for the narrow end.
+
+          `xl`, not `md`. Six columns need ~880px, but this table renders inside
+          the app shell's max-w-5xl column *next to the sidebar*: measured
+          content width is 476px at a 820px viewport and 632px at 1024px, so
+          every width below ~1130px got a table that scrolled sideways. The card
+          view below is a better answer for that range than a table you have to
+          drag. Note the ceiling is max-w-5xl, not the viewport — content tops
+          out at ~976px however wide the screen gets, so the column budget below
+          has to fit in that. */}
+      <div className="hidden max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] xl:block">
+        <table className="table w-full min-w-[880px] table-fixed">
+          {/* The row scrolling under the pinned header needs an edge to
+              disappear behind, or it dissolves into the header fill. */}
+          <thead className="sticky top-0 z-10 bg-muted shadow-[inset_0_-1px_0_var(--border)]">
             <tr>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "30%" }}
+                style={{ width: "29%" }}
                 onClick={() => toggleSort("title")}
               >
                 Book
@@ -486,7 +491,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "13%" }}
+                style={{ width: "17%" }}
                 onClick={() => toggleSort("status")}
               >
                 Status
@@ -497,7 +502,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary"
-                style={{ width: "13%", minWidth: "120px" }}
+                style={{ width: "11%" }}
                 onClick={() => toggleSort("rating")}
               >
                 Rating
@@ -508,13 +513,13 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="px-4 py-2 text-left text-sm font-semibold text-foreground"
-                style={{ width: "12%" }}
+                style={{ width: "13%" }}
               >
                 Progress
               </th>
               <th
                 className="cursor-pointer select-none px-4 py-2 text-left text-sm font-semibold whitespace-nowrap text-foreground transition-colors hover:text-primary"
-                style={{ width: "14%" }}
+                style={{ width: "20%" }}
                 onClick={() => toggleSort("date")}
               >
                 Dates
@@ -522,7 +527,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               </th>
               <th
                 className="px-4 py-2 text-left text-sm font-semibold text-foreground"
-                style={{ width: "6%" }}
+                style={{ width: "10%" }}
               >
                 Actions
               </th>
@@ -542,7 +547,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
       </div>
 
       {/* Mobile: card view */}
-      <div className="space-y-4 md:hidden">
+      <div className="space-y-4 xl:hidden">
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-muted-foreground">Sort by</label>
           <select
@@ -564,7 +569,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           </select>
         </div>
       </div>
-      <div className="space-y-4 md:hidden">
+      <div className="space-y-4 xl:hidden">
         {sortedBooks.map((book) => (
           <MobileCard
             key={book.hiveId}
