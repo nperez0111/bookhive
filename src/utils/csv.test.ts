@@ -275,10 +275,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
 
   describe("Hardcover CSV Parser", () => {
     it("should parse basic Hardcover CSV data correctly", async () => {
+      const csvData = HARDCOVER_CSV;
       const parser = getHardcoverCsvParser();
       const stream = new ReadableStream({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode(HARDCOVER_CSV));
+          controller.enqueue(new TextEncoder().encode(csvData));
           controller.close();
         },
       });
