@@ -66,8 +66,7 @@ export const RatingSelect: FC<{
     <option value="">-</option>
     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
       <option key={val} value={val}>
-        {"★".repeat(Math.floor(val / 2))}
-        {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
+        {(val / 2).toFixed(1)}
       </option>
     ))}
   </select>
@@ -76,7 +75,10 @@ export const RatingSelect: FC<{
 export const DeleteButton: FC<{ onDelete: () => void }> = ({ onDelete }) => (
   <button
     type="button"
-    className="inline-flex items-center rounded-md p-2 text-red-600 hover:bg-red-50 hover:text-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+    // min-h-10/min-w-10 is the house tap-target floor; p-2 around a 16px icon
+    // was a 32px hit area. The table row is ~73px tall (the stacked date
+    // inputs set it), so the larger target costs no row height.
+    className="focus-ring inline-flex min-h-10 min-w-10 items-center justify-center rounded-md text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80"
     title="Delete book from library"
     onClick={onDelete}
   >

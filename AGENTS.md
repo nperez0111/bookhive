@@ -1157,6 +1157,47 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 
 **Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
+**The dev server binds loopback by default and four env vars change that**
+(`server` block in `vite.config.ts`): `PORT` (default 8080), `DEV_HOST` (default
+`127.0.0.1`), `DEV_HMR_CLIENT_PORT` (unset → Vite's own inference) and
+`DEV_HMR_PROTOCOL` (**defaults to `wss`** whenever `DEV_HMR_CLIENT_PORT` is set —
+the whole point of setting it is that the proxy terminates TLS, so `ws` would be
+blocked as mixed content). They exist so the dev server can be published to a
+TLS-terminating reverse proxy without editing the config: the proxy sees plain
+HTTP on the origin port, so the WS client has to be told the scheme and port to
+dial or the page loads and then never live-reloads. `paseo.json`'s `dev` service
+script sets `PORT`, `DEV_HOST=0.0.0.0` and `DEV_HMR_CLIENT_PORT=443`.
+
+Three things about that block are easy to get wrong:
+
+- **The options are `server.ws.protocol`/`server.ws.clientPort`.** Vite 8 still
+  accepts them under `server.hmr`, but every one of `HmrOptions`' transport
+  fields is deprecated there in favour of `server.ws` (`overlay` is the only one
+  that isn't).
+- **`strictPort` is on whenever `PORT` is set**, because a proxy routes one fixed
+  port at us — silently falling back to the next free port leaves the dev server
+  running somewhere nothing is routed to, which reads as "the proxy is broken".
+  The 8080 default keeps Vite's fallback.
+- **`allowedHosts` names the `PUBLIC_URL` hostname; it is not `true`.** `true`
+  disables host checking altogether, which is a DNS-rebinding hole for any dev
+  server not on loopback. Nothing extra to configure — a proxied dev server has
+  to set `PUBLIC_URL` anyway (see below) — and localhost and bare IPs are
+  allowed by Vite unconditionally, so plain local dev is unaffected.
+
+**`PUBLIC_URL` decides which OAuth client the dev server is**, and getting it
+wrong breaks sign-in in one of two ways. Empty or `127.0.0.1`/`localhost` takes
+the loopback branch in `src/auth/client.ts`, which sets **no `client_id` at
+all** — loopback clients need no metadata document, which is why plain local dev
+logs in with no setup. Any other value makes it a real public client identified
+by `<PUBLIC_URL>/oauth-client-metadata.json`, and that URL is fetched by the
+**user's PDS**, server-side and with no session — so it must be reachable and
+unauthenticated from the public internet, and the browser's origin must match it
+or the callback lands somewhere the browser cannot follow. `paseo.json` sets
+`PUBLIC_URL` for that reason, on a **pinned** port rather than the per-start
+`$PASEO_PORT` allocation: the session cookie is host-only, so a moving hostname
+meant signing in again after every restart. `PUBLIC_URL` is also what
+`allowedHosts` is derived from (above), so the two cannot drift apart.
+
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
 
 **`bunfig.toml` preloads `src/test/env-setup.ts`, and that is load-bearing.**
