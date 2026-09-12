@@ -19,21 +19,27 @@ const selectClass =
 
 export async function updateBook(hiveId: string, fields: Record<string, unknown>) {
   try {
-    await fetch("/api/update-book", {
+    const response = await fetch("/api/update-book", {
       method: "POST",
       headers: { "Content-Type": "application/json", accept: "application/json" },
       body: JSON.stringify({ hiveId, ...fields }),
     });
-  } catch {}
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function deleteBook(hiveId: string) {
   try {
-    await fetch(`/books/${hiveId}`, {
+    const response = await fetch(`/books/${hiveId}`, {
       method: "DELETE",
       headers: { accept: "application/json" },
     });
-  } catch {}
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export const StatusSelect: FC<{

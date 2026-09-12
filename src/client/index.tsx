@@ -50,6 +50,15 @@ document.addEventListener("DOMContentLoaded", () => {
     render(<SearchTrigger onOpen={triggerOpen} />, mountSearchBox);
   }
 
+  if (mountSearchPalette) {
+    document.querySelectorAll<HTMLAnchorElement>("[data-open-search]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        triggerOpen();
+      });
+    });
+  }
+
   // ⌘K / Ctrl+K opens the palette. Handled here (not inside SearchPalette) so the
   // shortcut works before the palette module is lazily loaded on first open. Once
   // the palette is mounted it owns the shortcut (toggle), so this defers to it.

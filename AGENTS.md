@@ -560,6 +560,14 @@ look like App Store listing assets (light/dark and `-16` variants), so they are 
 | `LibraryTable`   | `#mount-library-table`                                                    | `src/client/components/LibraryTable.tsx`          |
 | `LibraryManager` | `#mount-library-manager`                                                  | `src/client/components/LibraryManager.tsx`        |
 
+The profile's empty-library “Find a book” action uses `data-open-search` to open the
+same lazy-loaded search palette as ⌘K, with `/search` as its no-JS fallback.
+Library desktop date icons include SVG `<title>` elements (“Date started” / “Date finished”).
+The profile's hydrated mobile library cards use “Start date” / “End date” labels,
+a 40px-minimum page input, and an Owned toggle. Desktop and mobile removal actions
+share a native confirmation dialog; deletion only removes the row after a successful
+response. Failed removal and ownership writes show inline errors.
+
 **`BookIslands`** (`src/client/components/book/`) is the signed-in half of `/books/:id`: status
 and owned in the hero card, the timestamp line, and the whole "Your Activity" card. One
 `createUserBookStore` per page holds `{ view, confirmed, pending, error }` and the three
@@ -1155,7 +1163,7 @@ Keep selected/current states tinted and leave the solid fill to real actions.
 | `bun run lexgen`     | Regenerate AT Protocol XRPC types from lexicons                                                     |
 | `bun run build:boko` | Rebuild the vendored boko WASM in `vendor/boko/` (needs Rust + wasm-pack; only to bump the version) |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/` — the five under `src/workers/` (including the single-shot `parse-worker.ts`) plus `src/scrapers/waf/solver-worker.ts`. TypeScript type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`.** `vite.config.ts` maps `@` → `./src`, but the root `tsconfig.json` has no matching `paths`, so tsgo cannot resolve it and the import fails typecheck while bundling fine. Nothing in `src/`/`server/` uses it today; the alias that _is_ live is `app/`'s own `@/*` → `app/*`, declared in `app/tsconfig.json`. Runtime requires `bun >= 1.4.0`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
 **The dev server binds loopback by default and four env vars change that**
 (`server` block in `vite.config.ts`): `PORT` (default 8080), `DEV_HOST` (default

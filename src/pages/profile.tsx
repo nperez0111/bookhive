@@ -411,7 +411,7 @@ export const ProfilePage: FC<{
               </p>
               {isOwnProfile && (
                 <div class="mt-4 flex flex-wrap justify-center gap-2">
-                  <a href="/explore" class="btn btn-primary min-h-10">
+                  <a href="/search" data-open-search class="btn btn-primary min-h-10">
                     Find a book
                   </a>
                   <a href="/import" class="btn btn-outline min-h-10">

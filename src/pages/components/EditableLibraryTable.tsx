@@ -253,8 +253,9 @@ export const EditableLibraryTable: FC<{
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
-                        title="Started"
+                        title="Date started"
                       >
+                        <title>Date started</title>
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -270,8 +271,9 @@ export const EditableLibraryTable: FC<{
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
-                        title="Finished"
+                        title="Date finished"
                       >
+                        <title>Date finished</title>
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -341,8 +343,9 @@ export const EditableLibraryTable: FC<{
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
-                      title="Started"
+                      title="Date started"
                     >
+                      <title>Date started</title>
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -364,8 +367,9 @@ export const EditableLibraryTable: FC<{
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
-                      title="Finished"
+                      title="Date finished"
                     >
+                      <title>Date finished</title>
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"

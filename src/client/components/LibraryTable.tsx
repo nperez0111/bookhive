@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, type FC } from "hono/jsx/dom";
+import { useMemo, useState, useRef, useEffect, type FC } from "hono/jsx/dom";
 import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../../constants";
 import {
   StatusSelect,
@@ -168,7 +168,8 @@ const PageInput: FC<{
         <input
           ref={inputRef}
           type="number"
-          className="w-14 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs tabular-nums text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+          aria-label="Current page"
+          className="min-h-10 w-20 xl:min-h-0 xl:w-14 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs tabular-nums text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
           value={currentPage}
           min={0}
           max={total || undefined}
@@ -244,8 +245,9 @@ const TableRow: FC<{
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
-            title="Started"
+            title="Date started"
           >
+            <title>Date started</title>
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -267,8 +269,9 @@ const TableRow: FC<{
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
-            title="Finished"
+            title="Date finished"
           >
+            <title>Date finished</title>
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -287,12 +290,7 @@ const TableRow: FC<{
       </div>
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-      <DeleteButton
-        onDelete={() => {
-          onDelete();
-          void deleteBook(book.hiveId);
-        }}
-      />
+      <DeleteButton onDelete={onDelete} />
     </td>
   </tr>
 );
@@ -304,6 +302,8 @@ const MobileCard: FC<{
   onUpdate: (fields: Partial<LibraryBook>) => void;
   onDelete: () => void;
 }> = ({ book, onUpdate, onDelete }) => {
+  const [savingOwned, setSavingOwned] = useState(false);
+  const [ownedError, setOwnedError] = useState(false);
   const total = book.bookProgress?.totalPages ?? book.totalPages;
   const currentPage = book.bookProgress?.currentPage;
   const percent =
@@ -347,27 +347,8 @@ const MobileCard: FC<{
             </div>
           )}
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <div className="flex items-center gap-1">
-              <svg
-                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                title="Started"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              <span>Start date</span>
               <DateInput
                 value={book.startedAt}
                 onChange={(startedAt) => {
@@ -375,22 +356,9 @@ const MobileCard: FC<{
                   void updateBook(book.hiveId, { startedAt });
                 }}
               />
-            </div>
-            <div className="flex items-center gap-1">
-              <svg
-                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                title="Finished"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              <span>End date</span>
               <DateInput
                 value={book.finishedAt}
                 onChange={(finishedAt) => {
@@ -398,15 +366,35 @@ const MobileCard: FC<{
                   void updateBook(book.hiveId, { finishedAt });
                 }}
               />
-            </div>
+            </label>
           </div>
           <button
             type="button"
-            className="focus-ring mt-1 inline-flex min-h-10 min-w-10 items-center justify-center self-end rounded-md px-2 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80"
-            onClick={() => {
-              onDelete();
-              void deleteBook(book.hiveId);
+            aria-pressed={!!book.owned}
+            disabled={savingOwned}
+            className="btn btn-ghost mt-3 min-h-10 w-full"
+            onClick={async () => {
+              setSavingOwned(true);
+              setOwnedError(false);
+              const owned = !book.owned;
+              const ok = await updateBook(book.hiveId, { owned });
+              if (ok) onUpdate({ owned: owned ? 1 : 0 });
+              else setOwnedError(true);
+              setSavingOwned(false);
             }}
+          >
+            <span aria-hidden="true">{book.owned ? "✓" : "+"}</span>
+            Owned
+          </button>
+          {ownedError && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              Could not save ownership. Please try again.
+            </p>
+          )}
+          <button
+            type="button"
+            className="focus-ring mt-1 inline-flex min-h-10 min-w-10 items-center justify-center self-end rounded-md px-2 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80"
+            onClick={onDelete}
           >
             Remove
           </button>
@@ -420,6 +408,20 @@ const MobileCard: FC<{
 
 export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks }) => {
   const [books, setBooks] = useState<LibraryBook[]>(initialBooks);
+  const [pendingDelete, setPendingDelete] = useState<LibraryBook | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (pendingDelete) deleteDialog.current?.showModal();
+  }, [pendingDelete]);
+
+  const requestDelete = (book: LibraryBook) => {
+    setDeleteError(false);
+    setPendingDelete(book);
+  };
+
   const [sortKey, setSortKey] = useState<SortKey>("default");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -457,6 +459,58 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
 
   return (
     <>
+      <dialog
+        ref={deleteDialog}
+        aria-labelledby="library-remove-title"
+        aria-describedby="library-remove-description"
+        onClose={() => setPendingDelete(null)}
+        onCancel={(event: Event) => {
+          if (removing) event.preventDefault();
+        }}
+        className="fixed top-1/2 left-1/2 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-lg backdrop:bg-black/50"
+      >
+        <h3 id="library-remove-title" className="mb-2 text-lg font-semibold">
+          Remove book?
+        </h3>
+        <p id="library-remove-description" className="mb-4 text-sm text-muted-foreground">
+          This will remove “{pendingDelete?.title}” from your library. This cannot be undone.
+        </p>
+        {deleteError && (
+          <p role="alert" className="mb-4 text-sm text-destructive">
+            Could not remove this book. Please try again.
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            disabled={removing}
+            className="btn btn-ghost min-h-10"
+            onClick={() => deleteDialog.current?.close()}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={removing}
+            className="btn btn-destructive min-h-10"
+            onClick={async () => {
+              if (!pendingDelete || removing) return;
+              setRemoving(true);
+              setDeleteError(false);
+              const ok = await deleteBook(pendingDelete.hiveId);
+              setRemoving(false);
+              if (ok) {
+                deleteDialog.current?.close();
+                deleteBook_(pendingDelete.hiveId);
+                setPendingDelete(null);
+              } else setDeleteError(true);
+            }}
+          >
+            {removing ? "Removing…" : "Remove"}
+          </button>
+        </div>
+      </dialog>
       {/* Desktop: table view.
           Bounded scroll container: caps height to the viewport so the header
           pins reliably (sticky resolves against this box's scrollport, not the
@@ -542,7 +596,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                 key={book.hiveId}
                 book={book}
                 onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-                onDelete={() => deleteBook_(book.hiveId)}
+                onDelete={() => requestDelete(book)}
               />
             ))}
           </tbody>
@@ -578,7 +632,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
             key={book.hiveId}
             book={book}
             onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-            onDelete={() => deleteBook_(book.hiveId)}
+            onDelete={() => requestDelete(book)}
           />
         ))}
       </div>
