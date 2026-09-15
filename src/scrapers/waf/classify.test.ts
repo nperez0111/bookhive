@@ -3,22 +3,13 @@ import { classifyFetch } from "./classify";
 
 /// One classifier for every Goodreads fetch, plain or token-bearing.
 ///
-/// It exists because "no `__NEXT_DATA__`" says nothing on its own. Production
-/// logged 5,297 undiagnosable `waf_token_ineffective` events in 24h on
-/// 2026-08-01 by conflating three root causes with three different fixes. What
-/// carries the signal is the status plus `x-amzn-waf-action`. Measured:
-///
-///   - production UA, WAF challenged by request rate: 202 -> solve -> 200 (21/21)
-///   - HeadlessChrome UA:                             202 -> solve -> 403 (25/25)
-///   - Hetzner egress, 2026-08-03:                    202 -> solve -> 202 (4/4)
-///
-/// Same solver, same token mechanics; only the client differed. The last row is
-/// why this host's solves are futile — and why the fetch path must not care.
+/// "No `__NEXT_DATA__`" says nothing on its own — different clients can reach
+/// the same absence of a marker for different reasons. What carries the signal
+/// is the status plus `x-amzn-waf-action`, not the marker's absence alone.
 
 describe("classifyFetch", () => {
   test("the marker is proof we have the page, whatever the status", () => {
     expect(classifyFetch(200, null, true)).toBe("page");
-    // If the book data is in the body, we have what we came for.
     expect(classifyFetch(203, null, true)).toBe("page");
   });
 
@@ -27,9 +18,7 @@ describe("classifyFetch", () => {
   });
 
   test("a 202 counts as a challenge even if the action header is stripped", () => {
-    // CloudFront returns an empty-bodied 202 when the request's Accept header
-    // doesn't ask for text/html; the action header is the primary signal but the
-    // status alone is enough.
+    // CloudFront can return an empty 202 with no action header; status alone is enough.
     expect(classifyFetch(202, null, false)).toBe("challenged");
   });
 
@@ -39,8 +28,7 @@ describe("classifyFetch", () => {
   });
 
   test("403 with no WAF action is Goodreads' origin refusing us", () => {
-    // The observed shape: `server: Server`, an `x-amz-rid`, and a plain
-    // "403 Forbidden" body. We cleared the WAF; re-solving cannot help.
+    // We cleared the WAF; this is Goodreads' own origin refusing us, and re-solving cannot help.
     expect(classifyFetch(403, null, false)).toBe("origin_error");
   });
 

@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { BookListRow, HiveBook, HiveId, ProfileViewDetailed } from "../types";
 import { BookCard, type BookCardData } from "./components/BookCard";
+import { hiveRatingToDisplayRating } from "../core/rating";
 
 type ShelfItem = {
   uri: string;
@@ -145,7 +146,7 @@ export const ShelfViewPage: FC<{
                         authors: book.authors,
                         cover: book.cover,
                         thumbnail: book.thumbnail,
-                        rating: book.rating ? book.rating / 1000 : 0,
+                        rating: hiveRatingToDisplayRating(book.rating) ?? 0,
                       }}
                     />
                     <form action={`/shelves/${handle}/${rkey}/add`} method="post" class="shrink-0">
@@ -182,7 +183,7 @@ export const ShelfViewPage: FC<{
               authors: item.authors || item.embeddedAuthor || "Unknown Author",
               cover: item.cover || item.embeddedCoverUrl,
               thumbnail: item.thumbnail,
-              rating: item.rating ? item.rating / 1000 : 0,
+              rating: hiveRatingToDisplayRating(item.rating) ?? 0,
             };
 
             return (

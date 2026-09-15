@@ -17,10 +17,7 @@ interface LanguageFilterProps {
   style?: any;
 }
 
-/**
- * A horizontal scrollable chip bar for filtering by language.
- * Shows "All" chip + available languages from the server.
- */
+/** A horizontal scrollable chip bar for filtering by language. */
 export function LanguageFilter({
   selectedLanguage: overrideSelected,
   onLanguageChange,
@@ -54,7 +51,6 @@ export function LanguageFilter({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* "All" chip */}
         <Pressable
           onPress={() => handleSelect(null)}
           style={[

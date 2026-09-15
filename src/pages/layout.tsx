@@ -1,3 +1,5 @@
+import { Script } from "./utils/script";
+import { installViewTransitions } from "./utils/viewTransitions";
 import { html, raw } from "hono/html";
 
 import { type FC, type PropsWithChildren } from "hono/jsx";
@@ -24,8 +26,7 @@ export const Layout: FC<
 > = ({
   children,
   title = "Bookhive",
-  // `/full_logo.png` does not exist — the file is `full_logo.jpg` (every other reference in the
-  // codebase uses .jpg). The default og:image 404'd on every page that didn't pass its own.
+  // Must be `.jpg` — `/full_logo.png` does not exist, and the default og:image 404'd on pages that didn't pass their own.
   image = "/full_logo.jpg",
   description = "Goodreads but better. Built on top of Blue Sky.",
   assetUrls: assetUrlsProp,
@@ -34,11 +35,7 @@ export const Layout: FC<
   ogExtra,
   atTags,
 }) => {
-  // Resolve `url` and `assetUrls` independently. They used to share one branch that only ran when
-  // `assetUrls` was undefined — but 15 of the 16 <Layout> call sites pass `assetUrls` and omit
-  // `url`, so those pages never reached the context lookup and fell through to the hardcoded
-  // origin. /privacy-policy and /legal were telling crawlers their canonical URL was the
-  // homepage, which asks Google to drop them in favour of `/`.
+  // Resolve `url` and `assetUrls` independently — sharing one branch meant call sites that pass `assetUrls` but omit `url` never reached the context lookup and fell back to the hardcoded origin.
   let url = urlProp;
   let assetUrls = assetUrlsProp;
   if (url === undefined || assetUrls === undefined) {
@@ -52,13 +49,9 @@ export const Layout: FC<
   }
   url ??= "https://bookhive.buzz";
   assetUrls ??= null;
-  // og:image and twitter:image must be absolute — crawlers do not resolve them against the page.
-  // Callers pass either a root-relative path ("/full_logo.jpg") or an already-absolute OG route.
+  // og:image/twitter:image must be absolute — crawlers do not resolve them against the page.
   const absoluteImage = image.startsWith("http") ? image : new URL(image, url).toString();
-  // Never put the raw request URL in crawler-facing metadata. `/oauth/callback` renders a Layout
-  // on its invalid-redirect_uri branch (src/auth/router.tsx) with `url={c.req.url}`, so the
-  // OAuth authorization `code` and `state` were being written straight into <link rel="canonical">,
-  // og:url and twitter:url — a live credential in a tag built to be scraped, cached and shared.
+  // Never put the raw request URL in crawler-facing metadata — some Layout call sites pass `url={c.req.url}` directly, which can carry OAuth `code`/`state` query params.
   const metaUrl = (() => {
     try {
       const u = new URL(url);
@@ -70,15 +63,13 @@ export const Layout: FC<
       return url;
     }
   })();
-  // The JSON-LD below describes the *site*, not this page. `url` is `c.req.url`, so building the
-  // SearchAction target from it produced e.g. `/books/bk_abc/search?q={search_term_string}`.
+  // The JSON-LD below describes the *site*, not this page, so the SearchAction target uses the origin rather than `url`.
   const origin = new URL(metaUrl).origin;
 
   // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
-  // In production we inline the built CSS into <head> to avoid a render-blocking
-  // stylesheet request. When present, skip the <link> tags entirely.
+  // In production, inline the built CSS into <head> to avoid a render-blocking stylesheet request.
   const inlineCss = assetUrls?.inlineCss;
   // When running behind Vite dev, assetUrls.js contains /src/ paths; plugin replaces this marker with Vite client
   const isDevVite = assetUrls?.js?.some((s) => s.startsWith("/src/")) ?? false;
@@ -88,6 +79,12 @@ export const Layout: FC<
       <head>
         ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
+        <style>
+          @view-transition {
+            navigation: auto;
+          }
+        </style>
+        ${Script({ script: installViewTransitions, onDomContentLoaded: false })}
         <meta name="theme-color" content="#f9eabc" />
         <script>
           (function () {

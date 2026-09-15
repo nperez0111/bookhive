@@ -1,11 +1,9 @@
 /**
  * Hardcover export sample, shared by the import-worker suite and the CSV
- * parser suite. It lives outside both because a `.test.ts` cannot export a
- * fixture safely: `import-logic.test.ts` has a top-level `await import(...)`
- * (it mocks before importing), so a test file importing from it starts running
- * its own tests while that module is still suspended, and the constant is
- * still in its temporal dead zone — "Cannot access 'HARDCOVER_CSV' before
- * initialization", but only under `bun test --parallel`.
+ * parser suite. It lives outside both because `import-logic.test.ts`'s
+ * top-level `await import(...)` (it mocks before importing) leaves this
+ * constant in its temporal dead zone for anything importing it directly,
+ * under `bun test --parallel`.
  */
 export const HARDCOVER_CSV = `Title,Author,Series,Status,Privacy,Hardcover Book ID,Hardcover Edition ID,ISBN 10,ISBN 13,ASIN,Media,Country Code,Language Code,Binding,Pages,Duration in Seconds,Publish Date,Publisher,Genres,Moods,Tags,Content Warnings,Lists,Date Added,Date Started,Date Finished,Rating,Review,Review Contains Spoilers,Sponsored Review,Review Date,Review URL,Review Media URL,Private Notes,Owned,Compilation,Review Slate
 2666,"Roberto Bolaño, Natasha Wimmer (Translator)",2666 (#1.0),Want to Read,Public,75726,25012766,0374100144,9780374100148,0374100144,Book,us,en,,898,,2008-11-11,"Farrar, Straus and Giroux",,,,,"",2025-01-15,"","",,,false,false,2025-01-15T13:56:31Z,,,,false,No,{}

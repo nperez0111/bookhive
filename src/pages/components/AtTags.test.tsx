@@ -4,7 +4,14 @@ import { AtTags, type AtTagsProps } from "./AtTags";
 
 /** Render AtTags to its HTML string. */
 function render(props: AtTagsProps): string {
-  return String(AtTags(props));
+  const out = AtTags(props);
+  // The declared return type is `HtmlEscapedString | Promise<HtmlEscapedString>`.
+  // `AtTags` builds its tags with hono's `html` template and never awaits, so
+  // only the sync branch is reachable — but `String()` on the other one yields
+  // "[object Promise]", and every assertion below would pass vacuously against
+  // it. Narrow, so that day fails loudly here instead.
+  if (out instanceof Promise) throw new Error("AtTags returned a promise");
+  return out.toString();
 }
 
 /** Extract [name, content] pairs from the rendered `<meta at:...>` tags. */

@@ -8,20 +8,10 @@ import type { Storage } from "unstorage";
 
 export type LockFunction = <T>(key: string, cb: () => Promise<T>) => Promise<T>;
 
-// Toggle to use permission-set scopes (requires PDS support for permission sets).
-// When true, uses the bundled `include:buzz.bookhive.auth` scope.
-// When false, uses the granular per-resource scopes (works on all current PDS instances).
+// Toggle between permission-set scopes (needs PDS support) and granular per-resource scopes (works everywhere).
 const USE_PERMISSION_SETS = true;
 
-/**
- * The `rpc:buzz.bookhive.*` entries are what allow a client to mint an atproto
- * service-auth token for our own XRPC methods via
- * `com.atproto.server.getServiceAuth` — without them the user's PDS refuses.
- * They must stay in lockstep with the `rpc` permission in `lexicons/auth.json`:
- * this constant is the fallback used when `USE_PERMISSION_SETS` is false, and
- * granting the permission in only one of the two places silently drops it for
- * whichever path is live.
- */
+// Must stay in lockstep with the `rpc` permission in lexicons/auth.json — this is the USE_PERMISSION_SETS=false fallback, and granting it in only one place silently drops it for whichever path is live.
 const PERSONAL_LIBRARY_RPC_SCOPES = [
   "getPersonalLibrary",
   "getPersonalBook",
@@ -48,8 +38,7 @@ const GRANULAR_SCOPES =
   "atproto blob:*/* repo:buzz.bookhive.book?action=create&action=update&action=delete repo:buzz.bookhive.buzz?action=create&action=update&action=delete repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=* " +
   PERSONAL_LIBRARY_RPC_SCOPES;
 
-// Permission set can only cover buzz.bookhive.* namespace (spec namespace authority rule).
-// blob, app.bsky.*, and social.popfeed.* must remain as granular scopes.
+// Permission sets can only cover the buzz.bookhive.* namespace (spec namespace authority rule); blob and app.bsky.*/social.popfeed.* stay granular.
 const PERMISSION_SET_SCOPES =
   "atproto include:buzz.bookhive.auth blob:*/* repo:app.bsky.graph.follow?action=create&action=delete repo:social.popfeed.feed.list?action=create&action=update&action=delete repo:social.popfeed.feed.listItem?action=create&action=update&action=delete rpc:app.bsky.graph.getFollows?aud=* rpc:app.bsky.actor.getProfile?aud=* rpc:app.bsky.actor.getProfiles?aud=*";
 
@@ -86,8 +75,7 @@ export async function createOAuthClient(
     states: overrides?.states ?? createStateStore(kv),
   };
 
-  // When provided, requestLock serializes token refresh across worker processes.
-  // Without it, @atcute's in-process CachedGetter deduplication is the only guard.
+  // Serializes token refresh across worker processes; without it, only @atcute's in-process dedup guards it.
   const requestLock = overrides?.requestLock;
 
   if (keyset) {

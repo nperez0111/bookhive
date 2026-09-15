@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
 import { FINISHED, READING, WANTTOREAD } from "../../constants";
 import type { HiveBook } from "../../types";
+import { displayAuthors } from "../../core/authors";
 import { ProgressBar } from "./ProgressBar";
 import { useDebounce } from "./utils/useDebounce";
 import { useSearchBooks } from "./utils/useSearchBooks";
+import { Search } from "../../pages/components/icons";
+import { writeBook } from "./bookApi";
 
 const STATUS_OPTIONS = [
   { value: WANTTOREAD, label: "Want to Read" },
@@ -37,7 +40,6 @@ export const SearchPalette: FC<{
   const bookResults = useSearchBooks(debouncedQuery, debouncedQuery.length > 2, 20);
   const books = bookResults.data ?? [];
 
-  // Seed statusMap from server-provided user statuses when results change
   useEffect(() => {
     if (bookResults.userStatuses && Object.keys(bookResults.userStatuses).length > 0) {
       setStatusMap((prev) => ({ ...bookResults.userStatuses, ...prev }));
@@ -55,15 +57,12 @@ export const SearchPalette: FC<{
     close();
   };
 
-  // Register the open fn so the trigger button can call it.
-  // Re-register on every render so the caller always has the latest closure.
+  // Re-register on every render so the trigger button always has the latest closure.
   useEffect(() => {
     onRegisterOpen(open);
   });
 
-  // CMD+K / Ctrl+K toggles the palette once mounted. (Before mount, the client
-  // entry handles ⌘K to lazily load + open this component.) Skipped in select
-  // mode so a picker instance never fights the global navbar palette.
+  // Skipped in select mode so a picker instance never fights the global navbar palette.
   useEffect(() => {
     if (selectMode) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -95,7 +94,6 @@ export const SearchPalette: FC<{
     }
   }, [isOpen, initialQuery]);
 
-  // Body scroll lock
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "";
     return () => {
@@ -103,12 +101,10 @@ export const SearchPalette: FC<{
     };
   }, [isOpen]);
 
-  // Reset selectedIndex when results change
   useEffect(() => {
     setSelectedIndex(0);
   }, [books.length, debouncedQuery]);
 
-  // Scroll selected item into view
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -198,18 +194,9 @@ export const SearchPalette: FC<{
     const previous = statusMap[hiveId] ?? null;
     setStatusMap((m) => ({ ...m, [hiveId]: status === previous ? null : status }));
     setStatusPending((p) => ({ ...p, [hiveId]: true }));
-    try {
-      const res = await fetch("/api/update-book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hiveId, status: status === previous ? null : status }),
-      });
-      if (!res.ok) throw new Error("Failed");
-    } catch {
-      setStatusMap((m) => ({ ...m, [hiveId]: previous }));
-    } finally {
-      setStatusPending((p) => ({ ...p, [hiveId]: false }));
-    }
+    const res = await writeBook(hiveId, { status: status === previous ? null : status });
+    if (!res.ok) setStatusMap((m) => ({ ...m, [hiveId]: previous }));
+    setStatusPending((p) => ({ ...p, [hiveId]: false }));
   };
 
   if (!isOpen) return null;
@@ -232,20 +219,7 @@ export const SearchPalette: FC<{
         >
           {/* Search input row */}
           <div class="flex items-center gap-3 border-b border-border px-4">
-            <svg
-              class="size-5 shrink-0 text-muted-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z"
-              />
-            </svg>
+            <Search class="size-5 shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}
               type="text"
@@ -323,7 +297,7 @@ export const SearchPalette: FC<{
                   >
                     <img
                       class="h-16 w-auto rounded-sm object-cover shadow-sm aspect-2/3"
-                      src={book.thumbnail || book.cover || ""}
+                      src={book.cover || book.thumbnail || ""}
                       alt={`Cover of ${book.title}`}
                       loading="lazy"
                     />
@@ -347,7 +321,7 @@ export const SearchPalette: FC<{
                       {book.title}
                     </p>
                     <p class="text-xs text-muted-foreground truncate mt-0.5">
-                      by {book.authors.split("\t").join(", ")}
+                      by {displayAuthors(book.authors)}
                     </p>
                   </a>
 

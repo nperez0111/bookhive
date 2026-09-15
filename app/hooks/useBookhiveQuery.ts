@@ -64,11 +64,9 @@ export const useSearchBooks = (query: string, language?: string | null) => {
     },
     enabled: Boolean(debouncedQuery),
     retry: (failureCount, error: any) => {
-      // Don't retry if it's a non-retryable error
       if (error.networkError && !error.networkError.retryable) {
         return false;
       }
-      // Retry up to 3 times for retryable errors
       return failureCount < 3;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -755,12 +753,7 @@ export type PersonalBook = {
   shelfIds?: number[];
 };
 
-/**
- * Per-user storage usage against the quota, returned on every
- * `getPersonalLibrary` page rather than by a method of its own — the library
- * screen already refetches that after each mutation, so the meter stays honest
- * with no extra round-trip and no separate invalidation to keep in sync.
- */
+/** Per-user storage usage against the quota, returned on every `getPersonalLibrary` page so the meter stays honest without a separate fetch. */
 export type PersonalStorage = {
   usedBytes: number;
   quotaBytes: number;
@@ -818,14 +811,7 @@ export const usePersonalLibrary = (shelfId?: number) => {
   });
 };
 
-/**
- * Storage usage out of a `usePersonalLibrary` result.
- *
- * Reads the **last** page, not the first: every page carries a fresh `storage`,
- * and on a refetch React Query replays the pages in order, so the last one is
- * the most recently observed. Falling back to the first page covers the
- * single-page case and a paginated result whose tail hasn't loaded yet.
- */
+/** Storage usage out of a `usePersonalLibrary` result — reads the last page, since each page carries a fresh value and the last is the most recently observed. */
 export function storageFromLibrary(
   data: { pages: { storage?: PersonalStorage }[] } | undefined,
 ): PersonalStorage | null {
@@ -886,15 +872,7 @@ export const useRotateSyncPassword = () => {
   });
 };
 
-/**
- * An upload the server refused for a reason it named.
- *
- * `code` is the server's closed set of upload failure codes (`TooLarge`,
- * `QuotaExceeded`, `UnsupportedFormat`, `AlreadyExists`, `EmptyFile`, `NoFile`,
- * `Busy`). `message` is the server's own prose, which is what the UI shows — the
- * code is for deciding what to do *besides* showing it, like refreshing the
- * storage meter after a quota rejection.
- */
+/** An upload the server refused. `message` is shown verbatim; `code` is for deciding what else to do, like refreshing the storage meter after a quota rejection. */
 export class UploadError extends Error {
   readonly code?: string;
   readonly status: number;
@@ -915,11 +893,10 @@ export class UploadError extends Error {
 }
 
 /**
- * Multipart upload with real progress. Goes through XMLHttpRequest rather than
- * the shared fetch wrapper for two reasons: React Native streams a
- * `{ uri, name, type }` form part straight off disk (a 100 MB ebook never lands
- * in JS memory), and `upload.onprogress` is the only way to drive a determinate
- * progress bar.
+ * Multipart upload with real progress. Uses XMLHttpRequest instead of the
+ * shared fetch wrapper because React Native streams the file straight off disk
+ * rather than loading it into JS memory, and `upload.onprogress` is the only
+ * way to drive a determinate progress bar.
  */
 function uploadBookFile({
   uri,
@@ -1001,10 +978,7 @@ export const useUploadPersonalBook = () => {
       void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
     onError: (error) => {
-      // A rejection on these two codes means our copy of the library disagrees
-      // with the server's: the quota bar is showing room that isn't there, or
-      // the grid is missing a book that already exists. Both are worth a
-      // refetch — the user's next action depends on seeing the real state.
+      // These codes mean our copy of the library disagrees with the server's, so refetch.
       if (
         error instanceof UploadError &&
         (error.code === "QuotaExceeded" || error.code === "AlreadyExists")

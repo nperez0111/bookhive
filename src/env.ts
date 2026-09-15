@@ -29,7 +29,7 @@ export const env = cleanEnv(process.env, {
   }),
   DB_MMAP_SIZE: num({
     default: 0,
-    desc: "SQLite mmap_size in bytes; 0 disables mmap and reads via pread. Was 1 GiB, on the theory that file-backed pages are shared and therefore free. Measured on production 2026-08-02: they are charged to the cgroup, each process faults in its own working set, and one full-table search moved RSS by 971 MB with mmap on versus 20 MB with it off (347ms vs 736ms). Against a 1.6 GB db.sqlite in a memory-limited container that bought ~390ms per scan in exchange for ~1 GB of budget plus constant reclaim and swap thrash (1.36 GB swapped in the OOM dumps). Raise only if the DB comfortably fits the cgroup alongside every worker's anonymous memory.",
+    desc: "SQLite mmap_size in bytes; 0 disables mmap and reads via pread. Mapped pages are charged to the cgroup and each process faults in its own working set, so a large mmap under a memory-limited container trades a modest per-scan speedup for constant reclaim/swap thrash. Raise only if the DB comfortably fits the cgroup alongside every worker's anonymous memory.",
   }),
   EXPORT_SHARED_SECRET: str({
     default: "",
@@ -96,6 +96,6 @@ export const env = cleanEnv(process.env, {
   }),
   UPLOAD_PARSE_CONCURRENCY: num({
     default: 2,
-    desc: "Per-process cap on concurrent ebook metadata parses. The parse is the only step that holds the whole file (<=100 MB) in native memory, so this is the memory bound on uploads — and it is per-process: with WEB_CONCURRENCY=4 the cluster-wide ceiling is this x 4 x 100 MB. See src/utils/uploadPersonalBook.ts.",
+    desc: "Per-process cap on concurrent ebook metadata parses. The parse is the only step that holds the whole file (<=100 MB) in native memory, so this is the memory bound on uploads — and it is per-process: with WEB_CONCURRENCY=4 the cluster-wide ceiling is this x 4 x 100 MB. See src/services/uploadPersonalBook.ts.",
   }),
 });

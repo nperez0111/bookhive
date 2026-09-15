@@ -1,6 +1,6 @@
 import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
-import { feedActivityIndexedAt, type Database } from "../db";
+import { buzzUpsertSet, userBookUpsertSet, type Database } from "../db";
 import { env } from "../env";
 import {
   ingesterEventDuration,
@@ -9,11 +9,11 @@ import {
   ingesterBackfillQueueDepth,
   labelKey,
 } from "../metrics";
-import { searchBooks } from "../routes/lib";
+import { searchBooks } from "../services/searchBooks";
 import type { Buzz as BuzzRecord, HiveId, UserBook } from "../types";
-import { serializeUserBook } from "../utils/bookProgress";
-import { writeCatalogBookIfNeeded } from "../utils/catalogBookService";
-import { Semaphore } from "../utils/semaphore";
+import { serializeUserBook } from "../core/bookProgress";
+import { writeCatalogBookIfNeeded } from "../services/catalogBookService";
+import { Semaphore } from "../lib/semaphore";
 import type { SessionClient } from "../auth/client";
 import {
   createActorResolver,
@@ -21,6 +21,7 @@ import {
   createCachingBidirectionalResolver,
 } from "./id-resolver";
 import { ids, Book, Buzz, List, ListItem } from "./lexicon";
+import { errorMessage } from "../lib/errors";
 
 // Pre-compute label keys for ingester metrics to avoid JSON.stringify per event
 const ingesterLabelCache = new Map<string, string>();
@@ -127,14 +128,12 @@ async function backfillUserRepo(
 
         const now = new Date();
         if (collection === ids.BuzzBookhiveBook) {
-          // Batch-validate records
           const validBooks = data.records.flatMap((record) => {
             const parsed = Book.validateRecord(record.value);
             return parsed.success ? [{ record, book: parsed.value }] : [];
           });
 
           if (validBooks.length > 0) {
-            // Batch-fetch which hiveIds exist
             const requestedHiveIds = validBooks.map((r) => r.book.hiveId as HiveId);
             const existingBooks = await db
               .selectFrom("hive_book")
@@ -175,14 +174,12 @@ async function backfillUserRepo(
             }
           }
         } else if (collection === ids.BuzzBookhiveBuzz) {
-          // Batch-validate records
           const validBuzzes = data.records.flatMap((record) => {
             const parsed = Buzz.validateRecord(record.value);
             return parsed.success ? [{ record, buzz: parsed.value }] : [];
           });
 
           if (validBuzzes.length > 0) {
-            // Batch-fetch hiveIds for all referenced book URIs
             const bookUris = validBuzzes.map((r) => r.buzz.book.uri);
             const bookRows = await db
               .selectFrom("user_book")
@@ -301,7 +298,7 @@ async function backfillUserRepo(
       msg: "ingester",
       outcome: "backfill_error",
       did,
-      error: { message: err instanceof Error ? err.message : String(err) },
+      error: { message: errorMessage(err) },
       timestamp: new Date().toISOString(),
       env: { node_env: env.NODE_ENV },
     });
@@ -323,7 +320,6 @@ export function createIngester(
   let abortController: AbortController | null = null;
   let destroyed = false;
 
-  // Concurrency limiter for backfill operations
   const BACKFILL_CONCURRENCY = 3;
   const backfillSemaphore = new Semaphore(BACKFILL_CONCURRENCY, {
     label: "ingester_backfill",
@@ -347,7 +343,7 @@ export function createIngester(
         op: name,
         did,
         outcome: "error",
-        error: { message: err instanceof Error ? err.message : String(err) },
+        error: { message: errorMessage(err) },
         timestamp: new Date().toISOString(),
       });
     });
@@ -425,26 +421,7 @@ export function createIngester(
                 record: book,
               } satisfies UserBook),
             )
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                indexedAt: feedActivityIndexedAt,
-                cid: c.ref("excluded.cid"),
-                hiveId: c.ref("excluded.hiveId"),
-                status: c.ref("excluded.status"),
-                owned: c.ref("excluded.owned"),
-                review: c.ref("excluded.review"),
-                stars: c.ref("excluded.stars"),
-                startedAt: c.ref("excluded.startedAt"),
-                finishedAt: c.ref("excluded.finishedAt"),
-                title: c.ref("excluded.title"),
-                authors: c.ref("excluded.authors"),
-                userDid: c.ref("excluded.userDid"),
-                createdAt: c.ref("excluded.createdAt"),
-                bookProgress: c.ref("excluded.bookProgress"),
-                previousReads: c.ref("excluded.previousReads"),
-                record: c.ref("excluded.record"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(userBookUpsertSet))
             .execute();
 
           if (serviceAccountAgent) {
@@ -508,20 +485,7 @@ export function createIngester(
               parentCid: buzz.parent.cid,
               parentUri: buzz.parent.uri,
             } satisfies BuzzRecord)
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                uri: c.ref("excluded.uri"),
-                cid: c.ref("excluded.cid"),
-                userDid: c.ref("excluded.userDid"),
-                hiveId: c.ref("excluded.hiveId"),
-                indexedAt: c.ref("excluded.indexedAt"),
-                bookCid: c.ref("excluded.bookCid"),
-                bookUri: c.ref("excluded.bookUri"),
-                comment: c.ref("excluded.comment"),
-                parentCid: c.ref("excluded.parentCid"),
-                parentUri: c.ref("excluded.parentUri"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(buzzUpsertSet))
             .execute();
           wideEvent["outcome"] = "success";
           return;
@@ -584,7 +548,6 @@ export function createIngester(
           }
           const item = asItem.value;
 
-          // Only process book items
           if (item.creativeWorkType !== "book") {
             wideEvent["outcome"] = "skipped";
             wideEvent["reason"] = "non_book_item";
@@ -658,7 +621,6 @@ export function createIngester(
           return;
         }
         if (evt.collection === ids.SocialPopfeedFeedList) {
-          // Delete list and all its items
           await db.deleteFrom("book_list_item").where("listUri", "=", evt.uri.toString()).execute();
           await db.deleteFrom("book_list").where("uri", "=", evt.uri.toString()).execute();
           wideEvent["outcome"] = "success";
@@ -675,7 +637,7 @@ export function createIngester(
     } catch (err) {
       wideEvent["outcome"] = "error";
       wideEvent["error"] = {
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
         type: err instanceof Error ? err.name : "Error",
       };
     } finally {
@@ -708,7 +670,7 @@ export function createIngester(
         msg: "ingester",
         outcome: "error",
         error: {
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
           type: err instanceof Error ? err.name : "Error",
         },
         timestamp: new Date().toISOString(),
@@ -750,7 +712,7 @@ export function createIngester(
         msg: "ingester",
         outcome: "error",
         error: {
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
           type: err instanceof Error ? err.name : "Error",
         },
         timestamp: new Date().toISOString(),

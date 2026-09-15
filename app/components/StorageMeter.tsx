@@ -16,13 +16,9 @@ type StorageMeterProps = {
 };
 
 /**
- * Library storage used against the quota — the app's counterpart to the web
- * `StorageMeter` in `src/client/components/LibraryManager.tsx`.
- *
- * Renders nothing without a quota. `quotaBytes <= 0` is how a deployment turns
- * the quota off, and a meter with no ceiling is noise; an older server that
- * doesn't send `storage` at all lands in the same branch, which is what keeps
- * this screen working against one.
+ * Library storage used against the quota. Renders nothing without one:
+ * `quotaBytes <= 0` means the deployment turned the quota off, and that same
+ * branch keeps this working against an older server that sends no `storage` at all.
  */
 export function StorageMeter({ storage }: StorageMeterProps) {
   const colorScheme = useColorScheme();

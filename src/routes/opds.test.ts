@@ -1,34 +1,23 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
 import { Hono } from "hono";
-import { Kysely, SqliteDialect } from "kysely";
 import { createStorage } from "unstorage";
 import memoryDriver from "unstorage/drivers/memory";
 
-import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import type { AppContext, AppEnv } from "../context";
-import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
+import type { Database } from "../db";
 import { currentSyncPassword } from "../middleware/sync-auth";
 import type { HiveId } from "../types";
 import opdsRouter, { downloadOrigin } from "./opds";
+import { testContext } from "../test/db";
+import { createTestDb } from "../test/db";
 
 const DID = "did:plc:testuser";
 const HANDLE = "test.bsky.social";
 
-// KOReader sends this exact header (koreader/koreader#15696, fixed in #15751).
+// KOReader sends this exact Accept header.
 const KOREADER_ACCEPT = "application/opds+json, application/atom+xml;profile=opds-catalog, */*";
 
 const now = "2026-07-29T12:00:00.000Z";
-
-async function createTestDb(): Promise<Database> {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  const db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({ database: wrapBunSqliteForKysely(sqlite) }),
-  });
-  await migrateToLatest(db, sqlite);
-  return db;
-}
 
 const kv = createStorage({ driver: memoryDriver() });
 
@@ -38,14 +27,17 @@ const wideEvent: Record<string, unknown> = {};
 function createApp(db: Database): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
-    c.set("ctx", {
-      db,
-      kv,
-      baseIdResolver: {
-        handle: { resolve: async (h: string) => (h === HANDLE ? DID : null) },
-      },
-      addWideEventContext: (fields: Record<string, unknown>) => Object.assign(wideEvent, fields),
-    } as unknown as AppContext);
+    c.set(
+      "ctx",
+      testContext({
+        db,
+        kv,
+        baseIdResolver: {
+          handle: { resolve: async (h: string) => (h === HANDLE ? DID : null) },
+        } as AppContext["baseIdResolver"],
+        addWideEventContext: (fields: Record<string, unknown>) => Object.assign(wideEvent, fields),
+      }),
+    );
     await next();
   });
   app.route("/opds", opdsRouter);
@@ -117,15 +109,14 @@ describe("OPDS 2.0 content negotiation", () => {
   let auth: string;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
     auth = await authHeader();
     for (const k of Object.keys(wideEvent)) delete wideEvent[k];
   });
 
   it("records the negotiated format on the wide event", async () => {
-    // A silent fallback to Atom still renders fine, so the logs need to say
-    // which format actually went out.
+    // A silent fallback to Atom still renders fine, so the logs need to record which format went out.
     await app.request("/opds", { headers: { authorization: auth, accept: KOREADER_ACCEPT } });
     expect(wideEvent["opds_format"]).toBe("2.0");
 
@@ -209,14 +200,11 @@ describe("OPDS 2.0 content negotiation", () => {
     const acq = pub.links.find((l: { rel: string }) =>
       l.rel.startsWith("http://opds-spec.org/acquisition"),
     );
-    // The extension is decoration for us and load-bearing for the client:
-    // CrossPoint's parser prefers an acquisition href containing ".epub" and
-    // Kobo's browser dispatches on it alone.
+    // The extension is decoration for us but load-bearing for the client — CrossPoint and Kobo dispatch on it.
     expect(acq.href).toContain("/opds/books/hash-a/download/hash-a.epub");
     expect(acq.rel).toBe("http://opds-spec.org/acquisition/open-access");
     expect(acq.type).toBe("application/epub+zip");
-    // OPDS_DOWNLOAD_BASE_URL is unset here, so the download stays on the
-    // origin the feed itself was served from.
+    // OPDS_DOWNLOAD_BASE_URL is unset here, so the download stays on the feed's own origin.
     const self = body.links.find((l: { rel: string }) => l.rel === "self");
     expect(acq.href.startsWith(new URL(self.href).origin)).toBe(true);
   });
@@ -322,11 +310,7 @@ describe("OPDS 2.0 content negotiation", () => {
   });
 
   describe("cover caching", () => {
-    // This route sits under `/opds/books/`, which is excluded from hono's
-    // etag() middleware, so if it doesn't set a validator itself it cannot ever
-    // answer a conditional request. It didn't: production served 43 cover
-    // fetches in 48h and never once returned a 304, while a catalogue browse
-    // re-requests every cover on the page.
+    // This route sits under `/opds/books/`, excluded from hono's etag() middleware, so it must set its own validator to ever answer a conditional request.
     const coverPath = "/tmp/bookhive-opds-cover-test.jpg";
 
     beforeEach(async () => {
@@ -368,8 +352,7 @@ describe("OPDS 2.0 content negotiation", () => {
     });
 
     it("advertises the derived EPUB's type and extension, not the original's", async () => {
-      // CrossPoint's parser requires type == "application/epub+zip" exactly, so
-      // a MOBI entry is invisible to it until the feed points at the EPUB.
+      // CrossPoint requires type == "application/epub+zip" exactly, so a MOBI entry is invisible until the feed points at the derived EPUB.
       await seedBook(db, {
         contentHash: "hash-m",
         filename: "Dune.mobi",

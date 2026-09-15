@@ -1,6 +1,8 @@
 import { raw } from "hono/html";
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
+import { ThemeToggle, ThemeToggleScript } from "./components/ThemeToggle";
+import { ArrowLeft } from "./components/icons";
 
 export const Login: FC<{
   error?: string;
@@ -15,74 +17,12 @@ export const Login: FC<{
       class="text-muted-foreground hover:text-foreground absolute top-4 left-4 z-20 flex min-h-10 min-w-10 items-center justify-center rounded-md p-2 transition-colors duration-150 lg:top-6 lg:left-6"
     >
       <span class="sr-only">Back to home</span>
-      <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-        />
-      </svg>
+      <ArrowLeft class="size-5" />
     </a>
-    <button
-      type="button"
-      class="theme-toggle text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 min-h-10 min-w-10 rounded-md p-2 transition-colors duration-150 lg:top-6 lg:right-6"
-      aria-label="Toggle dark mode"
-      id="theme-toggle"
-    >
-      <svg
-        class="size-5 dark:hidden"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="1.5"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M21.752 15.752A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.248z"
-        />
-      </svg>
-      <svg
-        class="hidden size-5 dark:block"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="1.5"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
-        />
-      </svg>
-    </button>
-    <Script
-      script={(document) => {
-        const btn = document.getElementById("theme-toggle");
-        const updateThemeColor = () => {
-          const meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) {
-            meta.setAttribute(
-              "content",
-              document.documentElement.classList.contains("dark") ? "#1c1917" : "#d97706",
-            );
-          }
-        };
-        updateThemeColor();
-        btn?.addEventListener("click", () => {
-          const html = document.documentElement;
-          const isDark = html.classList.toggle("dark");
-          localStorage.setItem("theme", isDark ? "dark" : "light");
-          updateThemeColor();
-        });
-      }}
-    />
+    <ThemeToggle class="text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 min-h-10 min-w-10 rounded-md p-2 transition-colors duration-150 lg:top-6 lg:right-6" />
+    <ThemeToggleScript />
     <div class="relative w-full max-w-sm">
-      {/*
-        The JPEG stays: it is also the default og:image and the OAuth client `logo_uri`
-        (src/auth/client.ts), which third-party consumers may not decode as WebP. For the page
-        itself, the 1300px source was ~7x oversized for a 192px slot.
-      */}
+      {/* The JPEG stays: it's also the default og:image and OAuth client `logo_uri`, which third-party consumers may not decode as WebP. */}
       <picture>
         <source type="image/webp" srcset="/full_logo-384.webp" />
         <img
@@ -188,8 +128,7 @@ export const Login: FC<{
         }
       }}
     />
-    {/* Actor-typeahead web component is only used on this login form, so it is
-        loaded here rather than globally in Layout. Self-registers on import. */}
+    {/* Only used on this login form, so it's loaded here rather than globally in Layout. */}
     {raw(`<script type="module" src="/js/actor-typeahead.js"></script>`)}
   </div>
 );

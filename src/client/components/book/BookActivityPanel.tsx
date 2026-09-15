@@ -1,7 +1,7 @@
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { useEffect, useRef, useState, type FC } from "hono/jsx/dom";
 
-import type { UserBookView } from "../../../utils/userBookView";
+import type { UserBookView } from "../../../core/userBookView";
 import { StarRating } from "../StarRating";
 import { useUserBook } from "./BookActionRow";
 import {
@@ -10,6 +10,8 @@ import {
   type UpdateFields,
   type UserBookStore,
 } from "./userBookStore";
+import { ProgressMeter } from "../../../pages/components/ProgressMeter";
+import { TimeAgo } from "../../../pages/components/TimeAgo";
 
 type Draft = {
   review: string;
@@ -83,7 +85,7 @@ export const BookUserTimestamp: FC<{ store: UserBookStore }> = ({ store }) => {
       )}
       {when && (
         <p class="mb-4 text-sm text-muted-foreground">
-          {`${label}: ${formatDistanceToNow(new Date(when), { addSuffix: true })}`}
+          {label}: <TimeAgo ts={when} class="text-sm" />
         </p>
       )}
     </>
@@ -96,8 +98,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
 }) => {
   const { view, confirmed, pending, savedAt } = useUserBook(store);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(view, props.numPages));
-  // Edited-since-save fields. Everything else follows the server, so a status
-  // click's new date appears without wiping a half-written review.
+  // Edited-since-save fields — everything else follows the server, so a status click's new date appears without wiping a half-written review.
   const [touched, setTouched] = useState<Set<keyof Draft>>(() => new Set());
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [removing, setRemoving] = useState(false);
@@ -153,15 +154,12 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
       if (Object.values(progress).some((v) => v !== undefined)) fields.bookProgress = progress;
     }
     if (Object.keys(fields).length === 0 && view) return;
-    // `touched` clears only once the write lands: clearing up front left a
-    // failed save showing the user's text with a Save button that did nothing.
+    // `touched` clears only once the write lands, or a failed save would show the user's text with a Save button that did nothing.
     const sent = new Set(touched);
     const sentValues = { ...draft };
     void store.update(fields, { explicitSave: true }).then((ok) => {
       if (!ok) return;
-      // Re-sync sent fields from what was actually stored — an emptied review
-      // or date is not a clear. A field edited again mid-flight keeps its new
-      // text *and* its dirty flag, or that text becomes unsaveable.
+      // Re-sync sent fields from what was actually stored — an emptied review or date is not a clear, and a field edited again mid-flight keeps its dirty flag.
       const confirmedNow = store.getSnapshot().confirmed;
       const fresh = draftFrom(confirmedNow, props.numPages);
       const stillAsSent = (key: keyof Draft) =>
@@ -238,12 +236,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
             <label class="mb-2 block text-sm font-semibold text-foreground">Reading Progress</label>
             {finished ? (
               <>
-                <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    class="h-full rounded-full bg-green-500 transition-[width] duration-300"
-                    style="width: 100%"
-                  />
-                </div>
+                <ProgressMeter percent={100} class="mb-3" />
                 <p class="text-sm text-muted-foreground">
                   <span class="font-medium text-green-600 dark:text-green-400">Finished!</span>
                   {(() => {
@@ -262,12 +255,7 @@ export const BookActivityPanel: FC<{ store: UserBookStore; props: BookActionsPro
             ) : (
               <>
                 {!!livePercent && (
-                  <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      class="h-full rounded-full bg-primary transition-[width] duration-300"
-                      style={`width: ${livePercent}%`}
-                    />
-                  </div>
+                  <ProgressMeter percent={livePercent} class="mb-3" barClass="bg-primary" />
                 )}
                 <div class="flex items-center gap-2">
                   <label class="text-sm text-muted-foreground" htmlFor="progress-current-page">

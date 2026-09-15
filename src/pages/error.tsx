@@ -24,12 +24,7 @@ export const Error: FC<{
   message?: string;
   description?: string;
   statusCode?: number;
-  /**
-   * Force-show the "Sign in" call to action. Defaults on for 401s, which are
-   * always session/auth failures here ("Invalid Session"). Without it the error
-   * page told users to "Login to view your profile" while offering no way to do
-   * it — the only links were "Go back home" and "Contact support".
-   */
+  /** Force-show the "Sign in" CTA; defaults on for 401s, which are always session/auth failures here. */
   showLogin?: boolean;
 }> = ({
   message = "Error occurred",
@@ -64,9 +59,7 @@ export const Error: FC<{
           <a href="/" class={`${login ? "btn btn-outline" : "btn btn-primary"} min-h-10 min-w-10`}>
             Go back home
           </a>
-          {/* Was `/support`, which has never been a route — so the one actionable link on the
-              error page led to another error page. This is the same address signup.tsx and the
-              privacy policy already give as the contact channel. */}
+          {/* Was `/support`, which has never been a route — same contact address as signup.tsx and the privacy policy. */}
           <a
             href="mailto:computers@nickthesick.com"
             class="btn btn-ghost min-h-10 min-w-10 text-sm"

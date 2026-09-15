@@ -1,7 +1,7 @@
 import type { Database } from "../db";
 import type { BookIdentifiers, HiveId } from "../types";
 import type { HiveBook } from "../types";
-import { normalizeBookMeta } from "../utils/bookMeta";
+import { normalizeBookMeta } from "../core/bookMeta";
 
 type DbCtx = { db: Database };
 
@@ -31,10 +31,7 @@ export type HiveBookOutput = {
   secondaryAuthors?: Array<{ name: string; role?: string }>;
 };
 
-/**
- * Map a hive book + identifiers to the lexicon hiveBook output shape.
- * Use this when you already have resolved identifiers (e.g. from findBookIdentifiersByLookup).
- */
+/** Use when identifiers are already resolved (e.g. from findBookIdentifiersByLookup). */
 export function toHiveBookOutput(
   book: HiveBook,
   identifiers: BookIdentifiers,
@@ -68,10 +65,7 @@ export function toHiveBookOutput(
   };
 }
 
-/**
- * Transform a HiveBook DB row to the lexicon hiveBook output shape.
- * Parses identifiers from book.identifiers (JSON string) with hiveId always included.
- */
+/** Parses book.identifiers (JSON string) and always includes hiveId. */
 export function transformBookWithIdentifiers<
   T extends { id: string; identifiers: string | null | undefined } & Pick<
     HiveBook,

@@ -2,7 +2,12 @@ import { describe, it, expect } from "bun:test";
 
 import { LibraryPage } from "./library";
 
-const render = async (node: unknown): Promise<string> => String(await (node as string));
+// A hono/jsx component returns an `HtmlEscapedString` *or* a promise of one,
+// depending on whether it awaited anything. The cast has to admit both — `as
+// string` alone made the `await` look like a no-op to the type checker while
+// being load-bearing at runtime.
+const render = async (node: unknown): Promise<string> =>
+  String(await (node as string | Promise<string>));
 
 describe("LibraryPage", () => {
   describe("with no books and no synced documents", () => {
@@ -57,9 +62,7 @@ describe("LibraryPage", () => {
 
   describe("upload error alert", () => {
     it("renders the reason a plain form post failed, in both layouts", async () => {
-      // A <form> post can't read a JSON error body, so the browser path
-      // redirects with a code. Before this it landed on a page showing raw
-      // JSON as text.
+      // A <form> post can't read a JSON error body, so the browser path redirects with a code instead.
       for (const bookCount of [0, 3]) {
         const html = await render(
           <LibraryPage
@@ -95,8 +98,7 @@ describe("LibraryPage", () => {
   });
 
   it("uses the populated layout when only synced documents exist", async () => {
-    // Progress can arrive from an e-reader before anything is uploaded; that
-    // still needs the manager so the user can triage those documents.
+    // Progress can arrive from an e-reader before anything is uploaded; the manager is still needed to triage those documents.
     const html = await render(
       <LibraryPage handle="alice.bsky.social" bookCount={0} syncDocCount={2} />,
     );

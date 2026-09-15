@@ -3,14 +3,10 @@ import type { ImageSourcePropType } from "react-native";
 import { getAuthState, getBaseUrl } from "@/context/auth";
 
 /**
- * Resolve a `personalBookView.coverUrl` to something `<Image>` can load.
- *
- * The server returns one of two things: an absolute URL for a linked catalog
- * cover (routed through the image proxy so it gets resized and cached), or the
- * relative `/library/covers/{hash}` path for a cover extracted from the user's
- * own file. The latter is session-authenticated, and React Native's image
- * loader doesn't share the fetch client's cookie jar, so the `sid` cookie has
- * to be attached to the request explicitly.
+ * Resolve a `personalBookView.coverUrl` to something `<Image>` can load. The
+ * relative `/library/covers/{hash}` form is session-authenticated, and React
+ * Native's image loader doesn't share the fetch client's cookie jar, so the
+ * `sid` cookie has to be attached to the request explicitly.
  */
 export function personalCoverSource(
   coverUrl: string | undefined,
@@ -29,13 +25,9 @@ export function personalCoverSource(
 }
 
 /**
- * Human-readable byte count at quota scale, e.g. "1.2 GB".
- *
- * Deliberately a byte-for-byte port of `formatBytes` in `src/routes/library.tsx`
- * and `src/client/components/LibraryManager.tsx`: the server bakes this exact
- * rendering into the 413 body it sends when an upload busts the quota, and the
- * app shows that message verbatim. If the two round differently, the alert and
- * the meter directly under it disagree about how full the library is.
+ * Human-readable byte count at quota scale, e.g. "1.2 GB". Deliberately a
+ * byte-for-byte port of the server's `formatBytes` — if the two round
+ * differently, the quota alert and the meter under it disagree.
  */
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -54,15 +46,11 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Render a stored author string as a comma list.
- *
- * `personal_book.authors` is not consistently tab-separated, despite what the
- * lexicon description says: `parseBook` joins the ebook's own creators with
- * `", "`, while `linkPersonalBook` overwrites the column with `hive_book.authors`,
- * which is tab-separated. Splitting on tab handles the linked case and leaves the
- * parsed case alone — it is already a comma list. Do **not** also split on comma
- * to "fix" the parsed case: EPUB `dc:creator` is frequently "Last, First", and
- * that would turn one author into two.
+ * Render a stored author string as a comma list. `personal_book.authors` is
+ * inconsistently separated — tab-separated when copied from `hive_book.authors`,
+ * comma-separated when parsed from the ebook itself — so splitting on tab
+ * handles the former and leaves the latter alone. Do not also split on comma:
+ * EPUB `dc:creator` is often "Last, First", which would split one author into two.
  */
 export function formatAuthors(authors: string | null | undefined): string {
   return (authors ?? "").split("\t").filter(Boolean).join(", ");

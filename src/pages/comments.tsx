@@ -1,15 +1,16 @@
 import type { ProfileViewDetailed } from "../types";
 import { useRequestContext } from "hono/jsx-renderer";
-import type { NotNull } from "kysely";
 import type { HiveBook } from "../types";
 import type { HiveId } from "../types";
-import { getProfiles } from "../utils/getProfile";
-import { formatDistanceToNow } from "date-fns";
+import { getProfiles } from "../services/getProfile";
 import { endTime, startTime } from "hono/timing";
 import type { PropsWithChildren } from "hono/jsx";
 import { Card, CardBody, UserBlock, StarDisplay, CardActions } from "./components/cards";
 import { Script } from "./utils/script";
-import { parseHtmlToText } from "../utils/htmlToText";
+import { parseHtmlToText } from "../lib/htmlToText";
+import { MAX_DISPLAY_RATING, starsToDisplayRating } from "../core/rating";
+import { TimeAgo } from "./components/TimeAgo";
+import { listBookDiscussion } from "../data/bookDetail";
 
 type CommentShape = {
   parentUri?: string;
@@ -64,8 +65,7 @@ function Comment({
 }: {
   comment: CommentShape;
   profiles: ProfileViewDetailed[];
-  /** Replies pre-grouped by parentUri so each render is an O(1) Map lookup
-      instead of an O(n) scan of all comments (was O(n^2) overall). */
+  /** Replies pre-grouped by parentUri so each render is an O(1) Map lookup instead of an O(n) scan. */
   childrenByParent: Map<string, CommentShape[]>;
   bookId: HiveId;
   did?: string | null;
@@ -78,7 +78,6 @@ function Comment({
   const shareUrl = reviewLinkPath;
 
   const handle = profile?.handle ?? comment.userDid;
-  const timeAgo = formatDistanceToNow(comment.createdAt, { addSuffix: true });
 
   return (
     <article id={`comment-${commentIdSafe}`} class="mb-4" data-review-uri={comment.uri}>
@@ -93,10 +92,9 @@ function Comment({
             size="sm"
           />
           <div class="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            {/* One <time> doing both jobs. It used to be a visible <span> plus a duplicate
-                sr-only <time>, so screen readers announced the timestamp twice. */}
+            {/* One <time> doing both jobs — used to be a visible <span> plus a duplicate sr-only <time>, announcing the timestamp twice. */}
             <time pubdate datetime={comment.createdAt}>
-              {timeAgo}
+              <TimeAgo ts={comment.createdAt} />
             </time>
             <button
               type="button"
@@ -109,8 +107,10 @@ function Comment({
 
           {comment.stars != null && (
             <div class="mb-2 flex items-center gap-2">
-              <StarDisplay rating={comment.stars / 2} size="sm" />
-              <span class="tabular-nums text-muted-foreground text-sm">{comment.stars / 2}/5</span>
+              <StarDisplay rating={starsToDisplayRating(comment.stars) ?? 0} size="sm" />
+              <span class="tabular-nums text-muted-foreground text-sm">
+                {starsToDisplayRating(comment.stars)}/{MAX_DISPLAY_RATING}
+              </span>
             </div>
           )}
 
@@ -175,7 +175,8 @@ function Comment({
                 </button>
                 <dialog
                   id={`delete-dialog-${commentIdSafe}`}
-                  class="rounded-xl bg-card p-6 text-card-foreground shadow-xl backdrop:bg-black/50"
+                  // `m-auto` restores the dialog centering Tailwind's preflight removes by resetting margin to 0.
+                  class="m-auto rounded-xl bg-card p-6 text-card-foreground shadow-xl backdrop:bg-black/50"
                 >
                   <h3 class="mb-2 text-lg font-semibold">Delete review?</h3>
                   <p class="text-muted-foreground text-pretty mb-4">This cannot be undone.</p>
@@ -239,43 +240,12 @@ export async function CommentsSection({
 }>) {
   const c = useRequestContext();
 
-  startTime(c, "comments_top_level_reviews");
-  const topLevelReviews = await c
-    .get("ctx")
-    .db.selectFrom("user_book")
-    .select([
-      "user_book.review as comment",
-      "user_book.createdAt",
-      "user_book.stars",
-      "user_book.userDid",
-      "user_book.uri",
-      "user_book.cid",
-    ])
-    .where("user_book.hiveId", "=", book.id)
-    .where("user_book.review", "is not", null)
-    .$narrowType<{ comment: NotNull }>()
-    .orderBy("user_book.createdAt", "desc")
-    .limit(1000)
-    .execute();
-  endTime(c, "comments_top_level_reviews");
-
-  startTime(c, "comments_buzz");
-  const comments = await c
-    .get("ctx")
-    .db.selectFrom("buzz")
-    .select([
-      "buzz.comment",
-      "buzz.createdAt",
-      "buzz.userDid",
-      "buzz.parentUri",
-      "buzz.cid",
-      "buzz.uri",
-    ])
-    .where("buzz.hiveId", "=", book.id)
-    .orderBy("buzz.createdAt", "desc")
-    .limit(3000)
-    .execute();
-  endTime(c, "comments_buzz");
+  startTime(c, "comments_queries");
+  const { reviews: topLevelReviews, buzzes: comments } = await listBookDiscussion({
+    db: c.get("ctx").db,
+    hiveId: book.id,
+  });
+  endTime(c, "comments_queries");
 
   startTime(c, "fetch_profiles");
   const profiles = await getProfiles({
@@ -284,9 +254,7 @@ export async function CommentsSection({
   });
   endTime(c, "fetch_profiles");
 
-  // Group all buzz replies by their parentUri once, so each Comment render is an
-  // O(1) Map lookup rather than scanning the full buzz list (previously O(n^2)
-  // over up to 1000 reviews x 3000 buzzes).
+  // Group all buzz replies by their parentUri once, so each Comment render is an O(1) Map lookup rather than scanning the full buzz list.
   const childrenByParent = new Map<string, CommentShape[]>();
   for (const comment of comments) {
     if (!comment.parentUri) continue;

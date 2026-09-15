@@ -1,13 +1,17 @@
 import { type FC } from "hono/jsx";
-import { formatDistanceToNowStrict } from "date-fns";
 import { type Book } from "../types";
 import type { BookListRow, ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { BookReview } from "./components/BookReview";
 import { BOOK_STATUS } from "../constants";
+import { booksFinishedInYear } from "../core/readingYear";
 import { UserBlock } from "./components/cards";
-import { coverImageUrl } from "../utils/imageProxy";
+import { coverImageUrl } from "../core/imageUrl";
+import { TrackedBooks } from "./components/TrackedBooks";
+import { computeReadingStats } from "../data/readingStats";
+import { ProgressMeter } from "./components/ProgressMeter";
+import { TimeAgo } from "./components/TimeAgo";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -51,23 +55,8 @@ export const ProfilePage: FC<{
   userLists = [],
   progressHistory = [],
 }) => {
-  const year = new Date().getFullYear();
-  const booksThisYear = books.reduce((sum, b) => {
-    let n = 0;
-    if (
-      b.status === BOOK_STATUS.FINISHED &&
-      b.finishedAt &&
-      new Date(b.finishedAt).getFullYear() === year
-    ) {
-      n++;
-    }
-    if (b.previousReads) {
-      for (const r of b.previousReads) {
-        if (r.finishedAt && new Date(r.finishedAt).getFullYear() === year) n++;
-      }
-    }
-    return sum + n;
-  }, 0);
+  const year = new Date().getUTCFullYear();
+  const booksThisYear = booksFinishedInYear(books, year);
   const finishedWithRating = books.filter(
     (b) => b.status === BOOK_STATUS.FINISHED && b.stars != null,
   );
@@ -82,20 +71,10 @@ export const ProfilePage: FC<{
   const totalRead = books.filter((b) => b.status === BOOK_STATUS.FINISHED).length;
   const monthsActive = 12; // could derive from first book date
   const booksPerMonth = totalRead > 0 ? (totalRead / monthsActive).toFixed(1) : "0";
-  const pagesRead = books.reduce((sum, b) => {
-    const fromProgress = b.bookProgress?.totalPages;
-    if (fromProgress != null && fromProgress > 0) return sum + fromProgress;
-    if (b.meta) {
-      try {
-        const m = JSON.parse(b.meta);
-        if (m.numPages != null && m.numPages > 0) return sum + m.numPages;
-      } catch {}
-    }
-    return sum;
-  }, 0);
+  // Use the same finished-book scope and page-count precedence as detailed reading stats.
+  const { pagesRead } = computeReadingStats(books, []);
   const totalBooksForGenre = genreStats.reduce((s, g) => s + g.count, 0);
-  // Bars are scaled against the top genre, not the sum. A book carries several genres, so the sum
-  // is much larger than any one count and every bar rendered as a stub against a full-width track.
+  // Scaled against the top genre, not the sum — a book carries several genres, so the sum dwarfs any one count.
   const maxGenreCount = genreStats.reduce((m, g) => Math.max(m, g.count), 0);
 
   return (
@@ -114,7 +93,6 @@ export const ProfilePage: FC<{
 
       {isBuzzer ? (
         <>
-          {/* Reading Stats */}
           <div class="card">
             <div class="card-header">
               <h2 class="card-title">Reading Stats</h2>
@@ -156,12 +134,12 @@ export const ProfilePage: FC<{
                         >
                           {g.genre}
                         </a>
-                        <div class="bg-muted h-2 min-w-0 flex-1 overflow-hidden rounded-full">
-                          <div
-                            class="bg-primary h-full rounded-full"
-                            style={`width: ${Math.max(2, (g.count / maxGenreCount) * 100)}%`}
-                          />
-                        </div>
+                        <ProgressMeter
+                          percent={(g.count / maxGenreCount) * 100}
+                          minWidth={2}
+                          barClass="bg-primary"
+                          class="min-w-0 flex-1"
+                        />
                         <span class="text-muted-foreground w-8 shrink-0 text-right tabular-nums text-sm">
                           {g.count}
                         </span>
@@ -182,7 +160,6 @@ export const ProfilePage: FC<{
             </div>
           </div>
 
-          {/* Recent Reading Activity */}
           {isOwnProfile && progressHistory.length > 0 && (
             <section>
               <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">
@@ -226,14 +203,7 @@ export const ProfilePage: FC<{
                               {entry.title}
                             </a>
                           </p>
-                          <time
-                            datetime={entry.createdAt}
-                            class="text-muted-foreground mt-0.5 block text-xs tabular-nums"
-                          >
-                            {formatDistanceToNowStrict(new Date(entry.createdAt), {
-                              addSuffix: true,
-                            })}
-                          </time>
+                          <TimeAgo ts={entry.createdAt} class="mt-0.5 block" />
                         </div>
                       </li>
                     ))}
@@ -243,46 +213,11 @@ export const ProfilePage: FC<{
             </section>
           )}
 
-          {/* Library */}
           <section>
             <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
-            {isOwnProfile ? (
-              <div
-                id="mount-library-table"
-                data-books={JSON.stringify(
-                  books.map((b) => {
-                    let metaPages: number | null = null;
-                    if (b.meta) {
-                      try {
-                        const m = JSON.parse(b.meta);
-                        if (m.numPages != null && m.numPages > 0) metaPages = m.numPages;
-                      } catch {}
-                    }
-                    return {
-                      hiveId: b.hiveId,
-                      title: b.title,
-                      authors: b.authors,
-                      cover: b.cover,
-                      thumbnail: b.thumbnail,
-                      status: b.status,
-                      stars: b.stars,
-                      startedAt: b.startedAt,
-                      finishedAt: b.finishedAt,
-                      createdAt: b.createdAt,
-                      owned: b.owned,
-                      review: b.review,
-                      bookProgress: b.bookProgress,
-                      totalPages: b.bookProgress?.totalPages ?? metaPages,
-                    };
-                  }),
-                )}
-              />
-            ) : (
-              <BookList books={books} />
-            )}
+            {isOwnProfile ? <TrackedBooks books={books} /> : <BookList books={books} />}
           </section>
 
-          {/* Shelves */}
           {userLists.length > 0 && (
             <section>
               <div class="mb-4 flex items-center justify-between">
@@ -320,7 +255,6 @@ export const ProfilePage: FC<{
             </section>
           )}
 
-          {/* Reviews */}
           {books.some((book) => book.review) && (
             <section>
               <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Reviews</h2>
@@ -399,9 +333,7 @@ export const ProfilePage: FC<{
           <div class="card-body">
             <div class="empty">
               <h2 class="empty-title">
-                {/* "Shelves" means user-created lists (social.popfeed.feed.list) elsewhere in the
-                    app — this empty state is about having no books at all, which is what the
-                    description and both CTAs below actually address. */}
+                {/* "Shelves" means user-created lists elsewhere in the app; this empty state is about having no books at all. */}
                 {isOwnProfile ? "Your library is empty" : "No books yet"}
               </h2>
               <p class="empty-description">

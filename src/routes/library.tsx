@@ -5,36 +5,32 @@ import { z } from "zod";
 
 import type { AppEnv } from "../context";
 import { LibraryPage } from "../pages/library";
-import { currentSyncPassword, rotateSyncToken } from "../middleware/sync-auth";
-import { bridgeProgressToUserBook } from "../utils/syncBridge";
-import { updateBookRecord } from "../utils/getBook";
+import { syncCredentialRoutes } from "./syncCredentials";
+import { bridgeProgressToUserBook } from "../data/syncBridge";
+import { updateBookRecord } from "../services/getBook";
+import { formatBytes } from "../lib/formatBytes";
 import { READING } from "../constants";
-import { streamPersonalBook, MAX_PERSONAL_BOOK_BYTES } from "../utils/personalLibrary";
-import { uploadPersonalBook } from "../utils/uploadPersonalBook";
-import { NO_HIVE_MATCH, SAME_BOOK_FILE } from "../utils/syncMatching";
+import { etagMatches, streamPersonalBook, MAX_PERSONAL_BOOK_BYTES } from "../data/personalLibrary";
+import { uploadPersonalBook } from "../services/uploadPersonalBook";
+import { NO_HIVE_MATCH } from "../data/syncMatching";
+import { listSyncDocuments } from "../data/syncDocuments";
 import type { HiveId, SyncProgressData } from "../types";
+import { jsonUnauthorized } from "./authResponse";
 
 const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
 
 /**
- * Headroom for multipart part headers and boundaries when checking the request's
- * total `Content-Length` against the per-file limit. Generous on purpose — this
- * is a cheap early reject, and the core enforces the real cap on the file itself.
+ * Headroom for multipart headers when checking Content-Length against the
+ * per-file limit. Generous on purpose — this is a cheap early reject; the
+ * core enforces the real cap on the file itself.
  */
 const MULTIPART_SLACK = 64 * 1024;
 
-/** Human-readable byte count for user-facing quota messages. */
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-}
-
 /**
  * The `?error=` codes the upload adapter redirects a browser back with. Closed
- * set rather than a free string: it is the one input on this page that comes
- * from the URL, and anything outside the list is someone hand-crafting a link
- * to put an error banner on another user's library.
+ * set, not a free string — this is the one input on the page that comes from
+ * the URL, and anything outside it is a hand-crafted link forging an error
+ * banner on another user's library.
  */
 const UPLOAD_ERROR_CODES = [
   "TooLarge",
@@ -86,22 +82,23 @@ const app = new Hono<AppEnv>()
           syncDocCount={Number(documents.total)}
           uploadError={c.req.valid("query").error}
         />,
-        { title: "Personal Library" },
+        { title: "Ebooks & Devices" },
       );
     },
   )
   // Thin adapter over `uploadPersonalBook` — the same core the XRPC procedure
-  // calls. Everything here is transport: content negotiation and the mapping
-  // from the core's discriminated result to a status code.
+  // calls; this owns only content negotiation and status-code mapping.
   //
-  // Note there is no `bodyLimit()` middleware any more. It only short-circuits
-  // on `Content-Length`; given a chunked body it drains the whole stream into
-  // an array and rebuilds the Request, so a compliant 100 MB chunked upload was
-  // buffered there *and again* by `formData()`. The core caps while streaming
-  // to disk, which bounds every path at one chunk.
+  // No `bodyLimit()` middleware — it only checks Content-Length and buffers
+  // chunked bodies in full before this handler even runs, so the core caps
+  // size while streaming to disk instead.
   .post("/upload", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    if (!agent) {
+      // Upload-specific wording: the iOS app renders `payload.error` verbatim,
+      // so a bare "Unauthorized" here would short-circuit its own re-login copy.
+      return jsonUnauthorized(c, "Your session expired. Sign in again to upload.");
+    }
 
     // The browser posts a plain <form> and wants to land back on the library;
     // the mobile app posts the same multipart body but needs the created record
@@ -112,10 +109,9 @@ const app = new Hono<AppEnv>()
         ? c.json({ error, code, ...extra }, status)
         : c.redirect(`/library?error=${encodeURIComponent(code)}`);
 
-    // The early reject `bodyLimit` used to give. `formData()` below still
-    // materialises the File in native memory — Bun/hono expose no incremental
-    // multipart API — so refusing an obviously oversized body before parsing it
-    // is worth the two lines. MULTIPART_SLACK covers the part headers.
+    // `formData()` below still materialises the whole File in memory — Bun/hono
+    // expose no incremental multipart API — so reject an obviously oversized
+    // body before parsing it.
     const declaredTotal = Number(c.req.header("content-length"));
     if (Number.isFinite(declaredTotal) && declaredTotal > MAX_FILE_SIZE + MULTIPART_SLACK) {
       return fail(413, "TooLarge", "File exceeds 100 MB limit");
@@ -163,10 +159,9 @@ const app = new Hono<AppEnv>()
     }
   });
 
-// Serve cover images for personal library books
 app.get("/covers/:hash", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();
-  if (!userDid) return c.json({ error: "Unauthorized" }, 401);
+  if (!userDid) return jsonUnauthorized(c);
   const { db } = c.get("ctx");
 
   const book = await db
@@ -181,15 +176,24 @@ app.get("/covers/:hash", async (c) => {
   const file = Bun.file(book.coverPath);
   if (!(await file.exists())) return c.notFound();
 
-  const bytes = await file.arrayBuffer();
-  return new Response(bytes, {
-    headers: {
-      "Content-Type": book.coverMime || "image/jpeg",
-      "Content-Length": String(bytes.byteLength),
-      "Cache-Control": "private, max-age=86400",
-      "Content-Encoding": "identity",
-    },
-  });
+  // Streamed, not buffered — the whole cover would otherwise land in heap on a
+  // synchronous, three-process server for a file we're about to hand straight
+  // to the socket.
+  //
+  // The ETag matters because `/library/covers/` is outside ETAG_EXCLUDED_PREFIXES,
+  // so hono's `etag()` would otherwise buffer the body again to digest it; the
+  // content hash makes the validator free to compute.
+  const etag = `"${c.req.param("hash")}-cover"`;
+  const headers = {
+    "Content-Type": book.coverMime || "image/jpeg",
+    "Cache-Control": "private, max-age=86400",
+    "Content-Encoding": "identity",
+    ETag: etag,
+  };
+  if (etagMatches(c.req.header("if-none-match"), etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(file.stream(), { headers });
 });
 
 // Session-authenticated download for the web UI. OPDS serves the same bytes at
@@ -197,7 +201,7 @@ app.get("/covers/:hash", async (c) => {
 // auth, which a logged-in browser does not have.
 app.get("/books/:hash/download", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();
-  if (!userDid) return c.json({ error: "Unauthorized" }, 401);
+  if (!userDid) return jsonUnauthorized(c);
 
   const download = await streamPersonalBook(
     c.get("ctx").db,
@@ -218,7 +222,7 @@ app.get("/books/:hash/download", async (c) => {
 
 app.get("/shelves", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();
-  if (!userDid) return c.json({ error: "Unauthorized" }, 401);
+  if (!userDid) return jsonUnauthorized(c);
   const { db } = c.get("ctx");
 
   const rows = await db
@@ -228,7 +232,6 @@ app.get("/shelves", async (c) => {
     .orderBy("name", "asc")
     .execute();
 
-  // Get book counts per shelf in a single query
   const counts = await db
     .selectFrom("personal_shelf_item")
     .innerJoin("personal_shelf", "personal_shelf.id", "personal_shelf_item.shelfId")
@@ -251,100 +254,38 @@ app.get("/shelves", async (c) => {
   });
 });
 
-app.get("/sync/password", async (c) => {
-  const agent = await c.get("ctx").getSessionAgent();
-  if (!agent) return c.json({ error: "Unauthorized" }, 401);
-  const password = await currentSyncPassword(c.get("ctx").kv, agent.did);
-  return c.json({ password });
-});
+app.route("/sync", syncCredentialRoutes);
 
-app.post("/sync/rotate", async (c) => {
-  const agent = await c.get("ctx").getSessionAgent();
-  if (!agent) return c.json({ error: "Unauthorized" }, 401);
-  await rotateSyncToken(c.get("ctx").kv, agent.did);
-  const password = await currentSyncPassword(c.get("ctx").kv, agent.did);
-  return c.json({ password });
-});
-
-// Synced e-reader documents for the logged-in user, with the linked book title
-// (if any) for display in the library.
 app.get("/sync/documents", async (c) => {
   const agent = await c.get("ctx").getSessionAgent();
-  if (!agent) return c.json({ error: "Unauthorized" }, 401);
+  if (!agent) return jsonUnauthorized(c);
   const { db } = c.get("ctx");
 
-  const rows = await db
-    .selectFrom("sync_document")
-    .leftJoin("hive_book", "hive_book.id", "sync_document.hiveId")
-    .select([
-      "sync_document.documentHash as document",
-      "sync_document.title as title",
-      "sync_document.authors as authors",
-      "sync_document.filename as filename",
-      "sync_document.progressData as progressData",
-      "sync_document.updatedAt as updatedAt",
-      "sync_document.hiveId as hiveId",
-      "hive_book.title as bookTitle",
-    ])
-    // A document we hold the file for is the same book: the library grid
-    // renders it, so the sync sections must not claim it too. An EXISTS rather
-    // than a join because more than one upload can match one document (see
-    // SAME_BOOK_FILE) and a join would list the document once per match.
-    .select((eb) =>
-      eb
-        .exists(
-          eb
-            .selectFrom("personal_book")
-            .select("personal_book.id")
-            .whereRef("personal_book.userDid", "=", "sync_document.userDid")
-            .where(SAME_BOOK_FILE),
-        )
-        .as("hasFile"),
-    )
-    .where("sync_document.userDid", "=", agent.did)
-    .orderBy("sync_document.updatedAt", "desc")
-    .execute();
-
-  const documents = rows.map((row) => {
-    let percentage = 0;
-    let device: string | null = null;
-    try {
-      const data = JSON.parse(row.progressData) as SyncProgressData;
-      percentage = data.percentage ?? 0;
-      device = data.device ?? null;
-    } catch {
-      // ignore malformed progress
-    }
-    // The sentinel means "the user says this isn't on BookHive" — surface it as
-    // a dismissed flag rather than a hiveId nothing can resolve.
-    const dismissed = row.hiveId === NO_HIVE_MATCH;
-    return {
-      document: row.document,
-      title: row.title,
-      authors: row.authors,
-      filename: row.filename,
-      percentage,
-      device,
-      updatedAt: row.updatedAt,
-      hiveId: dismissed ? null : row.hiveId,
-      bookTitle: dismissed ? null : row.bookTitle,
-      dismissed,
-      hasFile: Boolean(row.hasFile),
-    };
-  });
+  const documents = (await listSyncDocuments({ db, userDid: agent.did })).map((doc) => ({
+    document: doc.document,
+    title: doc.title,
+    authors: doc.authors,
+    filename: doc.filename,
+    percentage: doc.percentage,
+    device: doc.device,
+    updatedAt: doc.updatedAt,
+    hiveId: doc.hiveId,
+    bookTitle: doc.bookTitle,
+    dismissed: doc.dismissed,
+    hasFile: doc.hasFile,
+  }));
 
   return c.json({ documents });
 });
 
-// Manually link a synced document to a BookHive book. Sets the document's hiveId
-// and bridges its stored progress onto the user's book (optimistic write + queued
-// PDS write), mirroring what an exact auto-match would have done.
+// Manually links a synced document to a book, bridging its stored progress onto
+// user_book — mirrors what an exact auto-match would have done.
 app.post(
   "/sync/link",
   zValidator("json", z.object({ document: z.string().min(1), hiveId: z.string().min(1) })),
   async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    if (!agent) return jsonUnauthorized(c);
     const { db, kv } = c.get("ctx");
     const { document, hiveId } = c.req.valid("json");
 
@@ -376,8 +317,7 @@ app.post(
       // ignore malformed progress
     }
 
-    // Ensure the book exists in the user's BookHive library. If not, create it
-    // with "reading" status so it shows up on their profile/home.
+    // Create the user_book if missing, with "reading" status, so it shows up on their profile/home.
     const existingUserBook = await db
       .selectFrom("user_book")
       .select("uri")
@@ -407,15 +347,14 @@ app.post(
   },
 );
 
-// Mark a synced document as having no BookHive counterpart (or undo that).
-// Writes the NO_HIVE_MATCH sentinel into hiveId, which both records the user's
-// assertion and stops the auto-matcher from retrying on every progress push.
+// Writes the NO_HIVE_MATCH sentinel into hiveId — records the user's "no match"
+// assertion and stops the auto-matcher retrying on every progress push.
 app.post(
   "/sync/dismiss",
   zValidator("json", z.object({ document: z.string().min(1), dismissed: z.boolean() })),
   async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    if (!agent) return jsonUnauthorized(c);
     const { db } = c.get("ctx");
     const { document, dismissed } = c.req.valid("json");
 
@@ -436,15 +375,14 @@ app.post(
   },
 );
 
-// Give a synced document a human-readable name. Useful for documents that
-// arrive from the e-reader with no embedded metadata, which would otherwise
-// show up forever as "Untitled document".
+// Lets the user name a document that arrived with no embedded metadata —
+// otherwise it shows up as "Untitled document" forever.
 app.post(
   "/sync/rename",
   zValidator("json", z.object({ document: z.string().min(1), title: z.string().min(1).max(300) })),
   async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    if (!agent) return jsonUnauthorized(c);
     const { db } = c.get("ctx");
     const { document, title } = c.req.valid("json");
 
@@ -462,17 +400,15 @@ app.post(
   },
 );
 
-// Forget a synced document entirely, discarding the e-reader progress we hold
-// for it. Deliberately scoped to `sync_document`: if the document was linked,
-// the reading progress already bridged onto `user_book` is the user's own
-// BookHive record (and is mirrored to their PDS), so it is not ours to delete
-// here. The row reappears if the e-reader syncs that book again.
+// Deliberately scoped to `sync_document` — if the document was linked, the
+// progress already bridged onto `user_book` is the user's own BookHive record
+// (mirrored to their PDS), so it isn't ours to delete here.
 app.post(
   "/sync/delete",
   zValidator("json", z.object({ document: z.string().min(1) })),
   async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) return c.json({ error: "Unauthorized" }, 401);
+    if (!agent) return jsonUnauthorized(c);
     const { db } = c.get("ctx");
     const { document } = c.req.valid("json");
 

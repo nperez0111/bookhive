@@ -1,17 +1,16 @@
 /// AWS WAF solver — runs entirely off the main thread as a Bun Worker.
 ///
-/// It does exactly one thing: given a challenge interstitial the main thread
-/// already fetched, produce an `aws-waf-token` (deobfuscation, browser
-/// fingerprint, proof-of-work). It does **not** fetch Goodreads pages. Keeping
-/// the page fetch on the main thread is what makes it impossible for a solver
-/// problem to stop a page from being requested — see `solver.ts`.
-///
-/// The CPU-bound proof-of-work is why this is a Worker at all.
+/// Given a challenge interstitial the main thread already fetched, produces an
+/// `aws-waf-token` (deobfuscation, browser fingerprint, proof-of-work). Never
+/// fetches Goodreads pages itself — keeping that on the main thread is what
+/// makes it impossible for a solver problem to block a page fetch (see
+/// `solver.ts`). The CPU-bound proof-of-work is why this is a Worker at all.
 
 import { createCipheriv, randomBytes, createHash, scryptSync } from "crypto";
 import { doExtract } from "./deobfuscate";
 import { apiHeaders, boundedText, MAX_CHALLENGE_SCRIPT_BYTES } from "./http";
 import type { SerializedConfig, WafRequest, WafResult } from "./messages";
+import { errorMessage } from "../../lib/errors";
 
 declare var self: Worker;
 
@@ -532,7 +531,7 @@ self.onmessage = async (event: MessageEvent<WafRequest>) => {
       token: null,
       config: req.config,
       challengeJsUrl: req.challengeJsUrl,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     } satisfies WafResult);
   }
 };

@@ -61,8 +61,7 @@ export function renderOgImage(card: OgCard): Promise<ArrayBuffer> {
   const id = crypto.randomUUID();
 
   if (pending.size >= MAX_PENDING) {
-    // Shed load loudly. This used to be a bare reject with no counter and no
-    // log line, so sustained shedding looked identical to no traffic at all.
+    // Shed load loudly — a bare reject would look identical to no traffic at all.
     ogRenderShedTotal.inc();
     // warn, not error: shedding is the backpressure working as designed. Only
     // og_render_timeout is a genuine fault.
@@ -82,9 +81,9 @@ export function renderOgImage(card: OgCard): Promise<ArrayBuffer> {
         consecutive_timeouts: consecutiveTimeouts,
         pending: pending.size,
       });
-      // Only recycle once the worker looks genuinely wedged. Tearing it down on
-      // the first timeout also rejected every *other* in-flight render ("Worker
-      // terminated"), turning one slow card into a burst of 500s.
+      // Only recycle once genuinely wedged — tearing it down on the first
+      // timeout would reject every other in-flight render, turning one slow
+      // card into a burst of 500s.
       if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
         destroyOgRenderWorker();
       }

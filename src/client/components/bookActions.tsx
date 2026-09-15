@@ -1,40 +1,16 @@
 import { useState, type FC } from "hono/jsx/dom";
+import { BOOK_STATUS_MAP, BOOK_STATUS_OPTIONS } from "../../constants";
+import { STARS_CHOICES, starsOptionLabel } from "../../core/rating";
+import { toDateInputValue } from "../../lib/dateInput";
 
-export const STATUS_OPTIONS = [
-  { value: "buzz.bookhive.defs#finished", label: "Read" },
-  { value: "buzz.bookhive.defs#reading", label: "Reading" },
-  { value: "buzz.bookhive.defs#wantToRead", label: "Want to Read" },
-  { value: "buzz.bookhive.defs#abandoned", label: "Abandoned" },
-] as const;
+export const STATUS_OPTIONS = BOOK_STATUS_OPTIONS;
 
-export const STATUS_LABELS: Record<string, string> = {
-  "buzz.bookhive.defs#finished": "read",
-  "buzz.bookhive.defs#reading": "reading",
-  "buzz.bookhive.defs#wantToRead": "want to read",
-  "buzz.bookhive.defs#abandoned": "abandoned",
-};
+export const STATUS_LABELS: Record<string, string> = BOOK_STATUS_MAP;
 
 const selectClass =
   "w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none";
 
-export async function updateBook(hiveId: string, fields: Record<string, unknown>) {
-  try {
-    await fetch("/api/update-book", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ hiveId, ...fields }),
-    });
-  } catch {}
-}
-
-export async function deleteBook(hiveId: string) {
-  try {
-    await fetch(`/books/${hiveId}`, {
-      method: "DELETE",
-      headers: { accept: "application/json" },
-    });
-  } catch {}
-}
+export { writeBook as updateBook, deleteBook } from "./bookApi";
 
 export const StatusSelect: FC<{
   status?: string | null;
@@ -64,10 +40,9 @@ export const RatingSelect: FC<{
     onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
   >
     <option value="">-</option>
-    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
+    {STARS_CHOICES.map((val) => (
       <option key={val} value={val}>
-        {"★".repeat(Math.floor(val / 2))}
-        {val % 2 === 1 ? "½" : ""} {(val / 2).toFixed(1)}
+        {starsOptionLabel(val)}
       </option>
     ))}
   </select>
@@ -107,9 +82,7 @@ export const BookCover: FC<{ src?: string | null; alt?: string }> = ({ src, alt 
   );
 };
 
-export function toDateValue(date: string | null | undefined): string {
-  return date ? new Date(date).toISOString().slice(0, 10) : "";
-}
+export { toDateInputValue as toDateValue } from "../../lib/dateInput";
 
 export const DateInput: FC<{
   value: string | null;
@@ -118,7 +91,7 @@ export const DateInput: FC<{
   <input
     type="date"
     className="w-full rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-    value={toDateValue(value)}
+    value={toDateInputValue(value)}
     onChange={(e) => onChange((e.target as HTMLInputElement).value)}
   />
 );

@@ -6,6 +6,7 @@
 import { ImportType, type ImportRequest, type ImportWorkerMessage } from "./types";
 import { createWorkerContext } from "./context";
 import { processGoodreadsImport, processStorygraphImport, processHardcoverImport } from "./logic";
+import { errorMessage } from "../../lib/errors";
 
 declare var self: Worker;
 
@@ -33,7 +34,7 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
   } catch (error) {
     self.postMessage({
       type: "done",
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     } satisfies ImportWorkerMessage);
   }
 };

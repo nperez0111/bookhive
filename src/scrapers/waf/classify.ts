@@ -1,11 +1,7 @@
 /// What a Goodreads page fetch actually told us.
 ///
-/// One classifier for *both* fetches — the plain one and the one made with a
-/// solved token. Previously the plain fetch's outcome was inferred from a bare
-/// `html.includes(NEXT_DATA_MARKER)` and only the token fetch got a real
-/// classification, so a plain-path failure was indistinguishable from a solve
-/// failure by the time it reached the caller. That is what let the solver's
-/// failures take the plain path offline.
+/// One classifier for both the plain fetch and the token-solved fetch, so a
+/// plain-path failure can never be mistaken for a solve failure.
 
 export type FetchOutcome =
   /** `__NEXT_DATA__` is present — this is the book page, whatever the status. */
@@ -17,10 +13,9 @@ export type FetchOutcome =
   /** 2xx, past the WAF, but no `__NEXT_DATA__`. Dead id, or a page redesign. */
   | "no_next_data";
 
-/** AWS WAF stamps every response it generates itself with this header
- *  (`challenge`, `captcha`, `block`). Its presence is the only reliable way to
- *  tell "the WAF is still stopping us" from "we got through the WAF and the
- *  origin said no" — the bodies of both are short non-`__NEXT_DATA__` HTML. */
+/** AWS WAF stamps every response it generates with this header (`challenge`,
+ *  `captcha`, `block`) — the only reliable way to tell "still blocked" from
+ *  "got through and the origin said no". */
 export const WAF_ACTION_HEADER = "x-amzn-waf-action";
 
 export function classifyFetch(
@@ -30,9 +25,8 @@ export function classifyFetch(
 ): FetchOutcome {
   // The marker is proof we have the page; nothing else can override it.
   if (hasMarker) return "page";
-  // CloudFront returns an empty-bodied 202 when the request's Accept header
-  // doesn't ask for text/html, so the status alone is enough even without the
-  // action header.
+  // A 202 alone is enough, even without the action header — CloudFront can
+  // return an empty-bodied 202 with no action header.
   if (wafAction || status === 202) return "challenged";
   if (status >= 400) return "origin_error";
   return "no_next_data";

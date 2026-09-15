@@ -1,5 +1,6 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
+import { Spinner } from "./components/icons";
 
 export const LibraryImport: FC = () => {
   return (
@@ -21,7 +22,7 @@ export const LibraryImport: FC = () => {
                   name="import-service"
                   value="goodreads"
                   class="peer sr-only"
-                  defaultChecked
+                  checked
                 />
                 <div class="card flex flex-1 items-center px-4 py-3 shadow-sm min-h-[44px] transition-[box-shadow,background-color] duration-150 peer-checked:shadow-[0_0_0_2px_var(--primary)] peer-checked:bg-primary/5 hover:shadow-md min-w-[140px]">
                   <span class="font-medium text-foreground">From Goodreads</span>
@@ -88,12 +89,13 @@ export const LibraryImport: FC = () => {
             </p>
           </div>
 
-          {/* File upload: drag-drop zone visual */}
+          {/* File upload: keyboard-accessible picker and drop zone */}
           <label
             id="import-controls"
-            class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 transition-[border-color,background-color,scale] duration-150 hover:border-primary/50 hover:bg-muted/50 active:scale-[0.98]"
+            class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 px-6 py-8 transition-[border-color,background-color,scale] duration-150 hover:border-primary/50 hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[dragging=true]:border-primary data-[dragging=true]:bg-primary/5 active:scale-[0.96]"
             role="button"
             tabindex={0}
+            aria-describedby="import-file-error"
           >
             <span id="import-label" class="text-sm font-medium text-foreground">
               Drop CSV here or click to choose
@@ -103,223 +105,248 @@ export const LibraryImport: FC = () => {
               class="hidden items-center gap-2 text-sm font-medium text-foreground"
             >
               Importing...
-              <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                  fill="none"
-                />
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
+              <Spinner class="h-4 w-4 animate-spin" />
             </span>
             <input id="import-file" type="file" name="export" accept=".csv" class="hidden" />
-            <Script
-              script={(document) => {
-                const shareText = encodeURIComponent(
-                  "I just imported my reading list to BookHive! 📚 https://bookhive.social",
-                );
-
-                function dispatchImportEvent(detail: any) {
-                  window.dispatchEvent(new CustomEvent("bookhive:import-event", { detail }));
-                  const table = document.getElementById("import-table");
-                  const importCard = document.getElementById("import-card");
-                  if (table?.classList.contains("hidden")) {
-                    table.classList.remove("hidden");
-                    importCard?.classList.add("hidden");
-                  }
-                }
-
-                const radioButtons = document.querySelectorAll(
-                  'input[name="import-service"]',
-                ) as NodeListOf<HTMLInputElement>;
-                const goodreadsInstructions = document.getElementById("goodreads-instructions");
-                const storygraphInstructions = document.getElementById("storygraph-instructions");
-                const hardcoverInstructions = document.getElementById("hardcover-instructions");
-
-                function updateSelection() {
-                  const selectedService = document.querySelector(
-                    'input[name="import-service"]:checked',
-                  ) as HTMLInputElement;
-                  if (selectedService?.value === "goodreads") {
-                    goodreadsInstructions?.classList.remove("hidden");
-                    storygraphInstructions?.classList.add("hidden");
-                    hardcoverInstructions?.classList.add("hidden");
-                  } else if (selectedService?.value === "storygraph") {
-                    goodreadsInstructions?.classList.add("hidden");
-                    storygraphInstructions?.classList.remove("hidden");
-                    hardcoverInstructions?.classList.add("hidden");
-                  } else {
-                    goodreadsInstructions?.classList.add("hidden");
-                    storygraphInstructions?.classList.add("hidden");
-                    hardcoverInstructions?.classList.remove("hidden");
-                  }
-                }
-
-                radioButtons.forEach((radio) => {
-                  radio.addEventListener("change", updateSelection);
-                });
-                updateSelection();
-
-                const importFile = document.getElementById("import-file") as HTMLInputElement;
-                if (!importFile) throw new Error("Import file not found");
-
-                importFile.addEventListener("change", async () => {
-                  const files = importFile.files;
-                  if (!files?.length) {
-                    alert("Please select a file to import");
-                    return;
-                  }
-                  try {
-                    localStorage.removeItem("bookhive_import_results");
-                  } catch {}
-
-                  const selectedService = document.querySelector(
-                    'input[name="import-service"]:checked',
-                  ) as HTMLInputElement;
-                  const endpoint =
-                    selectedService?.value === "goodreads"
-                      ? "/import/goodreads"
-                      : selectedService?.value === "storygraph"
-                        ? "/import/storygraph"
-                        : "/import/hardcover";
-
-                  const form = new FormData();
-                  form.append("export", files[0]!);
-
-                  // Hide the card immediately and show the import table
-                  const importCard = document.getElementById("import-card");
-                  const table = document.getElementById("import-table");
-                  importCard?.classList.add("hidden");
-                  table?.classList.remove("hidden");
-
-                  dispatchImportEvent({
-                    event: "import-start",
-                    stageProgress: { message: "Starting import..." },
-                  });
-
-                  try {
-                    const response = await fetch(endpoint, {
-                      method: "POST",
-                      body: form,
-                    });
-                    if (!response.ok || !response.body) {
-                      throw new Error("Failed to import books");
-                    }
-
-                    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-
-                    const processEvent = (event: any) => {
-                      // Forward book-load events for progress tracking
-                      if (event.event === "book-load") {
-                        dispatchImportEvent(event);
-                      } else if (event.event === "book-upload" && event.title && event.author) {
-                        dispatchImportEvent({
-                          event: "book-upload",
-                          processed: event.processed,
-                          total: event.total,
-                          uploaded: event.uploaded,
-                          stage: event.stage,
-                          stageProgress: event.stageProgress,
-                          book: {
-                            hiveId: event.hiveId || event.book?.hiveId,
-                            title: event.title || event.book?.title,
-                            authors: event.author || event.book?.authors,
-                            coverImage: event.coverImage || event.book?.coverImage,
-                            status: event.status || event.book?.status,
-                            finishedAt: event.finishedAt || event.book?.finishedAt,
-                            stars: event.stars ?? event.book?.stars,
-                            review: event.review ?? event.book?.review,
-                            alreadyExists: event.alreadyExists ?? event.book?.alreadyExists,
-                          },
-                        });
-                      } else if (event.event === "import-error") {
-                        dispatchImportEvent(event);
-                      } else if (event.event === "import-complete") {
-                        dispatchImportEvent({ ...event, shareText });
-                        if (event.failedBooks?.length) {
-                          for (let i = 0; i < event.failedBooks.length; i++) {
-                            const fb = event.failedBooks[i];
-                            const details = event.failedBookDetails?.[i] || {};
-                            dispatchImportEvent({
-                              event: "book-failed",
-                              failedBook: { ...fb, ...details },
-                            });
-                          }
-                        }
-                      }
-                    };
-
-                    // Parse a single SSE message block per the WHATWG spec,
-                    // extracting only the concatenated `data:` field lines.
-                    // Ignores `event:`/`id:`/`retry:` fields, comment lines
-                    // (starting with `:`), and keepalive blocks with empty
-                    // data. Normalizes CRLF/CR line endings.
-                    const parseSseMessage = (message: string): string => {
-                      const dataLines: string[] = [];
-                      for (const rawLine of message.split(/\r\n|\r|\n/)) {
-                        // Comment line ("field" is empty) — skip.
-                        if (rawLine.startsWith(":")) continue;
-                        const colon = rawLine.indexOf(":");
-                        const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
-                        if (field !== "data") continue;
-                        // Value is everything after the colon, with a single
-                        // leading space removed if present.
-                        let value = colon === -1 ? "" : rawLine.slice(colon + 1);
-                        if (value.startsWith(" ")) value = value.slice(1);
-                        dataLines.push(value);
-                      }
-                      return dataLines.join("\n").trim();
-                    };
-
-                    let buffer = "";
-                    while (true) {
-                      const { value, done } = await reader.read();
-                      if (done) {
-                        if (buffer.trim()) {
-                          const data = parseSseMessage(buffer);
-                          if (data) {
-                            try {
-                              processEvent(JSON.parse(data));
-                            } catch (e) {
-                              console.error("Failed to parse final SSE message:", e);
-                            }
-                          }
-                        }
-                        break;
-                      }
-                      buffer += value;
-                      const messages = buffer.split("\n\n");
-                      buffer = messages.pop() || "";
-                      for (const message of messages) {
-                        if (!message.trim()) continue;
-                        const data = parseSseMessage(message);
-                        if (!data) continue;
-                        try {
-                          processEvent(JSON.parse(data));
-                        } catch (e) {
-                          console.error("Failed to parse SSE message:", e);
-                        }
-                      }
-                    }
-                  } catch (e) {
-                    console.error("Stream reading failed:", e);
-                    dispatchImportEvent({
-                      event: "import-error",
-                      error: "An error occurred during import. Please try again.",
-                    });
-                  }
-                });
-              }}
-            />
           </label>
+          <p id="import-file-error" role="alert" class="mt-2 text-sm text-destructive" />
+          <Script
+            script={(document) => {
+              const shareText = encodeURIComponent(
+                "I just imported my reading list to BookHive! 📚 https://bookhive.social",
+              );
+
+              function dispatchImportEvent(detail: any) {
+                window.dispatchEvent(new CustomEvent("bookhive:import-event", { detail }));
+                const table = document.getElementById("import-table");
+                const importCard = document.getElementById("import-card");
+                if (table?.classList.contains("hidden")) {
+                  table.classList.remove("hidden");
+                  importCard?.classList.add("hidden");
+                }
+              }
+
+              const radioButtons = document.querySelectorAll(
+                'input[name="import-service"]',
+              ) as NodeListOf<HTMLInputElement>;
+              const goodreadsInstructions = document.getElementById("goodreads-instructions");
+              const storygraphInstructions = document.getElementById("storygraph-instructions");
+              const hardcoverInstructions = document.getElementById("hardcover-instructions");
+
+              function updateSelection() {
+                const selectedService = document.querySelector(
+                  'input[name="import-service"]:checked',
+                ) as HTMLInputElement;
+                if (selectedService?.value === "goodreads") {
+                  goodreadsInstructions?.classList.remove("hidden");
+                  storygraphInstructions?.classList.add("hidden");
+                  hardcoverInstructions?.classList.add("hidden");
+                } else if (selectedService?.value === "storygraph") {
+                  goodreadsInstructions?.classList.add("hidden");
+                  storygraphInstructions?.classList.remove("hidden");
+                  hardcoverInstructions?.classList.add("hidden");
+                } else {
+                  goodreadsInstructions?.classList.add("hidden");
+                  storygraphInstructions?.classList.add("hidden");
+                  hardcoverInstructions?.classList.remove("hidden");
+                }
+              }
+
+              radioButtons.forEach((radio) => {
+                radio.addEventListener("change", updateSelection);
+              });
+              updateSelection();
+
+              const importFile = document.getElementById("import-file") as HTMLInputElement;
+              if (!importFile) throw new Error("Import file not found");
+              const importControls = document.getElementById("import-controls");
+              const fileError = document.getElementById("import-file-error");
+              let importing = false;
+
+              importControls?.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                if (!event.repeat && !importing) importFile.click();
+              });
+              importControls?.addEventListener("dragover", (event) => {
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = importing ? "none" : "copy";
+                if (!importing) importControls.dataset["dragging"] = "true";
+              });
+              importControls?.addEventListener("dragleave", (event) => {
+                if (
+                  event.relatedTarget instanceof Node &&
+                  importControls.contains(event.relatedTarget)
+                ) {
+                  return;
+                }
+                delete importControls.dataset["dragging"];
+              });
+              importControls?.addEventListener("drop", (event) => {
+                event.preventDefault();
+                delete importControls.dataset["dragging"];
+                if (importing || !event.dataTransfer?.files.length) return;
+                importFile.files = event.dataTransfer.files;
+                importFile.dispatchEvent(new Event("change", { bubbles: true }));
+              });
+
+              importFile.addEventListener("change", async () => {
+                if (importing) return;
+                const files = importFile.files;
+                if (!files?.length) return;
+                if (fileError) fileError.textContent = "";
+                if (files.length !== 1 || !/\.csv$/i.test(files[0]!.name)) {
+                  if (fileError)
+                    fileError.textContent = "Choose one CSV export file (.csv) to import.";
+                  importFile.value = "";
+                  return;
+                }
+                importing = true;
+                try {
+                  localStorage.removeItem("bookhive_import_results");
+                } catch {}
+
+                const selectedService = document.querySelector(
+                  'input[name="import-service"]:checked',
+                ) as HTMLInputElement;
+                const endpoint =
+                  selectedService?.value === "goodreads"
+                    ? "/import/goodreads"
+                    : selectedService?.value === "storygraph"
+                      ? "/import/storygraph"
+                      : "/import/hardcover";
+
+                const form = new FormData();
+                form.append("export", files[0]!);
+
+                // Hide the card immediately and show the import table
+                const importCard = document.getElementById("import-card");
+                const table = document.getElementById("import-table");
+                importCard?.classList.add("hidden");
+                table?.classList.remove("hidden");
+
+                dispatchImportEvent({
+                  event: "import-start",
+                  stageProgress: { message: "Starting import..." },
+                });
+
+                try {
+                  const response = await fetch(endpoint, {
+                    method: "POST",
+                    body: form,
+                  });
+                  if (!response.ok || !response.body) {
+                    throw new Error("Failed to import books");
+                  }
+
+                  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+
+                  const processEvent = (event: any) => {
+                    // Forward book-load events for progress tracking
+                    if (event.event === "book-load") {
+                      dispatchImportEvent(event);
+                    } else if (event.event === "book-upload" && event.title && event.author) {
+                      dispatchImportEvent({
+                        event: "book-upload",
+                        processed: event.processed,
+                        total: event.total,
+                        uploaded: event.uploaded,
+                        stage: event.stage,
+                        stageProgress: event.stageProgress,
+                        book: {
+                          hiveId: event.hiveId || event.book?.hiveId,
+                          title: event.title || event.book?.title,
+                          authors: event.author || event.book?.authors,
+                          coverImage: event.coverImage || event.book?.coverImage,
+                          status: event.status || event.book?.status,
+                          finishedAt: event.finishedAt || event.book?.finishedAt,
+                          stars: event.stars ?? event.book?.stars,
+                          review: event.review ?? event.book?.review,
+                          alreadyExists: event.alreadyExists ?? event.book?.alreadyExists,
+                        },
+                      });
+                    } else if (event.event === "import-error") {
+                      dispatchImportEvent(event);
+                    } else if (event.event === "import-complete") {
+                      dispatchImportEvent({ ...event, shareText });
+                      if (event.failedBooks?.length) {
+                        for (let i = 0; i < event.failedBooks.length; i++) {
+                          const fb = event.failedBooks[i];
+                          const details = event.failedBookDetails?.[i] || {};
+                          dispatchImportEvent({
+                            event: "book-failed",
+                            failedBook: { ...fb, ...details },
+                          });
+                        }
+                      }
+                    }
+                  };
+
+                  // Parse a single SSE message block per the WHATWG spec,
+                  // extracting only the concatenated `data:` field lines.
+                  // Ignores `event:`/`id:`/`retry:` fields, comment lines
+                  // (starting with `:`), and keepalive blocks with empty
+                  // data. Normalizes CRLF/CR line endings.
+                  const parseSseMessage = (message: string): string => {
+                    const dataLines: string[] = [];
+                    for (const rawLine of message.split(/\r\n|\r|\n/)) {
+                      // Comment line ("field" is empty) — skip.
+                      if (rawLine.startsWith(":")) continue;
+                      const colon = rawLine.indexOf(":");
+                      const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
+                      if (field !== "data") continue;
+                      // Value is everything after the colon, minus one leading space if present.
+                      let value = colon === -1 ? "" : rawLine.slice(colon + 1);
+                      if (value.startsWith(" ")) value = value.slice(1);
+                      dataLines.push(value);
+                    }
+                    return dataLines.join("\n").trim();
+                  };
+
+                  let buffer = "";
+                  while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                      if (buffer.trim()) {
+                        const data = parseSseMessage(buffer);
+                        if (data) {
+                          try {
+                            processEvent(JSON.parse(data));
+                          } catch (e) {
+                            console.error("Failed to parse final SSE message:", e);
+                          }
+                        }
+                      }
+                      break;
+                    }
+                    buffer += value;
+                    const messages = buffer.split("\n\n");
+                    buffer = messages.pop() || "";
+                    for (const message of messages) {
+                      if (!message.trim()) continue;
+                      const data = parseSseMessage(message);
+                      if (!data) continue;
+                      try {
+                        processEvent(JSON.parse(data));
+                      } catch (e) {
+                        console.error("Failed to parse SSE message:", e);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error("Stream reading failed:", e);
+                  dispatchImportEvent({
+                    event: "import-error",
+                    stage: "error",
+                    error: "An error occurred during import. Please try again.",
+                  });
+                } finally {
+                  importing = false;
+                  importFile.value = "";
+                }
+              });
+            }}
+          />
         </div>
       </div>
     </div>

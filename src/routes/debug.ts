@@ -7,7 +7,7 @@ import { zValidator } from "@hono/zod-validator";
 
 import type { AppEnv } from "../context";
 import { env } from "../env";
-import { isAuthorizedExportRequest } from "../utils/dbExport";
+import { isAuthorizedExportRequest } from "../data/dbExport";
 import { restoreGuardStates } from "../auth/restore-guard";
 
 let isProfilingActive = false;
@@ -52,7 +52,6 @@ function readLargestMappings(limit = 12): Array<{ rssKb: number; path: string }>
 }
 
 const debug = new Hono<AppEnv>()
-  // Auth middleware for all /debug/* routes
   .use("*", async (c, next) => {
     const authorization = c.req.header("authorization");
     if (
@@ -67,16 +66,8 @@ const debug = new Hono<AppEnv>()
     await next();
   })
 
-  /**
-   * Per-process memory, broken down the way the OOM investigation actually
-   * needed it.
-   *
-   * `ps`/`RSS` counts the ~1 GB clean, shared, file-backed SQLite mmap, which
-   * is reclaimable — that term is why per-worker RSS readings looked like a
-   * 1.2-1.4 GB "balloon rotating between workers" when the real anonymous
-   * footprint was ~320 MB. `Anonymous` from smaps_rollup is the number that
-   * matters, and `mappings` attributes the rest to actual files.
-   */
+  // `ps`/RSS counts the reclaimable, file-backed SQLite mmap; `Anonymous` from
+  // smaps_rollup is the number that reflects real memory pressure.
   .get("/memory", (c) => {
     const mem = process.memoryUsage();
     return c.json(

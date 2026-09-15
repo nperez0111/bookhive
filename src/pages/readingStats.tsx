@@ -1,8 +1,8 @@
 import { type FC } from "hono/jsx";
 import type { Book } from "../types";
 import type { ProfileViewDetailed } from "../types";
-import type { ReadingStats } from "../utils/readingStats";
-import { coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
+import type { ReadingStats } from "../data/readingStats";
+import { coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { FallbackCover } from "./components/fallbackCover";
 import { format } from "date-fns";
@@ -178,7 +178,6 @@ export const ReadingStatsPage: FC<{
             </div>
           )}
 
-          {/* Rating distribution */}
           {(stats.ratingDistribution[1] ||
             stats.ratingDistribution[2] ||
             stats.ratingDistribution[3] ||
@@ -211,7 +210,6 @@ export const ReadingStatsPage: FC<{
             </div>
           )}
 
-          {/* Top genres */}
           {stats.topGenres.length > 0 && totalBooksForGenre > 0 && (
             <div class="card">
               <div class="card-header">

@@ -2,58 +2,35 @@ import { Hono, type Context } from "hono";
 import type { AppEnv } from "../context";
 import { opdsAuthMiddleware } from "../middleware/opds-auth";
 import { env } from "../env";
-import { escapeXml } from "../utils/xml";
+import { escapeXml } from "../lib/xml";
 import {
   etagMatches,
   OPDS_PAGE_SIZE,
   servedRepresentation,
   streamPersonalBook,
-} from "../utils/personalLibrary";
-import { canonicalDownloadFilename } from "../utils/downloadFilename";
-import type { Selectable } from "kysely";
-import type { PersonalBookRow } from "../types";
+} from "../data/personalLibrary";
+import { canonicalDownloadFilename } from "../core/downloadFilename";
+import { calculatePagination, pageOffset } from "../lib/pagination";
+import { listPersonalBooks, type PersonalBookRowWithHive } from "../data/personalBooks";
 
-// OPDS 1.2 Atom feed content types
 const OPDS_NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation";
 const OPDS_ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition";
 
 // OPDS 2.0 JSON feed content type (https://specs.opds.io/opds-2.0.html)
 const OPDS2_TYPE = "application/opds+json";
 
-/**
- * Open-access acquisition: the file is retrievable as-is, with no purchase,
- * loan or DRM step in between. The bare `.../acquisition` relation we used to
- * emit is the *generic* one, which tells a client only that some acquisition is
- * possible — a strict reader is entitled to wait for an indirectAcquisition
- * that never comes. Every client that accepts the generic form matches this one
- * too, because they all substring-match the `opds-spec.org/acquisition` prefix.
- */
+// The bare `.../acquisition` relation is generic and lets a strict reader wait
+// forever for an indirectAcquisition that never comes; every client accepting
+// the generic form also matches this one via prefix match.
 const ACQUISITION_REL = "http://opds-spec.org/acquisition/open-access";
 const IMAGE_REL = "http://opds-spec.org/image";
 const THUMBNAIL_REL = "http://opds-spec.org/image/thumbnail";
 
 type OpdsEnv = AppEnv & { Variables: { opdsUserDid: string } };
 
-// Only the columns an entry actually renders, so adding one to `personal_book`
-// (filename matching, say) does not oblige every feed query to select it.
-type BookForEntry = Pick<
-  Selectable<PersonalBookRow>,
-  | "contentHash"
-  | "hiveId"
-  | "title"
-  | "authors"
-  | "language"
-  | "filename"
-  | "format"
-  | "mime"
-  | "epubPath"
-  | "coverPath"
-  | "coverMime"
-  | "updatedAt"
-> & {
-  hiveBookCover?: string | null;
-  hiveBookDescription?: string | null;
-};
+// The data layer's row type — shared by the three acquisition feeds and the
+// four XRPC methods so there's one column list, not two kept in sync by hand.
+type BookForEntry = PersonalBookRowWithHive;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,16 +50,12 @@ function requestOrigin(c: {
 }
 
 /**
- * Origin for acquisition (download) links only.
+ * Origin for acquisition (download) links only — feed links stay on the host
+ * the reader asked for, but the file transfer can be pointed at an origin that
+ * reaches this app directly, bypassing whatever proxy fronts the public host.
  *
- * A feed's own links have to stay on the host the reader asked for — they carry
- * the pagination and search the client follows — but the file transfer itself
- * can be pointed at an origin that reaches this app directly, bypassing whatever
- * proxy fronts the public host. HTTP Basic credentials are per-request, so the
- * e-reader re-sends them to the download host unchanged.
- *
- * `configured` is a parameter rather than read inline because envalid freezes
- * `env` at import; tests can't set the variable, so they call this directly.
+ * `configured` is a parameter, not read inline, because envalid freezes `env`
+ * at import and tests can't set it.
  */
 export function downloadOrigin(
   origin: string,
@@ -94,19 +67,11 @@ export function downloadOrigin(
 
 /**
  * Acquisition URL for a book: `.../books/{hash}/download/{Canonical_Name}.epub`.
- *
- * Everything after `/download/` is decoration as far as this server is
- * concerned — the content hash identifies the file and the route ignores the
- * segment — but it is load-bearing on the client side, because readers
- * routinely decide what to do with a response from its URL rather than its
- * Content-Type. CrossPoint's OPDS parser scores an acquisition link higher when
- * its href contains `.epub` (`lib/OpdsParser/OpdsParser.cpp`), Kobo's built-in
- * browser dispatches on the extension alone, and anything falling back to the
- * last path segment for a filename gets a real one instead of `download`.
- *
- * The name is the canonical ASCII form of what the user uploaded, so it needs
- * no percent-encoding and matches the plain `filename` in `Content-Disposition`
- * byte for byte.
+ * Everything after `/download/` is decoration for us — the content hash
+ * identifies the file — but readers like CrossPoint and Kobo dispatch on the
+ * URL's extension rather than the Content-Type, so the name must look real.
+ * It's the canonical ASCII form of what the user uploaded, so it needs no
+ * percent-encoding and matches `Content-Disposition`'s `filename` byte for byte.
  */
 function acquisitionHref(origin: string, book: BookForEntry): string {
   const name = canonicalDownloadFilename(book.filename, servedRepresentation(book).format);
@@ -133,7 +98,6 @@ function opdsEntry(origin: string, book: BookForEntry): string {
     ? `<dcterms:language>${escapeXml(book.language)}</dcterms:language>`
     : "";
 
-  // Summary from linked hive book description
   const summary = book.hiveBookDescription
     ? `<summary type="text">${escapeXml(book.hiveBookDescription)}</summary>`
     : "";
@@ -211,10 +175,9 @@ function opdsAcquisitionFeed(
 // ---------------------------------------------------------------------------
 // OPDS 2.0 (JSON) builders
 //
-// KOReader (>= PR #15696, header fixed in #15751) sends
-// `Accept: application/opds+json, application/atom+xml;profile=opds-catalog, */*`
-// and picks the parser from the first byte of the body: `{` is OPDS 2.0, `<` is
-// OPDS 1.x. So the two formats are just two renderings of the same query.
+// KOReader picks its parser from the first byte of the response body: `{` is
+// OPDS 2.0, `<` is OPDS 1.x. The two formats are just two renderings of the
+// same query.
 // ---------------------------------------------------------------------------
 
 type Opds2Link = {
@@ -226,33 +189,21 @@ type Opds2Link = {
   properties?: { numberOfItems?: number };
 };
 
-/** True when the client asked for an OPDS 2.0 JSON feed. */
 function wantsOpds2(c: { req: { header: (n: string) => string | undefined } }): boolean {
   return (c.req.header("accept") || "").toLowerCase().includes(OPDS2_TYPE);
 }
 
-/**
- * Pick the feed format and record it on the request's wide event.
- *
- * Worth logging: a client whose `Accept` header we don't match falls back to
- * Atom and still renders perfectly, so a silent fallback is indistinguishable
- * from a successful 2.0 negotiation unless the chosen format is recorded.
- */
+// Picks the feed format and records it on the wide event — a silent fallback
+// to Atom renders fine, so it's otherwise indistinguishable from a real 2.0
+// negotiation.
 function negotiateFeedFormat(c: Context<OpdsEnv>): boolean {
   const opds2 = wantsOpds2(c);
   c.get("ctx").addWideEventContext({ opds_format: opds2 ? "2.0" : "1.2" });
   return opds2;
 }
 
-/**
- * The templated search link OPDS 2.0 clients expand into a query URL.
- *
- * Spelled `?query={query}` rather than the form-style `{?query}`: KOReader
- * rewrites the template with a Lua `gsub`, and only this shape hits the branch
- * whose replacement string is plain `%%s`. The `{?query}` shape lands on a
- * branch that relies on a `%?` escape, which LuaJIT tolerates but stricter Lua
- * builds reject. Both expand to the same URL.
- */
+// Spelled `?query={query}` rather than `{?query}` — KOReader's Lua template
+// expansion only handles the plain form.
 function opds2SearchLink(origin: string): Opds2Link {
   return {
     rel: "search",
@@ -355,8 +306,7 @@ app.get("/", async (c) => {
     .execute();
 
   if (negotiateFeedFormat(c)) {
-    // Counts are only rendered in the 2.0 feed — KOReader shows them next to
-    // each entry, and OPDS 1.x has no equivalent on a navigation link.
+    // Counts are only rendered in the 2.0 feed — OPDS 1.x has no navigation-link equivalent.
     const { total } = await db
       .selectFrom("personal_book")
       .select((eb) => eb.fn.countAll<number>().as("total"))
@@ -432,82 +382,59 @@ app.get("/", async (c) => {
   return c.body(feed, 200, { "Content-Type": OPDS_NAV_TYPE });
 });
 
+/**
+ * Answer with an acquisition feed in whichever format the reader negotiated.
+ * The three acquisition routes used to duplicate this by hand, and the copies
+ * had drifted — the 1.2 feed emits `rel="up"` and the 2.0 feed does not.
+ */
+function respondAcquisitionFeed(
+  c: Context<AppEnv & { Variables: { opdsUserDid: string } }>,
+  opts: {
+    feedId: string;
+    title: string;
+    selfPath: string;
+    books: BookForEntry[];
+    page: number;
+    totalPages: number;
+    total: number;
+  },
+) {
+  const origin = requestOrigin(c);
+  if (negotiateFeedFormat(c)) {
+    return c.json(opds2AcquisitionFeed(origin, opts), 200, { "Content-Type": OPDS2_TYPE });
+  }
+  return c.body(opdsAcquisitionFeed(origin, opts), 200, { "Content-Type": OPDS_ACQ_TYPE });
+}
+
 // GET /all — Acquisition feed: all books
 app.get("/all", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
-  const origin = requestOrigin(c);
   const page = parsePage(c);
 
-  const { total } = await db
-    .selectFrom("personal_book")
-    .select((eb) => eb.fn.countAll<number>().as("total"))
-    .where("userDid", "=", userDid)
-    .executeTakeFirstOrThrow();
+  const { rows: books, total } = await listPersonalBooks({
+    db,
+    userDid,
+    limit: OPDS_PAGE_SIZE,
+    offset: pageOffset(page, OPDS_PAGE_SIZE),
+  });
+  const { totalPages } = calculatePagination(total, OPDS_PAGE_SIZE, page);
 
-  const totalPages = Math.max(1, Math.ceil(total / OPDS_PAGE_SIZE));
-
-  const books = await db
-    .selectFrom("personal_book")
-    .leftJoin("hive_book", "hive_book.id", "personal_book.hiveId")
-    .select([
-      "personal_book.id",
-      "personal_book.userDid",
-      "personal_book.contentHash",
-      "personal_book.hiveId",
-      "personal_book.filename",
-      "personal_book.title",
-      "personal_book.authors",
-      "personal_book.language",
-      "personal_book.format",
-      "personal_book.mime",
-      "personal_book.filePath",
-      "personal_book.coverPath",
-      "personal_book.coverMime",
-      "personal_book.epubPath",
-      "personal_book.sizeBytes",
-      "personal_book.createdAt",
-      "personal_book.updatedAt",
-      "hive_book.cover as hiveBookCover",
-      "hive_book.description as hiveBookDescription",
-    ])
-    .where("personal_book.userDid", "=", userDid)
-    .orderBy("personal_book.createdAt", "desc")
-    .limit(OPDS_PAGE_SIZE)
-    .offset((page - 1) * OPDS_PAGE_SIZE)
-    .execute();
-
-  if (negotiateFeedFormat(c)) {
-    return c.json(
-      opds2AcquisitionFeed(origin, {
-        title: "All Books",
-        selfPath: "/opds/all",
-        books,
-        page,
-        totalPages,
-        total,
-      }),
-      200,
-      { "Content-Type": OPDS2_TYPE },
-    );
-  }
-
-  const feed = opdsAcquisitionFeed(origin, {
+  return respondAcquisitionFeed(c, {
     feedId: "urn:bookhive:all",
     title: "All Books",
     selfPath: "/opds/all",
     books,
     page,
     totalPages,
+    total,
   });
-  return c.body(feed, 200, { "Content-Type": OPDS_ACQ_TYPE });
 });
 
 // GET /shelves/:id — Acquisition feed: books on a shelf
 app.get("/shelves/:id", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
-  const origin = requestOrigin(c);
   const shelfId = Number(c.req.param("id"));
 
   if (!Number.isInteger(shelfId)) {
@@ -527,79 +454,30 @@ app.get("/shelves/:id", async (c) => {
 
   const page = parsePage(c);
 
-  const { total } = await db
-    .selectFrom("personal_shelf_item")
-    .select((eb) => eb.fn.countAll<number>().as("total"))
-    .where("shelfId", "=", shelfId)
-    .executeTakeFirstOrThrow();
+  // The count and the data query must share the same `userDid` filter or they can disagree.
+  const { rows: books, total } = await listPersonalBooks({
+    db,
+    userDid,
+    shelfId,
+    limit: OPDS_PAGE_SIZE,
+    offset: pageOffset(page, OPDS_PAGE_SIZE),
+  });
+  const { totalPages } = calculatePagination(total, OPDS_PAGE_SIZE, page);
 
-  const totalPages = Math.max(1, Math.ceil(total / OPDS_PAGE_SIZE));
-
-  const books = await db
-    .selectFrom("personal_shelf_item")
-    .innerJoin("personal_book", "personal_book.id", "personal_shelf_item.personalBookId")
-    .leftJoin("hive_book", "hive_book.id", "personal_book.hiveId")
-    .select([
-      "personal_book.id",
-      "personal_book.userDid",
-      "personal_book.contentHash",
-      "personal_book.hiveId",
-      "personal_book.filename",
-      "personal_book.title",
-      "personal_book.authors",
-      "personal_book.language",
-      "personal_book.format",
-      "personal_book.mime",
-      "personal_book.filePath",
-      "personal_book.coverPath",
-      "personal_book.coverMime",
-      "personal_book.epubPath",
-      "personal_book.sizeBytes",
-      "personal_book.createdAt",
-      "personal_book.updatedAt",
-      "hive_book.cover as hiveBookCover",
-      "hive_book.description as hiveBookDescription",
-    ])
-    .where("personal_shelf_item.shelfId", "=", shelfId)
-    .where("personal_book.userDid", "=", userDid)
-    .orderBy("personal_book.createdAt", "desc")
-    .limit(OPDS_PAGE_SIZE)
-    .offset((page - 1) * OPDS_PAGE_SIZE)
-    .execute();
-
-  if (negotiateFeedFormat(c)) {
-    return c.json(
-      opds2AcquisitionFeed(origin, {
-        title: shelf.name,
-        selfPath: `/opds/shelves/${shelfId}`,
-        books,
-        page,
-        totalPages,
-        total,
-      }),
-      200,
-      { "Content-Type": OPDS2_TYPE },
-    );
-  }
-
-  const feed = opdsAcquisitionFeed(origin, {
+  return respondAcquisitionFeed(c, {
     feedId: `urn:bookhive:shelf:${shelfId}`,
     title: shelf.name,
     selfPath: `/opds/shelves/${shelfId}`,
     books,
     page,
     totalPages,
+    total,
   });
-  return c.body(feed, 200, { "Content-Type": OPDS_ACQ_TYPE });
 });
 
 // GET /books/:hash/download/{name}.ext — Stream book file.
-//
-// The trailing name is ignored: the content hash identifies the file and the
-// row's own `format` decides what we serve. It exists purely for the client,
-// which is why it is a required segment rather than an optional suffix — see
-// `acquisitionHref`. Readers follow the href out of the feed on every sync
-// rather than storing it, so there is no older spelling to keep alive.
+// The trailing name is ignored — the hash identifies the file — but required,
+// not optional, since readers follow the feed's href fresh on every sync.
 app.get("/books/:hash/download/:filename", async (c) => {
   const userDid = c.get("opdsUserDid");
   const { db } = c.get("ctx");
@@ -612,9 +490,8 @@ app.get("/books/:hash/download/:filename", async (c) => {
   if (!download) {
     return c.body("Not found", 404);
   }
-  // A bare Response rather than `c.body()`: hono types the latter's status
-  // against ContentfulStatusCode, which excludes the 304 this can return.
-  // Middleware that adjusts headers after `next()` reads `c.res` either way.
+  // A bare Response, not `c.body()`: hono types the latter's status against
+  // ContentfulStatusCode, which excludes the 304 this can return.
   return new Response(download.stream, {
     status: download.status,
     headers: download.headers,
@@ -638,16 +515,11 @@ app.get("/books/:hash/cover", async (c) => {
     return c.body("Not found", 404);
   }
 
-  // Local cover file
   if (book.coverPath) {
     const file = Bun.file(book.coverPath);
     if (await file.exists()) {
-      // This route is under `/opds/books/`, which is in ETAG_EXCLUDED_PREFIXES,
-      // so hono's etag() never sees it — without an ETag set here the response
-      // carries no validator at all and a 304 is impossible. Production bore
-      // that out: 43 cover fetches over 48h, none of them conditional, while
-      // the catalogue root was hit 431 times. The hash is immutable content, so
-      // the validator is free.
+      // This route is under `/opds/books/`, excluded from hono's etag()
+      // middleware, so without our own validator a 304 is impossible.
       const etag = `"${hash}-cover"`;
       const headers = {
         "Content-Type": book.coverMime || "image/jpeg",
@@ -661,7 +533,6 @@ app.get("/books/:hash/cover", async (c) => {
     }
   }
 
-  // Fall back to hive book cover via image proxy
   if (book.hiveId) {
     return c.redirect(`/images/books/${book.hiveId}?w=300`, 302);
   }
@@ -722,78 +593,27 @@ app.get("/search/results", async (c) => {
   }
 
   const page = parsePage(c);
-  const likePattern = `%${q}%`;
 
-  const { total } = await db
-    .selectFrom("personal_book")
-    .select((eb) => eb.fn.countAll<number>().as("total"))
-    .where("userDid", "=", userDid)
-    .where((eb) => eb.or([eb("title", "like", likePattern), eb("authors", "like", likePattern)]))
-    .executeTakeFirstOrThrow();
+  const { rows: books, total } = await listPersonalBooks({
+    db,
+    userDid,
+    q,
+    sort: "title",
+    limit: OPDS_PAGE_SIZE,
+    offset: pageOffset(page, OPDS_PAGE_SIZE),
+  });
+  const { totalPages } = calculatePagination(total, OPDS_PAGE_SIZE, page);
 
-  const totalPages = Math.max(1, Math.ceil(total / OPDS_PAGE_SIZE));
-
-  const books = await db
-    .selectFrom("personal_book")
-    .leftJoin("hive_book", "hive_book.id", "personal_book.hiveId")
-    .select([
-      "personal_book.id",
-      "personal_book.userDid",
-      "personal_book.contentHash",
-      "personal_book.hiveId",
-      "personal_book.filename",
-      "personal_book.title",
-      "personal_book.authors",
-      "personal_book.language",
-      "personal_book.format",
-      "personal_book.mime",
-      "personal_book.filePath",
-      "personal_book.coverPath",
-      "personal_book.coverMime",
-      "personal_book.epubPath",
-      "personal_book.sizeBytes",
-      "personal_book.createdAt",
-      "personal_book.updatedAt",
-      "hive_book.cover as hiveBookCover",
-      "hive_book.description as hiveBookDescription",
-    ])
-    .where("personal_book.userDid", "=", userDid)
-    .where((eb) =>
-      eb.or([
-        eb("personal_book.title", "like", likePattern),
-        eb("personal_book.authors", "like", likePattern),
-      ]),
-    )
-    .orderBy("personal_book.title", "asc")
-    .limit(OPDS_PAGE_SIZE)
-    .offset((page - 1) * OPDS_PAGE_SIZE)
-    .execute();
-
-  if (opds2) {
-    return c.json(
-      opds2AcquisitionFeed(origin, {
-        title: `Search: ${q}`,
-        selfPath: `/opds/search/results?query=${encodeURIComponent(q)}`,
-        books,
-        page,
-        totalPages,
-        total,
-      }),
-      200,
-      { "Content-Type": OPDS2_TYPE },
-    );
-  }
-
-  const selfPath = `/opds/search/results?q=${encodeURIComponent(q)}`;
-  const feed = opdsAcquisitionFeed(origin, {
+  return respondAcquisitionFeed(c, {
     feedId: `urn:bookhive:search:${encodeURIComponent(q)}`,
     title: `Search: ${q}`,
-    selfPath,
+    // Echo whichever param the reader actually used in the self link.
+    selfPath: `/opds/search/results?${opds2 ? "query" : "q"}=${encodeURIComponent(q)}`,
     books,
     page,
     totalPages,
+    total,
   });
-  return c.body(feed, 200, { "Content-Type": OPDS_ACQ_TYPE });
 });
 
 export default app;

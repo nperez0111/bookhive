@@ -302,12 +302,11 @@ export const eventLoopLag = registry.register(
  * so each `/metrics` scrape is answered by whichever worker the kernel picks.
  * Without a worker label all three collapse into one time series that silently
  * alternates between processes — gauges flap, counters look like they reset,
- * and a worker that dies just vanishes from the graph. That is why a per-worker
- * memory leak stayed invisible for a month.
+ * and a worker that dies just vanishes from the graph.
  *
- * Deliberately `worker` and not `pid`: with workers being OOM-killed every few
- * minutes, a pid label would mint a new time series on every restart. The pid
- * is available on /debug/memory instead, where cardinality doesn't matter.
+ * Deliberately `worker` and not `pid`: a pid label would mint a new time series
+ * on every OOM-kill restart. The pid is available on /debug/memory instead,
+ * where cardinality doesn't matter.
  */
 const WORKER_INDEX = process.env["WORKER_INDEX"] || "solo";
 
@@ -362,9 +361,7 @@ export const LABEL = {
     /**
      * Native memory held outside the JS heap — decoded images, response bodies,
      * cached buffers. This is where every unbounded allocation in this app
-     * actually lives, and it was unmeasured through 148 OOM kills. Verified in
-     * the production container: 500 MB of ArrayBuffers moves `external` by
-     * 524 MB and `heapUsed` by 189 MB.
+     * actually lives, and it went unmeasured for a long time.
      */
     external: memLabel("external"),
     arrayBuffers: memLabel("array_buffers"),
@@ -408,9 +405,8 @@ export function startRuntimeMetricsCollection(): void {
     const mem = process.memoryUsage();
     processMemoryBytes.set(mem.rss, LABEL.mem.rss);
     // NOTE: under Bun these are JSC values, not V8's. `heapTotal` is not a
-    // capacity that bounds `heapUsed` (production reports heapTotal 575 KB
-    // against heapUsed 178 KB), so heapUsed > heapTotal is expected and is not
-    // a sign of swapped labels. Read `rss` and `external` instead.
+    // capacity that bounds `heapUsed`, so heapUsed > heapTotal is expected and
+    // is not a sign of swapped labels. Read `rss` and `external` instead.
     processMemoryBytes.set(mem.heapTotal, LABEL.mem.heapTotal);
     processMemoryBytes.set(mem.heapUsed, LABEL.mem.heapUsed);
     processMemoryBytes.set(mem.external, LABEL.mem.external);

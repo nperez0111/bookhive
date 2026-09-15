@@ -1,5 +1,6 @@
-import { useMemo, useState, useRef, type FC } from "hono/jsx/dom";
+import { useMemo, useState, useRef, useEffect, type FC } from "hono/jsx/dom";
 import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../../constants";
+import { displayAuthors } from "../../core/authors";
 import {
   StatusSelect,
   RatingSelect,
@@ -7,9 +8,9 @@ import {
   BookCover,
   DateInput,
   STATUS_LABELS,
-  updateBook,
-  deleteBook,
 } from "./bookActions";
+import { createLibraryTableStore } from "./libraryTableStore";
+import { ProgressMeter } from "../../pages/components/ProgressMeter";
 
 type BookProgressData = {
   percent?: number;
@@ -20,7 +21,7 @@ type BookProgressData = {
   updatedAt?: string;
 } | null;
 
-type LibraryBook = {
+export type LibraryBook = {
   hiveId: string;
   title: string;
   authors: string;
@@ -104,52 +105,57 @@ const SortArrow: FC<{ active: boolean; dir: SortDir }> = ({ active, dir }) => (
 
 // --- Progress input ---
 
+export function pageProgressUpdate(currentPage: string, book: LibraryBook) {
+  // An empty field is no change, not page zero.
+  if (currentPage.trim() === "") return null;
+  const page = Number(currentPage);
+  const total = book.bookProgress?.totalPages ?? book.totalPages;
+  if (!Number.isSafeInteger(page) || page < 1 || (total && page > total)) return null;
+  if (page === book.bookProgress?.currentPage) return null;
+
+  const progress = {
+    currentPage: page,
+    totalPages: total || undefined,
+    percent: total ? Math.round((page / total) * 100) : undefined,
+  };
+  return {
+    fields: {
+      bookProgress: { ...book.bookProgress, ...progress, updatedAt: new Date().toISOString() },
+    },
+    // Let the shared reading lifecycle infer completion; an explicit old status overrides it.
+    payload: { bookProgress: progress },
+  };
+}
+
 const PageInput: FC<{
   book: LibraryBook;
-  onUpdate: (fields: Partial<LibraryBook>) => void;
+  onUpdate: (fields: Partial<LibraryBook>, payload?: Record<string, unknown>) => void;
 }> = ({ book, onUpdate }) => {
   const total = book.bookProgress?.totalPages ?? book.totalPages;
-  const [currentPage, setCurrentPage] = useState(book.bookProgress?.currentPage ?? "");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [currentPage, setCurrentPage] = useState(String(book.bookProgress?.currentPage ?? ""));
+
+  // Follow progress replacements, including failed optimistic writes rolling back to the same page.
+  useEffect(() => {
+    setCurrentPage(String(book.bookProgress?.currentPage ?? ""));
+  }, [book.bookProgress]);
 
   const percent =
     book.status === FINISHED
       ? 100
-      : currentPage && total
-        ? Math.round((Number(currentPage) / total) * 100)
+      : currentPage !== "" && total
+        ? Math.max(0, Math.min(100, Math.round((Number(currentPage) / total) * 100)))
         : (book.bookProgress?.percent ?? 0);
 
   const submitProgress = () => {
-    // An empty field is "no change", not page 0 — Number("") is 0, which would
-    // silently overwrite the recorded percent with 0.
-    if (currentPage === "" || currentPage == null) return;
-    const page = Number(currentPage);
-    if (!Number.isFinite(page) || page <= 0) return;
-    if (page === book.bookProgress?.currentPage) return;
-
-    const progress = {
-      currentPage: page,
-      totalPages: total || undefined,
-      percent: total ? Math.round((page / total) * 100) : undefined,
-    };
-    onUpdate({
-      bookProgress: { ...book.bookProgress, ...progress, updatedAt: new Date().toISOString() },
-    });
-    // Omit a null status: the server schema is z.optional(z.string()), which
-    // rejects an explicit null with a 400 the fire-and-forget call never surfaces.
-    // The server defaults status to READING when progress is present.
-    void updateBook(book.hiveId, {
-      bookProgress: progress,
-      ...(book.status ? { status: book.status } : {}),
-    });
+    const update = pageProgressUpdate(currentPage, book);
+    if (update) onUpdate(update.fields, update.payload);
+    else setCurrentPage(String(book.bookProgress?.currentPage ?? ""));
   };
 
   if (book.status === FINISHED) {
     return (
       <div>
-        <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-green-500" style="width: 100%" />
-        </div>
+        <ProgressMeter percent={100} size="sm" class="mb-1" />
         <span className="text-xs text-green-600 dark:text-green-400">Finished</span>
       </div>
     );
@@ -158,20 +164,15 @@ const PageInput: FC<{
   return (
     <div>
       {percent > 0 && (
-        <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-300"
-            style={`width: ${Math.min(100, percent)}%`}
-          />
-        </div>
+        <ProgressMeter percent={percent} size="sm" class="mb-1" barClass="bg-primary" />
       )}
       <div className="flex items-center gap-1">
         <input
-          ref={inputRef}
           type="number"
           className="w-14 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs tabular-nums text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
           value={currentPage}
-          min={0}
+          min={1}
+          step={1}
           max={total || undefined}
           placeholder="Pg"
           onInput={(e) => setCurrentPage((e.target as HTMLInputElement).value)}
@@ -194,7 +195,7 @@ const PageInput: FC<{
 
 const TableRow: FC<{
   book: LibraryBook;
-  onUpdate: (fields: Partial<LibraryBook>) => void;
+  onUpdate: (fields: Partial<LibraryBook>, payload?: Record<string, unknown>) => void;
   onDelete: () => void;
 }> = ({ book, onUpdate, onDelete }) => (
   <tr
@@ -211,28 +212,16 @@ const TableRow: FC<{
             {book.title}
           </h3>
           <p className="line-clamp-1 text-xs text-muted-foreground">
-            {book.authors.split("\t").join(", ")}
+            {displayAuthors(book.authors)}
           </p>
         </div>
       </div>
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-      <StatusSelect
-        status={book.status}
-        onChange={(status) => {
-          onUpdate({ status });
-          void updateBook(book.hiveId, { status });
-        }}
-      />
+      <StatusSelect status={book.status} onChange={(status) => onUpdate({ status })} />
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-      <RatingSelect
-        stars={book.stars}
-        onChange={(stars) => {
-          onUpdate({ stars });
-          void updateBook(book.hiveId, { stars });
-        }}
-      />
+      <RatingSelect stars={book.stars} onChange={(stars) => onUpdate({ stars })} />
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
       <PageInput book={book} onUpdate={onUpdate} />
@@ -254,13 +243,7 @@ const TableRow: FC<{
               d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
             />
           </svg>
-          <DateInput
-            value={book.startedAt}
-            onChange={(startedAt) => {
-              onUpdate({ startedAt });
-              void updateBook(book.hiveId, { startedAt });
-            }}
-          />
+          <DateInput value={book.startedAt} onChange={(startedAt) => onUpdate({ startedAt })} />
         </div>
         <div className="flex items-center gap-1">
           <svg
@@ -277,23 +260,12 @@ const TableRow: FC<{
               d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z"
             />
           </svg>
-          <DateInput
-            value={book.finishedAt}
-            onChange={(finishedAt) => {
-              onUpdate({ finishedAt });
-              void updateBook(book.hiveId, { finishedAt });
-            }}
-          />
+          <DateInput value={book.finishedAt} onChange={(finishedAt) => onUpdate({ finishedAt })} />
         </div>
       </div>
     </td>
     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-      <DeleteButton
-        onDelete={() => {
-          onDelete();
-          void deleteBook(book.hiveId);
-        }}
-      />
+      <DeleteButton onDelete={onDelete} />
     </td>
   </tr>
 );
@@ -302,7 +274,7 @@ const TableRow: FC<{
 
 const MobileCard: FC<{
   book: LibraryBook;
-  onUpdate: (fields: Partial<LibraryBook>) => void;
+  onUpdate: (fields: Partial<LibraryBook>, payload?: Record<string, unknown>) => void;
   onDelete: () => void;
 }> = ({ book, onUpdate, onDelete }) => {
   const total = book.bookProgress?.totalPages ?? book.totalPages;
@@ -316,7 +288,7 @@ const MobileCard: FC<{
 
   return (
     <div className="card transition-[box-shadow] duration-150 active:shadow-none">
-      <div className="card-body flex gap-3">
+      <div className="card-body flex flex-col gap-4">
         <a href={`/books/${book.hiveId}`} className="flex flex-1 min-w-0 gap-3">
           <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
             <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
@@ -324,7 +296,7 @@ const MobileCard: FC<{
           <div className="min-w-0 flex-1 flex flex-col justify-center">
             <div className="text-foreground font-semibold text-sm line-clamp-2">{book.title}</div>
             <div className="text-muted-foreground text-xs mt-0.5">
-              {book.authors.split("\t").join(", ")}
+              {displayAuthors(book.authors)}
             </div>
             {book.status && (
               <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -338,20 +310,14 @@ const MobileCard: FC<{
             )}
           </div>
         </a>
-        <div className="shrink-0 flex flex-col items-stretch" onClick={(e) => e.stopPropagation()}>
-          <StatusSelect
-            status={book.status}
-            onChange={(status) => {
-              onUpdate({ status });
-              void updateBook(book.hiveId, { status });
-            }}
-          />
+        <div className="min-w-0 flex flex-col items-stretch" onClick={(e) => e.stopPropagation()}>
+          <StatusSelect status={book.status} onChange={(status) => onUpdate({ status })} />
           {book.status === READING && (
             <div className="mt-2">
               <PageInput book={book} onUpdate={onUpdate} />
             </div>
           )}
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="flex items-center gap-1">
               <svg
                 className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
@@ -373,13 +339,7 @@ const MobileCard: FC<{
                   d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <DateInput
-                value={book.startedAt}
-                onChange={(startedAt) => {
-                  onUpdate({ startedAt });
-                  void updateBook(book.hiveId, { startedAt });
-                }}
-              />
+              <DateInput value={book.startedAt} onChange={(startedAt) => onUpdate({ startedAt })} />
             </div>
             <div className="flex items-center gap-1">
               <svg
@@ -398,10 +358,7 @@ const MobileCard: FC<{
               </svg>
               <DateInput
                 value={book.finishedAt}
-                onChange={(finishedAt) => {
-                  onUpdate({ finishedAt });
-                  void updateBook(book.hiveId, { finishedAt });
-                }}
+                onChange={(finishedAt) => onUpdate({ finishedAt })}
               />
             </div>
           </div>
@@ -410,7 +367,6 @@ const MobileCard: FC<{
             className="mt-1 self-end rounded-md px-2 py-1.5 text-xs text-destructive transition-[color,background-color] duration-150 hover:bg-destructive/10 hover:text-destructive/80 focus:outline-none"
             onClick={() => {
               onDelete();
-              void deleteBook(book.hiveId);
             }}
           >
             Remove
@@ -425,6 +381,14 @@ const MobileCard: FC<{
 
 export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks }) => {
   const [books, setBooks] = useState<LibraryBook[]>(initialBooks);
+  const [error, setError] = useState<string | null>(null);
+  const storeRef = useRef<ReturnType<typeof createLibraryTableStore> | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createLibraryTableStore(initialBooks, (nextBooks, nextError) => {
+      setBooks(nextBooks);
+      setError(nextError);
+    });
+  }
   const [sortKey, setSortKey] = useState<SortKey>("default");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -442,12 +406,15 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
     return [...books].sort((a, b) => compareBooks(a, b, sortKey, sortDir));
   }, [books, sortKey, sortDir]);
 
-  const updateBook_ = (hiveId: string, fields: Partial<LibraryBook>) => {
-    setBooks((prev) => prev.map((b) => (b.hiveId === hiveId ? { ...b, ...fields } : b)));
+  const save = (
+    book: LibraryBook,
+    fields: Partial<LibraryBook>,
+    payload?: Record<string, unknown>,
+  ) => {
+    void storeRef.current!.save(book.hiveId, fields, payload);
   };
-
-  const deleteBook_ = (hiveId: string) => {
-    setBooks((prev) => prev.filter((b) => b.hiveId !== hiveId));
+  const remove = (book: LibraryBook) => {
+    void storeRef.current!.remove(book.hiveId);
   };
 
   if (!books.length) {
@@ -462,6 +429,14 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
 
   return (
     <>
+      {error && (
+        <p
+          role="status"
+          className="border-destructive/30 bg-destructive/10 text-destructive mb-3 rounded-md border px-3 py-2 text-sm"
+        >
+          {error}
+        </p>
+      )}
       {/* Desktop: table view */}
       <div className="hidden overflow-hidden rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] md:block">
         <table className="table w-full table-fixed">
@@ -527,8 +502,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
               <TableRow
                 key={book.hiveId}
                 book={book}
-                onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-                onDelete={() => deleteBook_(book.hiveId)}
+                onUpdate={(fields, payload) => save(book, fields, payload)}
+                onDelete={() => remove(book)}
               />
             ))}
           </tbody>
@@ -563,8 +538,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           <MobileCard
             key={book.hiveId}
             book={book}
-            onUpdate={(fields) => updateBook_(book.hiveId, fields)}
-            onDelete={() => deleteBook_(book.hiveId)}
+            onUpdate={(fields, payload) => save(book, fields, payload)}
+            onDelete={() => remove(book)}
           />
         ))}
       </div>

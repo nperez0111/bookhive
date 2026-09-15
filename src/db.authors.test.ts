@@ -8,22 +8,16 @@
  * catalog-service write sites to silently desynchronize the index.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect } from "kysely";
 
-import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
-import { migrateToLatest, type Database, type DatabaseSchema } from "./db";
+import type { Database } from "./db";
+import type { Database as DatabaseSync } from "bun:sqlite";
+import { createTestDb } from "./test/db";
 
 let db: Database;
 let sqlite: DatabaseSync;
 
 beforeEach(async () => {
-  sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({ database: wrapBunSqliteForKysely(sqlite) }),
-  });
-  await migrateToLatest(db, sqlite);
+  ({ db, sqlite } = await createTestDb());
 });
 
 afterEach(async () => {

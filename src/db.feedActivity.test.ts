@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect } from "kysely";
 
-import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
 import {
   FEED_INDEXED_AT_REPAIR_SQL,
   feedActivityIndexedAt,
@@ -12,6 +9,10 @@ import {
 } from "./db";
 import { BOOK_STATUS } from "./constants";
 import type { HiveId, UserBookRow } from "./types";
+import { Database as DatabaseSync } from "bun:sqlite";
+import { Kysely, SqliteDialect } from "kysely";
+import { wrapBunSqliteForKysely } from "./bun-sqlite-kysely";
+import { createTestDb } from "./test/db";
 
 /**
  * `feedActivityIndexedAt` is the gate that keeps a library re-sync from re-dating
@@ -25,7 +26,6 @@ const URI = "at://did:plc:alice/buzz.bookhive.book/aaa";
 const OLD = "2026-01-01T00:00:00.000Z";
 const NEW = "2026-06-01T00:00:00.000Z";
 
-let sqlite: DatabaseSync;
 let db: Database;
 
 function row(overrides: Partial<UserBookRow> = {}): UserBookRow {
@@ -85,12 +85,7 @@ async function indexedAt(): Promise<string> {
 
 describe("feedActivityIndexedAt", () => {
   beforeEach(async () => {
-    sqlite = new DatabaseSync(":memory:");
-    sqlite.exec("PRAGMA journal_mode = WAL");
-    db = new Kysely<DatabaseSchema>({
-      dialect: new SqliteDialect({ database: wrapBunSqliteForKysely(sqlite) }),
-    });
-    await migrateToLatest(db, sqlite);
+    ({ db } = await createTestDb());
     await upsert(row());
   });
 

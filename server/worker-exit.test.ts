@@ -2,9 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { classifyWorkerExit, readProcessMemoryKb, signalName } from "./worker-exit.ts";
 
 describe("signalName", () => {
-  // The bug: Bun passes the signal *name*, its types claim a number, and the
-  // number-keyed lookup fell through to `SIG${code}` — producing "SIGSIGKILL"
-  // in production for every one of 148 OOM kills.
+  // The bug: Bun passes the signal *name*, its types claim a number, and the number-keyed lookup fell through to `SIG${code}`, producing "SIGSIGKILL".
   it("passes through a name Bun already prefixed", () => {
     expect(signalName("SIGKILL")).toBe("SIGKILL");
     expect(signalName("SIGTERM")).toBe("SIGTERM");

@@ -1,15 +1,8 @@
 /**
- * Simulated integration tests for the import pipeline.
- *
- * Uses real CSV rows from actual Goodreads/StoryGraph/Hardcover exports, with mocked
- * network calls that use realistic delays based on measured latencies:
- *
- *   findBookDetails (Goodreads scraper):  p50 ~270ms, p90 ~650ms, max ~650ms
- *   updateBookRecords (PDS batch write):  ~500-2000ms
- *   updateBookRecord (PDS individual):    ~200-500ms
- *
- * These tests verify SSE event flow timing, ordering, and progress granularity
- * without hitting any real network endpoints.
+ * Simulated integration tests for the import pipeline — real CSV rows from
+ * actual exports, with mocked network calls using realistic delays, to verify
+ * SSE event flow timing, ordering, and progress granularity without hitting
+ * any real network endpoints.
  */
 import { describe, it, expect, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
@@ -19,11 +12,15 @@ import { migrateToLatest, type DatabaseSchema } from "../../db";
 import type { ImportContext } from "./types";
 import type { SessionClient } from "../../auth/client";
 
-// ─── Realistic delay constants (from measured latencies) ────────────────────
-const SEARCH_DELAY_P50 = 15; // Scaled down for test speed; real p50 ~270ms
-const SEARCH_DELAY_P90 = 35; // Scaled down; real p90 ~650ms
-const PDS_BATCH_DELAY = 25; // Scaled down; real ~500-2000ms
-const PDS_INDIVIDUAL_DELAY = 12; // Scaled down; real ~200-500ms
+// ─── Realistic delay constants (scaled down for test speed) ─────────────────
+// Stand-ins for real network latency, scaled to the smallest values that keep
+// the shape the assertions actually care about: P90 well above P50, and a batch
+// write costing more than an individual one. Nothing here asserts a wall-clock
+// figure, so the absolute values only buy runtime.
+const SEARCH_DELAY_P50 = 4;
+const SEARCH_DELAY_P90 = 10;
+const PDS_BATCH_DELAY = 7;
+const PDS_INDIVIDUAL_DELAY = 3;
 
 /** Returns a delay in ms that roughly follows p50/p90 distribution. */
 function realisticSearchDelay(): number {
@@ -49,14 +46,14 @@ const mockUpdateBookRecord = mock(async () => {
   return { book: {}, userBook: {} };
 });
 
-void mock.module("../../routes/lib", () => ({
+void mock.module("../../services/searchBooks", () => ({
   searchBooks: async ({ query: _query }: { query: string }) => {
     await delay(realisticSearchDelay());
     return mockSearchBooks();
   },
 }));
 
-void mock.module("../../utils/getBook", () => ({
+void mock.module("../../services/getBook", () => ({
   getUserRepoRecords: mockGetUserRepoRecords,
   updateBookRecords: mockUpdateBookRecords,
   updateBookRecord: mockUpdateBookRecord,
@@ -280,10 +277,7 @@ describe("import pipeline simulation — Goodreads", () => {
 
     const eventTypes = events.map((e) => e.event);
 
-    // First event must be import-start
     expect(eventTypes[0]).toBe("import-start");
-
-    // Last event must be import-complete
     expect(eventTypes[eventTypes.length - 1]).toBe("import-complete");
 
     // batch-save events must appear before their corresponding book-upload events
@@ -294,18 +288,15 @@ describe("import pipeline simulation — Goodreads", () => {
       .map((e, i) => (e === "book-upload" ? i : -1))
       .filter((i) => i !== -1);
 
-    // Every batch-save should come before at least one book-upload
     for (const bsi of batchSaveIndices) {
       const uploadsAfter = bookUploadIndices.filter((bui) => bui > bsi);
       expect(uploadsAfter.length).toBeGreaterThan(0);
     }
 
-    // No book-upload should appear before the first batch-save
     if (batchSaveIndices.length > 0 && bookUploadIndices.length > 0) {
       expect(bookUploadIndices[0]!).toBeGreaterThan(batchSaveIndices[0]!);
     }
 
-    // import-complete should have correct counts
     const complete = events.find((e) => e.event === "import-complete")!;
     expect(complete.stageProgress!.total).toBe(15);
     // 10 seeded books should be matched
@@ -330,7 +321,6 @@ describe("import pipeline simulation — Goodreads", () => {
       onSSE,
     });
 
-    // All timestamps should be in non-decreasing order
     const timestamps = events.map((e) => new Date(e.ts).getTime());
     for (let i = 1; i < timestamps.length; i++) {
       expect(timestamps[i]!).toBeGreaterThanOrEqual(timestamps[i - 1]!);
@@ -399,10 +389,7 @@ describe("import pipeline simulation — Goodreads", () => {
 
     const timestamps = events.map((e) => new Date(e.ts).getTime());
 
-    // With batch size 10, we process items within a batch concurrently.
-    // The max gap between events should be bounded — we allow a generous
-    // 3000ms threshold (the mocked search delay is ~50-120ms per book,
-    // plus the batch write at ~80ms).
+    // Items within a batch process concurrently, so allow a generous bound.
     const MAX_GAP_MS = 3000;
     for (let i = 1; i < timestamps.length; i++) {
       const gap = timestamps[i]! - timestamps[i - 1]!;
@@ -470,22 +457,16 @@ describe("import pipeline simulation — Goodreads", () => {
       onSSE,
     });
 
-    // With 15 books and batch size 10, expect 2 batches (10 + 5).
-    // Each batch should produce: book-load events, then batch-save, then book-upload events.
+    // 15 books, batch size 10 → 2 batches (10 + 5).
     const bookLoadEvents = events.filter((e) => e.event === "book-load");
     const bookUploadEvents = events.filter((e) => e.event === "book-upload");
     const batchSaveEvents = events.filter((e) => e.event === "batch-save");
 
-    // We should have 15 book-load events (one per book searched)
-    expect(bookLoadEvents.length).toBe(15);
+    expect(bookLoadEvents.length).toBe(15); // one per book searched
+    expect(batchSaveEvents.length).toBe(2); // one per batch
+    expect(bookUploadEvents.length).toBe(15); // one per matched book
 
-    // We should have 2 batch-save events (one per batch)
-    expect(batchSaveEvents.length).toBe(2);
-
-    // We should have 15 book-upload events (one per matched book)
-    expect(bookUploadEvents.length).toBe(15);
-
-    // The book-upload processed counter should increment monotonically
+    // processed counter should increment monotonically
     const processedValues = bookUploadEvents.map((e) => e.processed!);
     for (let i = 1; i < processedValues.length; i++) {
       expect(processedValues[i]!).toBeGreaterThanOrEqual(processedValues[i - 1]!);
@@ -570,16 +551,14 @@ describe("import pipeline simulation — StoryGraph", () => {
       .map((e, i) => (e === "book-upload" ? i : -1))
       .filter((i) => i !== -1);
 
-    // With batch size 10, we expect 2 batches (10 + 2)
+    // batch size 10 → 2 batches (10 + 2)
     expect(batchSaveIndices.length).toBe(2);
 
-    // All book-uploads must come after the first batch-save
     if (bookUploadIndices.length > 0) {
       expect(bookUploadIndices[0]!).toBeGreaterThan(batchSaveIndices[0]!);
     }
 
-    // Within each batch, the batch-save must be immediately followed by
-    // book-upload events (no book-load events in between)
+    // Each batch-save must be immediately followed by book-upload events
     for (const bsi of batchSaveIndices) {
       const nextEvent = events[bsi + 1];
       if (nextEvent) {
@@ -617,7 +596,6 @@ describe("import pipeline simulation — batch write fallback", () => {
     seedHiveBook(sqlite, "bk_omw", "Old Man's War", "John Scalzi");
     seedHiveBook(sqlite, "bk_sorc", "A Sorceress Comes to Call", "T. Kingfisher");
 
-    // Make batch write fail so it falls back to individual writes
     mockUpdateBookRecords.mockImplementationOnce(async () => {
       await delay(PDS_BATCH_DELAY);
       throw new Error("Simulated PDS batch write failure");
@@ -641,12 +619,10 @@ describe("import pipeline simulation — batch write fallback", () => {
 
     const eventTypes = events.map((e) => e.event);
 
-    // Should still complete successfully via individual fallback
     expect(eventTypes).toContain("import-complete");
     expect(eventTypes).toContain("batch-save");
     expect(eventTypes).toContain("book-upload");
 
-    // The complete event should show the books were processed
     const complete = events.find((e) => e.event === "import-complete")!;
     expect(complete.stageProgress!.total).toBe(2);
   });
@@ -715,13 +691,11 @@ describe("import pipeline simulation — timing characteristics", () => {
     });
     const elapsed = performance.now() - start;
 
-    // With batch size 10 and concurrent search within each batch:
-    // Batch 1: ~SEARCH_DELAY_P50 (concurrent) + PDS_BATCH_DELAY = ~130ms
-    // Batch 2: ~SEARCH_DELAY_P50 (concurrent) + PDS_BATCH_DELAY = ~130ms
-    // Total should be well under 5s with our scaled-down delays
+    // Both batches run concurrent searches, so the whole import costs far less
+    // than the sum of its simulated latencies. The lower bound is tied to the
+    // constants rather than a bare 50 so that scaling them cannot quietly turn
+    // this into an assertion that nothing ran at all.
     expect(elapsed).toBeLessThan(5000);
-
-    // But should take at least some time due to the delays
-    expect(elapsed).toBeGreaterThan(50);
+    expect(elapsed).toBeGreaterThan(SEARCH_DELAY_P50 + PDS_BATCH_DELAY);
   });
 });

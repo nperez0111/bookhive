@@ -1,7 +1,9 @@
 import type { FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { ProfileViewDetailed } from "../types";
-import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
+import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
+import { starsToDisplayRating } from "../core/rating";
+import { Check, Icon, StarSolid } from "./components/icons";
 
 type RecentActivityItem = {
   userDid: string;
@@ -50,26 +52,14 @@ function Hero({ signupUrl }: { signupUrl: string }) {
   return (
     <section class="px-4 py-20 sm:py-28 lg:px-8">
       <div class="mx-auto max-w-6xl">
-        {/*
-          `md:items-center`, not `items-start`: the image column is much taller than the copy, so
-          top-aligning left ~200px of dead space under the CTAs.
-        */}
+        {/* `md:items-center`, not `items-start`: the image column is much taller than the copy, so top-aligning leaves dead space under the CTAs. */}
         <div class="flex flex-col items-center gap-12 md:flex-row md:items-center">
           <div class="flex-1 text-center md:text-left">
             <div class="bg-primary text-primary-foreground mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
+              <Icon class="h-4 w-4">
                 <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
                 <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-              </svg>
+              </Icon>
               The open alternative to Goodreads
             </div>
             <h1 class="text-foreground text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
@@ -91,13 +81,7 @@ function Hero({ signupUrl }: { signupUrl: string }) {
             </div>
           </div>
           <div class="w-full shrink-0 md:w-[45%]">
-            {/*
-              This is the LCP element. `hive.jpg` is a 771 KB progressive JPEG at 1536px, but the
-              column is only ~518px wide at desktop and ~768px on mobile, so it was shipping ~4x
-              the pixels anyone sees. The WebP pair covers 2x DPR at both sizes for 164 KB, and
-              the JPEG stays as the <picture> fallback. Intrinsic width/height kill the layout
-              shift; it must never be lazy.
-            */}
+            {/* This is the LCP element — intrinsic width/height prevent layout shift, and it must never be lazy. */}
             <picture>
               <source
                 type="image/webp"
@@ -156,7 +140,7 @@ function RecentActivityCard({
             addSuffix: true,
           });
           const actionText = getActionText(activity.status);
-          const starDisplay = activity.stars != null ? activity.stars / 2 : 0;
+          const starDisplay = starsToDisplayRating(activity.stars) ?? 0;
 
           return (
             <>
@@ -195,15 +179,10 @@ function RecentActivityCard({
                   {starDisplay > 0 && (
                     <div class="mt-1 flex items-center gap-0.5">
                       {[1, 2, 3, 4, 5].map((s) => (
-                        <svg
+                        <StarSolid
                           key={s}
-                          xmlns="http://www.w3.org/2000/svg"
                           class={`h-4 w-4 ${s <= starDisplay ? "text-primary" : "text-muted"}`}
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
-                        </svg>
+                        />
                       ))}
                     </div>
                   )}
@@ -258,18 +237,7 @@ function SocialSection({
               ].map((item) => (
                 <li key={item} class="flex items-start gap-3">
                   <div class="bg-primary/10 text-primary mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="3"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
+                    <Check class="h-3.5 w-3.5" />
                   </div>
                   <span class="text-foreground">{item}</span>
                 </li>
@@ -352,18 +320,7 @@ function LibrarySection() {
             <div key={item.title} class="card">
               <div class="card-body space-y-3">
                 <div class="bg-primary/10 text-primary flex h-11 w-11 items-center justify-center rounded-lg">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    {item.icon}
-                  </svg>
+                  <Icon class="h-5 w-5">{item.icon}</Icon>
                 </div>
                 <h3 class="text-foreground font-semibold">{item.title}</h3>
                 <p class="text-muted-foreground text-sm leading-relaxed">{item.description}</p>
@@ -408,18 +365,7 @@ function EReaderSection() {
               ].map((item) => (
                 <li key={item} class="flex items-start gap-3">
                   <div class="bg-primary/10 text-primary mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="3"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
+                    <Check class="h-3.5 w-3.5" />
                   </div>
                   <span class="text-foreground">{item}</span>
                 </li>
@@ -497,18 +443,7 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
               ].map((item) => (
                 <li key={item} class="flex items-start gap-3">
                   <div class="bg-primary/10 text-primary mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="3"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
+                    <Check class="h-3.5 w-3.5" />
                   </div>
                   <span class="text-foreground">{item}</span>
                 </li>
@@ -517,19 +452,10 @@ function DiscoverSection({ trendingBooks }: { trendingBooks: TrendingBook[] }) {
             <div class="mt-8">
               <a href="/explore/genres" class="btn btn-ghost">
                 Browse genres
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="ml-1.5 h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
+                <Icon class="ml-1.5 h-4 w-4">
                   <path d="M5 12h14" />
                   <path d="m12 5 7 7-7 7" />
-                </svg>
+                </Icon>
               </a>
             </div>
           </div>
@@ -579,19 +505,10 @@ function OwnershipSection() {
         <div class="bg-primary/5 border-primary/20 rounded-2xl border px-8 py-14">
           <div class="mx-auto max-w-3xl text-center">
             <div class="bg-primary/10 text-primary mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-7 w-7"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
+              <Icon class="h-7 w-7">
                 <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
+              </Icon>
             </div>
             <p class="text-primary mb-3 text-sm font-semibold uppercase tracking-widest">
               Data Ownership
@@ -641,18 +558,7 @@ function OwnershipSection() {
               <div key={item.title} class="card">
                 <div class="card-body space-y-3">
                   <div class="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-lg">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      {item.icon}
-                    </svg>
+                    <Icon class="h-5 w-5">{item.icon}</Icon>
                   </div>
                   <h3 class="text-foreground font-semibold">{item.title}</h3>
                   <p class="text-muted-foreground text-sm leading-relaxed">{item.description}</p>
@@ -670,26 +576,13 @@ function OpenSourceSection() {
   return (
     <section class="px-4 py-20 lg:px-8">
       <div class="mx-auto max-w-6xl">
-        {/*
-          This one is a compact banner rather than a full section — it has no eyebrow and a much
-          smaller heading than its neighbours. Giving it its own bordered surface makes that read
-          as deliberate instead of looking like a section that lost its styling.
-        */}
+        {/* Compact banner rather than a full section — its own bordered surface makes the smaller heading read as deliberate rather than unstyled. */}
         <div class="border-border bg-card flex flex-col items-center gap-6 rounded-2xl border px-8 py-8 text-center sm:flex-row sm:text-left">
           <div class="bg-primary/10 text-primary flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-7 w-7"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
+            <Icon class="h-7 w-7">
               <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
               <path d="M9 18c-4.51 2-5-2-7-2" />
-            </svg>
+            </Icon>
           </div>
           <div class="flex-1">
             <h2 class="text-foreground text-2xl font-bold">Built in the open</h2>
@@ -705,20 +598,11 @@ function OpenSourceSection() {
             class="btn btn-ghost shrink-0"
           >
             View on GitHub
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="ml-1.5 h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
+            <Icon class="ml-1.5 h-4 w-4">
               <path d="M15 3h6v6" />
               <path d="M10 14 21 3" />
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            </svg>
+            </Icon>
           </a>
         </div>
       </div>
@@ -772,20 +656,11 @@ function ImportSection() {
                     class="flex items-start gap-3 rounded-lg p-3 shadow-[0_0_0_1px_var(--border),0_1px_2px_rgba(0,0,0,0.04)]"
                   >
                     <div class="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
+                      <Icon class="h-5 w-5">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" x2="12" y1="3" y2="15" />
-                      </svg>
+                      </Icon>
                     </div>
                     <div>
                       <div class="text-foreground text-sm font-semibold">{source.name}</div>
