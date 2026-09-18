@@ -1,0 +1,111 @@
+{
+  "lexicon": 1,
+  "id": "community.lexicon.book.edition",
+  "description": "A specific published instance of a book, such as one printing, translation, or audiobook production. Not a work: distinct editions of the same underlying text are distinct records.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Optional repository publication of an edition. Its fields mirror defs#edition; publishing a catalog on AT Protocol is not required.",
+      "record": {
+        "type": "object",
+        "description": "Full edition metadata for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
+        "required": ["title", "identifiers", "contributors", "createdAt"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title of the edition.",
+            "minLength": 1
+          },
+          "identifiers": {
+            "type": "array",
+            "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
+            "items": {
+              "type": "ref",
+              "ref": "community.lexicon.book.defs#identifier"
+            },
+            "minLength": 1
+          },
+          "contributors": {
+            "type": "array",
+            "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
+            "items": {
+              "type": "ref",
+              "ref": "community.lexicon.book.defs#contributor"
+            }
+          },
+          "cover": {
+            "type": "blob",
+            "description": "Optional cover image, strongly recommended when storing in a repository. The blob must belong to the repository containing the record, including when embedded in a review. May coexist with coverUrl.",
+            "accept": ["image/*"]
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "Optional cover image URL, useful for API responses and providers without repository storage. May coexist with cover; a URL alone does not preserve image bytes in the user's repository.",
+            "format": "uri"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Time this edition record or snapshot was created, not its publication date.",
+            "format": "datetime"
+          },
+          "subtitle": {
+            "type": "string",
+            "description": "Subtitle of the edition."
+          },
+          "language": {
+            "type": "string",
+            "description": "Language of the edition as a BCP 47 language tag.",
+            "format": "language"
+          },
+          "publishedDate": {
+            "type": "string",
+            "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+            "minLength": 4,
+            "maxLength": 10
+          },
+          "publisher": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#publisher"
+          },
+          "format": {
+            "type": "string",
+            "description": "Medium of the edition. Additional values are permitted; clients should provide a fallback for unrecognized formats.",
+            "knownValues": ["physical", "ebook", "audio"]
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total page count for print or ebook editions, when known."
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total audio duration in whole seconds, when known."
+          },
+          "chapters": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
+          },
+          "series": {
+            "type": "string",
+            "description": "Name of the series."
+          },
+          "seriesPosition": {
+            "type": "string",
+            "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+          },
+          "bookEdition": {
+            "type": "string",
+            "description": "Edition statement, such as 2nd revised or Abridged."
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the edition."
+          }
+        }
+      }
+    }
+  }
+}

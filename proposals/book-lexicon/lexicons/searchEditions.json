@@ -1,0 +1,71 @@
+{
+  "lexicon": 1,
+  "id": "community.lexicon.book.searchEditions",
+  "description": "Search a provider's catalog using text and structured hints. Fuzzy matching, field interpretation, and ranking are provider-specific. This operation does not write user records.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Search a provider's catalog using text and structured hints. Fuzzy matching, field interpretation, and ranking are provider-specific. This operation does not write user records.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "description": "Supply at least one nonblank q, title, author, or a nonempty identifiers array. Providers enforce this cross-field requirement.",
+          "required": [],
+          "properties": {
+            "q": {
+              "type": "string",
+              "description": "Broad search text, which may describe a title, contributor, description, or identifier. Matching and ranking are provider-defined.",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "description": "Title relevance hint, interpreted by the provider.",
+              "minLength": 1
+            },
+            "author": {
+              "type": "string",
+              "description": "Author relevance hint, interpreted by the provider.",
+              "minLength": 1
+            },
+            "identifiers": {
+              "type": "array",
+              "description": "Structured identifier relevance hints; search matching and ranking are provider-defined.",
+              "items": {
+                "type": "ref",
+                "ref": "community.lexicon.book.defs#identifier"
+              },
+              "minLength": 1
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "description": "Number of matching editions to skip in the provider's ordered result set."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Maximum number of editions to return in this page."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "community.lexicon.book.defs#editionResults"
+        }
+      },
+      "errors": [
+        {
+          "name": "InvalidQuery",
+          "description": "No nonblank q, title, author, or nonempty identifiers array was supplied."
+        }
+      ]
+    }
+  }
+}
