@@ -23,6 +23,7 @@ import { PrivacyPolicy } from "../pages/privacy-policy";
 import { Terms } from "../pages/terms";
 import { SimpleNavbar } from "../pages/simple-navbar";
 import { MarketingPage } from "../pages/marketing";
+import { getCommunityStats } from "../utils/communityStats";
 import { env } from "../env";
 import {
   parseImagePath,
@@ -167,6 +168,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
 
     const ctx = c.get("ctx");
 
+    const communityStats = await getCommunityStats(ctx.db, ctx.kv);
     startTime(c, "marketing_data");
     const { trendingBooks, recentRows, didHandleMap, profileByDid } = await readThroughCache(
       ctx.kv as import("unstorage").Storage<any>,
@@ -263,6 +265,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
         image="/og/marketing"
       >
         <MarketingPage
+          communityStats={communityStats}
           signupUrl={signupUrl}
           recentActivity={recentRows}
           didHandleMap={didHandleMap}
