@@ -6,6 +6,7 @@ import type { Book } from "../types";
 import { hydrateUserBook } from "../utils/bookProgress";
 import { BOOK_STATUS } from "../constants";
 import { BookCard, normalizeBookData } from "./components/BookCard";
+import { getActiveUserCount } from "../utils/activeUsers";
 import { sql } from "kysely";
 
 function BookGrid({ books }: { books: Book[] }) {
@@ -35,7 +36,7 @@ export const Home: FC = async () => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   startTime(c, "homeQueries");
-  const [currentlyReadingRows, wantToReadRows, statsRow] = await Promise.all([
+  const [currentlyReadingRows, wantToReadRows, statsRow, activeUsers] = await Promise.all([
     ctx.db
       .selectFrom("user_book")
       .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
@@ -69,6 +70,8 @@ export const Home: FC = async () => {
         ),
       ])
       .executeTakeFirst(),
+
+    getActiveUserCount(ctx.db, ctx.kv),
   ]);
   endTime(c, "homeQueries");
 
@@ -102,7 +105,7 @@ export const Home: FC = async () => {
           </a>
         </div>
         <div class="card-body">
-          <div class="grid grid-cols-3 gap-4 text-center">
+          <div class="grid grid-cols-2 gap-4 text-center sm:grid-cols-4">
             <div>
               <div class="text-foreground text-2xl font-bold tabular-nums">{stats.totalRead}</div>
               <div class="text-muted-foreground text-xs">Total Read</div>
@@ -114,6 +117,10 @@ export const Home: FC = async () => {
             <div>
               <div class="text-foreground text-2xl font-bold tabular-nums">{stats.thisYear}</div>
               <div class="text-muted-foreground text-xs">This Year</div>
+            </div>
+            <div>
+              <div class="text-foreground text-2xl font-bold tabular-nums">{activeUsers}</div>
+              <div class="text-muted-foreground text-xs">Active Users</div>
             </div>
           </div>
         </div>
