@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import { formatDistanceToNow } from "date-fns";
 import type { ProfileViewDetailed } from "../types";
+import type { CommunityStats } from "../utils/communityStats";
 import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
 
 type RecentActivityItem = {
@@ -121,6 +122,46 @@ function Hero({ signupUrl }: { signupUrl: string }) {
   );
 }
 
+function CommunityStatsSummary({ stats }: { stats: CommunityStats }) {
+  const items = [
+    { label: "Readers in the hive", value: stats.readers },
+    { label: "Books tracked", value: stats.booksTracked },
+    { label: "Books finished in the last 7 days", value: stats.booksFinishedLastWeek },
+  ];
+
+  return (
+    <div class="mt-8">
+      <dl aria-label="Community statistics" class="space-y-4">
+        {items.map(({ label, value }) => (
+          <div key={label} class="text-foreground flex items-start justify-between gap-4">
+            <dt class="flex items-start gap-3">
+              <span
+                class="bg-primary/10 text-primary flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                aria-hidden="true"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </span>
+              {label}
+            </dt>
+            <dd class="shrink-0 text-right tabular-nums">{value.toLocaleString("en-US")}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function RecentActivityCard({
   activities,
   didHandleMap,
@@ -224,10 +265,12 @@ function RecentActivityCard({
 }
 
 function SocialSection({
+  communityStats,
   activities,
   didHandleMap,
   profileByDid,
 }: {
+  communityStats: CommunityStats | null;
   activities: RecentActivityItem[];
   didHandleMap: Record<string, string>;
   profileByDid: Record<string, ProfileViewDetailed>;
@@ -250,31 +293,7 @@ function SocialSection({
               right now, follow people with similar interests, and build a community around the
               books you love.
             </p>
-            <ul class="mt-8 space-y-4">
-              {[
-                "See who is reading the same book as you, right now",
-                "Follow friends and discover what they recommend",
-                "A social feed built around books, not engagement bait",
-              ].map((item) => (
-                <li key={item} class="flex items-start gap-3">
-                  <div class="bg-primary/10 text-primary mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="3"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
-                  </div>
-                  <span class="text-foreground">{item}</span>
-                </li>
-              ))}
-            </ul>
+            {communityStats && <CommunityStatsSummary stats={communityStats} />}
           </div>
           <div class="w-full lg:w-[45%]">
             <RecentActivityCard
@@ -866,17 +885,19 @@ function Footer() {
 }
 
 export const MarketingPage: FC<{
+  communityStats: CommunityStats | null;
   signupUrl: string;
   recentActivity: RecentActivityItem[];
   didHandleMap: Record<string, string>;
   profileByDid: Record<string, ProfileViewDetailed>;
   trendingBooks: TrendingBook[];
-}> = ({ signupUrl, recentActivity, didHandleMap, profileByDid, trendingBooks }) => {
+}> = ({ communityStats, signupUrl, recentActivity, didHandleMap, profileByDid, trendingBooks }) => {
   return (
     <div class="bg-background min-h-screen">
       <MarketingNav signupUrl={signupUrl} />
       <Hero signupUrl={signupUrl} />
       <SocialSection
+        communityStats={communityStats}
         activities={recentActivity}
         didHandleMap={didHandleMap}
         profileByDid={profileByDid}

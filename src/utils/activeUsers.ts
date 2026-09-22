@@ -1,5 +1,5 @@
 /**
- * Active-user count for the home page.
+ * Reader count for the logged-out landing page's community statistics.
  *
  * An "active user" here means someone with at least one book on their profile —
  * a `user_book` row with a non-null `status` (the four shelf statuses are what
