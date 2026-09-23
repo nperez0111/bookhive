@@ -23,7 +23,7 @@ you're touching.
 - `/privacy-policy` → `src/pages/privacy-policy.tsx`
 - `/legal` → `src/pages/terms.tsx`
 - `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled)
-- `/` → `src/pages/marketing.tsx` — landing for signed-out visitors; **302s to `/home` when the `sid` cookie is present**, which is why `Vary: Cookie` matters on this route
+- `/` → `src/pages/marketing.tsx` — landing for signed-out visitors; loads SWR-cached highlights (`src/data/landingHighlights.ts`) and community totals (`src/data/communityStats.ts`); **302s to `/home` when the `sid` cookie is present**, which is why `Vary: Cookie` matters on this route
 - `/images/*` → signing reverse-proxy to **imgproxy** (`src/routes/imageProxy.ts`). Three route shapes:
   - `/images/books/:hiveId?w=N` — ID-keyed canonical (preferred). Helpers: `coverImageUrl`, `avatarImageUrl`
   - `/images/avatars/:did?s=N` — ID-keyed avatar

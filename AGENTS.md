@@ -62,6 +62,7 @@ Worker threads (bundled to .output/server/workers/):
   open-observe-worker — pino log shipping to OpenObserve   (src/workers/)
   import-worker       — CSV import processing              (src/workers/)
   parse-worker        — ebook metadata parse + cover raster (single-shot, src/workers/)
+  convert-worker      — MOBI/AZW3 to EPUB conversion       (single-shot, src/workers/)
   waf-solver-worker   — AWS WAF challenge solve            (src/scrapers/waf/)
 ```
 
@@ -71,7 +72,7 @@ Worker threads (bundled to .output/server/workers/):
 - **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — defaults to 4, but the deployed container sets **3**. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
 - **Enrichment is queued, never inline** (`src/data/enrichQueue.ts`), drained by the primary worker every 5s at concurrency 3 — the only rate limit on Goodreads requests (36/min; don't add a second one). `enrich_queue.attempts` counts _answers from Goodreads_, not failures — the `retry`/`defer`/`dead` verdict (`core/enrichVerdict.ts`) defaults to `defer`. See `docs/notes/enrichment-and-scraping.md`.
 - Author lookups use the `hive_book_author` join (mig 020), not `LIKE` — exact identity, not text search.
-- `bun:sqlite` is synchronous, so a slow query stalls a whole worker (a third of prod traffic). Expensive aggregates (`/explore*`, `getAvailableLanguages`, `/`'s landing query) are SWR-cached rather than plain-TTL, and the `/explore` aggregates rely on an `INDEXED BY` hint because this DB has never been `ANALYZE`d. See `docs/notes/data-and-caching.md`.
+- `bun:sqlite` is synchronous, so a slow query stalls a whole worker (a third of prod traffic). Expensive aggregates (`/explore*`, `getAvailableLanguages`, `/`'s `landingHighlights` and `communityStats` queries) are SWR-cached rather than plain-TTL, and the `/explore` aggregates rely on an `INDEXED BY` hint because this DB has never been `ANALYZE`d. See `docs/notes/data-and-caching.md`.
 - Library re-sync fans out at most `REFETCH_SEARCH_CONCURRENCY` (3) searches; `searchBooks` owns its own concurrency ceiling for the same reason (a prior unbounded fan-out caused an OOM incident). See `docs/notes/enrichment-and-scraping.md`.
 - **The activity feed — and RSS, and XRPC `getFeed`/`getProfile` — sorts by `indexedAt`, and whatever it sorts by is what it must display.** `feedActivityIndexedAt` (`src/db.ts`) advances only on feed-visible field changes; migration 027 clamps historical rows and adds the supporting indexes; bursts are collapsed by actor alone, in JS, after the fetch, with the pagination cursor taken from the last _raw_ row consumed. See `docs/notes/activity-feed.md`.
 - **Domain facts are asserted once and lifted, never re-derived at a call site**: authors are tab-separated (`core/authors.ts`), there's one status enum (`constants.ts`), three rating scales (`core/rating.ts`), a `HiveId` from the wire must be narrowed not cast (`core/hiveId.ts`), one JSON 401 body (`routes/authResponse.ts`), one handle→DID resolver (`services/actor.ts`), one catalogue search (`data/catalogBooks.ts`). See `docs/notes/domain-rules-and-write-paths.md`.
@@ -219,7 +220,7 @@ Page images are `<picture>` with a WebP `<source>` and the original as the `<img
 
 `LibraryManager` sub-components live in `src/client/components/library/`: `AnchoredMenu.tsx`, `ShelfTabs.tsx`, `PersonalBookCard.tsx`, `SyncDocumentSections.tsx`, `types.ts`. `AnchoredMenu`/`MenuItem`/`MenuConfirm` are the house dropdown (no state, `peer` checkbox + `<form>` reset) used by all library menus — don't switch to Popover API or CSS anchor positioning (both tried and reverted).
 
-The My Books / own-profile `LibraryTable` serializes writes per book and reconciles canonical responses via `client/components/libraryTableStore.ts`; see `docs/notes/domain-rules-and-write-paths.md`.
+The My Books / own-profile `LibraryTable` serializes writes per book and reconciles canonical responses via `client/components/libraryTableStore.ts`. Owned toggles use that queue, and deletion keeps the row and confirmation dialog visible until the server succeeds. Empty own-profile shelves link to `/search` and open the hydrated search palette through `data-open-search`; see `docs/notes/domain-rules-and-write-paths.md`.
 
 Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`. Icons always come from `src/pages/components/icons.tsx` — there is no client-only icon module.
 
@@ -376,7 +377,7 @@ Form controls get a low-alpha white overlay in dark mode rather than `var(--inpu
 
 ## Build & Dev
 
-In this Paseo workspace, start the managed `dev` script (`paseo script start dev`). It binds Vite to `0.0.0.0` on `PASEO_PORT` and sets `PUBLIC_URL=https://<port>.dev.nickthesick.com` for browser access and OAuth callbacks. Export `NODE_ENV=development` in the launcher so worker threads also receive the development environment.
+In this Paseo workspace, start the managed `dev` script (`paseo script start dev`). `paseo.json` pins it to port 5199, binds Vite to `0.0.0.0`, and sets `PUBLIC_URL=https://5199.dev.nickthesick.com` for browser access and OAuth callbacks.
 
 | Command              | What                                                                                                |
 | -------------------- | --------------------------------------------------------------------------------------------------- |
@@ -390,7 +391,9 @@ In this Paseo workspace, start the managed `dev` script (`paseo script start dev
 | `bun run lexgen`     | Regenerate AT Protocol XRPC types from lexicons                                                     |
 | `bun run build:boko` | Rebuild the vendored boko WASM in `vendor/boko/` (needs Rust + wasm-pack; only to bump the version) |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 6 worker entry points into `.output/server/workers/`. Type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`** — `vite.config.ts` maps it but the root `tsconfig.json` doesn't, so tsgo can't resolve it even though bundling works; `app/`'s own `@/*` → `app/*` alias is unrelated. Runtime requires `bun >= 1.3.14`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 7 worker entry points into `.output/server/workers/`. Type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`** — `vite.config.ts` maps it but the root `tsconfig.json` doesn't, so tsgo can't resolve it even though bundling works; `app/`'s own `@/*` → `app/*` alias is unrelated. Runtime requires `bun >= 1.4.0`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+
+The dev server binds loopback by default. `PORT` (default 8080), `DEV_HOST` (default `127.0.0.1`), `DEV_HMR_CLIENT_PORT`, and `DEV_HMR_PROTOCOL` (default `wss` when a client port is set) let a TLS-terminating proxy publish it without editing `vite.config.ts`. An explicit `PORT` enables `strictPort`; `allowedHosts` is derived from `PUBLIC_URL` rather than disabled. `PUBLIC_URL` also selects the public OAuth client metadata URL, so it must match the browser origin and be reachable by the user's PDS. The pinned Paseo hostname avoids invalidating the host-only session cookie on every restart.
 
 Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`, `@takumi-rs/image-response` + React 19 (OG only), pino, `@hono/prometheus`, `@opentelemetry/*`, basecoat-css, envalid.
 

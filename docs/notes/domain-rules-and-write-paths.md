@@ -67,7 +67,8 @@ an HTTP-shaped exception forces every caller to catch and translate it.
   `LibraryTable` and the import table for every status/rating/date/delete write) — it used to be
   `try { await fetch(…) } catch {}` with `res.ok` never read, so a refused write was silently
   swallowed and the table kept showing a value the server had rejected. `bookApi.ts` returns a
-  discriminated result; `LibraryTable`'s `save`/`remove` roll the row back on failure.
+  discriminated result; `LibraryTable` rolls edits back on failure and keeps a deletion visible
+  until the server confirms it.
 - **A re-sync's cleanup must handle the empty case** — `pruneMirroredRecords`
   (`data/repoMirror.ts`). A re-sync deletes `user_book`/`buzz` mirrors the PDS didn't return, and
   `uri not in ()` isn't expressible — the admin backfill used to guard the whole delete on
@@ -185,6 +186,7 @@ reload action as Import more after success, restoring the service/file chooser.
 for each book. Writes for one book run serially; each canonical `UserBookView` replaces confirmed
 status/dates/progress before later pending edits are replayed. A rejection drops only that edit,
 so an earlier response cannot erase a newer choice. Deletion waits behind saves and blocks new
-edits until it completes; a failed delete restores the latest confirmed row. Progress payloads
+edits until it completes. A pending delete leaves the latest confirmed row and dialog visible; a
+failed delete keeps both available for retry, while only a successful response removes the row. Progress payloads
 assert only progress, letting the shared lifecycle infer Reading/Finished; resending the row's
 old status suppressed that inference. `PageInput` follows replaced progress props for rollback.

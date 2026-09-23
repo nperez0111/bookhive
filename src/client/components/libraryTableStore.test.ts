@@ -124,13 +124,13 @@ test("delete waits for save and rejects new edits; failed delete restores newest
   });
   const one = store.save(book.hiveId, { stars: 8 });
   const removal = store.remove(book.hiveId);
-  await store.save(book.hiveId, { stars: 2 });
+  expect(await store.save(book.hiveId, { stars: 2 })).toBe(false);
   expect(writes).toBe(1);
   expect(deletes).toBe(0);
-  expect(store.snapshot()).toEqual([]);
+  expect(store.snapshot()[0]?.stars).toBe(8);
   pending.resolve(success({ stars: 8 }));
-  await one;
-  await removal;
+  expect(await one).toBe(true);
+  expect(await removal).toBe(false);
   expect(deletes).toBe(1);
   expect(store.snapshot()[0]?.stars).toBe(8);
 });

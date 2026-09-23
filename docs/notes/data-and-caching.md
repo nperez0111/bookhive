@@ -1,8 +1,9 @@
 # Data & Caching Notes
 
 Background for the caching/indexing rules referenced from `AGENTS.md`. If you're touching
-`src/data/authorStats.ts`, `src/data/exploreGenres.ts`, `src/middleware/anon-page-cache.ts`,
-`src/core/cacheHeaders.ts`, or the DB/KV vacuum logic in `src/context.ts`, read this first.
+`src/data/authorStats.ts`, `src/data/exploreGenres.ts`, `src/data/communityStats.ts`,
+`src/middleware/anon-page-cache.ts`, `src/core/cacheHeaders.ts`, or the DB/KV vacuum logic in
+`src/context.ts`, read this first.
 
 ## `bun:sqlite` is synchronous — a slow query is a whole-worker outage
 
@@ -22,6 +23,12 @@ stamped **after** the fetch resolves, so a slow fetch isn't born stale.
   a version suffix (`authors:stats:v1:` does the same) since nothing sweeps non-`page:` keys.
 - `data/landingHighlights.ts` — `/`'s trending + recent lists. `/` isn't in the anon page cache's
   prefixes, so this is the only thing in front of it.
+- `data/activeUsers.ts` / `data/communityStats.ts` — `/`'s distinct reader count and community
+  totals. The inner reader count uses a 24h TTL / 1h revalidate; the combined aggregate uses a 7d
+  TTL / 24h revalidate and returns `null` on a cold failure so the marketing page can omit the
+  section rather than fail. A reader must have at least one shelfed row (`status IS NOT NULL`), so
+  owned-only records do not inflate the count. Finished-last-week is a rolling seven-day window
+  bounded at the current time, excluding future-dated rows.
 
 ## The `/explore` aggregates: `INDEXED BY idx_hive_book_stats` is not decoration
 

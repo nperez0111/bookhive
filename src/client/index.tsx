@@ -54,6 +54,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handled here (not inside SearchPalette) so the shortcut works before the palette module is lazily loaded; once mounted, the palette owns the shortcut and this defers to it.
   if (palette.present) {
+    document.querySelectorAll<HTMLAnchorElement>("[data-open-search]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        triggerOpen();
+      });
+    });
     document.addEventListener("keydown", (e) => {
       if (openPalette) return; // palette mounted → its own handler toggles
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {

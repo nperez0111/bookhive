@@ -4,7 +4,7 @@ import { deleteBook, writeBook, type BookWriteResult } from "./bookApi";
 type Operation = {
   fields?: Partial<LibraryBook>;
   payload?: Record<string, unknown>;
-  done: () => void;
+  done: (ok: boolean) => void;
 };
 type Entry = { confirmed: LibraryBook; pending: Operation[]; running: boolean };
 
@@ -22,10 +22,12 @@ export function createLibraryTableStore(
   );
   let error: string | null = null;
   const snapshot = () =>
-    [...entries.values()].flatMap(({ confirmed, pending }) => {
-      if (pending.some((operation) => !operation.fields)) return [];
-      return [pending.reduce((book, operation) => ({ ...book, ...operation.fields }), confirmed)];
-    });
+    [...entries.values()].map(({ confirmed, pending }) =>
+      pending.reduce(
+        (book, operation) => (operation.fields ? { ...book, ...operation.fields } : book),
+        confirmed,
+      ),
+    );
   const publish = () => onChange(snapshot(), error);
   const run = async (id: string, entry: Entry) => {
     if (entry.running) return;
@@ -59,7 +61,7 @@ export function createLibraryTableStore(
       }
       entry.pending.shift();
       publish();
-      operation.done();
+      operation.done(result.ok);
     }
     entry.running = false;
   };
@@ -67,12 +69,13 @@ export function createLibraryTableStore(
     id: string,
     fields?: Partial<LibraryBook>,
     payload?: Record<string, unknown>,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const entry = entries.get(id);
     // Once deletion is requested, further edits cannot recreate the removed record.
-    if (!entry || entry.pending.some((operation) => !operation.fields)) return Promise.resolve();
+    if (!entry || entry.pending.some((operation) => !operation.fields))
+      return Promise.resolve(false);
     error = null;
-    const promise = new Promise<void>((done) => entry.pending.push({ fields, payload, done }));
+    const promise = new Promise<boolean>((done) => entry.pending.push({ fields, payload, done }));
     publish();
     void run(id, entry);
     return promise;

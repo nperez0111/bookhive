@@ -21,6 +21,7 @@ import { PrivacyPolicy } from "../pages/privacy-policy";
 import { Terms } from "../pages/terms";
 import { SimpleNavbar } from "../pages/simple-navbar";
 import { MarketingPage } from "../pages/marketing";
+import { getCommunityStats } from "../data/communityStats";
 import { env } from "../env";
 import { parseImagePath, parseModifiers, proxyImageResponse, queryToModifiers } from "./imageProxy";
 import type { HiveId } from "../types";
@@ -161,6 +162,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
 
     const ctx = c.get("ctx");
 
+    const communityStats = await getCommunityStats(ctx.db, ctx.kv);
     startTime(c, "marketing_data");
     const { trendingBooks, recentRows } = await getLandingHighlights({ db: ctx.db, kv: ctx.kv });
 
@@ -186,6 +188,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
         image="/og/marketing"
       >
         <MarketingPage
+          communityStats={communityStats}
           signupUrl={signupUrl}
           recentActivity={recentRows}
           didHandleMap={didHandleMap}
