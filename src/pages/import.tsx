@@ -148,7 +148,7 @@ export const LibraryImport: FC = () => {
                   const selectedService = document.querySelector(
                     'input[name="import-service"]:checked',
                   ) as HTMLInputElement;
-                  if (selectedService?.value === "goodreads") {
+                  if (!selectedService || selectedService?.value === "goodreads") {
                     goodreadsInstructions?.classList.remove("hidden");
                     storygraphInstructions?.classList.add("hidden");
                     hardcoverInstructions?.classList.add("hidden");
@@ -185,7 +185,7 @@ export const LibraryImport: FC = () => {
                     'input[name="import-service"]:checked',
                   ) as HTMLInputElement;
                   const endpoint =
-                    selectedService?.value === "goodreads"
+                    (!selectedService || selectedService?.value === "goodreads")
                       ? "/import/goodreads"
                       : selectedService?.value === "storygraph"
                         ? "/import/storygraph"

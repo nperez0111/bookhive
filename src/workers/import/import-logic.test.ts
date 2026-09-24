@@ -304,7 +304,7 @@ describe("processHardcoverImport", () => {
     expect(complete.failedBookDetails).toMatchObject([
       {
         title: "2666",
-        author: "Roberto Bolaño, Natasha Wimmer (Translator)",
+        author: "Roberto Bolaño",
         isbn10: "0374100144",
         isbn13: "9780374100148",
         status: "buzz.bookhive.defs#wantToRead",

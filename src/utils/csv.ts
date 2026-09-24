@@ -350,8 +350,15 @@ function get(record: Record<string, string>, key: string): string {
   return record[key] || "";
 }
 
+const dateRe = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}:\d{2}(?:\.\d{2,})?)(Z)?)?$/;
+
+/**
+ * acceptable inputs: 2026-01-01, 2026-01-01T12:34Z, 2026-01-01T12:34.567Z
+ */
 function parseDate(date: string): Date | null {
-  const newDate = new Date(date);
+  const [all, year, month, day, ts, utc] = [...(date.match(dateRe) || [])];
+  if (!all) return null;
+  const newDate = new Date(`${year}-${month}-${day}T${ts ?? "00:00:00.000"}${utc ?? "Z"}`);
   if (isNaN(newDate.getTime())) return null;
   return newDate;
 }
@@ -377,11 +384,26 @@ function parseStatus(status: string, dateFinished: Date | null): BookStatus {
   }
 }
 
+/**
+ * Remove narrators and translators from authors. Assumes a single author entry won't
+ * contain a comma.
+ *
+ * "Roberto Bolaño, Natasha Wimmer (Translator)" -> "Roberto Bolaño"
+ * "Helen Lazer (Narrator), Alison Espach" -> "Alison Espach"
+ */
+function parseAuthor(input: string): string {
+  const authors = input.split(",")
+    .map((author) => author.trim())
+    .filter(author => !author.endsWith(" (Narrator)") && !author.endsWith(" (Translator)"))
+    .join(", ");
+  return authors
+}
+
 export function parseHardcoverRecord(record: Record<string, string>): HardcoverBook {
   const dateFinished = parseDate(get(record, "Date Finished"));
   return {
     title: get(record, "Title"),
-    author: get(record, "Author"),
+    author: parseAuthor(get(record, "Author")),
     series: get(record, "Series"),
     status: parseStatus(get(record, "Status"), dateFinished),
     privacy: get(record, "Privacy"),
@@ -467,11 +489,14 @@ export function getHardcoverCsvParser() {
         // Get any remaining records
         let record: any;
         while ((record = parser.read())) {
-          if (record && "Title" in record && "Author" in record) {
-            controller.enqueue(parseHardcoverRecord(record));
-          } else {
-            console.warn("Skipping invalid Hardcover record during flush:", record);
+          if (record) {
+            const parsedRecord = parseHardcoverRecord(record);
+            if (parsedRecord.title !== "" && parsedRecord.author !== "") {
+              controller.enqueue(parsedRecord);
+              continue;
+            }
           }
+          console.warn("Skipping invalid Hardcover record during flush:", record);
         }
       } catch (error) {
         console.warn("Error during CSV parser flush:", error);
