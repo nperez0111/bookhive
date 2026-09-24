@@ -13,26 +13,26 @@ import { BookInfo } from "../pages/bookInfo";
 import { CommentsSection } from "../pages/comments";
 import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
-import { updateBookRecord } from "../utils/getBook";
-import { toUserBookView } from "../utils/userBookView";
-import { enrichBookWithDetailedData } from "../utils/enrichBookData";
-import { enqueueEnrichment } from "../utils/enrichQueue";
-import { withTimeout } from "../utils/semaphore";
+import { BookWriteError, updateBookRecord, withBookLock } from "../services/getBook";
+import { renderError } from "./errorPage";
+import { errorMessage } from "../lib/errors";
+import { toUserBookView } from "../core/userBookView";
+import { enrichBookWithDetailedData } from "../services/enrichBookData";
+import { enqueueEnrichment } from "../data/enrichQueue";
+import { withTimeout } from "../lib/semaphore";
+import { HIVE_ID_PATTERN } from "../core/hiveId";
+import { displayAuthors, parseAuthors } from "../core/authors";
+import { bookProgressProblem } from "../core/bookProgress";
 import { setCacheControl } from "./lib";
 
 /** How long an explicit `?force-refresh=true` will wait before falling back to
  *  the data we already have. */
 const FORCE_REFRESH_TIMEOUT_MS = 15_000;
 
-/** Hive ids are `bk_` + base62. Anything else (notably the `/books/null` a
- *  buggy client kept requesting) is a client bug, not a missing book. */
-const HIVE_ID_PATTERN = /^bk_[A-Za-z0-9]+$/;
-
 /**
- * Reject a malformed `:hiveId` with a 400 instead of letting it reach the DB.
- * Records the id and referer so the offending caller is identifiable, and sets
- * `no-store` — the surrounding routes set a long public Cache-Control, and a
- * cached 400 would be served to everyone hitting the same bad URL.
+ * Reject a malformed `:hiveId` with a 400 before it reaches the DB. Sets
+ * `no-store` because the surrounding routes set a long public Cache-Control,
+ * and a cached 400 would be served to everyone hitting the same bad URL.
  */
 function rejectBadHiveId(c: Context<AppEnv>, hiveId: string) {
   c.get("ctx").addWideEventContext({
@@ -51,8 +51,7 @@ function rejectBadHiveId(c: Context<AppEnv>, hiveId: string) {
   );
 }
 
-/** Query params the book page understands. Both optional; unknown params are
- *  ignored (the anon page cache bypasses on anything outside its allowlist). */
+/** Unknown query params are ignored — the anon page cache bypasses on anything outside its allowlist. */
 const bookPageQuerySchema = z.object({
   "force-refresh": z.string().optional(),
   "review-id": z.string().optional(),
@@ -105,8 +104,7 @@ const app = new Hono<AppEnv>()
       !book.enrichedAt ||
       new Date(book.enrichedAt) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (forceRefresh) {
-      // Explicit user action, so it stays inline — but bounded. On timeout we
-      // render what we already have instead of holding the request open.
+      // Explicit user action so it stays inline, but bounded — on timeout we render what we already have.
       try {
         await withTimeout(
           enrichBookWithDetailedData(book, c.get("ctx"), { force: true }),
@@ -120,7 +118,6 @@ const app = new Hono<AppEnv>()
           error: error instanceof Error ? error.message : (String(error) as string),
         });
       }
-      // Re-fetch the book after enrichment so the page reflects updated data
       const refreshedBook = await c
         .get("ctx")
         .db.selectFrom("hive_book")
@@ -143,7 +140,7 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "render_book_page");
-    const authors = book.authors.split("\t");
+    const authors = parseAuthors(book.authors);
     const reviewId = query["review-id"];
     const res = c.render(<BookInfo book={book} reviewId={reviewId} />, {
       title: "BookHive | " + book.title,
@@ -277,7 +274,6 @@ const app = new Hono<AppEnv>()
           { title: "Unauthorized" },
         );
       }
-      const bookLockKey = "book_lock:" + agent.did;
       try {
         const {
           authors,
@@ -297,14 +293,17 @@ const app = new Hono<AppEnv>()
           percent,
         } = c.req.valid("form");
 
+        // Same rules as the JSON route — the bounds check and "progress implies
+        // reading" inference live below this layer, so form and fetch can't disagree.
         let bookProgress: Record<string, unknown> | undefined;
         if (currentPage || totalPages || currentChapter || totalChapters || percent !== undefined) {
-          if (currentPage && totalPages && currentPage > totalPages) {
-            throw new Error("Current page cannot exceed total pages");
-          }
-          if (currentChapter && totalChapters && currentChapter > totalChapters) {
-            throw new Error("Current chapter cannot exceed total chapters");
-          }
+          const problem = bookProgressProblem({
+            currentPage,
+            totalPages,
+            currentChapter,
+            totalChapters,
+          });
+          if (problem) throw new Error(problem);
           bookProgress = {
             percent: percent ?? undefined,
             totalPages: totalPages ?? undefined,
@@ -315,83 +314,80 @@ const app = new Hono<AppEnv>()
           };
         }
 
-        // Check-then-set lock: the KV driver is SQLite-backed and shared
-        // across worker processes. Stale locks (>60s) from crashed requests
-        // are cleared before checking. The TOCTOU window is narrow and the
-        // worst case is a duplicate (idempotent) book update.
-        const bookLockMeta = await c.get("ctx").kv.getMeta(bookLockKey);
-        if (bookLockMeta?.mtime) {
-          const lockAge = Date.now() - new Date(bookLockMeta.mtime).getTime();
-          if (lockAge < 60_000) {
-            const existingLock = await c.get("ctx").kv.getItem(bookLockKey);
-            if (existingLock) {
-              c.status(429);
-              return c.render(
-                <ErrorPage
-                  message={`Book ${JSON.stringify(existingLock)} already being added`}
-                  statusCode={429}
-                />,
-                { title: "Too Many Requests" },
-              );
-            }
-          } else {
-            await c.get("ctx").kv.removeItem(bookLockKey);
-          }
-        }
-
         try {
-          await c.get("ctx").kv.setItem(bookLockKey, hiveId);
-          startTime(c, "pds_update_book");
-          const { userBook } = await updateBookRecord({
-            ctx: c.get("ctx"),
-            agent,
-            hiveId: hiveId as HiveId,
-            updates: {
-              authors,
-              title,
-              status,
-              owned,
-              hiveId,
-              coverImage,
-              startedAt,
-              finishedAt,
-              stars,
-              review,
-              ...(bookProgress ? { bookProgress } : {}),
-            } as Partial<BookRecord.Record> & { coverImage?: string },
-          });
-          endTime(c, "pds_update_book");
+          const lock = await withBookLock(
+            c.get("ctx").kv,
+            agent.did,
+            hiveId as HiveId,
+            async () => {
+              startTime(c, "pds_update_book");
+              const { userBook } = await updateBookRecord({
+                ctx: c.get("ctx"),
+                agent,
+                hiveId: hiveId as HiveId,
+                updates: {
+                  authors,
+                  title,
+                  status,
+                  owned,
+                  hiveId,
+                  coverImage,
+                  startedAt,
+                  finishedAt,
+                  stars,
+                  review,
+                  ...(bookProgress ? { bookProgress } : {}),
+                } as Partial<BookRecord.Record> & { coverImage?: string },
+              });
+              endTime(c, "pds_update_book");
+              return userBook;
+            },
+          );
+          if (lock.locked) {
+            c.status(429);
+            return c.render(
+              <ErrorPage
+                message={`Book ${JSON.stringify(lock.heldBy)} already being added`}
+                statusCode={429}
+              />,
+              { title: "Too Many Requests" },
+            );
+          }
           // Same form, two clients: a fetch() caller gets the view back and
           // stays on the page; a plain <form> still gets the redirect.
           if (c.req.header("accept")?.includes("application/json")) {
-            return c.json({ success: true, userBook: toUserBookView(userBook) });
+            return c.json({ success: true, userBook: toUserBookView(lock.value) });
           }
         } catch (e) {
+          // A `BookWriteError` is what the user typed, not something that broke —
+          // a 500 here would log a mistyped date as a defect and pollute the error rate.
+          if (e instanceof BookWriteError) {
+            return renderError(c, {
+              status: 400,
+              message: "That change could not be saved",
+              description: errorMessage(e),
+              title: "Invalid date",
+            });
+          }
           c.set("requestError", e);
           c.get("ctx").addWideEventContext({ write_book: "failed" });
-          c.status(500);
-          return c.render(
-            <ErrorPage
-              message="Failed to record book"
-              description={"Error: " + (e as Error).message}
-              statusCode={500}
-            />,
-            { title: "Error" },
-          );
-        } finally {
-          await c.get("ctx").kv.del(bookLockKey);
+          return renderError(c, {
+            status: 500,
+            message: "Failed to record book",
+            description: "Error: " + errorMessage(e),
+            title: "Error",
+          });
         }
         const redirectTo = c.req.query("redirect") || `/books/${hiveId}`;
         return c.redirect(redirectTo);
       } catch (err) {
         c.set("requestError", err);
         c.get("ctx").addWideEventContext({ write_book: "failed" });
-        await c.get("ctx").kv.del(bookLockKey);
         c.status(500);
         return c.render(
           <ErrorPage
             message="Failed to record book"
-            description={"Error: " + (err as Error).message}
+            description={"Error: " + errorMessage(err)}
             statusCode={500}
           />,
           { title: "Error" },
@@ -400,10 +396,8 @@ const app = new Hono<AppEnv>()
     },
   )
   .get("/:hiveId/comments", async (c) => {
-    // Public, viewer-independent page (CommentsSection is rendered without `did`
-    // here), and it reads up to ~1000 reviews + ~3000 buzzes + batched profiles.
-    // The surrounding Layout still carries the viewer's navbar, so signed-in
-    // requests get no-store.
+    // Public, viewer-independent page — but Layout still carries the viewer's
+    // navbar, so signed-in requests get no-store.
     setCacheControl(c, "public, max-age=300, stale-while-revalidate=120");
     const commentsHiveId = c.req.param("hiveId") as HiveId;
     if (!HIVE_ID_PATTERN.test(commentsHiveId)) return rejectBadHiveId(c, commentsHiveId);
@@ -432,7 +426,7 @@ const app = new Hono<AppEnv>()
     return c.render(<CommentsSection book={book} reviewId={reviewId} />, {
       title: "BookHive | Comments " + book.title,
       image: `${new URL(c.req.url).origin}/og/book/${c.req.param("hiveId")}`,
-      description: `Comments on ${book.title} by ${book.authors.split("\t").join(", ")} on BookHive, a Goodreads alternative built on Blue Sky`,
+      description: `Comments on ${book.title} by ${displayAuthors(book.authors)} on BookHive, a Goodreads alternative built on Blue Sky`,
     });
   });
 

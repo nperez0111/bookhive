@@ -138,8 +138,8 @@ describe("fetchGoodreadsViaWaf", () => {
   });
 
   test("a solved token that the WAF then refuses is reported distinctly", async () => {
-    // The failure mode this host has been in since 2026-08-01: the solve works,
-    // the WAF issues a token, and the re-fetch is challenged all over again.
+    // The current failure mode: the solve works, the WAF issues a token, and
+    // the re-fetch is challenged all over again.
     const ctx: Record<string, unknown> = {};
     const fetchImpl = stubFetch(challenge);
     const solveImpl = stubSolve("a-token");
@@ -176,9 +176,9 @@ describe("fetchGoodreadsViaWaf", () => {
     expect(solveImpl.calls()).toBe(1);
   });
 
-  // Single-flight plus the min-interval are what bound the expensive path now
-  // that there is no pool, no semaphore and no breaker. If both were broken, a
-  // WAF episode would spawn one Worker per queued book — the 2026-08-01 OOM.
+  // Single-flight plus the min-interval bound the expensive path now that there
+  // is no pool, semaphore or breaker — without them, a WAF episode would spawn
+  // one Worker per queued book, which is the OOM this replaced.
   test("concurrent challenges collapse to a single solve", async () => {
     const fetchImpl = stubFetch(challenge);
     const solveImpl = stubSolve();

@@ -2,9 +2,8 @@
 /// worker (`solver-worker.ts`).
 ///
 /// These live together because the User-Agent the page fetch sends and the
-/// fingerprint `buildSignals(ua)` encrypts must describe the *same* browser. When
-/// each side had its own copy of the constant, a change to one silently made the
-/// two disagree, which is exactly the sort of mismatch AWS WAF scores against us.
+/// fingerprint `buildSignals(ua)` encrypts must describe the *same* browser —
+/// a mismatch is exactly the sort of signal AWS WAF scores against us.
 
 export const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
@@ -69,9 +68,8 @@ export function apiHeaders(site: string, ua: string, sameOrigin: boolean): Recor
   };
 }
 
-/** Page bodies we're willing to buffer. A WAF interstitial or error page is
- *  small; anything huge is a bug or an attack, and buffering it 4,000× is how
- *  the 2026-08-01 OOM happened. */
+/** Page bodies we're willing to buffer — anything huge is a bug or an attack;
+ *  buffering an unbounded body is how a past production OOM happened. */
 export const MAX_PAGE_BYTES = 3_000_000;
 /** challenge.js is ~1.3 MB (see README) — leave real headroom. */
 export const MAX_CHALLENGE_SCRIPT_BYTES = 4_000_000;

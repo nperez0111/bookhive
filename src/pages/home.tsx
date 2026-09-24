@@ -1,12 +1,10 @@
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
-import { BookFields } from "../db";
 import type { Book } from "../types";
-import { hydrateUserBook } from "../utils/bookProgress";
 import { BOOK_STATUS } from "../constants";
 import { BookCard, normalizeBookData } from "./components/BookCard";
-import { sql } from "kysely";
+import { getReadingCounts, listShelf } from "../data/userShelves";
 
 function BookGrid({ books }: { books: Book[] }) {
   return (
@@ -30,55 +28,20 @@ export const Home: FC = async () => {
   }
 
   const ctx = c.get("ctx");
-  const now = new Date();
-  const yearStart = new Date(now.getFullYear(), 0, 1).toISOString();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   startTime(c, "homeQueries");
-  const [currentlyReadingRows, wantToReadRows, statsRow] = await Promise.all([
-    ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.userDid", "=", profile.did)
-      .where("user_book.status", "=", BOOK_STATUS.READING)
-      .orderBy("user_book.indexedAt", "desc")
-      .execute(),
-
-    ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.userDid", "=", profile.did)
-      .where("user_book.status", "=", BOOK_STATUS.WANTTOREAD)
-      .orderBy("user_book.createdAt", "desc")
-      .execute(),
-
-    ctx.db
-      .selectFrom("user_book")
-      .where("user_book.userDid", "=", profile.did)
-      .select([
-        sql<number>`sum(case when status = ${BOOK_STATUS.FINISHED} then 1 else 0 end)`.as(
-          "totalRead",
-        ),
-        sql<number>`sum(case when status = ${BOOK_STATUS.FINISHED} and "finishedAt" >= ${yearStart} then 1 else 0 end)`.as(
-          "thisYear",
-        ),
-        sql<number>`sum(case when status = ${BOOK_STATUS.FINISHED} and "finishedAt" >= ${monthStart} then 1 else 0 end)`.as(
-          "thisMonth",
-        ),
-      ])
-      .executeTakeFirst(),
+  const [currentlyReading, wantToRead, stats] = await Promise.all([
+    listShelf({ db: ctx.db, userDid: profile.did, status: BOOK_STATUS.READING }),
+    // A queue, so ordered by when it was added — not by activity.
+    listShelf({
+      db: ctx.db,
+      userDid: profile.did,
+      status: BOOK_STATUS.WANTTOREAD,
+      orderBy: "createdAt",
+    }),
+    getReadingCounts({ db: ctx.db, userDid: profile.did }),
   ]);
   endTime(c, "homeQueries");
-
-  const currentlyReading = currentlyReadingRows.map((row) => hydrateUserBook(row));
-  const wantToRead = wantToReadRows.map((row) => hydrateUserBook(row));
-  const stats = {
-    totalRead: Number(statsRow?.totalRead) || 0,
-    thisMonth: Number(statsRow?.thisMonth) || 0,
-    thisYear: Number(statsRow?.thisYear) || 0,
-  };
 
   const displayName = profile.displayName ?? profile.handle ?? "there";
 
@@ -90,7 +53,6 @@ export const Home: FC = async () => {
         </h2>
       </div>
 
-      {/* Quick Stats */}
       <div class="card">
         <div class="card-header flex items-center justify-between">
           <h2 class="card-title">Quick Stats</h2>
@@ -119,7 +81,6 @@ export const Home: FC = async () => {
         </div>
       </div>
 
-      {/* Currently Reading */}
       <section>
         <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Currently Reading</h2>
         {currentlyReading.length > 0 ? (
@@ -141,7 +102,6 @@ export const Home: FC = async () => {
         )}
       </section>
 
-      {/* Want to Read */}
       <section>
         <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Want to Read</h2>
         {wantToRead.length > 0 ? (

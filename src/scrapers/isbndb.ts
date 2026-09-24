@@ -1,5 +1,5 @@
-import { objectHash, sha256base64 } from "ohash";
-// Type definitions
+import { getHiveId } from "./getHiveId";
+import { formatAuthors } from "../core/authors";
 export interface MetaSourceInfo {
   id: string;
   description: string;
@@ -108,13 +108,10 @@ export default class IsbnDb {
 
   private parseSearchResult(book: IsbnDbBook, genericCover: string): BookResult {
     return {
-      id: `bk_${sha256base64(
-        objectHash({
-          title: book.title.toLocaleLowerCase(),
-          author: book.authors.slice(0).sort().join("*")?.toLocaleLowerCase(),
-          isbn: [book.isbn13, book.isbn],
-        }),
-      ).slice(0, 20)}`,
+      // Reference material for a future Goodreads fallback (see AGENTS.md) — the
+      // id must match getHiveId's output exactly, or wiring this up would mint
+      // duplicate catalogue entries.
+      id: getHiveId({ title: book.title, authors: formatAuthors(book.authors) }),
       title: book.title,
       authors: book.authors,
       url: `${IsbnDb.BOOK_URL}${book.isbn13 || book.isbn}`,

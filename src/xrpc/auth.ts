@@ -1,23 +1,13 @@
 /**
  * Authentication for `/xrpc/*`.
  *
- * Two credentials are accepted:
- *
- * - The `sid` iron-session cookie, which is what the web app and the iOS app
- *   have always used.
- * - An **atproto inter-service auth JWT** as `Authorization: Bearer <token>` —
- *   https://atproto.com/specs/xrpc#inter-service-authentication-jwt. The client
- *   asks its own PDS for a token via `com.atproto.server.getServiceAuth`,
- *   bound to an audience (us) and an `lxm` (the one method it wants to call);
- *   the PDS signs it with the account's repo signing key, and we verify it by
- *   resolving the issuer's DID document. This is the canonical mechanism for a
- *   third-party service exposing its own XRPC methods, and it is what makes the
- *   personal library reachable from a script or an e-reader rather than only
- *   from a browser session.
- *
- * The one thing service auth cannot do is write to the user's repo: it proves
- * control of a signing key, not that we hold an OAuth grant for that account.
- * `AuthMode` is how a method declares which it needs.
+ * Accepts the `sid` iron-session cookie (web + iOS), or an atproto
+ * inter-service auth JWT as `Authorization: Bearer <token>` — see
+ * https://atproto.com/specs/xrpc#inter-service-authentication-jwt — which is
+ * what makes the personal library reachable from a script or e-reader.
+ * Service auth proves control of a signing key, not an OAuth grant, so it can
+ * never satisfy a `pdsWrite` method; `AuthMode` is how a method declares
+ * which it needs.
  */
 
 import { AuthRequiredError } from "@atcute/xrpc-server";
@@ -28,12 +18,8 @@ import type { SessionClient } from "../auth/client";
 /**
  * What a method requires of its caller.
  *
- * `identity` — we only need to know *who* they are. Every personal-library and
- *   sync method is in this class: none of them touch the session agent for
- *   anything but `.did` (progress bridging writes `user_book` and queues a
- *   deferred PDS write via `sync_pending:`, rather than writing inline).
- * `pdsWrite` — the handler puts a record in the user's repository, which needs
- *   a live OAuth session. Only the book-list procedures are in this class.
+ * `identity` — only the caller's DID is needed (personal-library and sync methods).
+ * `pdsWrite` — the handler writes to the user's repo, so it needs a live OAuth session (book-list procedures only).
  */
 export type AuthMode = "identity" | "pdsWrite";
 
@@ -53,9 +39,8 @@ export async function resolveXrpcAuth(
 ): Promise<XrpcAuth> {
   const authorization = request.headers.get("authorization");
 
-  // Bearer wins when both are somehow present: a browser never sends one and a
-  // programmatic client never has our cookie, so a request carrying both is
-  // stating its intent.
+  // Bearer wins when both are present — a browser never sends one and a
+  // programmatic client never has our cookie.
   if (authorization !== null && /^bearer\s/i.test(authorization)) {
     if (!ctx.serviceJwtVerifier) {
       throw new AuthRequiredError({ message: "Service auth is not enabled on this server" });
@@ -68,14 +53,11 @@ export async function resolveXrpcAuth(
       });
     }
 
-    // Throws AuthRequiredError (401, with a WWW-Authenticate: Bearer challenge)
-    // on every failure path: missing or malformed token, bad signature, wrong
-    // audience, wrong lxm, expired, outside the max-age window, or replayed.
+    // Throws AuthRequiredError (401) on any failure: bad/missing token, wrong
+    // audience/lxm, expired, or replayed.
     //
-    // A valid token proves control of an atproto identity, nothing more — any
-    // DID on the network is accepted. The per-user storage quota is the backstop
-    // on what a caller can consume; BookHive signup is open, so gating this on a
-    // prior sign-in bought little and is deliberately not done.
+    // Any DID on the network is accepted — the per-user storage quota is the
+    // deliberate backstop, not prior sign-in.
     const { issuer } = await ctx.serviceJwtVerifier.verifyRequest(request, { lxm: opts.lxm });
 
     return { did: issuer, method: "service", agent: null };

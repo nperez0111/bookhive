@@ -8,6 +8,8 @@ import {
   type PersonalBook,
   type Shelf,
 } from "./types";
+import { BookOpen } from "../../../pages/components/icons";
+import { ProgressMeter } from "../../../pages/components/ProgressMeter";
 
 const DownloadIcon: FC = () => (
   <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
@@ -22,19 +24,7 @@ const DownloadIcon: FC = () => (
 /** Placeholder shown when neither the file nor a linked hive book has a cover. */
 const FormatPlaceholder: FC<{ format: string }> = ({ format }) => (
   <div class="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted">
-    <svg
-      class="size-8 text-muted-foreground/50"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke-width="1.5"
-      stroke="currentColor"
-    >
-      <path
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-      />
-    </svg>
+    <BookOpen class="size-8 text-muted-foreground/50" />
     <span class="text-xs font-bold tracking-wide text-muted-foreground uppercase">{format}</span>
   </div>
 );
@@ -77,9 +67,7 @@ export const PersonalBookCard: FC<{
     // come after it in DOM order.
     <li class="relative has-[:checked]:z-20">
       <div class="group relative">
-        {/* Cover. Clips the image and gradient to the rounded corners — which is
-            why the action layer below is a sibling rather than a child: a menu
-            inside this box would be cut off by `overflow-hidden`. */}
+        {/* Cover. Clips to rounded corners, which is why the action layer below is a sibling rather than a child — a menu inside this box would be cut off by `overflow-hidden`. */}
         <div class="relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-md">
           {href ? (
             <a href={href} class="block h-full w-full">
@@ -110,16 +98,11 @@ export const PersonalBookCard: FC<{
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100" />
         </div>
 
-        {/* Action layer — a sibling of the clipped cover box so the menu panel
-            can overflow it. Mirrors the cover's hover lift to stay aligned, but
-            with `bottom` rather than a transform: a transform here would become
-            the containing block for the menu's `fixed` light-dismiss backdrop
-            (shrinking it to this card) and would trap the panel in its own
-            stacking context. `inset-x-0 top-0 bottom-0` instead of `inset-0`
-            keeps the hover offset a same-property override, so there is no
-            shorthand-vs-longhand ordering question.
-            `group-has-[:checked]` keeps the layer up while the menu is open —
-            the trigger is a label, so it holds no focus for `focus-within`. */}
+        {/* Action layer — a sibling of the clipped cover box so the menu panel can overflow it.
+            Uses `bottom` rather than a transform for the hover lift: a transform here would
+            become the containing block for the menu's `fixed` light-dismiss backdrop, trapping
+            it inside this card. `group-has-[:checked]` keeps the layer up while the menu is
+            open, since the trigger is a label and holds no focus for `focus-within`. */}
         <div class="pointer-events-none absolute inset-x-0 top-0 bottom-0 flex flex-col justify-end p-2 opacity-0 transition-[opacity,bottom] duration-200 group-focus-within:opacity-100 group-hover:bottom-1 group-hover:opacity-100 group-has-[:checked]:bottom-1 group-has-[:checked]:opacity-100">
           <div class="pointer-events-auto flex items-center justify-between gap-2">
             <a
@@ -217,14 +200,7 @@ export const PersonalBookCard: FC<{
 
       {percent !== null && (
         <div class="mt-1.5">
-          <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              class={`h-full rounded-full transition-[width] duration-300 ${
-                percent >= 100 ? "bg-green-500" : "bg-primary"
-              }`}
-              style={`width: ${percent}%`}
-            />
-          </div>
+          <ProgressMeter percent={percent} size="sm" />
           <p class="mt-0.5 text-xs text-muted-foreground tabular-nums">
             {percent >= 100 ? "Finished" : `${percent}% read`}
           </p>

@@ -1,31 +1,22 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { Database as DatabaseSync } from "bun:sqlite";
 import { Hono } from "hono";
-import { Kysely, SqliteDialect } from "kysely";
 
-import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
-import type { AppContext, AppEnv } from "../context";
-import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
+import type { AppEnv } from "../context";
+import type { Database } from "../db";
 import type { HiveId } from "../types";
-import { koreaderPartialMD5 } from "../utils/bookMetadata/index";
-import { NO_HIVE_MATCH } from "../utils/syncMatching";
-import { filenameKey, koreaderFilenameHash } from "../utils/filenameMatching";
+import { koreaderPartialMD5 } from "../core/bookMetadata/index";
+import { NO_HIVE_MATCH } from "../data/syncMatching";
+import { filenameKey, koreaderFilenameHash } from "../core/filenameMatching";
 import libraryRouter from "./library";
+import { testContext } from "../test/db";
+import type { SessionClient } from "../auth/client";
+import type { ProfileViewDetailed } from "../types";
+import { createTestDb } from "../test/db";
 
 type TestApp = Hono<AppEnv>;
 
 const DID = "did:plc:testuser";
 const OTHER_DID = "did:plc:someoneelse";
-
-async function createTestDb(): Promise<Database> {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA journal_mode = WAL");
-  const db = new Kysely<DatabaseSchema>({
-    dialect: new SqliteDialect({ database: wrapBunSqliteForKysely(sqlite) }),
-  });
-  await migrateToLatest(db, sqlite);
-  return db;
-}
 
 /**
  * Mount the real router with the slice of AppContext these routes touch. The
@@ -35,12 +26,15 @@ async function createTestDb(): Promise<Database> {
 function createApp(db: Database, did: string | null = DID): TestApp {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
-    c.set("ctx", {
-      db,
-      getSessionAgent: async () => (did ? { did } : null),
-      getSessionDid: async () => did,
-      getProfile: async () => ({ handle: "test.bsky.social" }),
-    } as unknown as AppContext);
+    c.set(
+      "ctx",
+      testContext({
+        db,
+        getSessionAgent: async () => (did ? ({ did } as SessionClient) : null),
+        getSessionDid: async () => did,
+        getProfile: async () => ({ handle: "test.bsky.social" }) as unknown as ProfileViewDetailed,
+      }),
+    );
     await next();
   });
   app.route("/library", libraryRouter);
@@ -137,7 +131,7 @@ describe("GET /library/sync/documents", () => {
   let app: TestApp;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
   });
 
@@ -161,9 +155,8 @@ describe("GET /library/sync/documents", () => {
   });
 
   it("reports hasFile=true for a client using the FILENAME checksum method", async () => {
-    // KOSync's other checksum mode sends md5(basename) as the document id, so
-    // it never equals our content hash. Matching only on content hash left
-    // every one of these users' uploads looking unsynced.
+    // KOSync's FILENAME checksum mode sends md5(basename) as the document id,
+    // which never equals our content hash.
     const filename = "The Dispossessed.epub";
     await seedSyncDocument(db, { documentHash: koreaderFilenameHash(filename)!, filename });
     await seedPersonalBook(db, "some-content-hash", "/tmp/nonexistent.epub", filename);
@@ -252,7 +245,7 @@ describe("POST /library/sync/dismiss", () => {
   let app: TestApp;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
   });
 
@@ -324,7 +317,7 @@ describe("POST /library/sync/rename", () => {
   let app: TestApp;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
   });
 
@@ -361,7 +354,7 @@ describe("POST /library/sync/delete", () => {
   let app: TestApp;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
   });
 
@@ -442,7 +435,7 @@ describe("GET /library/books/:hash/download", () => {
   let app: TestApp;
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
   });
 
@@ -513,12 +506,10 @@ describe("POST /library/upload", () => {
   }
 
   beforeEach(async () => {
-    db = await createTestDb();
+    ({ db } = await createTestDb());
     app = createApp(db);
-    // Seed the row the uploader will collide with, keyed by the same hash the
-    // upload computes, so neither request reaches the library directory. This
-    // relies on the shared core running its duplicate check before the parse
-    // and before the rename — keep that ordering.
+    // Keyed by the same hash the upload computes, so it collides. Relies on the
+    // shared core running its duplicate check before the parse and rename.
     await seedPersonalBook(db, koreaderPartialMD5(new TextEncoder().encode(FB2)), "/tmp/dupe.fb2");
   });
 
@@ -529,8 +520,7 @@ describe("POST /library/upload", () => {
   });
 
   it("redirects the browser back to the library with the reason", async () => {
-    // A plain <form> post used to get raw JSON rendered as a text page. Every
-    // failure now round-trips a code the library page can render as an alert.
+    // Every failure round-trips a code the library page can render as an alert.
     const res = await uploadRequest(app, { json: false });
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/library?error=AlreadyExists");

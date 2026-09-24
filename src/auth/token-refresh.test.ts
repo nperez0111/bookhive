@@ -17,9 +17,7 @@ const mockSession = {
   destroy: mock(),
 };
 
-// Override one field of the environment, keeping the rest — see the same note
-// in session.test.ts. `mock.module` is process-wide, so a bare object here
-// blanks every other env field for the remainder of the run.
+// mock.module is process-wide, so a bare object here blanks every other env field for the run (see session.test.ts).
 void mock.module("../env", () => ({
   env: { ...realEnv, COOKIE_SECRET: "test-secret-key-for-testing-purposes-only" },
 }));

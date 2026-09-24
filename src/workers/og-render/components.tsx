@@ -12,6 +12,7 @@ import type {
   MarketingOgCardProps,
   AppOgCardProps,
 } from "./types";
+import { hiveRatingToDisplayRating } from "../../core/rating";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -33,12 +34,10 @@ export const OG_RENDER_OPTIONS = {
   width: OG_WIDTH,
   height: OG_HEIGHT,
   format: "webp" as const,
-  // takumi's defaultErrorHandler does console.error("Failed to render image.")
-  // followed by console.error(error) — 92 unstructured lines (including raw
-  // DOMException dumps) in 24h of the 2026-08-01 logs, with no request id and
-  // invalid JSON for the log pipeline. The render stream is also errored, so
-  // og-render-worker's own catch reports the failure structurally; this hook
-  // only needs to stop the duplicate spam.
+  // takumi's default error handler dumps unstructured console.error spam with
+  // no request id. The render stream is already errored, so og-render-worker's
+  // own catch reports the failure structurally — this hook just stops the
+  // duplicate noise.
   onError: () => {},
 };
 
@@ -172,7 +171,7 @@ export function BookOgCard({
       ? authors[0]!
       : authors.slice(0, 2).join(", ") + (authors.length > 2 ? " & more" : "");
   // rating is stored as score × 1000 (e.g. 4520 = 4.52 / 5)
-  const displayRating = rating != null ? rating / 1000 : null;
+  const displayRating = hiveRatingToDisplayRating(rating);
 
   // Build series line e.g. "Book 3 in The Stormlight Archive"
   const seriesLine = seriesTitle
@@ -508,7 +507,7 @@ export function LabeledCoverCard({
 }: LabeledCoverCardProps) {
   const shortName = name.length > 28 ? name.slice(0, 25) + "…" : name;
   // avgRating is stored as score × 1000 (e.g. 4520 = 4.52 / 5)
-  const displayRating = avgRating != null ? avgRating / 1000 : null;
+  const displayRating = hiveRatingToDisplayRating(avgRating);
   return (
     <SidebarLayout sidebarWidth={320} sidebarPadding="44px 36px" covers={covers}>
       <div tw="flex flex-col" style={{ gap: 14 }}>

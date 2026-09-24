@@ -3,15 +3,16 @@ import type { Book } from "../../types";
 import { Card, CardBody } from "./cards";
 import { BookTooltip, CoverImage, normalizeBookData } from "./BookCard";
 import { StarDisplay } from "./cards/StarDisplay";
-import { parseHtmlToText } from "../../utils/htmlToText";
+import { parseHtmlToText } from "../../lib/htmlToText";
+import { hiveRatingToDisplayRating, starsToDisplayRating } from "../../core/rating";
 
 export const BookReview: FC<{
   book: Book;
 }> = ({ book }) => {
   const bookData = normalizeBookData(book);
-  const communityRating = (book.rating || 0) / 1000;
+  const communityRating = hiveRatingToDisplayRating(book.rating) ?? 0;
   const tooltipData = { ...bookData, rating: communityRating };
-  const rating = book.stars != null ? book.stars / 2 : null;
+  const rating = starsToDisplayRating(book.stars);
 
   return (
     <Card>

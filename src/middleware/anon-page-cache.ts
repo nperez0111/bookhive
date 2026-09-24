@@ -1,67 +1,38 @@
 /**
  * Full-page HTML cache for anonymous (no session cookie) GET requests on
- * bot-heavy public routes (/books/:hiveId, /explore*, /authors/*).
- *
- * Rendered HTML is stored in the shared SQLite KV (`page:` mount), so one
- * render per URL per TTL serves every worker process. Logged-in requests
- * bypass the cache entirely and get their Cache-Control downgraded to
- * `private` so CDN "cache everything" rules can never store personalized HTML.
+ * bot-heavy public routes (/books/:hiveId, /explore*, /authors/*), stored in
+ * the shared SQLite KV so one render per URL per TTL serves every worker.
  */
 import { createMiddleware } from "hono/factory";
 import type { Storage } from "unstorage";
 
 import type { AppEnv } from "../context";
-import { NO_STORE, hasSessionCookie } from "../utils/cacheHeaders";
+import { NO_STORE, hasSessionCookie } from "../core/cacheHeaders";
 
-/**
- * Query params that may vary the cached page. Requests with any other param
- * (utm_*, force-refresh, …) pass through uncached — this bounds cache-key
- * cardinality and keeps cache poisoning via junk params impossible.
- */
+// Requests with any other param (utm_*, force-refresh, …) pass through uncached, to bound cache-key cardinality.
 const ALLOWED_QUERY_PARAMS = new Set(["page", "sort", "lang", "review-id"]);
 
 export const PAGE_CACHE_TTL_MS = 60 * 60 * 1000; // matches Cache-Control max-age=3600 on these routes
 
-/**
- * What we actually store, so this is what the limit is measured against. The
- * guard used to compare the *uncompressed* body against 512 KB and then store
- * the gzipped form — which rejected pages that would have cost ~25 KB of KV.
- * `/explore/authors` renders 500 near-identical author rows on top of the
- * inlined CSS bundle (see `getInlineCss` in src/utils/manifest.ts) and sits
- * close enough to that old ceiling to fall off it.
- */
+// Measured on the stored (gzipped) bytes, not the uncompressed body — otherwise pages that would have cost little in KV get rejected before compression.
 const MAX_STORED_BYTES = 256 * 1024;
-/** Separate ceiling on the pre-compression buffer, purely to bound the memory
- * a single response can cost us. Nothing legitimate on these routes is close. */
+// Separate ceiling on the pre-compression buffer, purely to bound per-response memory.
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
-/** Served on cache hits and misses when the route's Cache-Control didn't reach
- * the final response (headers set via the cacheControl helper after next()
- * don't survive to the client; nitro's route-rule headers then leak a 30-day
- * public value). Keeps the CDN TTL aligned with this cache's TTL. */
+// Fallback when the route's own Cache-Control doesn't survive to the final response; keeps the CDN TTL aligned with this cache's TTL.
 const DEFAULT_CACHE_CONTROL = "public, max-age=3600, stale-while-revalidate=600";
 
-/** HTML is gzipped (~5-10x) before storage so a bot sweep of the long tail
- * costs megabytes of KV disk, not gigabytes. */
+// Gzipped before storage so a bot sweep of the long tail costs KV disk, not memory.
 type CachedPage = {
   bodyGzipB64: string;
   contentType: string;
   cacheControl: string;
 };
 
-/**
- * In-flight renders keyed by cache key, so a stampede of anonymous requests
- * for the same URL (per process) results in a single render. Resolves to null
- * when the response turned out to be uncacheable.
- */
+// In-flight renders keyed by cache key, so a stampede of requests for the same URL (per process) collapses to a single render.
 const inflight = new Map<string, Promise<CachedPage | null>>();
 
-/**
- * Requests already being handled by an outer instance of this middleware.
- * Guards against overlapping route mounts (e.g. "/explore/*" also matches
- * "/explore") running the middleware twice for one request — the inner run
- * would await the outer's in-flight promise and deadlock.
- */
+// Guards against overlapping route mounts (e.g. "/explore/*" also matching "/explore") running this middleware twice for one request — the inner run would await the outer's in-flight promise and deadlock.
 const activeRequests = new WeakSet<Request>();
 
 function serveCached(page: CachedPage): Response | null {
@@ -78,7 +49,7 @@ function serveCached(page: CachedPage): Response | null {
   }
 }
 
-/** Extract a storable page from the live response, or null if uncacheable. */
+// Extract a storable page from the live response, or null if uncacheable.
 async function extractCacheable(res: Response): Promise<CachedPage | null> {
   if (res.status !== 200 || res.headers.has("set-cookie")) return null;
   const contentType = res.headers.get("content-type") ?? "";
@@ -102,10 +73,7 @@ export function anonPageCache(kv: Storage) {
 
     if (hasSessionCookie(c.req.header("cookie"))) {
       await next();
-      // Safety net for CDN edge caching: never let a logged-in (personalized)
-      // response advertise itself as publicly cacheable. Unconditional because
-      // headers set via the cacheControl helper don't reliably reach the final
-      // response (nitro route-rule headers fill the gap with a public value).
+      // Never let a logged-in (personalized) response advertise itself as publicly cacheable to the CDN.
       c.res.headers.set("cache-control", NO_STORE);
       return;
     }
@@ -118,18 +86,9 @@ export function anonPageCache(kv: Storage) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}=${v}`)
       .join("&");
-    // The query is percent-encoded into the key, NOT appended after a literal
-    // `?`. unstorage's `normalizeKey` is `key.split("?")[0].replace(...)` — it
-    // throws the query string away — so a `?`-joined key silently collapsed
-    // every variant of a path onto one entry: `/explore?lang=French` was served
-    // the English page, `/authors/X?page=2` was served page 1, and
-    // `/explore/genres/Y?sort=relevance` was served the popularity sort. That
-    // made ALLOWED_QUERY_PARAMS and this sort dead code. `encodeURIComponent`
-    // escapes `?`, `/` and `\`, which are the only characters normalizeKey
-    // touches, so the key survives it intact.
+    // Percent-encoded into the key, never joined with a literal `?` — unstorage's normalizeKey discards everything after `?`, which would collapse every query variant of a path onto one cache entry.
     const key = `page:${url.pathname}${query ? `:q:${encodeURIComponent(query)}` : ""}`;
 
-    // Fresh cached copy?
     const meta = await kv.getMeta(key);
     if (meta?.mtime && Date.now() - new Date(meta.mtime).getTime() < PAGE_CACHE_TTL_MS) {
       const page = await kv.getItem<CachedPage>(key);

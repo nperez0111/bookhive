@@ -130,10 +130,8 @@ export default function LibraryScreen() {
   const shelves = shelvesQuery.data ?? [];
   const documents = documentsQuery.data ?? [];
 
-  // Storage rides along on every library page, so this is current as of the
-  // last fetch without a request of its own. `quotaBytes <= 0` means the
-  // deployment has the quota switched off — treat that as "no ceiling", never
-  // as "full", or the upload button would lock out every user on such a server.
+  // `quotaBytes <= 0` means the deployment has the quota switched off — treat
+  // that as "no ceiling", never as "full".
   const storage = storageFromLibrary(allBooksQuery.data);
   const hasQuota = storage != null && storage.quotaBytes > 0;
   const isLibraryFull = hasQuota && storage.usedBytes >= storage.quotaBytes;
@@ -163,9 +161,7 @@ export default function LibraryScreen() {
   // ── Upload ──
 
   const handleUpload = useCallback(async () => {
-    // Refuse before opening the picker rather than disabling the button: a
-    // greyed-out icon in a header explains nothing, and "why can't I upload"
-    // is exactly the question the message answers.
+    // Refuse before opening the picker rather than disabling the button, so the reason is explained.
     if (storage && storage.quotaBytes > 0 && storage.usedBytes >= storage.quotaBytes) {
       Alert.alert(
         "Library full",
@@ -175,9 +171,8 @@ export default function LibraryScreen() {
     }
 
     const picked = await DocumentPicker.getDocumentAsync({
-      // iOS reports no useful MIME type for most ebook formats, so accept
-      // everything and check the extension ourselves — a clear message beats a
-      // picker that greys out valid files.
+      // iOS reports no useful MIME type for most ebook formats, so accept everything
+      // and check the extension ourselves.
       type: "*/*",
       copyToCacheDirectory: true,
     });
@@ -196,10 +191,8 @@ export default function LibraryScreen() {
       return;
     }
 
-    // The server is still the authority — this copy of `storage` is as old as
-    // the last library fetch, and the quota is evaluated inside the INSERT. But
-    // pushing 80 MB over a cellular connection to be told there was never room
-    // for it is the failure worth spending two lines to avoid.
+    // The server re-validates the quota; this is just an early warning so we don't
+    // push a large upload over a cellular connection only to have it rejected.
     if (storage && storage.quotaBytes > 0 && asset.size != null) {
       const free = Math.max(0, storage.quotaBytes - storage.usedBytes);
       if (asset.size > free) {
@@ -224,8 +217,7 @@ export default function LibraryScreen() {
         onSuccess: ({ book }) => {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           if (!book.hiveId) {
-            // Nothing matched in the catalog, so offer the match right away
-            // rather than leaving an unlinked file for the user to find later.
+            // Offer the match right away rather than leaving an unlinked file to find later.
             setMatchTarget({ kind: "book", book });
           }
         },
@@ -242,9 +234,8 @@ export default function LibraryScreen() {
 
   const confirmDeleteBook = useCallback(
     (book: PersonalBook) => {
-      // deletePersonalBook drops the file and personal_book row but leaves
-      // sync_document alone, so a book with e-reader progress doesn't vanish —
-      // it loses its file and reappears in the sync sections. Say so.
+      // Deleting drops the file but not sync_document, so a book with e-reader
+      // progress reappears in the sync sections instead of vanishing. Say so.
       Alert.alert(
         "Delete this file?",
         `“${book.title}” will be removed from your library and your OPDS catalog` +
@@ -275,10 +266,8 @@ export default function LibraryScreen() {
     const book = bookSheet;
     if (!book) return [];
     const actions: SheetAction[] = [];
-    // Two independent axes decide what's on offer: whether the file is linked
-    // to a catalog entry, and whether an e-reader has reported progress for it
-    // (a sync_document sharing its content hash). They mean different things
-    // and the labels have to keep them apart.
+    // Whether the file is linked to a catalog entry and whether an e-reader has
+    // reported progress for it are independent, and the labels keep them apart.
     const percent = book.progress
       ? Math.round(progressFraction(book.progress.percentage) * 100)
       : null;
@@ -298,9 +287,8 @@ export default function LibraryScreen() {
       key: "link",
       label: book.hiveId ? "Link to a different book" : "Link to a BookHive book",
       icon: "search",
-      // Only claim what the call actually does. Linking a file rewrites its
-      // title/author from the catalog and marks the book owned; it moves
-      // reading progress only when there is progress to move.
+      // Only claim what the call actually does — it moves reading progress only
+      // when there is progress to move.
       description:
         percent !== null
           ? `Uses the catalog's details and moves your ${percent}% onto that book`
@@ -574,12 +562,8 @@ export default function LibraryScreen() {
           { contentHash: book.contentHash, hiveId: hiveBook.id },
           {
             onSuccess: () => {
-              // linkPersonalBook associates the file and rewrites its metadata,
-              // but it never touches user_book.bookProgress. If an e-reader has
-              // been reporting progress for this file, the second call is what
-              // actually gets that percentage onto the user's BookHive record
-              // (and queues the PDS write). The document hash and the file's
-              // content hash are the same KOReader partial MD5.
+              // linkPersonalBook never touches user_book.bookProgress, so a second call
+              // is needed to move any existing e-reader progress onto the linked record.
               if (book.progress) {
                 linkDocument.mutate(
                   { document: book.contentHash, hiveId: hiveBook.id },
@@ -604,9 +588,7 @@ export default function LibraryScreen() {
 
   // ── Rendering ──
 
-  // Onboarding replaces the grid only once every source has reported in —
-  // otherwise a slow shelves/documents fetch flashes "your library is empty"
-  // at someone who has both.
+  // Wait for every source to report in, or a slow fetch flashes "empty" at someone who has books.
   const isEmpty =
     !libraryQuery.isLoading &&
     !shelvesQuery.isLoading &&

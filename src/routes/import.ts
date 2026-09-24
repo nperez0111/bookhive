@@ -13,6 +13,7 @@ import type { AppEnv } from "../context";
 import { ImportType, type ImportRequest, type ImportWorkerMessage } from "../workers/import/types";
 import { env } from "../env";
 import { activeOperations, importBatchDuration, LABEL } from "../metrics";
+import { jsonUnauthorized } from "./authResponse";
 
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -27,15 +28,14 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
   const ctx = c.get("ctx");
   const agent = await ctx.getSessionAgent();
   if (!agent) {
-    return c.json({ success: false, error: "Invalid Session" }, 401);
+    return jsonUnauthorized(c);
   }
 
-  // Read the stored OAuth session to pass to the worker
   const storedSession = await ctx.kv.get<import("@atcute/oauth-node-client").StoredSession>(
     `auth_session:${agent.did}`,
   );
   if (!storedSession) {
-    return c.json({ success: false, error: "Session not found" }, 401);
+    return jsonUnauthorized(c);
   }
 
   const csvData = await exportFile.arrayBuffer();
@@ -134,8 +134,7 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
       kvPath: env.KV_DB_PATH,
     };
 
-    // Send SSE keepalives every 5s to prevent Bun's idle timeout (default 10s)
-    // from killing the connection while the worker is starting up.
+    // Keepalives prevent Bun's idle timeout from killing the connection while the worker starts up.
     const heartbeat = setInterval(() => {
       stream.writeSSE({ data: "", event: "keepalive" }).catch(() => {});
     }, 5_000);

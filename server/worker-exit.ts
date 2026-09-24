@@ -1,26 +1,18 @@
 /**
  * Classification of a worker process exit, split out of `cluster.ts` so it can
  * be unit-tested. Zero dependencies — the Dockerfile copies this file verbatim
- * next to `cluster.ts` and Bun runs the TS source directly.
+ * next to `cluster.ts`.
  *
- * Worker deaths were effectively invisible: the app logged 82 error-level lines
- * against 171,145 user-visible 502s on 2026-08-01, because the failure mode was
- * process death rather than an exception. A cgroup OOM kill arrives as SIGKILL
- * with a null exit code and never touches the container's RestartCount, so this
- * JSON line is the only in-app signal that it happened.
+ * A cgroup OOM kill arrives as SIGKILL with a null exit code and never touches
+ * the container's RestartCount, so this JSON line is the only in-app signal
+ * that it happened.
  */
 import { readFileSync } from "node:fs";
 
 /**
  * Bun's `Bun.spawn` `onExit` hands back the signal *name* (`"SIGKILL"`), not a
- * number — its own type declaration says `number`, which is what the original
- * code trusted. `SIGNAL_NAMES["SIGKILL"]` missed, fell through to the
- * `` `SIG${code}` `` fallback and produced **`"SIGSIGKILL"`**, so
- * `likely_oom` was permanently false and the runbook's page condition
- * (`worker_exit AND likely_oom=true`) could never fire — through 148 OOM kills.
- *
- * Both shapes are handled here so a future Bun release that makes the types
- * honest doesn't silently reintroduce the bug.
+ * number, despite its own type declaration saying `number`. Both shapes are
+ * handled here so trusting the type doesn't silently reintroduce the bug.
  */
 const SIGNAL_NAMES: Record<number, string> = {
   2: "SIGINT",
@@ -67,8 +59,7 @@ export function classifyWorkerExit(args: {
     pid: args.pid ?? null,
     code: args.exitCode,
     signal,
-    // A cgroup OOM kill is SIGKILL with no exit code. A SIGKILL that *does*
-    // carry an exit code came from somewhere else and shouldn't page as an OOM.
+    // A cgroup OOM kill is SIGKILL with no exit code; a SIGKILL with one came from somewhere else and isn't an OOM.
     likely_oom: signal === "SIGKILL" && args.exitCode === null,
     uptime_ms: args.uptimeMs,
     ...(args.memory?.rss_kb !== undefined ? { rss_kb: args.memory.rss_kb } : {}),
@@ -77,16 +68,12 @@ export function classifyWorkerExit(args: {
 }
 
 /**
- * Memory footprint of a live worker, read from procfs.
+ * Memory footprint of a live worker, read from procfs. Must be sampled while
+ * the worker is running — `/proc/<pid>` is gone by the time `onExit` fires.
  *
- * Must be sampled *while the worker is running* — by the time `onExit` fires,
- * `/proc/<pid>` is gone, which is why the supervisor polls and reports the last
- * sample rather than reading on death.
- *
- * `Anonymous` is the number that matters. A worker's `Rss` also counts the
- * ~1 GB clean, shared, file-backed SQLite mmap, which is reclaimable; that term
- * is what made per-worker RSS readings look alarming during the incident while
- * the actual anonymous growth went unattributed. Returns null off Linux (dev).
+ * `Anonymous` is the number that matters; `Rss` also counts the shared,
+ * reclaimable file-backed SQLite mmap, which makes it look alarming for no
+ * reason. Returns null off Linux (dev).
  */
 export function readProcessMemoryKb(
   pid: number,

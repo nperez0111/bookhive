@@ -58,28 +58,41 @@ import {
   toHiveBookOutput,
   transformBookWithIdentifiers,
 } from "../bsky/bookLookup";
-import { BOOK_STATUS_MAP } from "../constants";
+import { BOOK_STATUS } from "../constants";
 import { BookFields } from "../db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
-import { hydrateUserBook } from "../utils/bookProgress";
-import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../utils/hiveBookGenres.js";
-import { getFeaturedAuthors } from "../utils/authorStats";
+import { hydrateUserBook } from "../core/bookProgress";
+import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../data/hiveBookGenres.js";
+import { listBookActivity, listBookDiscussion } from "../data/bookDetail";
+import { resolveActorDid } from "../services/actor";
+import { getFeaturedAuthors } from "../data/authorStats";
 import {
   DEFAULT_FEED_LIMIT,
   FEED_TABS,
   getActivityFeed,
   type FeedItem,
   type FeedTab,
-} from "../utils/activityFeed";
-import { getTopGenres } from "../utils/exploreGenres";
-import { resolveLanguage } from "../utils/getLanguages";
-import { getAvailableLanguages } from "../utils/getLanguages";
+} from "../data/activityFeed";
+import { getTopGenres } from "../data/exploreGenres";
+import { resolveLanguage } from "../data/getLanguages";
+import { getAvailableLanguages } from "../data/getLanguages";
+import { getReadingStatsForYear } from "../data/readingStats";
+import { errorMessage, toErrorPayload } from "../lib/errors";
 import {
-  computeReadingStats,
-  filterFinishedBooksByYear,
-  filterFinishedBooksAllTime,
-} from "../utils/readingStats";
+  hydrateSearchResults,
+  listBooksByAuthor,
+  listBooksByGenre,
+  searchLocalCatalog,
+} from "../data/catalogBooks";
+import {
+  getPersonalBookRow,
+  listPersonalBooks,
+  personalBookView,
+  shelfIdsForBooks,
+  type PersonalBookSort,
+} from "../data/personalBooks";
+import { getSyncDocument, listSyncDocuments, syncProgressView } from "../data/syncDocuments";
 import {
   deriveBookIdentifiers,
   normalizeGoodreadsId,
@@ -87,8 +100,8 @@ import {
   normalizeIsbn,
   normalizeIsbn13,
   toBookIdentifiersOutput,
-} from "../utils/bookIdentifiers";
-import { sql, type NotNull, type SqlBool } from "kysely";
+} from "../data/bookIdentifiers";
+import { sql } from "kysely";
 import {
   createList,
   updateList,
@@ -98,37 +111,39 @@ import {
   reorderListItems,
   getListWithItems,
   getUserLists,
-} from "../utils/lists";
+  type ListFailure,
+} from "../services/lists";
 import type { Storage } from "unstorage";
 import type { SessionClient } from "../auth/client";
-import type {
-  BookIdentifiers,
-  HiveBook,
-  HiveId as HiveIdType,
-  ProfileViewDetailed,
-  SyncProgressData,
-} from "../types";
+import type { BookIdentifiers, HiveBook, ProfileViewDetailed } from "../types";
 import {
   etagMatches,
   getStorageQuota,
   getStorageUsage,
   removeBookDir,
   streamPersonalBook,
-} from "../utils/personalLibrary";
-import { uploadPersonalBook, type UploadPersonalBookResult } from "../utils/uploadPersonalBook";
+} from "../data/personalLibrary";
+import { uploadPersonalBook, type UploadPersonalBookResult } from "../services/uploadPersonalBook";
 import { resolveXrpcAuth, type AuthMode, type XrpcAuth, type XrpcAuthContext } from "./auth";
 import type { Nsid } from "@atcute/lexicons";
 import type { ServiceJwtVerifier } from "@atcute/xrpc-server/auth";
-import { matchSyncDocumentForUser, NO_HIVE_MATCH, SAME_BOOK_FILE } from "../utils/syncMatching";
-import { filenameKey } from "../utils/filenameMatching";
-import { bridgeProgressToUserBook } from "../utils/syncBridge";
-import { truncateForLog } from "../middleware/wide-event";
+import { recordSyncProgress } from "../data/syncBridge";
 
-/**
- * The one place the upload core's failure reasons become XRPC errors, so the
- * XRPC and multipart adapters can't drift on what a given failure means. The
- * matching HTTP mapping lives in `src/routes/library.tsx`.
- */
+/** Upload core failure reasons → XRPC errors; matching HTTP mapping lives in `src/routes/library.tsx`. */
+/** List-write core refusal reasons → XRPC errors, so these procedures and `routes/shelves.tsx` can't drift. */
+function listErrorFor(result: ListFailure): XRPCError {
+  switch (result.reason) {
+    case "not_found":
+      return new XRPCError({ status: 404, error: "NotFound", message: result.message });
+    case "not_owner":
+      return new XRPCError({ status: 403, error: "Forbidden", message: result.message });
+    case "book_not_found":
+      return new XRPCError({ status: 404, error: "NotFound", message: result.message });
+    case "pds_write_failed":
+      return new XRPCError({ status: 502, error: "UpstreamFailure", message: result.message });
+  }
+}
+
 function uploadErrorFor(result: Extract<UploadPersonalBookResult, { ok: false }>): XRPCError {
   switch (result.reason) {
     case "too-large":
@@ -161,27 +176,6 @@ function uploadErrorFor(result: Extract<UploadPersonalBookResult, { ok: false }>
         error: "Busy",
         message: "Server is busy — try again in a moment",
       });
-  }
-}
-
-/**
- * Shape a `sync_document.progressData` blob into the lexicon's syncProgressView.
- * Returns undefined when the book has never been synced or the blob is unusable.
- */
-function syncProgressView(
-  progressData: string | null,
-  progressUpdatedAt: string | null,
-): { percentage: string; device?: string; updatedAt: string } | undefined {
-  if (!progressData || !progressUpdatedAt) return undefined;
-  try {
-    const data = JSON.parse(progressData) as SyncProgressData;
-    return {
-      percentage: String(data.percentage ?? 0),
-      device: data.device || undefined,
-      updatedAt: progressUpdatedAt,
-    };
-  } catch {
-    return undefined;
   }
 }
 
@@ -218,11 +212,7 @@ function getCtx(): XrpcContext {
   return ctx;
 }
 
-/**
- * Auth resolved for the in-flight handler, by the registration wrapper below.
- * Same AsyncLocalStorage idiom as the context — atcute handlers only receive
- * `{request, params, input, signal}`, so there is nowhere else to put it.
- */
+// Same AsyncLocalStorage idiom as the context — atcute handlers only receive `{request, params, input, signal}`.
 const xrpcAuthStorage = new AsyncLocalStorage<XrpcAuth>();
 
 /** The authenticated caller. Only valid inside a handler registered with `auth`. */
@@ -232,12 +222,7 @@ function getAuth(): XrpcAuth {
   return auth;
 }
 
-/**
- * The caller's OAuth session, for handlers that write to their repo. Non-null by
- * construction — `auth: "pdsWrite"` refuses service auth before the handler runs
- * — but narrowing the union keeps that guarantee in the types rather than in a
- * comment.
- */
+// Non-null by construction — `auth: "pdsWrite"` refuses service auth before the handler runs.
 function requireAgent(): SessionClient {
   const auth = getAuth();
   if (auth.method !== "session") {
@@ -252,25 +237,16 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 ): void {
   const router = new XRPCRouter();
 
-  // Two things are patched onto every registration here rather than repeated in
-  // 40+ handlers (where the next one added would forget them):
-  //
-  // 1. **Error observability.** XRPCRouter catches handler throws and turns them
-  //    into a 500 Response, so Hono's error-capture middleware never sees them
-  //    and the wide event logs an error-level line with no `error` field at all.
-  //    Record the cause on the way past.
-  // 2. **Authentication**, when the registration carries an `auth` mode. The
-  //    `lxm` a service-auth token must be bound to is derived from the schema's
-  //    own NSID, which makes it structurally impossible for a method's route and
-  //    its token binding to disagree.
+  // Two things are patched onto every registration here rather than repeated per handler:
+  // 1. Error observability — XRPCRouter swallows handler throws into a 500 before Hono's error-capture middleware sees them.
+  // 2. Authentication — the service-auth `lxm` binding is derived from the schema's own NSID, so it can't drift from the route.
   for (const method of ["addQuery", "addProcedure"] as const) {
     const original = router[method].bind(router) as (schema: unknown, options: any) => unknown;
     (router as any)[method] = (schema: any, options: any) => {
       const handler = options?.handler;
       if (typeof handler !== "function") return original(schema, options);
 
-      // A generated lexicon module carries `mainSchema`; `v.query`/`v.procedure`
-      // put the NSID on it. Same unwrap atcute does internally.
+      // A generated lexicon module carries `mainSchema` — same NSID unwrap atcute does internally.
       const nsid = ("mainSchema" in schema ? schema.mainSchema : schema).nsid as Nsid;
       const mode: AuthMode | undefined = options.auth;
       const { auth: _auth, ...rest } = options;
@@ -287,23 +263,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
               mode,
             });
             ctx?.addWideEventContext({ userDid: auth.did, xrpc_auth: auth.method });
-            // Auth failures land inside this try, so a 401 is recorded as the
-            // intentional control flow it is — same as a hand-thrown one.
+            // Auth failures land inside this try, so a 401 is recorded as intentional control flow, same as a hand-thrown one.
             return await xrpcAuthStorage.run(auth, () => handler(input));
           } catch (err) {
-            // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control
-            // flow, not defects — record them without a stack.
+            // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control flow, not defects — record without a stack.
             const status = (err as { status?: unknown } | null)?.status;
             const isIntentional = typeof status === "number" && status < 500;
             xrpcContextStorage.getStore()?.addWideEventContext({
               xrpc_handler: "threw",
-              error: {
-                message: err instanceof Error ? err.message : String(err),
-                type: err instanceof Error ? err.name : "Error",
-                ...(!isIntentional && err instanceof Error && err.stack
-                  ? { stack: truncateForLog(err.stack) }
-                  : {}),
-              },
+              error: toErrorPayload(err, { stack: !isIntentional }),
             });
             throw err;
           }
@@ -342,36 +310,18 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const off = offset ?? 0;
 
       if (genre !== undefined && genre !== "") {
-        let genreQuery = ctx.db
-          .selectFrom("hive_book_genre")
-          .innerJoin("hive_book", "hive_book.id", "hive_book_genre.hiveId")
-          .selectAll("hive_book")
-          .where("hive_book_genre.genre", "=", genre);
-
-        if (q !== undefined && q !== "") {
-          const pattern = `%${q}%`;
-          genreQuery = genreQuery.where((eb) =>
-            eb.or([
-              eb("hive_book.rawTitle", "like", pattern),
-              eb("hive_book.authors", "like", pattern),
-            ]),
-          );
-        }
-
-        // Language is a soft preference: sort matching-language books first
-        if (language) {
-          genreQuery = genreQuery.orderBy(
-            sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`,
-            "asc",
-          );
-        }
-
-        const books = await genreQuery
-          .orderBy("hive_book.ratingsCount", "desc")
-          .orderBy("hive_book.rating", "desc")
-          .limit(limit)
-          .offset(off)
-          .execute();
+        // Same core as `/explore/genres/:genre`; this is a raw offset (not a
+        // page number), as promised by the lexicon.
+        const { books } = await listBooksByGenre({
+          db: ctx.db,
+          genre,
+          page: Math.floor(off / limit) + 1,
+          offset: off,
+          pageSize: limit,
+          sort: "popularity",
+          language,
+          q: q || undefined,
+        });
 
         const genreMap = await loadGenresMapForHiveBooks(
           ctx.db,
@@ -389,45 +339,24 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const bookIds = await deps.searchBooks({ query: q, ctx });
 
-      // For limits beyond the cached 20, backfill live with ILIKE
+      // Backfill from the local catalogue beyond the cached 20 — it searches a different column set than the FTS index.
       let allIds = bookIds;
       if (limit > 20 && bookIds.length < limit) {
-        const pattern = `%${q}%`;
-        let extraQuery = ctx.db
-          .selectFrom("hive_book")
-          .select("id")
-          .where((eb) => eb.or([eb("rawTitle", "like", pattern), eb("authors", "like", pattern)]))
-          .orderBy("ratingsCount", "desc")
-          .orderBy("rating", "desc")
-          .limit(limit - bookIds.length);
-
-        if (bookIds.length > 0) {
-          extraQuery = extraQuery.where("id", "not in", bookIds);
-        }
-
-        const extra = await extraQuery.execute();
-        allIds = [...bookIds, ...extra.map((r) => r.id)];
+        const extra = await searchLocalCatalog({
+          db: ctx.db,
+          q,
+          limit: limit - bookIds.length,
+          exclude: bookIds,
+        });
+        allIds = [...bookIds, ...extra];
       }
 
       if (!allIds.length) {
         return json({ books: [] });
       }
 
-      let booksQuery = ctx.db.selectFrom("hive_book").selectAll().where("id", "in", allIds);
-
-      const books = await booksQuery.limit(limit * off + limit).execute();
-
-      // Language is a soft preference: sort matching-language books first, then by relevance
-      if (language) {
-        books.sort((a, b) => {
-          const aMatch = a.language === language ? 0 : 1;
-          const bMatch = b.language === language ? 0 : 1;
-          if (aMatch !== bMatch) return aMatch - bMatch;
-          return allIds.indexOf(a.id) - allIds.indexOf(b.id);
-        });
-      } else {
-        books.sort((a, b) => allIds.indexOf(a.id) - allIds.indexOf(b.id));
-      }
+      // Same core as `/search` — hydrate before truncating, or the language sort could disagree with page one on iOS vs web.
+      const books = await hydrateSearchResults({ db: ctx.db, ids: allIds, language });
 
       const slice = books.slice(off, off + limit);
       const genreMap = await loadGenresMapForHiveBooks(
@@ -435,7 +364,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         slice.map((b) => b.id),
       );
 
-      // Include current user's statuses if logged in
       const agent = await ctx.getSessionAgent();
       let userStatuses: Record<string, string> | undefined;
       if (agent && slice.length > 0) {
@@ -467,24 +395,20 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const ctx = getCtx();
       const { limit = 50, offset = 0, minBooks = 0 } = _params as BuzzBookhiveListGenres.$params;
 
-      let query = ctx.db
-        .selectFrom("hive_book_genre")
-        .select(["genre", sql<number>`COUNT(*)`.as("count")])
-        .groupBy("genre")
-        .orderBy(sql`COUNT(*)`, "desc");
-
-      if (minBooks > 0) {
-        query = query.having(sql<SqlBool>`COUNT(*) >= ${minBooks}`);
-      }
-
-      const genres = await query
-        .limit(limit)
-        .offset(offset ?? 0)
-        .execute();
+      // `getTopGenres`'s `HAVING COUNT(*) > n` is `>=` here, hence the -1.
+      // Offset slices the cached array rather than using SQL OFFSET, keeping order stable and KV cardinality bounded.
+      const all = await getTopGenres(
+        ctx.db,
+        ctx.kv,
+        offset + limit,
+        undefined,
+        minBooks > 0 ? minBooks - 1 : 0,
+      );
+      const genres = all.slice(offset, offset + limit);
 
       return json({
         genres: genres.map((g) => ({ genre: g.genre, count: g.count })),
-        offset: (offset ?? 0) + genres.length,
+        offset: offset + genres.length,
       });
     },
   });
@@ -613,43 +537,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         });
       }
 
-      const [comments, bookGenres] = await Promise.all([
-        ctx.db
-          .selectFrom("buzz")
-          .select([
-            "buzz.bookUri",
-            "buzz.bookCid",
-            "buzz.comment",
-            "buzz.createdAt",
-            "buzz.userDid",
-            "buzz.parentUri",
-            "buzz.parentCid",
-            "buzz.cid",
-            "buzz.uri",
-          ])
-          .where("buzz.hiveId", "=", book.id)
-          .orderBy("buzz.createdAt", "desc")
-          .limit(3000)
-          .execute(),
+      // Includes the `uri` keyset tiebreaker, without which two identical `getBook` calls could return different `peerBooks` sets.
+      const [{ reviews: topLevelReviews, buzzes: comments }, bookGenres] = await Promise.all([
+        listBookDiscussion({ db: ctx.db, hiveId: book.id }),
         loadGenresForHiveBook(ctx.db, book.id),
       ]);
-
-      const topLevelReviews = await ctx.db
-        .selectFrom("user_book")
-        .select([
-          "user_book.review as comment",
-          "user_book.createdAt",
-          "user_book.stars",
-          "user_book.userDid",
-          "user_book.uri",
-          "user_book.cid",
-        ])
-        .where("user_book.hiveId", "=", book.id)
-        .where("user_book.review", "is not", null)
-        .$narrowType<{ comment: NotNull }>()
-        .orderBy("user_book.createdAt", "desc")
-        .limit(1000)
-        .execute();
 
       const rawUserBook = agent
         ? await ctx.db
@@ -661,13 +553,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         : null;
       const userBook = rawUserBook ? hydrateUserBook(rawUserBook) : null;
 
-      const peerBooks = await ctx.db
-        .selectFrom("user_book")
-        .selectAll()
-        .where("hiveId", "==", book.id)
-        .orderBy("indexedAt", "desc")
-        .limit(100)
-        .execute();
+      const { rows: peerBooks } = await listBookActivity({
+        db: ctx.db,
+        hiveId: book.id,
+        limit: 100,
+      });
 
       const didToHandle = await ctx.resolver.resolveDidsToHandles(
         Array.from(
@@ -726,14 +616,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           cid: r.cid,
         })),
         activity: peerBooks.map((b) => ({
-          type:
-            b.status &&
-            b.status in BOOK_STATUS_MAP &&
-            BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
-              ? "finished"
-              : b.review
-                ? "review"
-                : "started",
+          type: b.status === BOOK_STATUS.FINISHED ? "finished" : b.review ? "review" : "started",
           createdAt: b.createdAt,
           hiveId: b.hiveId,
           title: b.title,
@@ -773,18 +656,22 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         });
       }
 
+      // Ordered by `indexedAt`, matching `/profile/:handle` — `createdAt` is frozen at PDS-record creation.
+      // Limit is 10_000 to match the web page; a smaller cap truncated a heavy user's library before `booksRead`/`reviews` were counted.
       const books = await ctx.db
         .selectFrom("user_book")
         .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
         .select(BookFields)
         .where("user_book.userDid", "=", did)
-        .orderBy("user_book.createdAt", "desc")
-        .limit(1000)
+        .orderBy("user_book.indexedAt", "desc")
+        .orderBy("user_book.uri", "desc")
+        .limit(10_000)
         .execute();
       const profile = await deps.getProfile({
         ctx: ctx as unknown as E,
         did,
       });
+      // Same key (`indexedAt`) — here it decides which 50 rows you see, not just their order.
       const friendsBuzzes = await ctx.db
         .selectFrom("user_book")
         .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
@@ -792,7 +679,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .select(BookFields)
         .where("user_follows.userDid", "=", did)
         .where("user_follows.isActive", "=", 1)
-        .orderBy("user_book.createdAt", "desc")
+        .orderBy("user_book.indexedAt", "desc")
+        .orderBy("user_book.uri", "desc")
         .limit(50)
         .execute();
       const parsedBooks = books.map((book) => hydrateUserBook(book));
@@ -834,83 +722,63 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             )
           : undefined;
 
+      // `activityView` puts `indexedAt` into the `createdAt` field on purpose — the field name lags the data pending a lexicon change.
+      const bookView = (b: (typeof parsedBooks)[number], reportedAt: string) => ({
+        userDid: b.userDid,
+        userHandle: didToHandle[b.userDid] ?? b.userDid,
+        authors: b.authors,
+        createdAt: reportedAt,
+        hiveId: b.hiveId,
+        title: b.title,
+        thumbnail: b.thumbnail || "",
+        cover: b.cover ?? b.thumbnail ?? undefined,
+        finishedAt: b.finishedAt ?? undefined,
+        review: b.review ?? undefined,
+        stars: b.stars ?? undefined,
+        status: b.status ?? undefined,
+        owned: b.owned ? true : undefined,
+        description: b.description ?? undefined,
+        rating: b.rating ?? undefined,
+        startedAt: b.startedAt ?? undefined,
+        bookProgress: b.bookProgress ?? undefined,
+        previousReads: b.previousReads ?? undefined,
+        identifiers: identifiersByHiveId.get(b.hiveId),
+        genres: genresByHiveId.get(b.hiveId as HiveId),
+      });
+
+      // Two named views, not a boolean flag — `.map(bookView)` would pass the array index as the second arg.
+      const libraryView = (b: (typeof parsedBooks)[number]) => bookView(b, b.createdAt);
+      const activityView = (b: (typeof parsedBooks)[number]) => bookView(b, b.indexedAt);
+
       const response: GetProfileOutputSchema = {
         profile: {
           displayName: profile?.displayName ?? profile?.handle ?? did,
           avatar: profile?.avatar,
           handle: profile?.handle ?? did,
           description: profile?.description,
-          booksRead: books.filter(
-            (b) =>
-              b.status &&
-              b.status in BOOK_STATUS_MAP &&
-              BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read",
-          ).length,
+          booksRead: books.filter((b) => b.status === BOOK_STATUS.FINISHED).length,
           reviews: books.filter((b) => b.review).length,
           isFollowing,
         },
-        friendActivity: parsedFriendsBuzzes.map((b) => ({
-          userDid: b.userDid,
-          userHandle: didToHandle[b.userDid] ?? b.userDid,
-          authors: b.authors,
-          createdAt: b.createdAt,
-          hiveId: b.hiveId,
-          title: b.title,
-          thumbnail: b.thumbnail || "",
-          cover: b.cover ?? b.thumbnail ?? undefined,
-          finishedAt: b.finishedAt ?? undefined,
-          review: b.review ?? undefined,
-          stars: b.stars ?? undefined,
-          status: b.status ?? undefined,
-          owned: b.owned ? true : undefined,
-          description: b.description ?? undefined,
-          rating: b.rating ?? undefined,
-          startedAt: b.startedAt ?? undefined,
-          bookProgress: b.bookProgress ?? undefined,
-          previousReads: b.previousReads ?? undefined,
-          identifiers: identifiersByHiveId.get(b.hiveId),
-          genres: genresByHiveId.get(b.hiveId as HiveId),
-        })),
-        books: parsedBooks.map((b) => ({
-          userDid: b.userDid,
-          userHandle: didToHandle[b.userDid] ?? b.userDid,
-          authors: b.authors,
-          createdAt: b.createdAt,
-          hiveId: b.hiveId,
-          title: b.title,
-          thumbnail: b.thumbnail || "",
-          cover: b.cover ?? b.thumbnail ?? undefined,
-          finishedAt: b.finishedAt ?? undefined,
-          review: b.review ?? undefined,
-          stars: b.stars ?? undefined,
-          status: b.status ?? undefined,
-          owned: b.owned ? true : undefined,
-          description: b.description ?? undefined,
-          rating: b.rating ?? undefined,
-          startedAt: b.startedAt ?? undefined,
-          bookProgress: b.bookProgress ?? undefined,
-          previousReads: b.previousReads ?? undefined,
-          identifiers: identifiersByHiveId.get(b.hiveId),
-          genres: genresByHiveId.get(b.hiveId as HiveId),
-        })),
+        friendActivity: parsedFriendsBuzzes.map(activityView),
+        books: parsedBooks.map(libraryView),
+        // Newest activity per book, newest first — every timestamp is `indexedAt` under the `createdAt` name (see `bookView`).
         activity: books
           .reduce(
             (acc, b) => {
               const existing = acc.find((a) => a.hiveId === b.hiveId);
-              if (!existing || new Date(b.createdAt) > new Date(existing.createdAt)) {
+              if (!existing || new Date(b.indexedAt) > new Date(existing.createdAt)) {
                 if (existing) {
                   acc.splice(acc.indexOf(existing), 1);
                 }
                 acc.push({
                   type:
-                    b.status &&
-                    b.status in BOOK_STATUS_MAP &&
-                    BOOK_STATUS_MAP[b.status as keyof typeof BOOK_STATUS_MAP] === "read"
+                    b.status === BOOK_STATUS.FINISHED
                       ? "finished"
                       : b.review
                         ? "review"
                         : "started",
-                  createdAt: b.createdAt,
+                  createdAt: b.indexedAt,
                   hiveId: b.hiveId,
                   title: b.title,
                   userDid: b.userDid,
@@ -947,12 +815,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   router.addQuery(BuzzBookhiveGetExplore, {
     async handler({ params: _params }) {
       const ctx = getCtx();
-      // Both aggregates are cached with SWR inside their helpers and shared
-      // with /explore and /explore/authors. This handler used to run them
-      // uncached on every mobile Explore open — a synchronous multi-second
-      // query that froze one of the three worker processes outright.
-      // `language` is lexicon-typed as a free-form string, so it is narrowed to
-      // one we have books in before it can key a cache entry.
+      // Both aggregates are cached with SWR inside their helpers, shared with /explore and /explore/authors.
+      // `language` is narrowed to one we have books in before it can key a cache entry — it's lexicon-typed as a free-form string otherwise.
       const language = await resolveLanguage(
         ctx.db,
         ctx.kv,
@@ -978,13 +842,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
   });
 
   router.addQuery(BuzzBookhiveGetFeed, {
-    /**
-     * Thin adapter over `getActivityFeed` (`src/utils/activityFeed.ts`). This
-     * used to be a line-for-line copy of the `/feed` page handler and had
-     * already drifted: it returned `createdAt` where the web page rendered
-     * `indexedAt` (so the same item showed two different times on web and iOS),
-     * and it never populated the `userAvatar` the lexicon has always declared.
-     */
+    // Thin adapter over `getActivityFeed` (`src/data/activityFeed.ts`).
     async handler({ params: _params }) {
       const ctx = getCtx();
       const agent = await ctx.getSessionAgent();
@@ -992,10 +850,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       const tab = FEED_TABS.includes(params.tab as FeedTab) ? (params.tab as FeedTab) : "friends";
 
-      // Shipped iOS builds paginate with `page`, which is otherwise ignored: a
-      // page-2 request would get page 1 again with hasMore still true, and the
-      // app's onEndReached would re-request forever (its dedup hides the
-      // repeats). Ending the feed is the honest degradation for those builds.
+      // Shipped iOS builds paginate with `page`; a page-2 request with no cursor ends the feed instead of looping `onEndReached` forever.
       const legacyPage = params.page ?? 1;
       if (!params.cursor && legacyPage > 1) {
         return json({
@@ -1054,16 +909,12 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
             },
       );
 
-      // A burst row renders a few covers plus `total`; carrying every collapsed
-      // item (up to 250) in each group multiplies the payload for nothing. The
-      // flat `activities` array stays complete: the cursor advances past every
-      // raw row consumed, so trimming it would drop activities flat-list
-      // clients (iOS) can never see again.
+      // A burst row only renders a few covers plus `total`, so capping group previews avoids sending huge items for nothing.
+      // The flat `activities` array stays uncapped — the cursor advances past every raw row, so trimming it drops rows flat-list clients can never see again.
       const BURST_PREVIEW_ITEMS = 8;
 
       return json({
-        // Flat list kept populated so shipped clients that only read
-        // `activities` keep working; bursts are expanded here.
+        // Flat list kept populated so shipped clients that only read `activities` keep working; bursts are expanded here.
         activities: groups.flatMap((g) => g.activities),
         groups: groups.map((g) =>
           g.activities.length > BURST_PREVIEW_ITEMS
@@ -1088,50 +939,22 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       } = _params as BuzzBookhiveGetAuthorBooks.$params;
 
       const pageSize = Math.min(100, limit);
-      const offset = (Math.max(1, page) - 1) * pageSize;
 
-      // Build author matching condition (authors stored tab-separated)
-      const exact = author;
-      const first = `${author}\t%`;
-      const middle = `%\t${author}\t%`;
-      const last = `%\t${author}`;
-      const authorCondition = sql`(
-        authors = ${exact}
-        OR authors LIKE ${first}
-        OR authors LIKE ${middle}
-        OR authors LIKE ${last}
-      )`;
+      // Same core as `/authors/:author` — the count here is index-only (no `hive_book` join) and the ORDER BY ends on a unique key.
+      const {
+        books,
+        totalBooks,
+        totalPages,
+        currentPage: validPage,
+      } = await listBooksByAuthor({
+        db: ctx.db,
+        author,
+        page,
+        pageSize,
+        sort: sort === "reviews" ? "reviews" : "popularity",
+        language,
+      });
 
-      let countQuery = ctx.db
-        .selectFrom("hive_book")
-        .select(sql<number>`COUNT(*)`.as("count"))
-        .where(authorCondition as any);
-
-      let dataQuery = ctx.db
-        .selectFrom("hive_book")
-        .selectAll()
-        .where(authorCondition as any);
-
-      // Language is a soft preference: sort matching-language books first, don't filter
-      if (language) {
-        dataQuery = dataQuery.orderBy(
-          sql`CASE WHEN language = ${language} THEN 0 ELSE 1 END`,
-          "asc",
-        );
-      }
-
-      const [totalCountResult, books] = await Promise.all([
-        countQuery.executeTakeFirst(),
-        dataQuery
-          .orderBy(sort === "reviews" ? "rating" : "ratingsCount", "desc")
-          .orderBy(sort === "reviews" ? "ratingsCount" : "rating", "desc")
-          .limit(pageSize)
-          .offset(offset)
-          .execute(),
-      ]);
-
-      const totalBooks = Number(totalCountResult?.count ?? 0);
-      const totalPages = Math.max(1, Math.ceil(totalBooks / pageSize));
       const genreMap = await loadGenresMapForHiveBooks(
         ctx.db,
         books.map((b) => b.id),
@@ -1142,7 +965,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         books: books.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
         totalBooks,
         totalPages,
-        page: Math.max(1, page),
+        page: validPage,
       });
     },
   });
@@ -1153,13 +976,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const { handle, year: yearParam } = _params as BuzzBookhiveGetReadingStats.$params;
       const year = yearParam ?? new Date().getFullYear();
 
-      // Resolve handle → DID
-      let did: string | undefined;
-      if (handle.startsWith("did:")) {
-        did = handle;
-      } else {
-        did = await ctx.baseIdResolver.handle.resolve(handle);
-      }
+      // `resolveActorDid`, not `startsWith("did:")` — the latter let malformed values like `did:%%%` reach the resolver.
+      const did = await resolveActorDid(ctx, handle);
 
       if (!did) {
         throw new XRPCError({
@@ -1179,36 +997,14 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .execute();
       const parsedBooks = books.map((b) => hydrateUserBook(b));
 
-      const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
-
-      let genreStatsForYear: { genre: string; count: number }[] = [];
-      if (finishedInYear.length > 0) {
-        const hiveIds = finishedInYear.map((b) => b.hiveId);
-        const rows = await ctx.db
-          .selectFrom("hive_book_genre")
-          .select(["genre", sql<number>`COUNT(*)`.as("count")])
-          .where("hiveId", "in", hiveIds)
-          .groupBy("genre")
-          .orderBy(sql`COUNT(*)`, "desc")
-          .limit(15)
-          .execute();
-        genreStatsForYear = rows.map((r) => ({
-          genre: r.genre,
-          count: Number(r.count),
-        }));
-      }
-
-      const stats = computeReadingStats(finishedInYear, genreStatsForYear);
-
-      const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
-      const yearSet = new Set(
-        finishedAllTime
-          .map((b) => (b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0))
-          .filter((y) => y >= 2000 && y <= 2100),
-      );
-      const currentYear = new Date().getFullYear();
-      if (!yearSet.has(currentYear)) yearSet.add(currentYear);
-      const availableYears = [...yearSet].sort((a, b) => b - a);
+      // Shares the year filter, genre aggregate and available-years window with the web page and OG card.
+      // NOTE: `getReadingStatsForYear` also returns an all-time fallback this lexicon has no field for, so
+      // the app shows a near-empty year where the website falls back to all-time — needs a lexicon field plus an app release.
+      const { stats, availableYears } = await getReadingStatsForYear({
+        db: ctx.db,
+        books: parsedBooks,
+        year,
+      });
 
       const toBookSummary = (
         b: {
@@ -1279,6 +1075,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         tags: input.tags,
       });
 
+      if (!result.ok) throw listErrorFor(result);
+
       return json(result);
     },
   });
@@ -1300,6 +1098,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         tags: input.tags,
       });
 
+      if (!result.ok) throw listErrorFor(result);
+
       return json(result);
     },
   });
@@ -1311,7 +1111,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const agent = requireAgent();
       const input = _input as BuzzBookhiveDeleteList.$input;
 
-      await deleteList({ agent, db: ctx.db, uri: input.uri });
+      const deleted = await deleteList({ agent, db: ctx.db, uri: input.uri });
+      if (!deleted.ok) throw listErrorFor(deleted);
 
       return json({});
     },
@@ -1333,6 +1134,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         position: input.position,
       });
 
+      if (!result.ok) throw listErrorFor(result);
+
       return json(result);
     },
   });
@@ -1344,7 +1147,8 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const agent = requireAgent();
       const input = _input as BuzzBookhiveRemoveFromList.$input;
 
-      await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
+      const removed = await removeBookFromList({ agent, db: ctx.db, itemUri: input.itemUri });
+      if (!removed.ok) throw listErrorFor(removed);
 
       return json({});
     },
@@ -1357,12 +1161,13 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const agent = requireAgent();
       const input = _input as BuzzBookhiveReorderList.$input;
 
-      await reorderListItems({
+      const reordered = await reorderListItems({
         agent,
         db: ctx.db,
         listUri: input.listUri,
         itemUris: input.itemUris,
       });
+      if (!reordered.ok) throw listErrorFor(reordered);
 
       return json({});
     },
@@ -1435,7 +1240,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           description: item.description ?? undefined,
           position: item.position ?? undefined,
           addedAt: item.addedAt,
-          // Use hive_book data when resolved, fall back to embedded metadata
           title: item.title ?? item.embeddedTitle ?? undefined,
           authors: item.authors ?? item.embeddedAuthor ?? undefined,
           thumbnail: item.thumbnail || item.embeddedCoverUrl || undefined,
@@ -1454,192 +1258,43 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const ctx = getCtx();
       const { did: userDid } = getAuth();
       const params = _params as BuzzBookhiveGetPersonalLibrary.$params;
-      const { limit = 24, shelfId, q, sort = "recent" } = params;
+      const { limit = 24, shelfId, q } = params;
+      // The lexicon's known-values are a hint, not a constraint — narrow it rather than trusting the wire.
+      const sort: PersonalBookSort =
+        params.sort === "title" ? "title" : params.sort === "author" ? "author" : "recent";
       const offset = params.cursor ? parseInt(params.cursor, 10) : 0;
 
-      let query = ctx.db
-        .selectFrom("personal_book")
-        .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
-        .select([
-          "personal_book.id",
-          "personal_book.contentHash",
-          "personal_book.hiveId",
-          "personal_book.filename",
-          "personal_book.title",
-          "personal_book.authors",
-          "personal_book.language",
-          "personal_book.format",
-          "personal_book.mime",
-          "personal_book.filePath",
-          "personal_book.coverPath",
-          "personal_book.coverMime",
-          "personal_book.sizeBytes",
-          "personal_book.createdAt",
-          "personal_book.updatedAt",
-          "hive_book.cover as hiveCover",
-          "hive_book.thumbnail as hiveThumbnail",
-          "hive_book.description as hiveDescription",
-        ])
-        // E-reader progress for this file. Correlated subqueries rather than a
-        // join: a file can match more than one synced document (the same book
-        // read on a device in BINARY checksum mode and another in FILENAME
-        // mode is two rows — see SAME_BOOK_FILE), and a join would emit the
-        // book once per match and quietly corrupt this query's pagination.
-        // Most recent wins.
-        .select((eb) => [
-          eb
-            .selectFrom("sync_document")
-            .select("sync_document.progressData")
-            .where("sync_document.userDid", "=", userDid)
-            .where("sync_document.provider", "=", "kosync")
-            .where(SAME_BOOK_FILE)
-            .orderBy("sync_document.updatedAt", "desc")
-            .limit(1)
-            .as("progressData"),
-          eb
-            .selectFrom("sync_document")
-            .select("sync_document.updatedAt")
-            .where("sync_document.userDid", "=", userDid)
-            .where("sync_document.provider", "=", "kosync")
-            .where(SAME_BOOK_FILE)
-            .orderBy("sync_document.updatedAt", "desc")
-            .limit(1)
-            .as("progressUpdatedAt"),
-        ])
-        .where("personal_book.userDid", "=", userDid);
-
-      // Same predicate and ordering as the OPDS search feed, so "full parity"
-      // is a property of the SQL rather than a claim. SQLite's LIKE is
-      // case-insensitive for ASCII only; that is pre-existing OPDS behaviour
-      // and deliberately preserved rather than silently changed here.
-      if (q) {
-        query = query.where((eb) =>
-          eb.or([
-            eb("personal_book.title", "like", `%${q}%`),
-            eb("personal_book.authors", "like", `%${q}%`),
-          ]),
-        ) as typeof query;
-      }
-      // Every sort ends on `personal_book.id`. None of the leading keys are
-      // unique: titles and authors collide routinely (a series, an omnibus, the
-      // same book in two formats), and `createdAt` — millisecond-precision ISO
-      // — collides when two uploads commit in the same millisecond. SQLite is
-      // free to return ties in any order it likes between two LIMIT/OFFSET
-      // queries, so without a unique final key a book can appear on two
-      // consecutive pages while another never appears at all.
-      query =
-        sort === "title"
-          ? (query
-              .orderBy("personal_book.title", "asc")
-              .orderBy("personal_book.id", "asc") as typeof query)
-          : sort === "author"
-            ? (query
-                .orderBy("personal_book.authors", "asc")
-                .orderBy("personal_book.title", "asc")
-                .orderBy("personal_book.id", "asc") as typeof query)
-            : (query
-                .orderBy("personal_book.createdAt", "desc")
-                .orderBy("personal_book.id", "desc") as typeof query);
-
-      if (shelfId !== undefined) {
-        query = query
-          .innerJoin(
-            "personal_shelf_item",
-            "personal_book.id",
-            "personal_shelf_item.personalBookId",
-          )
-          .where("personal_shelf_item.shelfId", "=", shelfId) as typeof query;
-      }
-
-      // Total across all pages, so the UI can label the tab without having to
-      // page through everything first.
-      let countQuery = ctx.db
-        .selectFrom("personal_book")
-        .select((eb) => eb.fn.countAll<number>().as("total"))
-        .where("personal_book.userDid", "=", userDid);
-      if (q) {
-        countQuery = countQuery.where((eb) =>
-          eb.or([
-            eb("personal_book.title", "like", `%${q}%`),
-            eb("personal_book.authors", "like", `%${q}%`),
-          ]),
-        ) as typeof countQuery;
-      }
-      if (shelfId !== undefined) {
-        countQuery = countQuery
-          .innerJoin(
-            "personal_shelf_item",
-            "personal_book.id",
-            "personal_shelf_item.personalBookId",
-          )
-          .where("personal_shelf_item.shelfId", "=", shelfId) as typeof countQuery;
-      }
-
-      const [rows, counted, usedBytes] = await Promise.all([
-        query
-          .limit(limit + 1)
-          .offset(offset)
-          .execute(),
-        countQuery.executeTakeFirstOrThrow(),
-        // Bundled here rather than exposed as its own method: every client
-        // already refetches this on mount and after each mutation, so a usage
-        // bar updates with no extra round-trip and no new invalidation wiring.
+      const [{ rows: books, total }, usedBytes] = await Promise.all([
+        listPersonalBooks({
+          db: ctx.db,
+          userDid,
+          shelfId,
+          q,
+          sort,
+          limit,
+          offset,
+          withProgress: true,
+        }),
+        // Bundled here rather than its own method — clients already refetch this on mount and after each mutation.
         getStorageUsage(ctx.db, userDid),
       ]);
-      const hasMore = rows.length > limit;
-      const books = rows.slice(0, limit);
-      const nextCursor = hasMore ? String(offset + limit) : undefined;
 
-      // Shelf membership for the whole page in one query, so the client doesn't
-      // have to fan out a request per shelf to reconstruct it.
-      const shelfIdsByBook = new Map<number, number[]>();
-      if (books.length > 0) {
-        const memberships = await ctx.db
-          .selectFrom("personal_shelf_item")
-          .innerJoin("personal_shelf", "personal_shelf.id", "personal_shelf_item.shelfId")
-          .select(["personal_shelf_item.personalBookId", "personal_shelf_item.shelfId"])
-          .where("personal_shelf.userDid", "=", userDid)
-          .where(
-            "personal_shelf_item.personalBookId",
-            "in",
-            books.map((b) => b.id),
-          )
-          .execute();
-        for (const m of memberships) {
-          const list = shelfIdsByBook.get(m.personalBookId);
-          if (list) list.push(m.shelfId);
-          else shelfIdsByBook.set(m.personalBookId, [m.shelfId]);
-        }
-      }
+      const hasMore = offset + books.length < total;
+      const shelfIdsByBook = await shelfIdsForBooks({
+        db: ctx.db,
+        userDid,
+        bookIds: books.map((b) => b.id),
+      });
 
       return json({
-        books: books.map((b) => ({
-          contentHash: b.contentHash,
-          title: b.title,
-          authors: b.authors ?? undefined,
-          language: b.language ?? undefined,
-          format: b.format,
-          mime: b.mime,
-          sizeBytes: b.sizeBytes,
-          filename: b.filename,
-          description: b.hiveDescription ?? undefined,
-          createdAt: b.createdAt,
-          updatedAt: b.updatedAt,
-          hiveId: b.hiveId ?? undefined,
-          coverUrl:
-            b.hiveCover ??
-            b.hiveThumbnail ??
-            (b.coverPath ? `/library/covers/${b.contentHash}` : undefined),
-          // `coverUrl`'s local form needs a session cookie, which a service-auth
-          // client does not have. This tells such a client to use
-          // getPersonalBookCover instead, without breaking `coverUrl` for the
-          // web and mobile clients that already read it.
-          hasLocalCover: Boolean(b.coverPath),
-          progress: syncProgressView(b.progressData, b.progressUpdatedAt),
-          shelfIds: shelfIdsByBook.get(b.id) ?? [],
-        })),
-        total: Number(counted.total),
-        cursor: nextCursor,
+        books: books.map((b) =>
+          personalBookView(b, {
+            shelfIds: shelfIdsByBook.get(b.id) ?? [],
+            progress: syncProgressView(b.progressData, b.progressUpdatedAt),
+          }),
+        ),
+        total,
+        cursor: hasMore ? String(offset + limit) : undefined,
         storage: { usedBytes, quotaBytes: getStorageQuota() },
       });
     },
@@ -1652,58 +1307,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const { did: userDid } = getAuth();
       const { contentHash } = _params as BuzzBookhiveGetPersonalBook.$params;
 
-      const book = await ctx.db
-        .selectFrom("personal_book")
-        .leftJoin("hive_book", "personal_book.hiveId", "hive_book.id")
-        .select([
-          "personal_book.contentHash",
-          "personal_book.hiveId",
-          "personal_book.title",
-          "personal_book.authors",
-          "personal_book.language",
-          "personal_book.format",
-          "personal_book.mime",
-          "personal_book.coverPath",
-          "personal_book.sizeBytes",
-          "personal_book.createdAt",
-          "personal_book.updatedAt",
-          "hive_book.cover as hiveCover",
-          "hive_book.thumbnail as hiveThumbnail",
-        ])
-        .where("personal_book.userDid", "=", userDid)
-        .where("personal_book.contentHash", "=", contentHash)
-        .executeTakeFirst();
-
+      const book = await getPersonalBookRow({ db: ctx.db, userDid, contentHash });
       if (!book) {
         throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
       }
 
-      return json({
-        book: {
-          contentHash: book.contentHash,
-          title: book.title,
-          authors: book.authors ?? undefined,
-          language: book.language ?? undefined,
-          format: book.format,
-          mime: book.mime,
-          sizeBytes: book.sizeBytes,
-          createdAt: book.createdAt,
-          updatedAt: book.updatedAt,
-          hiveId: book.hiveId ?? undefined,
-          coverUrl:
-            book.hiveCover ??
-            book.hiveThumbnail ??
-            (book.coverPath ? `/library/covers/${book.contentHash}` : undefined),
-        },
-      });
+      return json({ book: personalBookView(book) });
     },
   });
 
   // The XRPC equivalent of GET /opds/books/:hash/download/{name}.ext.
-  //
-  // Returns a bare `Response` rather than `json(...)`: the lexicon declares a
-  // blob output, so the router passes whatever we return straight through and
-  // sets no headers of its own — this handler owns all of them.
+  // Returns a bare `Response` rather than `json(...)` — the lexicon declares a blob output, so this handler owns all headers itself.
   router.addQuery(BuzzBookhiveGetPersonalBookFile, {
     auth: "identity",
     async handler({ request, params: _params }) {
@@ -1711,10 +1325,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const { did: userDid } = getAuth();
       const { contentHash } = _params as BuzzBookhiveGetPersonalBookFile.$params;
 
-      // `streamPersonalBook` answers the conditional request itself, before it
-      // opens the file. This route must not lean on hono's `etag()` for the
-      // 304: that middleware buffers a whole body through a digest, which is
-      // exactly what a 100 MB download must never do.
+      // `streamPersonalBook` answers the conditional request itself — this route must not lean on hono's `etag()`, which buffers the whole body.
       const download = await streamPersonalBook(
         ctx.db,
         userDid,
@@ -1754,9 +1365,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       if (book.coverPath) {
         const file = Bun.file(book.coverPath);
         if (await file.exists()) {
-          // Set our own ETag: hono's `etag()` only digests (and so buffers) a
-          // response that doesn't already carry one, and this gets conditional
-          // requests answered for free.
+          // Set our own ETag — hono's `etag()` only digests (and buffers) a response that doesn't already carry one.
           const etag = `"${contentHash}-cover"`;
           if (etagMatches(request.headers.get("if-none-match"), etag)) {
             return new Response(null, { status: 304, headers: { ETag: etag } });
@@ -1772,14 +1381,9 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         }
       }
 
-      // No extracted cover, but the book is linked to a catalog entry: hand the
-      // client the public image proxy. Absolute, so a non-browser client can
-      // follow it without knowing our origin, and public, so nothing leaks.
+      // No extracted cover but linked to a catalog entry — redirect to the public image proxy, absolute so a non-browser client can follow it.
       if (book.hiveId) {
-        // Built by hand rather than with `Response.redirect`, whose headers are
-        // *immutable*: the downstream `Cache-Control` middleware and the nitro
-        // response hook both set headers on the final Response, and doing that
-        // to an immutable guard throws a TypeError — turning a 302 into a 500.
+        // Built by hand rather than `Response.redirect`, whose headers are immutable — downstream middleware setting headers would throw.
         return new Response(null, {
           status: 302,
           headers: {
@@ -1791,8 +1395,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  // The root call for a catalog client: everything GET /opds renders, in one
-  // request — shelves with their counts, the library total, and storage usage.
+  // The root call for a catalog client — everything GET /opds renders, in one request.
   router.addQuery(BuzzBookhiveListPersonalShelves, {
     auth: "identity",
     async handler() {
@@ -1838,9 +1441,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  // The blob-input twin of POST /library/upload. Both are thin adapters over
-  // `uploadPersonalBook`; the body streams straight to disk from here, so an
-  // oversized or malformed upload is never materialised in memory.
+  // The blob-input twin of POST /library/upload — the body streams straight to disk, never materialised in memory.
   router.addProcedure(BuzzBookhiveUploadPersonalBook, {
     auth: "identity",
     async handler({ request, params: _params }) {
@@ -1856,8 +1457,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         filename,
         source: {
           kind: "stream",
-          // The lexicon declares a blob input, so atcute leaves the body alone
-          // and types it as a stream for us.
+          // The lexicon declares a blob input, so atcute leaves the body alone and types it as a stream.
           body: request.body as ReadableStream<Uint8Array>,
           declaredLength: Number.isFinite(declared) && declared > 0 ? declared : undefined,
         },
@@ -1902,14 +1502,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("contentHash", "=", contentHash)
         .execute();
 
-      // Best-effort: the row is already gone, so the book is out of the library
-      // and out of the quota either way. Failing the request here would 500 an
-      // otherwise-successful delete and send the client into retrying a delete
-      // that now 404s.
+      // Best-effort — the row is already gone either way, and failing here would 500 an otherwise-successful delete.
       await removeBookDir(userDid, contentHash).catch((err: unknown) => {
         ctx.addWideEventContext({
           personal_book_rm: "failed",
-          error: { message: err instanceof Error ? err.message : String(err) },
+          error: { message: errorMessage(err) },
         });
       });
 
@@ -1950,15 +1547,13 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .updateTable("personal_book")
         .set({
           hiveId: hiveBook.id,
-          title: hiveBook.title,
-          authors: hiveBook.authors,
+          // The file's metadata stays authoritative, including after unlinking.
           updatedAt: now,
         })
         .where("userDid", "=", userDid)
         .where("contentHash", "=", contentHash)
         .execute();
 
-      // Also update any matching sync_document with the same contentHash
       await ctx.db
         .updateTable("sync_document")
         .set({ hiveId: hiveBook.id })
@@ -1966,7 +1561,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("documentHash", "=", contentHash)
         .execute();
 
-      // Mark the book as owned if the user has it in their library
       await ctx.db
         .updateTable("user_book")
         .set({ owned: 1 })
@@ -1975,24 +1569,12 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("owned", "=", 0)
         .execute();
 
-      return json({
-        book: {
-          contentHash,
-          title: hiveBook.title,
-          authors: hiveBook.authors ?? undefined,
-          language: book.language ?? undefined,
-          format: book.format,
-          mime: book.mime,
-          sizeBytes: book.sizeBytes,
-          createdAt: book.createdAt,
-          updatedAt: now,
-          hiveId: hiveBook.id,
-          coverUrl:
-            hiveBook.cover ??
-            hiveBook.thumbnail ??
-            (book.coverPath ? `/library/covers/${contentHash}` : undefined),
-        },
-      });
+      // Re-read rather than assemble the response by hand — hand-assembling let these three methods drift on which fields they returned.
+      const linked = await getPersonalBookRow({ db: ctx.db, userDid, contentHash });
+      if (!linked) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+      return json({ book: personalBookView(linked) });
     },
   });
 
@@ -2022,8 +1604,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("contentHash", "=", contentHash)
         .execute();
 
-      // linkPersonalBook propagates the hiveId onto the matching sync_document;
-      // unlinking has to undo that too, or the document stays falsely linked.
+      // linkPersonalBook propagates hiveId onto the matching sync_document; unlinking must undo that too.
       await ctx.db
         .updateTable("sync_document")
         .set({ hiveId: null })
@@ -2031,20 +1612,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .where("documentHash", "=", contentHash)
         .execute();
 
-      return json({
-        book: {
-          contentHash,
-          title: book.title,
-          authors: book.authors ?? undefined,
-          language: book.language ?? undefined,
-          format: book.format,
-          mime: book.mime,
-          sizeBytes: book.sizeBytes,
-          createdAt: book.createdAt,
-          updatedAt: now,
-          coverUrl: book.coverPath ? `/library/covers/${contentHash}` : undefined,
-        },
-      });
+      const unlinked = await getPersonalBookRow({ db: ctx.db, userDid, contentHash });
+      if (!unlinked) {
+        throw new XRPCError({ status: 404, error: "NotFound", message: "Book not found" });
+      }
+      return json({ book: personalBookView(unlinked) });
     },
   });
 
@@ -2255,26 +1827,20 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const { did: userDid } = getAuth();
       const { contentHash } = _params as BuzzBookhiveGetSyncProgress.$params;
 
-      const row = await ctx.db
-        .selectFrom("sync_document")
-        .select(["documentHash", "progressData"])
-        .where("userDid", "=", userDid)
-        .where("provider", "=", "kosync")
-        .where("documentHash", "=", contentHash)
-        .executeTakeFirst();
-
-      if (!row) {
+      const doc = await getSyncDocument({ db: ctx.db, userDid, document: contentHash });
+      if (!doc) {
         throw new XRPCError({ status: 404, error: "NotFound", message: "Document not found" });
       }
 
-      const data: SyncProgressData = JSON.parse(row.progressData);
+      // Every field here is `required` in the lexicon, so an unreadable progress blob gets defaults rather than `undefined`.
       return json({
-        document: row.documentHash,
-        progress: data.progress,
-        percentage: String(data.percentage),
-        device: data.device,
-        device_id: data.device_id,
-        timestamp: data.timestamp,
+        document: doc.document,
+        progress: doc.progress ?? "",
+        // String, not a number — the lexicon declares it that way; the KOSync REST twin answers a number instead.
+        percentage: String(doc.percentage),
+        device: doc.device ?? "",
+        device_id: doc.deviceId ?? "",
+        timestamp: doc.timestamp ?? 0,
       });
     },
   });
@@ -2296,87 +1862,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         });
       }
 
-      const now = new Date().toISOString();
-      const timestamp = Math.floor(Date.now() / 1000);
-      const filename = metadata?.filename ?? null;
-      const title = metadata?.title ?? null;
-      const authors = metadata?.authors ?? null;
-
-      const progressData: SyncProgressData = {
+      await recordSyncProgress({
+        db: ctx.db,
+        kv: ctx.kv,
+        userDid,
+        document,
         progress,
         percentage,
         device,
-        device_id,
-        timestamp,
-      };
-
-      const existing = await ctx.db
-        .selectFrom("sync_document")
-        .select(["id", "hiveId"])
-        .where("userDid", "=", userDid)
-        .where("provider", "=", "kosync")
-        .where("documentHash", "=", document)
-        .executeTakeFirst();
-
-      if (existing) {
-        await ctx.db
-          .updateTable("sync_document")
-          .set({
-            progressData: JSON.stringify(progressData),
-            updatedAt: now,
-            ...(filename != null ? { filename, filenameKey: filenameKey(filename) } : {}),
-            ...(title != null ? { title } : {}),
-            ...(authors != null ? { authors } : {}),
-          })
-          .where("id", "=", existing.id)
-          .execute();
-      } else {
-        await ctx.db
-          .insertInto("sync_document")
-          .values({
-            userDid,
-            provider: "kosync",
-            documentHash: document,
-            hiveId: null,
-            filename,
-            filenameKey: filenameKey(filename),
-            title,
-            authors,
-            progressData: JSON.stringify(progressData),
-            createdAt: now,
-            updatedAt: now,
-          })
-          .execute();
-      }
-
-      let hiveId = existing?.hiveId ?? null;
-
-      // Unconditional, and resolved against the user's uploaded files — see the
-      // same call in src/routes/sync/kosync.ts.
-      if (!hiveId) {
-        hiveId = await matchSyncDocumentForUser(ctx.db, userDid, {
-          documentHash: document,
-          title,
-          authors,
-          filename,
-        });
-        if (hiveId) {
-          await ctx.db
-            .updateTable("sync_document")
-            .set({ hiveId })
-            .where("userDid", "=", userDid)
-            .where("provider", "=", "kosync")
-            .where("documentHash", "=", document)
-            // Fill only an empty link — see the same guard in
-            // src/routes/sync/kosync.ts for why.
-            .where("hiveId", "is", null)
-            .execute();
-        }
-      }
-
-      if (hiveId) {
-        await bridgeProgressToUserBook(ctx.db, ctx.kv, userDid, hiveId as HiveIdType, percentage);
-      }
+        deviceId: device_id,
+        metadata,
+      });
 
       return json({ status: "success" });
     },
@@ -2388,33 +1884,19 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const ctx = getCtx();
       const { did: userDid } = getAuth();
 
-      const rows = await ctx.db
-        .selectFrom("sync_document")
-        .select(["documentHash", "progressData", "filename", "title", "authors", "hiveId"])
-        .where("userDid", "=", userDid)
-        .where("provider", "=", "kosync")
-        .orderBy("updatedAt", "desc")
-        .execute();
-
-      const documents = rows.map((row) => {
-        const data: SyncProgressData = JSON.parse(row.progressData);
-        return {
-          documentHash: row.documentHash,
-          progress: data.progress,
-          percentage: String(data.percentage),
-          device: data.device,
-          device_id: data.device_id,
-          filename: row.filename ?? undefined,
-          title: row.title ?? undefined,
-          authors: row.authors ?? undefined,
-          // The NO_HIVE_MATCH sentinel ("bk_none") records that the user
-          // dismissed this document; never surface it as a hiveId a client
-          // would resolve to /books/bk_none.
-          hiveId: !row.hiveId || row.hiveId === NO_HIVE_MATCH ? undefined : row.hiveId,
-          dismissed: row.hiveId === NO_HIVE_MATCH,
-          timestamp: data.timestamp,
-        };
-      });
+      const documents = (await listSyncDocuments({ db: ctx.db, userDid })).map((doc) => ({
+        documentHash: doc.document,
+        progress: doc.progress ?? "",
+        percentage: String(doc.percentage),
+        device: doc.device ?? "",
+        device_id: doc.deviceId ?? "",
+        filename: doc.filename ?? undefined,
+        title: doc.title ?? undefined,
+        authors: doc.authors ?? undefined,
+        hiveId: doc.hiveId ?? undefined,
+        dismissed: doc.dismissed,
+        timestamp: doc.timestamp ?? 0,
+      }));
 
       return json({ documents });
     },

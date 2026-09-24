@@ -31,23 +31,18 @@ export function createSessionStore(kv: Storage): SessionStore {
       await kv.del(sessionKey(key));
     },
     async clear() {
-      // atcute does not require clear; no-op (we could scan SESSION_PREFIX keys if needed)
+      // atcute does not require clear; no-op
     },
   };
 }
 
 /**
- * Host of the authorization server that a stored session refreshes against, or
- * null if there is no stored session yet.
+ * Host of the authorization server a stored session refreshes against, or
+ * null if none is stored yet.
  *
- * This is a local KV read — never a network call — because it is used to pick a
- * circuit-breaker key on the request path (see `restore-guard.ts`). Resolving
- * the DID document instead would mean a network call to decide whether we are
- * allowed to make a network call.
- *
- * `tokenSet.iss` is the token endpoint's origin. For bsky.social users that is
- * the shared entryway; for self-hosted PDSes it is the PDS itself, which is
- * exactly the host that goes unreachable.
+ * A local KV read, never a network call — it picks the circuit-breaker key on
+ * the request path (`restore-guard.ts`), and resolving the DID document
+ * instead would mean a network call to decide whether one is allowed.
  */
 export async function getStoredSessionIssuerHost(kv: Storage, did: string): Promise<string | null> {
   try {

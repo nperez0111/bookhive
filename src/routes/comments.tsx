@@ -2,15 +2,15 @@
  * Comment POST (form) and DELETE. Mount at /comments.
  * Parent must run methodOverride for /comments/:commentId before mounting this router.
  */
-import * as TID from "@atcute/tid";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import { ids, validateMain } from "../bsky/lexicon";
+import { ids } from "../bsky/lexicon";
 import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
+import { upsertBuzz } from "../services/buzzWrite";
 
 const app = new Hono<AppEnv>()
   .post(
@@ -40,129 +40,32 @@ const app = new Hono<AppEnv>()
       }
       const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("form");
 
-      const originalBuzz = uri
-        ? await c
-            .get("ctx")
-            .db.selectFrom("buzz")
-            .selectAll()
-            .where("uri", "=", uri)
-            .limit(1)
-            .executeTakeFirst()
-        : null;
-      const book = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select(["cid", "uri"])
-        .where("hiveId", "=", hiveId as HiveId)
-        .executeTakeFirst();
-      const createdAt = originalBuzz?.createdAt || new Date().toISOString();
-
-      const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
-      const parentRef = validateMain({ uri: parentUri, cid: parentCid });
-      if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
-        c.status(404);
-        return c.render(
-          <ErrorPage
-            message="Invalid Hive ID"
-            description="The book you are looking for does not exist"
-            statusCode={404}
-          />,
-          { title: "Book Not Found" },
-        );
-      }
-
-      const response = await agent.post("com.atproto.repo.applyWrites", {
-        input: {
-          repo: agent.did,
-          writes: [
-            {
-              $type: originalBuzz
-                ? "com.atproto.repo.applyWrites#update"
-                : "com.atproto.repo.applyWrites#create",
-              collection: ids.BuzzBookhiveBuzz,
-              rkey: originalBuzz ? originalBuzz.uri.split("/").at(-1)! : TID.now(),
-              value: {
-                book: bookRef.value,
-                comment,
-                parent: parentRef.value,
-                createdAt,
-              },
-            },
-          ],
-        },
+      const result = await upsertBuzz({
+        ctx: c.get("ctx"),
+        agent,
+        input: { hiveId: hiveId as HiveId, comment, parentUri, parentCid, uri },
       });
 
-      type ApplyWritesOut = {
-        results?: Array<{ $type: string; uri?: string; cid?: string }>;
-      };
-      const out = response.data as ApplyWritesOut | null;
-      const firstResult = response.ok && out?.results?.[0] ? out.results[0] : undefined;
-      if (
-        !response.ok ||
-        !out?.results ||
-        out.results.length === 0 ||
-        !firstResult ||
-        !(
-          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
-          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
-        )
-      ) {
-        c.set("requestError", new Error("Failed to write comment to the database"));
-        c.get("ctx").addWideEventContext({
-          comment_post: "failed",
-          hiveId,
-          userDid: agent.did,
-          error: "applyWrites result invalid",
-        });
+      if (!result.ok) {
+        if (result.reason === "book_not_found") {
+          c.status(404);
+          return c.render(
+            <ErrorPage message="Invalid Hive ID" description={result.message} statusCode={404} />,
+            { title: "Book Not Found" },
+          );
+        }
+        c.set("requestError", new Error(result.message));
         c.status(500);
         return c.render(
           <ErrorPage
             message="Failed to post comment"
-            description="Failed to write comment to the database"
+            description={result.message}
             statusCode={500}
           />,
           { title: "Error" },
         );
       }
 
-      await c
-        .get("ctx")
-        .db.insertInto("buzz")
-        .values({
-          uri: firstResult.uri!,
-          cid: firstResult.cid!,
-          userDid: agent.did,
-          createdAt: createdAt,
-          indexedAt: new Date().toISOString(),
-          hiveId: hiveId as HiveId,
-          comment,
-          parentUri,
-          parentCid,
-          bookCid: book.cid,
-          bookUri: book.uri,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            indexedAt: c.ref("excluded.indexedAt"),
-            cid: c.ref("excluded.cid"),
-            userDid: c.ref("excluded.userDid"),
-            createdAt: c.ref("excluded.createdAt"),
-            hiveId: c.ref("excluded.hiveId"),
-            comment: c.ref("excluded.comment"),
-            parentUri: c.ref("excluded.parentUri"),
-            parentCid: c.ref("excluded.parentCid"),
-            bookCid: c.ref("excluded.bookCid"),
-            bookUri: c.ref("excluded.bookUri"),
-          })),
-        )
-        .execute();
-
-      c.get("ctx").addWideEventContext({
-        comment_post: true,
-        hiveId,
-        userDid: agent.did,
-        comment_uri: firstResult.uri,
-      });
       return c.redirect("/books/" + hiveId);
     },
   )

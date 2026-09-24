@@ -20,8 +20,14 @@ import {
 import { createCrossProcessLock } from "./auth/refresh-lock";
 import { guardedRestore, isSessionTerminatingError } from "./auth/restore-guard";
 import { getStoredSessionIssuerHost } from "./auth/storage";
-import { createServiceAccountAgent } from "./utils/catalogBookService";
-import { getSessionConfig } from "./auth/router";
+import { createServiceAccountAgent } from "./services/catalogBookService";
+import {
+  evictCachedSessionClient,
+  getCachedSessionClient,
+  getSessionConfig,
+  markSessionSaved,
+  setCachedSessionClient,
+} from "./auth/session";
 import {
   createBaseIdResolver,
   createBidirectionalResolverAtcute,
@@ -33,7 +39,7 @@ import type { BidirectionalResolver } from "./bsky/id-resolver";
 import { ServiceJwtVerifier } from "@atcute/xrpc-server/auth";
 import type { AtprotoAudience } from "@atcute/lexicons/syntax";
 import { BOOKHIVE_DID } from "./constants";
-import { sweepStaleUploads } from "./utils/uploadPersonalBook";
+import { sweepStaleUploads } from "./services/uploadPersonalBook";
 import type { Database } from "./db";
 import { createDb, migrateToLatest } from "./db";
 import { env } from "./env";
@@ -46,11 +52,12 @@ import sqliteKv, {
   vacuumKvIfBloated,
   VACUUM_FREELIST_RATIO,
 } from "./sqlite-kv.ts";
-import { startEnrichmentDrain } from "./utils/enrichQueue";
-import { lazy } from "./utils/lazy";
-import { readThroughCache } from "./utils/readThroughCache";
-import { updateBookRecord } from "./utils/getBook";
-import type { PendingWrite } from "./utils/syncBridge";
+import { startEnrichmentDrain } from "./data/enrichQueue";
+import { lazy } from "./lib/lazy";
+import { readThroughCache } from "./lib/readThroughCache";
+import { updateBookRecord } from "./services/getBook";
+import type { PendingWrite } from "./data/syncBridge";
+import { errorMessage } from "./lib/errors";
 
 /** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
 export type AddWideEventContext = (context: Record<string, unknown>) => void;
@@ -83,7 +90,7 @@ export type AppContext = {
   addWideEventContext: AddWideEventContext;
 };
 
-import type { BundleAssetUrls } from "./utils/manifest";
+import type { BundleAssetUrls } from "./lib/manifest";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -159,15 +166,11 @@ export async function createAppDeps(): Promise<AppDeps> {
         { migrations: migrationResults.map((r: { migrationName: string }) => r.migrationName) },
         "migrations applied",
       );
-      // VACUUM only when there is actually something to reclaim. Measured
-      // against the production database (356,675 books, 1.62 GB) it takes
-      // **22.3s** and frees nothing: `freelist_count` there is 0, because the
-      // main DB is essentially append-only — the ingester and enrichment add
-      // rows, almost nothing deletes them. That is 22s of startup, on every
-      // deploy that ships a migration, for zero bytes. The delete-heavy file is
-      // the KV, which went 1.94 GB → 34.7 MB. Gated on *this* file's own
-      // freelist ratio, against the same threshold `vacuumKvIfBloated` uses, so
-      // a future migration that does free a lot still gets cleaned up.
+      // VACUUM only when there is actually something to reclaim — the main DB
+      // is essentially append-only, so an unconditional VACUUM here costs
+      // startup time on every migrating deploy for nothing to reclaim. Gated
+      // on this file's own freelist ratio (same threshold `vacuumKvIfBloated`
+      // uses), so a migration that does free a lot still gets cleaned up.
       const pageCount = readPragma(sqlite, "page_count");
       const freelist = readPragma(sqlite, "freelist_count");
       const ratio = pageCount > 0 ? freelist / pageCount : 0;
@@ -180,11 +183,9 @@ export async function createAppDeps(): Promise<AppDeps> {
         // rowid (`id` is TEXT, so not an INTEGER PRIMARY KEY alias). SQLite
         // documents that VACUUM "may change the ROWIDs of entries in any tables
         // that do not have an explicit INTEGER PRIMARY KEY"; if it ever does,
-        // every search result silently points at the wrong book. Measured on
-        // 3.45 and 3.51 the rowids survive, and FTS5's 'integrity-check' does
-        // *not* detect this desync (verified against a deliberately shifted
-        // content table) — so it would be silent. Rebuild is 3.6s at this size,
-        // and only runs on the rare VACUUM now.
+        // every search result silently points at the wrong book, and FTS5's
+        // 'integrity-check' does not detect this class of desync — so rebuild
+        // unconditionally here rather than trust it.
         const rebuildStart = Date.now();
         try {
           sqlite.exec(`INSERT INTO hive_book_fts(hive_book_fts) VALUES('rebuild')`);
@@ -206,10 +207,9 @@ export async function createAppDeps(): Promise<AppDeps> {
   // Single shared connection for all KV tables on KV_DB_PATH.
   const { db: kvDb, sqlite: kvSqlite } = createSharedKvDb(env.KV_DB_PATH);
   if (isPrimaryWorker) {
-    // The KV is delete-heavy (the page cache, auth state, the sweep below)
-    // and had never been VACUUMed: 1.94 GB on disk for 34.7 MB of live rows,
-    // 98.1% free pages. Runs before the siblings spawn, and only when the file
-    // is actually bloated — deploys are frequent enough to keep it in check.
+    // The KV is delete-heavy (the page cache, auth state, the sweep below), so
+    // unlike the main DB it does bloat. Runs before the siblings spawn, and
+    // only when the file is actually bloated.
     vacuumKvIfBloated(kvSqlite, (fields, msg) => logger.info(fields, msg));
   }
   const kv = createStorage({
@@ -310,7 +310,7 @@ export async function createAppDeps(): Promise<AppDeps> {
 
   // Goodreads enrichment is queued by every process but drained only here — one
   // WAF token cache and one writer, instead of N processes each fanning out a
-  // scrape per search result (the 2026-08-01 OOM).
+  // scrape per search result.
   const stopEnrichmentDrain = isPrimaryWorker ? startEnrichmentDrain({ db, logger }) : () => {};
 
   // Accepts atproto inter-service auth on /xrpc/*, which is what lets a client
@@ -381,52 +381,6 @@ export type SessionTiming = {
   end: (name: string) => void;
 };
 
-const MAX_CACHE_TTL_MS = 10 * 60 * 1000; // 10-minute cap on session cache
-const MIN_CACHE_TTL_MS = 10_000; // 10-second minimum
-const TOKEN_EXPIRY_BUFFER_MS = 60_000; // re-restore 60s before token expires
-const SESSION_SAVE_INTERVAL_MS = 24 * 60 * 60 * 1000; // re-save iron-session cookie every 24h
-
-type CachedSession = {
-  client: SessionClient;
-  /** When this cache entry should be evicted (triggers a fresh restore). */
-  expiresAt: number;
-  /** Last time we called session.save() to extend the iron-session cookie TTL. */
-  lastSaveAt: number;
-};
-
-const sessionClientCache = new Map<string, CachedSession>();
-
-function getCachedSessionClient(did: string): { client: SessionClient; needsSave: boolean } | null {
-  const entry = sessionClientCache.get(did);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    sessionClientCache.delete(did);
-    return null;
-  }
-  return {
-    client: entry.client,
-    needsSave: Date.now() - entry.lastSaveAt > SESSION_SAVE_INTERVAL_MS,
-  };
-}
-
-export function setCachedSessionClient(
-  did: string,
-  client: SessionClient,
-  tokenExpiresAt: number | undefined,
-): void {
-  const now = Date.now();
-  let ttl = MAX_CACHE_TTL_MS;
-  if (tokenExpiresAt) {
-    const timeUntilExpiry = tokenExpiresAt - now - TOKEN_EXPIRY_BUFFER_MS;
-    ttl = Math.max(MIN_CACHE_TTL_MS, Math.min(timeUntilExpiry, MAX_CACHE_TTL_MS));
-  }
-  sessionClientCache.set(did, {
-    client,
-    expiresAt: now + ttl,
-    lastSaveAt: now,
-  });
-}
-
 /**
  * A cached SessionClient refreshes its token lazily, mid-request. When another
  * cluster process rotated that session first, the refresh throws
@@ -453,11 +407,11 @@ function withSessionRefreshRetry(
       try {
         return await client[method](name, opts);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         if (!SESSION_DELETED_PATTERN.test(message)) throw err;
         if (sessionRetryInFlight.has(did)) throw err;
 
-        sessionClientCache.delete(did);
+        evictCachedSessionClient(did);
         sessionRetryInFlight.add(did);
         try {
           const fresh = await restore().catch(() => null);
@@ -562,8 +516,7 @@ export async function getSessionAgent(
     if (cached.needsSave) {
       session.updateConfig(getSessionConfig());
       await session.save();
-      const entry = sessionClientCache.get(session.did);
-      if (entry) entry.lastSaveAt = Date.now();
+      markSessionSaved(session.did);
     }
     return cached.client;
   }
@@ -608,15 +561,14 @@ export async function getSessionAgent(
   } catch (err) {
     // Only tear the session down when the PDS has actually rejected our
     // credentials. A timeout or an unreachable host says nothing about whether
-    // the user is still logged in, and destroying on those silently signed
-    // people out for the duration of their server's downtime (7 × 302 on
-    // /library in 6h on 2026-08-02).
+    // the user is still logged in, and destroying on those would silently sign
+    // people out for the duration of their PDS's downtime.
     const terminal = isSessionTerminatingError(err);
     ctx.addWideEventContext({
       oauth_restore: "failed",
       oauth_restore_terminal: terminal,
       pds_host: guardKey,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
     if (terminal) session.destroy();
     return null;

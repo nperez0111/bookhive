@@ -4,12 +4,7 @@ import type { Storage } from "unstorage";
 import { env } from "../env";
 import type { AppEnv } from "../context";
 
-/**
- * Per-user rotation counter for the KOSync password. Stored as a plain integer
- * in KV (`sync_token:{did}`), defaulting to 0. Incrementing it changes the
- * derived password, letting a user invalidate a token they revealed by
- * accident without touching the global COOKIE_SECRET.
- */
+// Per-user rotation counter for the KOSync password; incrementing it changes the derived password without touching the global COOKIE_SECRET.
 export async function getSyncTokenVersion(kv: Storage, did: string): Promise<number> {
   return (await kv.getItem<number>(`sync_token:${did}`)) ?? 0;
 }
@@ -20,20 +15,11 @@ export async function rotateSyncToken(kv: Storage, did: string): Promise<number>
   return next;
 }
 
-// A short, high-entropy alphabet for the displayed password. Ambiguous glyphs
-// (0/O, 1/l/I) are omitted; a few symbols widen the alphabet so we can stay
-// short. 10 chars over this 66-char set is ~60 bits — far more than enough for
-// an online-only credential.
+// High-entropy alphabet for the displayed password, with ambiguous glyphs (0/O, 1/l/I) omitted for easier manual entry.
 const SYNC_PASSWORD_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz!@#$%*+-=?";
 const SYNC_PASSWORD_LENGTH = 10;
 
-/**
- * Deterministically derive the KOSync password shown to the user. Uses
- * HMAC-SHA256 (keyed by the server secret) over `${did}:${version}` so the
- * server can re-derive and display it, while a rotation bump changes the value.
- * The digest bytes are encoded to a short mixed alphabet for easier entry on an
- * e-reader keyboard.
- */
+// Deterministically derives the KOSync password from HMAC-SHA256(secret, `${did}:${version}`), so the server can re-derive and display it without storing it.
 export function deriveSyncPassword(did: string, secret: string, version: number): string {
   const digest = new Bun.CryptoHasher("sha256", secret).update(`${did}:${version}`).digest();
   let out = "";
@@ -73,12 +59,10 @@ export const syncAuthMiddleware = createMiddleware<AppEnv & { Variables: { syncU
       return c.json({ message: "Invalid credentials" }, 401);
     }
 
-    // KOReader sends md5(password), so compare against the md5 of the derived value.
     const expected = md5Hex(await currentSyncPassword(kv, did));
 
     if (!timingSafeEqualString(password, expected)) {
-      // Most common cause: the username entered on the device resolves to a
-      // different DID than the account whose password was copied from Settings.
+      // Most common cause: the device's username resolves to a different DID than the account the password was copied from.
       addWideEventContext({
         sync_auth: "password_mismatch",
         sync_auth_user: username,

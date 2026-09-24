@@ -1,9 +1,7 @@
 /**
- * The first tests of `src/xrpc/router.ts`.
- *
- * Scoped to the personal-library methods rather than named `router.test.ts`:
- * that file is 2000+ lines and 40 methods, and one suite per region stays
- * reviewable (and signposts `src/xrpc/lists.test.ts` for whoever needs it next).
+ * Tests for the personal-library methods of `src/xrpc/router.ts`.
+ * Scoped rather than folded into `router.test.ts` (2000+ lines, 40 methods)
+ * so each region stays reviewable.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -17,17 +15,19 @@ import path from "node:path";
 import type { Storage } from "unstorage";
 
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
-import type { AppContext, AppEnv } from "../context";
+import type { AppEnv } from "../context";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
-import { koreaderPartialMD5 } from "../utils/bookMetadata/index";
-import { makeEpub, makeFb2 } from "../utils/bookMetadata/testFixtures";
+import { koreaderPartialMD5 } from "../core/bookMetadata/index";
+import { makeEpub, makeFb2 } from "../core/bookMetadata/testFixtures";
 import {
   bookFilePath,
   getLibraryTmpDir,
   getStorageQuota,
   personalBookDir,
-} from "../utils/personalLibrary";
+} from "../data/personalLibrary";
 import { createXrpcRouter, type XrpcContext } from "./router";
+import { testContext } from "../test/db";
+import type { SessionClient } from "../auth/client";
 
 const DID = "did:plc:testuser";
 const OTHER_DID = "did:plc:someoneelse";
@@ -51,14 +51,15 @@ async function createTestDb(): Promise<Database> {
 function createApp(did: string | null = DID): TestApp {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
-    c.set("ctx", {
-      db,
-      kv,
-      resolver: { resolveDidsToHandles: async () => ({}) },
-      getSessionAgent: async () => (did ? { did } : null),
-      baseIdResolver: { handle: { resolve: async () => undefined } },
-      addWideEventContext: (fields: Record<string, unknown>) => Object.assign(wideEvent, fields),
-    } as unknown as AppContext);
+    c.set(
+      "ctx",
+      testContext({
+        db,
+        kv,
+        getSessionAgent: async () => (did ? ({ did } as SessionClient) : null),
+        addWideEventContext: (fields: Record<string, unknown>) => Object.assign(wideEvent, fields),
+      }),
+    );
     await next();
   });
   createXrpcRouter<XrpcContext>(
@@ -114,6 +115,39 @@ afterEach(async () => {
   }
 });
 
+describe("XRPC searchBooks genre pagination", () => {
+  it("honours an offset that is not a multiple of the limit", async () => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < 5; i++) {
+      const id = `bk_offset_${i}` as const;
+      await db
+        .insertInto("hive_book")
+        .values({
+          id,
+          enrichAttempts: 0,
+          title: `Offset ${i}`,
+          rawTitle: `Offset ${i}`,
+          authors: "Anon",
+          source: "goodreads",
+          thumbnail: "",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .execute();
+      await db.insertInto("hive_book_genre").values({ hiveId: id, genre: "Offset Test" }).execute();
+    }
+
+    const res = await createApp().request(
+      "/xrpc/buzz.bookhive.searchBooks?genre=Offset%20Test&limit=2&offset=1",
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { books: Array<{ id: string }>; offset: number };
+
+    expect(body.books.map((book) => book.id)).toEqual(["bk_offset_1", "bk_offset_2"]);
+    expect(body.offset).toBe(3);
+  });
+});
+
 describe("XRPC uploadPersonalBook", () => {
   it("accepts a raw ebook body and stores it", async () => {
     const app = createApp();
@@ -139,8 +173,8 @@ describe("XRPC uploadPersonalBook", () => {
   });
 
   it("accepts application/octet-stream, which is what real clients send", async () => {
-    // Mobile document pickers and `curl --data-binary` both report this; the
-    // lexicon's MIME list documents intent, but detectFormat is the real gate.
+    // Mobile document pickers and `curl --data-binary` send this; detectFormat,
+    // not the lexicon's MIME list, is the real gate.
     const res = await uploadRequest(createApp(), makeEpub(), "x.epub", {
       contentType: "application/octet-stream",
     });
@@ -166,8 +200,8 @@ describe("XRPC uploadPersonalBook", () => {
   });
 
   it("uses the filename to tell zip containers apart", async () => {
-    // An EPUB and a CBZ are both zip archives; only the extension distinguishes
-    // them, which is why `filename` is required rather than a header.
+    // EPUB and CBZ are both zip archives; only the extension tells them apart,
+    // hence `filename` is required rather than a header.
     const app = createApp();
     const res = await uploadRequest(app, makeEpub(), "book.cbz", {
       contentType: "application/vnd.comicbook+zip",
@@ -227,8 +261,7 @@ describe("XRPC uploadPersonalBook", () => {
   });
 
   it("records a deliberate 4xx on the wide event without a stack", async () => {
-    // The registration wrapper decides this from `status < 500`, and nothing
-    // covered it before.
+    // The registration wrapper decides this from `status < 500`.
     await uploadRequest(createApp(), new TextEncoder().encode("nope"), "x.epub");
     expect(wideEvent["xrpc_handler"]).toBe("threw");
     const error = wideEvent["error"] as { message?: string; stack?: string } | undefined;
@@ -283,8 +316,7 @@ describe("XRPC getPersonalBookFile", () => {
   });
 
   it("answers If-None-Match with a 304 and no body", async () => {
-    // The reason this matters: without it an e-reader re-downloads every book
-    // on every scheduled sync.
+    // Without this an e-reader re-downloads every book on every scheduled sync.
     const app = createApp();
     const hash = (
       (await (await uploadRequest(app, makeEpub(), "x.epub")).json()) as {
@@ -318,6 +350,64 @@ describe("XRPC getPersonalBookFile", () => {
       "/xrpc/buzz.bookhive.getPersonalBookFile?contentHash=whatever",
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe("XRPC personal-book linking", () => {
+  it("preserves embedded title and multiple authors across link, relink, unlink and reload", async () => {
+    const app = createApp();
+    const uploaded = await uploadRequest(
+      app,
+      makeEpub({ title: "My original edition", authors: ["Original Author", "Second Author"] }),
+      "original.epub",
+    );
+    expect(uploaded.status).toBe(200);
+    const { book } = (await uploaded.json()) as {
+      book: { contentHash: string; title: string; authors: string };
+    };
+    const original = { title: "My original edition", authors: "Original Author, Second Author" };
+    expect(book).toMatchObject(original);
+
+    const now = new Date().toISOString();
+    for (const id of ["bk_linkfirst", "bk_linksecond"] as const) {
+      await db
+        .insertInto("hive_book")
+        .values({
+          id,
+          enrichAttempts: 0,
+          title: "Different catalogue title",
+          rawTitle: "Different catalogue title",
+          authors: "Catalogue Author\tCatalogue Coauthor",
+          source: "goodreads",
+          thumbnail: "",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .execute();
+      const linked = await app.request("/xrpc/buzz.bookhive.linkPersonalBook", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contentHash: book.contentHash, hiveId: id }),
+      });
+      expect(linked.status).toBe(200);
+      expect(await linked.json()).toMatchObject({ book: { ...original, hiveId: id } });
+    }
+
+    const unlinked = await app.request("/xrpc/buzz.bookhive.unlinkPersonalBook", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentHash: book.contentHash }),
+    });
+    expect(unlinked.status).toBe(200);
+    expect(await unlinked.json()).toMatchObject({ book: original });
+
+    const reloaded = await app.request(
+      `/xrpc/buzz.bookhive.getPersonalBook?contentHash=${book.contentHash}`,
+    );
+    expect(reloaded.status).toBe(200);
+    const result = (await reloaded.json()) as { book: { hiveId?: string } };
+    expect(result).toMatchObject({ book: original });
+    expect(result.book.hiveId).toBeUndefined();
   });
 });
 
@@ -366,9 +456,9 @@ describe("XRPC getPersonalBookCover", () => {
   });
 
   it("redirects to the catalog image for a linked book with no stored cover", async () => {
-    // The branch that used to be built with `Response.redirect`, whose headers
-    // are immutable — the Cache-Control middleware setting a header on it threw
-    // a TypeError and turned the 302 into a 500.
+    // `Response.redirect`'s headers are immutable — building the redirect that
+    // way made the Cache-Control middleware's header write throw and turn the
+    // 302 into a 500.
     const app = createApp();
     const hash = (
       (await (
@@ -448,9 +538,7 @@ describe("XRPC getPersonalLibrary — search, sort and storage", () => {
 
   it("defaults to newest first, and does not switch when q is set", async () => {
     // Deterministic because every sort ends on `personal_book.id`: all three
-    // uploads land in the same whole second, so `createdAt DESC` alone leaves
-    // the order up to SQLite. Newest-first therefore means "highest id first",
-    // which is the last book seeded.
+    // uploads land within the same second, so newest-first means highest id.
     const app = createApp();
     await seedLibrary(app);
     const res = (await (await app.request("/xrpc/buzz.bookhive.getPersonalLibrary")).json()) as {
@@ -458,8 +546,8 @@ describe("XRPC getPersonalLibrary — search, sort and storage", () => {
     };
     expect(res.books.map((b) => b.title)).toEqual(["Ancillary Justice", "Neuromancer", "Dune"]);
 
-    // OPDS switches to a title sort when searching; this deliberately does not.
-    // `q` narrows the set, it does not reorder it.
+    // OPDS switches to a title sort when searching; this deliberately does not
+    // — `q` narrows the set, it does not reorder it.
     const searched = (await (
       await app.request("/xrpc/buzz.bookhive.getPersonalLibrary?q=n")
     ).json()) as { books: { title: string }[] };

@@ -1,0 +1,423 @@
+import { Client } from "@atcute/client";
+import { PasswordSession } from "@atcute/password-session";
+import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import type { Logger } from "pino";
+import type { Storage } from "unstorage";
+import type { SessionClient } from "../auth/client";
+import type { AppContext } from "../context";
+import { createActorResolver } from "../bsky/id-resolver";
+import { ids } from "../bsky/lexicon/ids";
+import type { BlobRef, HiveBook, HiveId } from "../types";
+import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../data/hiveBookGenres.js";
+import { normalizeBookMeta } from "../core/bookMeta";
+import { uploadImageBlob } from "./uploadImageBlob";
+import { errorMessage } from "../lib/errors";
+
+export async function createServiceAccountAgent(
+  handle: string,
+  appPassword: string,
+): Promise<SessionClient | null> {
+  if (!handle || !appPassword) return null;
+  try {
+    const actor = await createActorResolver().resolve(handle as ActorIdentifier);
+    const session = await PasswordSession.login({
+      service: actor.pds,
+      identifier: handle,
+      password: appPassword,
+    });
+    const client = new Client({ handler: session });
+    return {
+      get did() {
+        return session.did;
+      },
+      get: client.get.bind(client) as SessionClient["get"],
+      post: client.post.bind(client) as SessionClient["post"],
+    };
+  } catch (err) {
+    console.error("[catalogBookService] Failed to create service account agent:", err);
+    return null;
+  }
+}
+
+type CatalogCtx = Pick<AppContext, "db"> & {
+  serviceAccountAgent: AppContext["serviceAccountAgent"] | undefined;
+  /** Optional: when present, backfill progress is persisted across restarts. */
+  kv?: Storage;
+  logger?: Logger;
+};
+
+interface CatalogBlobs {
+  thumbnailBlob?: BlobRef;
+  coverBlob?: BlobRef;
+}
+
+function safeJsonParse<T>(json: string, fallback: T, context: string): T {
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    console.warn(`[catalogBookService] JSON.parse failed for ${context}:`, json);
+    return fallback;
+  }
+}
+
+function buildCatalogBookValue(book: HiveBook, blobs?: CatalogBlobs, catalogGenres?: string[]) {
+  const meta = normalizeBookMeta(book.meta);
+
+  return {
+    $type: ids.BuzzBookhiveCatalogBook,
+    id: book.id,
+    title: book.title,
+    authors: book.authors,
+    thumbnail: book.thumbnail,
+    createdAt: book.createdAt,
+    updatedAt: book.updatedAt,
+    ...(blobs?.thumbnailBlob ? { thumbnailBlob: blobs.thumbnailBlob } : {}),
+    ...(book.description ? { description: book.description.slice(0, 5000) } : {}),
+    ...(book.cover ? { cover: book.cover } : {}),
+    ...(blobs?.coverBlob ? { coverBlob: blobs.coverBlob } : {}),
+    ...(book.source ? { source: book.source } : {}),
+    ...(book.sourceUrl ? { sourceUrl: book.sourceUrl } : {}),
+    ...(book.sourceId ? { sourceId: book.sourceId } : {}),
+    ...(book.rating !== null && book.rating !== undefined
+      ? { rating: Math.round(book.rating) }
+      : {}),
+    ...(book.ratingsCount !== null && book.ratingsCount !== undefined
+      ? { ratingsCount: book.ratingsCount }
+      : {}),
+    ...(catalogGenres && catalogGenres.length > 0 ? { genres: catalogGenres } : {}),
+    ...(book.series ? { series: book.series } : {}),
+    ...(book.identifiers
+      ? {
+          identifiers: safeJsonParse<Record<string, string>>(
+            book.identifiers,
+            {},
+            `book ${book.id} identifiers`,
+          ),
+        }
+      : {}),
+    ...(book.language ? { language: book.language } : {}),
+    ...(meta.numPages ? { numPages: meta.numPages } : {}),
+    ...(meta.publicationYear ? { publicationYear: meta.publicationYear } : {}),
+    ...(meta.publisher ? { publisher: meta.publisher } : {}),
+    ...(meta.authorBio ? { authorBio: meta.authorBio } : {}),
+    ...(meta.secondaryAuthors ? { secondaryAuthors: meta.secondaryAuthors } : {}),
+    ...(meta.ratingsDistribution ? { ratingsDistribution: meta.ratingsDistribution } : {}),
+  };
+}
+
+/**
+ * Upserts a single book to the @bookhive.buzz ATProto repo as a catalogBook record.
+ * Skips if not yet enriched, or if already synced and updatedAt hasn't changed since.
+ * Safe to call fire-and-forget.
+ */
+export async function writeCatalogBookIfNeeded(ctx: CatalogCtx, bookId: HiveId): Promise<void> {
+  if (!ctx.serviceAccountAgent) return;
+
+  // Fetch fresh rather than reuse the caller's copy, to avoid a race with
+  // enrichment; also gates on enrichedAt so we never write a partial record.
+  const freshBook = await ctx.db
+    .selectFrom("hive_book")
+    .selectAll()
+    .where("id", "=", bookId)
+    .where("enrichedAt", "is not", null)
+    .where((eb) =>
+      eb.or([
+        eb("hiveBookAtUri", "is", null),
+        eb("hiveBookCatalogUpdatedAt", "is", null),
+        eb(eb.ref("hiveBookCatalogUpdatedAt"), "<", eb.ref("updatedAt")),
+      ]),
+    )
+    .executeTakeFirst();
+
+  if (!freshBook) return;
+
+  const agent = ctx.serviceAccountAgent;
+
+  const [thumbnailBlob, coverBlob, catalogGenres] = await Promise.all([
+    uploadImageBlob(freshBook.thumbnail, agent),
+    uploadImageBlob(freshBook.cover, agent),
+    loadGenresForHiveBook(ctx.db, freshBook.id),
+  ]);
+
+  const response = await agent.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: agent.did,
+      collection: ids.BuzzBookhiveCatalogBook,
+      rkey: freshBook.id,
+      record: buildCatalogBookValue(freshBook, { thumbnailBlob, coverBlob }, catalogGenres),
+    },
+  });
+
+  if (!response.ok) return;
+
+  const uri = (response.data as { uri: string }).uri;
+  if (!uri) return;
+
+  await ctx.db
+    .updateTable("hive_book")
+    .set({ hiveBookAtUri: uri, hiveBookCatalogUpdatedAt: freshBook.updatedAt })
+    .where("id", "=", freshBook.id)
+    .execute();
+}
+
+/**
+ * Writes a batch of books to @bookhive.buzz using individual putRecord calls.
+ * putRecord is idempotent (create-or-update), so this is safe to retry if the
+ * process crashes between the ATProto write and the local DB update.
+ *
+ * Throws RateLimitError if the PDS rate limit is hit, so callers can back off.
+ */
+export async function writeCatalogBooksBatch(ctx: CatalogCtx, books: HiveBook[]): Promise<void> {
+  if (!ctx.serviceAccountAgent || books.length === 0) return;
+
+  const agent = ctx.serviceAccountAgent;
+
+  const blobResults = await Promise.all(
+    books.map(async (book) => {
+      const [thumbnailBlob, coverBlob] = await Promise.all([
+        uploadImageBlob(book.thumbnail, agent),
+        uploadImageBlob(book.cover, agent),
+      ]);
+      return { thumbnailBlob, coverBlob };
+    }),
+  );
+  const blobMap = new Map(books.map((book, i) => [book.id, blobResults[i]!]));
+  const genresMap = await loadGenresMapForHiveBooks(
+    ctx.db,
+    books.map((b) => b.id),
+  );
+
+  // Limited concurrency to avoid rate limits
+  const CONCURRENCY = 5;
+  for (let i = 0; i < books.length; i += CONCURRENCY) {
+    await Promise.all(
+      books.slice(i, i + CONCURRENCY).map(async (book) => {
+        const response = await agent.post("com.atproto.repo.putRecord", {
+          input: {
+            repo: agent.did,
+            collection: ids.BuzzBookhiveCatalogBook,
+            rkey: book.id,
+            record: buildCatalogBookValue(book, blobMap.get(book.id), genresMap.get(book.id)),
+          },
+        });
+
+        if (!response.ok) {
+          const errData = response.data as { error?: string; message?: string } | undefined;
+          if (errData?.error === "RateLimitExceeded") {
+            throw new RateLimitError();
+          }
+          ctx.logger?.error({
+            job: "catalog_book_put_record",
+            outcome: "error",
+            bookId: book.id,
+            error: response.data,
+          });
+          return;
+        }
+
+        const uri = (response.data as { uri: string }).uri;
+        if (!uri || uri === book.hiveBookAtUri) return;
+
+        await ctx.db
+          .updateTable("hive_book")
+          .set({ hiveBookAtUri: uri, hiveBookCatalogUpdatedAt: book.updatedAt })
+          .where("id", "=", book.id)
+          .execute();
+      }),
+    );
+  }
+}
+
+class RateLimitError extends Error {
+  constructor() {
+    super("RateLimitExceeded");
+    this.name = "RateLimitError";
+  }
+}
+
+export interface BackfillProgress {
+  status: "idle" | "running" | "completed" | "failed" | "interrupted";
+  startedAt: string | null;
+  completedAt: string | null;
+  written: number;
+  batches: number;
+  totalPending: number | null;
+  lastBatchAt: string | null;
+  nextBatchExpectedAt: string | null;
+  error: string | null;
+}
+
+const BACKFILL_KV_KEY = "backfill:catalog_progress";
+
+let backfillProgress: BackfillProgress = {
+  status: "idle",
+  startedAt: null,
+  completedAt: null,
+  written: 0,
+  batches: 0,
+  totalPending: null,
+  lastBatchAt: null,
+  nextBatchExpectedAt: null,
+  error: null,
+};
+
+/**
+ * Mirror the in-memory progress into the KV so it survives a restart. Fire
+ * and forget — must never interrupt the backfill itself.
+ * Stores the object, not `JSON.stringify` of it: unstorage's `destr` reads a
+ * stored JSON string back as an object, so re-parsing it throws.
+ */
+function persistProgress(kv: Storage | undefined) {
+  if (!kv) return;
+  // Snapshot: the backfill keeps mutating the module-level object while this
+  // write is in flight.
+  void kv.setItem(BACKFILL_KV_KEY, { ...backfillProgress }).catch(() => {});
+}
+
+/**
+ * Progress of the catalog backfill. Reads the in-memory value while a run is
+ * live in this process, otherwise falls back to the KV, which is what makes
+ * the answer meaningful after a restart or on another cluster worker.
+ * A stored "running" status could mean the backfill is alive on another
+ * worker or that the process died mid-run; `nextBatchExpectedAt` (plus a 60s
+ * grace period) distinguishes the two.
+ */
+export async function getBackfillProgress(kv?: Storage): Promise<BackfillProgress> {
+  if (backfillProgress.status !== "idle") return { ...backfillProgress };
+  if (!kv) return { ...backfillProgress };
+  const stored = await kv.getItem<BackfillProgress>(BACKFILL_KV_KEY);
+  if (!stored || typeof stored !== "object" || typeof stored.status !== "string") {
+    return { ...backfillProgress };
+  }
+  const parsed = { ...stored };
+  if (parsed.status === "running") {
+    const GRACE_MS = 60_000;
+    const now = Date.now();
+    let stillExpected = false;
+    if (parsed.nextBatchExpectedAt) {
+      stillExpected = now < new Date(parsed.nextBatchExpectedAt).getTime() + GRACE_MS;
+    } else if (parsed.startedAt) {
+      stillExpected = now < new Date(parsed.startedAt).getTime() + GRACE_MS;
+    }
+    if (!stillExpected) {
+      parsed.status = "interrupted";
+      parsed.completedAt = parsed.lastBatchAt;
+      parsed.error = "Process restarted while backfill was running";
+    }
+  }
+  return parsed;
+}
+
+/**
+ * Iterates all enriched hive_book rows without hiveBookAtUri, writing them to
+ * @bookhive.buzz in batches. The batch delay keeps us under the Bluesky relay
+ * rate limit with headroom for real user activity.
+ */
+export async function backfillCatalogBooks(
+  ctx: CatalogCtx,
+): Promise<{ written: number; batches: number }> {
+  if (!ctx.serviceAccountAgent) return { written: 0, batches: 0 };
+
+  const BATCH_SIZE = 25;
+  const BATCH_DELAY_MS = 100_000;
+  // Unexpected mid-backfill rate limit: back off well past the relay's window before resuming.
+  const RATE_LIMIT_BACKOFF_MS = 65 * 60 * 1000;
+
+  let lastId = "";
+  let written = 0;
+  let batches = 0;
+  const startTime = Date.now();
+
+  const wideEvent: Record<string, unknown> = {
+    job: "backfill_catalog_books",
+  };
+
+  const totalRow = await ctx.db
+    .selectFrom("hive_book")
+    .where("hiveBookAtUri", "is", null)
+    .where("enrichedAt", "is not", null)
+    .select((eb) => eb.fn.countAll<number>().as("count"))
+    .executeTakeFirst();
+
+  backfillProgress = {
+    status: "running",
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    written: 0,
+    batches: 0,
+    totalPending: totalRow ? Number(totalRow.count) : null,
+    lastBatchAt: null,
+    nextBatchExpectedAt: null,
+    error: null,
+  };
+  persistProgress(ctx.kv);
+
+  try {
+    while (true) {
+      const batch = await ctx.db
+        .selectFrom("hive_book")
+        .selectAll()
+        .where("hiveBookAtUri", "is", null)
+        .where("enrichedAt", "is not", null)
+        .where("id", ">", lastId as HiveId)
+        .orderBy("id")
+        .limit(BATCH_SIZE)
+        .execute();
+
+      if (batch.length === 0) break;
+
+      try {
+        await writeCatalogBooksBatch(ctx, batch);
+      } catch (err) {
+        if (err instanceof RateLimitError) {
+          ctx.logger?.warn({
+            job: "backfill_catalog_books",
+            outcome: "rate_limited",
+            written,
+            batches,
+            backoff_ms: RATE_LIMIT_BACKOFF_MS,
+          });
+          backfillProgress.nextBatchExpectedAt = new Date(
+            Date.now() + RATE_LIMIT_BACKOFF_MS,
+          ).toISOString();
+          persistProgress(ctx.kv);
+          await new Promise((r) => setTimeout(r, RATE_LIMIT_BACKOFF_MS));
+          // Retry the same batch (lastId not advanced)
+          continue;
+        }
+        throw err;
+      }
+
+      lastId = batch[batch.length - 1]!.id;
+      written += batch.length;
+      batches++;
+      backfillProgress.written = written;
+      backfillProgress.batches = batches;
+      backfillProgress.lastBatchAt = new Date().toISOString();
+      backfillProgress.nextBatchExpectedAt = new Date(Date.now() + BATCH_DELAY_MS).toISOString();
+      persistProgress(ctx.kv);
+
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
+
+    backfillProgress.status = "completed";
+    backfillProgress.completedAt = new Date().toISOString();
+    persistProgress(ctx.kv);
+    wideEvent["outcome"] = "success";
+    return { written, batches };
+  } catch (err) {
+    backfillProgress.status = "failed";
+    backfillProgress.completedAt = new Date().toISOString();
+    backfillProgress.error = errorMessage(err);
+    persistProgress(ctx.kv);
+    wideEvent["outcome"] = "error";
+    wideEvent["error"] =
+      err instanceof Error ? { message: err.message, type: err.name } : String(err);
+    throw err;
+  } finally {
+    wideEvent["written"] = written;
+    wideEvent["batches"] = batches;
+    wideEvent["duration_ms"] = Date.now() - startTime;
+    ctx.logger?.info(wideEvent);
+  }
+}

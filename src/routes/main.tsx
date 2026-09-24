@@ -8,33 +8,26 @@ import { endTime, startTime, timing } from "hono/timing";
 import { Hono } from "hono";
 
 import type { AppDeps, AppEnv, HonoServer } from "../context";
-import { BookFields } from "../db";
 import { createContextMiddleware } from "../context";
 import { loginRouter } from "../auth/router";
 import { Layout } from "../pages/layout";
 import { type AtTagsProps } from "../pages/components/AtTags";
 import { Navbar } from "../pages/navbar";
 import { Sidebar } from "../pages/sidebar";
-import { getProfile, getProfiles } from "../utils/getProfile";
-import { readThroughCache } from "../utils/readThroughCache";
+import { getProfile, getProfiles } from "../services/getProfile";
 import { isPdsEnabled, listRepos } from "../pds/client";
 import { PdsLanding } from "../pages/pds";
 import { PrivacyPolicy } from "../pages/privacy-policy";
 import { Terms } from "../pages/terms";
 import { SimpleNavbar } from "../pages/simple-navbar";
 import { MarketingPage } from "../pages/marketing";
-import { getCommunityStats } from "../utils/communityStats";
+import { getCommunityStats } from "../data/communityStats";
 import { env } from "../env";
-import {
-  parseImagePath,
-  parseModifiers,
-  proxyImageResponse,
-  queryToModifiers,
-} from "../utils/imageProxy";
+import { parseImagePath, parseModifiers, proxyImageResponse, queryToModifiers } from "./imageProxy";
 import type { HiveId } from "../types";
 import { createXrpcRouter } from "../xrpc/router";
+import { searchBooks } from "../services/searchBooks";
 import {
-  searchBooks,
   ensureBookIdentifiersCurrent,
   refetchBooks,
   refetchBuzzes,
@@ -46,6 +39,7 @@ import profile from "./profile";
 import books from "./books";
 import comments from "./comments";
 import api from "./api";
+import { getLandingHighlights } from "../data/landingHighlights";
 import rss from "./rss";
 import settings from "./settings";
 import og from "./og";
@@ -149,9 +143,9 @@ export function mainRouter(deps: AppDeps): HonoServer {
   // `/` answers two different things under one URL: a 302 to /home when signed
   // in, the marketing page otherwise. That's only safe because the anonymous
   // render carries `Vary: Cookie` (added for all HTML in
-  // server/plugins/cache-headers.ts). Without it a browser replays the stored
-  // marketing page after you sign in and the redirect never fires — which is
-  // exactly what used to happen. The 302 itself is `private, no-store`.
+  // server/plugins/cache-headers.ts) — without it a browser replays the stored
+  // marketing page after sign-in and the redirect never fires. The 302 itself
+  // is `private, no-store`.
   app.get("/", async (c) => {
     const url = new URL(c.req.raw.url);
     if (url.searchParams.get("app") || url.hostname === "app.bookhive.buzz") {
@@ -170,89 +164,18 @@ export function mainRouter(deps: AppDeps): HonoServer {
 
     const communityStats = await getCommunityStats(ctx.db, ctx.kv);
     startTime(c, "marketing_data");
-    const { trendingBooks, recentRows, didHandleMap, profileByDid } = await readThroughCache(
-      ctx.kv as import("unstorage").Storage<any>,
-      "marketing:landing",
-      async () => {
-        // Run trending + recent queries in parallel
-        startTime(c, "marketing_trending");
-        startTime(c, "marketing_recent");
-        const [trendingResult, recent] = await Promise.all([
-          (async () => {
-            let trending = await ctx.db
-              .selectFrom("hive_book as hb")
-              .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-              .select([
-                "hb.id",
-                "hb.title",
-                "hb.authors",
-                "hb.thumbnail",
-                (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-              ])
-              .where(
-                "ub.createdAt",
-                ">",
-                new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-              )
-              .groupBy("hb.id")
-              .orderBy("readerCount", "desc")
-              .orderBy("hb.ratingsCount", "desc")
-              .limit(10)
-              .execute();
+    const { trendingBooks, recentRows } = await getLandingHighlights({ db: ctx.db, kv: ctx.kv });
 
-            // Fallback to all-time most-read if not enough recent activity
-            if (trending.length < 10) {
-              trending = await ctx.db
-                .selectFrom("hive_book as hb")
-                .innerJoin("user_book as ub", "hb.id", "ub.hiveId")
-                .select([
-                  "hb.id",
-                  "hb.title",
-                  "hb.authors",
-                  "hb.thumbnail",
-                  (eb) => eb.fn.count<number>("ub.userDid").distinct().as("readerCount"),
-                ])
-                .groupBy("hb.id")
-                .orderBy("readerCount", "desc")
-                .limit(10)
-                .execute();
-            }
-            return trending;
-          })(),
-          ctx.db
-            .selectFrom("user_book")
-            .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-            .select(BookFields)
-            .orderBy("user_book.createdAt", "desc")
-            .limit(10)
-            .execute(),
-        ]);
-        endTime(c, "marketing_trending");
-        endTime(c, "marketing_recent");
-        const trending = trendingResult;
-
-        const allDids = [...new Set(recent.map((r) => r.userDid))];
-        startTime(c, "marketing_handles");
-        startTime(c, "marketing_profiles");
-        const [handleMap, profiles] = await Promise.all([
-          allDids.length > 0
-            ? ctx.resolver.resolveDidsToHandles(allDids)
-            : ({} as Record<string, string>),
-          allDids.length > 0 ? getProfiles({ ctx, dids: allDids, publicOnly: true }) : [],
-        ]);
-        endTime(c, "marketing_handles");
-        endTime(c, "marketing_profiles");
-
-        return {
-          trendingBooks: trending,
-          recentRows: recent,
-          didHandleMap: handleMap,
-          profileByDid: Object.fromEntries(profiles.map((p) => [p.did, p])),
-        };
-      },
-      { trendingBooks: [], recentRows: [], didHandleMap: {}, profileByDid: {} },
-      { ttl: 3_600_000 }, // 1 hour
-    );
+    // Profile hydration stays out of the cached aggregate: it's a PDS network
+    // call, and caching it alongside the SQL would freeze avatars for a day.
+    const allDids = [...new Set(recentRows.map((r) => r.userDid))];
+    const [didHandleMap, profiles] = await Promise.all([
+      allDids.length > 0
+        ? ctx.resolver.resolveDidsToHandles(allDids)
+        : Promise.resolve({} as Record<string, string>),
+      allDids.length > 0 ? getProfiles({ ctx, dids: allDids, publicOnly: true }) : [],
+    ]);
+    const profileByDid = Object.fromEntries(profiles.map((p) => [p.did, p]));
     endTime(c, "marketing_data");
 
     startTime(c, "marketing_render");
@@ -275,9 +198,9 @@ export function mainRouter(deps: AppDeps): HonoServer {
       </Layout>
     );
     c.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
-    // Belt and braces: the nitro plugin adds this to all HTML, but this is the
-    // one route whose correctness depends on it, and the bare
-    // `bun run src/server.ts` path has no nitro.
+    // Belt and braces: nitro adds this to all HTML, but this is the one route
+    // whose correctness depends on it, and the bare `bun run src/server.ts`
+    // path has no nitro.
     c.header("Vary", "Cookie");
     const response = c.html(html);
     endTime(c, "marketing_render");
@@ -313,36 +236,21 @@ export function mainRouter(deps: AppDeps): HonoServer {
               <Navbar profile={profileData} />
               {/*
                 `overflow-x-clip`, never `overflow-x-auto`: `auto` on one axis forces the other to
-                compute to `auto` too, which turns <main> into a scroll container on BOTH axes.
-                Its height equals its content height, so it ends up with a few px of residual
-                scrollable overflow that the mouse wheel latches onto and never chains out of —
-                i.e. the page stops scrolling a few px in. `clip` is the only value that legally
-                pairs with `overflow-y: visible`, and a clip container is not a scroll container.
-
-                Plain `overflow-visible` is not an option: BookTooltip is always rendered (at
-                `opacity-0`), so its w-48 box permanently contributes horizontal overflow and
-                would produce a document-level h-scrollbar on grid pages at 768–1280px.
-                `overflow-clip-margin` widens the clip edge so tooltips can still overhang the
-                content column without any of that.
+                compute to `auto` too, turning <main> into a scroll container on BOTH axes, whose
+                residual overflow traps the mouse wheel a few px into the page. `overflow-visible`
+                isn't an option either — BookTooltip is always rendered (at `opacity-0`), so its
+                w-48 box would produce a document-level h-scrollbar. `overflow-clip-margin` widens
+                the clip edge so tooltips can still overhang the content column.
               */}
               {/*
-                The gutter lives here as PADDING, not as a margin on the column below. It used to
-                be `m-4 lg:m-6` on the column, alongside `mx-auto` — but Tailwind v4 emits
-                `margin-inline` after `margin`, so `mx-auto` won and the horizontal margin
-                computed to 0 at every width below `lg`. Every app page's content sat flush
-                against both screen edges on mobile, and the `-mx-4 … px-4` full-bleed sections
-                (explore/genres/authorDirectory) overhung the viewport by 16px per side and had
-                their right edge clipped away. Padding here can't be overridden by `mx-auto`,
-                still lets the column centre itself, and keeps the negative-margin full-bleed
-                trick cancelling exactly.
+                Gutter is padding here, not a margin on the column below — Tailwind v4 emits
+                `margin-inline` after `margin`, so a margin there loses to the column's own
+                `mx-auto` and computes to 0 below `lg`. Padding can't be overridden that way, and
+                still keeps the negative-margin full-bleed sections cancelling exactly.
               */}
               <main class="flex-1 overflow-x-clip [overflow-clip-margin:5rem] flex justify-center px-4 py-4 lg:px-6 lg:py-6">
-                {/*
-                  `w-full`: as a flex item under `justify-center` this div was sized to its
-                  max-content width, so the page column silently got narrower on content-light
-                  pages (an empty profile rendered at ~470px while a populated one filled the
-                  5xl). Fill the available width and let max-w-5xl do the capping.
-                */}
+                {/* `w-full`: without it, this flex item under `justify-center` sizes to
+                    max-content, so content-light pages render narrower than max-w-5xl. */}
                 <div class="mx-auto w-full min-w-0 max-w-5xl">{children}</div>
               </main>
             </div>
@@ -358,18 +266,15 @@ export function mainRouter(deps: AppDeps): HonoServer {
   // --- Canonical, stable image endpoints (signing reverse-proxy to imgproxy) ---
   //
   // Two URL shapes share the same proxy logic (`proxyImageResponse`):
-  //
   //  1. ID-keyed (preferred): `/images/books/:hiveId?w=440` and
-  //     `/images/avatars/:did?s=120`. The source is resolved at request time
-  //     from our own data (hive_book / profile), so the URL is permanently
-  //     stable and never leaks the upstream provider — swap providers freely.
+  //     `/images/avatars/:did?s=120` — resolved from our own data at request
+  //     time, so the URL is permanently stable and never leaks the upstream
+  //     provider.
   //  2. Source-embedded: `/images/{modifiers}/{source}` — stateless, used by OG
-  //     render + iOS. Still a stable public contract.
+  //     render + iOS.
   //
-  // These specific routes MUST be registered before the catch-all below so they
-  // aren't swallowed by `/images/*`.
+  // Both must be registered before the `/images/*` catch-all below.
 
-  // Canonical book cover: resolves hive_book's current cover/thumbnail.
   app.get("/images/books/:hiveId", async (c) => {
     const hiveId = c.req.param("hiveId") as HiveId;
     const book = await c
@@ -392,7 +297,6 @@ export function mainRouter(deps: AppDeps): HonoServer {
     });
   });
 
-  // Canonical avatar: resolves the profile's current avatar by DID.
   app.get("/images/avatars/:did", async (c) => {
     const did = c.req.param("did");
     const profile = await getProfile({ ctx: c.get("ctx"), did }).catch(() => null);
@@ -409,7 +313,6 @@ export function mainRouter(deps: AppDeps): HonoServer {
     });
   });
 
-  // Source-embedded form (OG + iOS): `/images/{modifiers}/{source}`.
   app.use("/images/*", async (c) => {
     // Use pathname only so behavior is identical behind proxies
     const pathname = new URL(c.req.url).pathname;

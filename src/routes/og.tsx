@@ -6,43 +6,35 @@
  * Rendering is offloaded to a dedicated worker thread via renderOgImage().
  * There is **no server-side cache** — see the note above `renderOnce` below.
  */
+import { resolveActorDid } from "../services/actor";
 import { Hono } from "hono";
-import { isDid } from "@atcute/lexicons/syntax";
 
 import type { AppEnv } from "../context";
 import type { Context } from "hono";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
 import { BookFields } from "../db";
 import type { Book, HiveId } from "../types";
-import { getProfile } from "../utils/getProfile";
-import { hydrateUserBook } from "../utils/bookProgress";
+import { getProfile } from "../services/getProfile";
 import {
-  computeReadingStats,
-  filterFinishedBooksByYear,
-  filterFinishedBooksAllTime,
-  MIN_BOOKS_FOR_YEAR_STATS,
-} from "../utils/readingStats";
-import { BOOK_STATUS } from "../constants";
-import { sql } from "kysely";
+  getAuthorCardStats,
+  getBookCardStats,
+  getGenreCardStats,
+  getProfileCardStats,
+} from "../data/socialCards";
+import { hydrateUserBook } from "../core/bookProgress";
+import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
+import { parseAuthors } from "../core/authors";
+import { normalizeBookMeta } from "../core/bookMeta";
 import { renderOgImage } from "../workers/og-render/client";
 import type { OgCard } from "../workers/og-render/types";
 
 // ─── Cache + helpers ─────────────────────────────────────────────────────────
 
 /**
- * Renders are **not cached server-side**. Cloudflare is the cache: these
- * responses carry `public, max-age=…`, and a card that gets requested twice is
- * served from the edge without touching the origin. Measured over 48h of
- * production traffic, the origin therefore sees an almost perfectly unique
- * stream — 1,189 requests across 1,134 distinct cards, 1,081 of them requested
- * exactly once, max 4 repeats. A *perfect* origin cache could have served 4% of
- * them.
- *
- * That 4% was previously bought with an unbounded per-process `Map` of webp
- * bytes (the OOM), and then with an `og_cache` KV table that cost a base64
- * round-trip, a sweep on the 15-min timer, two gauges, and an extra writer to a
- * file we already have to VACUUM. Rendering on demand costs ~600ms p50 on a
- * worker thread, ~25 times an hour.
+ * Renders are **not cached server-side** — Cloudflare is the cache, since the
+ * origin sees an almost perfectly unique request stream and a server-side
+ * cache isn't worth its cost (an unbounded `Map` OOM'd once; a KV table cost
+ * a base64 round-trip and a sweep for little hit rate).
  *
  * `renderOnce` is all that survives: concurrent requests for the *same* cold
  * card share one render instead of starting N. It holds promises, never bytes,
@@ -72,15 +64,11 @@ const TTL = {
 
 const getOrigin = (c: { req: { url: string } }) => new URL(c.req.url).origin;
 
-/**
- * Static branded card served when a render fails. Never 500 an OG endpoint:
- * Bluesky/Discord/Slack cache a failed preview, so one bad render can break a
- * book's link previews indefinitely.
- */
+// Static branded card served when a render fails. Never 500 an OG endpoint:
+// Bluesky/Discord/Slack cache a failed preview, so one bad render can break a
+// book's link previews indefinitely.
 const FALLBACK_FILENAME = "og-fallback.png";
-/** Only ever holds a successful read — a miss is not memoized, so a file that
- *  shows up later (or a path that resolves differently) still gets picked up
- *  instead of pinning us to the redirect branch for the process's lifetime. */
+// Only ever holds a successful read, so a file that shows up later still gets picked up.
 let fallbackBytes: Uint8Array<ArrayBuffer> | null = null;
 
 async function loadFallbackImage(): Promise<Uint8Array<ArrayBuffer> | null> {
@@ -98,9 +86,7 @@ async function loadFallbackImage(): Promise<Uint8Array<ArrayBuffer> | null> {
         fallbackBytes = new Uint8Array(await file.arrayBuffer());
         return fallbackBytes;
       }
-    } catch {
-      // try the next candidate
-    }
+    } catch {}
   }
   return null;
 }
@@ -135,9 +121,8 @@ async function makeOgResponse(c: Context<AppEnv>, card: OgCard, maxAge: number):
       },
     });
   } catch (error) {
-    // No `error` field here on purpose: the bag takes precedence over
-    // requestError in the wide-event serializer, so setting a bare string would
-    // throw away the type and stack it would otherwise record.
+    // No `error` field here: the bag takes precedence over requestError in the
+    // wide-event serializer, which would otherwise lose the type and stack.
     c.set("requestError", error);
     c.get("ctx").addWideEventContext({
       og_render: "failed",
@@ -169,7 +154,7 @@ const app = new Hono<AppEnv>()
   })
   .get("/book/:hiveId", async (c) => {
     const hiveId = c.req.param("hiveId") as HiveId;
-    const [book, readerRow] = await Promise.all([
+    const [book, { readerCount }] = await Promise.all([
       c
         .get("ctx")
         .db.selectFrom("hive_book")
@@ -177,12 +162,7 @@ const app = new Hono<AppEnv>()
         .where("id", "=", hiveId)
         .limit(1)
         .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("hiveId", "=", hiveId)
-        .executeTakeFirst(),
+      getBookCardStats({ db: c.get("ctx").db, hiveId }),
     ]);
 
     if (!book) return c.notFound();
@@ -204,16 +184,11 @@ const app = new Hono<AppEnv>()
       } catch {}
     }
 
-    // Parse meta JSON for publicationYear and numPages
-    let publicationYear: number | null = null;
-    let pageCount: number | null = null;
-    if (book.meta) {
-      try {
-        const m = JSON.parse(book.meta);
-        publicationYear = m.publicationYear || null;
-        pageCount = m.numPages || null;
-      } catch {}
-    }
+    // `hive_book.meta` is scraped JSON; `normalizeBookMeta` is the one reader
+    // that coerces and validates it.
+    const meta = normalizeBookMeta(book.meta);
+    const publicationYear = meta.publicationYear ?? null;
+    const pageCount = meta.numPages ?? null;
 
     return makeOgResponse(
       c,
@@ -221,7 +196,7 @@ const app = new Hono<AppEnv>()
         kind: "book",
         props: {
           title: book.title,
-          authors: book.authors.split("\t").filter(Boolean),
+          authors: parseAuthors(book.authors),
           coverUrl,
           rating: book.rating,
           ratingsCount: book.ratingsCount,
@@ -229,7 +204,7 @@ const app = new Hono<AppEnv>()
           seriesPosition,
           publicationYear,
           pageCount,
-          readerCount: Number(readerRow?.count ?? 0),
+          readerCount,
         },
       },
       TTL.STATIC,
@@ -239,9 +214,9 @@ const app = new Hono<AppEnv>()
     const handle = c.req.param("handle");
     const year = parseInt(c.req.param("year"), 10);
 
-    if (Number.isNaN(year) || year < 2000 || year > 2100) return c.notFound();
+    if (!isValidStatsYear(year)) return c.notFound();
 
-    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = await resolveActorDid(c.get("ctx"), handle);
     if (!did) return c.notFound();
 
     const profile = await getProfile({ ctx: c.get("ctx"), did });
@@ -257,30 +232,19 @@ const app = new Hono<AppEnv>()
       .execute();
 
     const parsedBooks = books.map((b) => hydrateUserBook(b));
-    const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
-    const useAllTime = finishedInYear.length < MIN_BOOKS_FOR_YEAR_STATS;
-    const scope = useAllTime ? filterFinishedBooksAllTime(parsedBooks) : finishedInYear;
-
-    const hiveIds = scope.map((b) => b.hiveId);
-    let genreStats: { genre: string; count: number }[] = [];
-    if (hiveIds.length > 0) {
-      const rows = await c
-        .get("ctx")
-        .db.selectFrom("hive_book_genre")
-        .select(["genre", sql<number>`COUNT(*)`.as("count")])
-        .where("hiveId", "in", hiveIds)
-        .groupBy("genre")
-        .orderBy(sql`COUNT(*)`, "desc")
-        .limit(5)
-        .execute();
-      genreStats = rows.map((r) => ({ genre: r.genre, count: Number(r.count) }));
-    }
-
-    const stats = computeReadingStats(scope, genreStats);
+    // Shows the same scope the page shows (year, or all-time fallback);
+    // `genreLimit` is 5 here vs. the page's 15, the only thing this surface changes.
+    const { stats, allTimeStats } = await getReadingStatsForYear({
+      db: c.get("ctx").db,
+      books: parsedBooks,
+      year,
+      genreLimit: 5,
+    });
+    const shown = allTimeStats ?? stats;
     const origin = getOrigin(c);
     const avatarUrl = profile?.avatar ? `${origin}/images/w_176/${profile.avatar}` : undefined;
 
-    const booksPerMonth = stats.booksCount >= 2 ? stats.booksCount / 12 : null;
+    const booksPerMonth = shown.booksCount >= 2 ? shown.booksCount / 12 : null;
 
     const makeBookendCover = (book: Book | null) => {
       if (!book) return null;
@@ -291,10 +255,10 @@ const app = new Hono<AppEnv>()
       };
     };
 
-    const longestBookData = stats.longestBook
+    const longestBookData = shown.longestBook
       ? (() => {
-          const pages = stats.longestBook!.bookProgress?.totalPages;
-          return pages && pages > 0 ? { title: stats.longestBook!.title, pageCount: pages } : null;
+          const pages = shown.longestBook!.bookProgress?.totalPages;
+          return pages && pages > 0 ? { title: shown.longestBook!.title, pageCount: pages } : null;
         })()
       : null;
 
@@ -307,13 +271,13 @@ const app = new Hono<AppEnv>()
           displayName: profile?.displayName,
           avatarUrl,
           year,
-          booksCount: stats.booksCount,
-          averageRating: stats.averageRating,
-          topGenre: stats.topGenres[0]?.genre ?? null,
-          pagesRead: stats.pagesRead,
+          booksCount: shown.booksCount,
+          averageRating: shown.averageRating,
+          topGenre: shown.topGenres[0]?.genre ?? null,
+          pagesRead: shown.pagesRead,
           booksPerMonth,
-          firstBook: makeBookendCover(stats.firstBookOfYear),
-          lastBook: makeBookendCover(stats.lastBookOfYear),
+          firstBook: makeBookendCover(shown.firstBookOfYear),
+          lastBook: makeBookendCover(shown.lastBookOfYear),
           longestBook: longestBookData,
         },
       },
@@ -322,59 +286,15 @@ const app = new Hono<AppEnv>()
   })
   .get("/profile/:handle", async (c) => {
     const handle = c.req.param("handle");
-    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = await resolveActorDid(c.get("ctx"), handle);
     if (!did) return c.notFound();
 
     const origin = getOrigin(c);
-    const currentYear = new Date().getFullYear();
-    const yearStart = `${currentYear}-01-01T00:00:00.000Z`;
 
-    const [profile, totalRow, yearRow, currentlyReadingRow, recentBooks, genreRows] =
-      await Promise.all([
-        getProfile({ ctx: c.get("ctx"), did }),
-        c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .select((eb) => eb.fn.countAll().as("count"))
-          .where("userDid", "=", did)
-          .executeTakeFirst(),
-        c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .select((eb) => eb.fn.countAll().as("count"))
-          .where("userDid", "=", did)
-          .where("status", "=", BOOK_STATUS.FINISHED)
-          .where("finishedAt", ">=", yearStart)
-          .executeTakeFirst(),
-        c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .select(["title"])
-          .where("userDid", "=", did)
-          .where("status", "=", BOOK_STATUS.READING)
-          .orderBy("indexedAt", "desc")
-          .limit(1)
-          .executeTakeFirst(),
-        c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .select(["hive_book.cover", "hive_book.thumbnail"])
-          .where("user_book.userDid", "=", did)
-          .orderBy("user_book.indexedAt", "desc")
-          .limit(10)
-          .execute(),
-        c
-          .get("ctx")
-          .db.selectFrom("hive_book_genre")
-          .innerJoin("user_book", "hive_book_genre.hiveId", "user_book.hiveId")
-          .select(["hive_book_genre.genre", sql<number>`COUNT(*)`.as("count")])
-          .where("user_book.userDid", "=", did)
-          .groupBy("hive_book_genre.genre")
-          .orderBy(sql`COUNT(*)`, "desc")
-          .limit(5)
-          .execute(),
-      ]);
+    const [profile, cardStats] = await Promise.all([
+      getProfile({ ctx: c.get("ctx"), did }),
+      getProfileCardStats({ db: c.get("ctx").db, did }),
+    ]);
 
     return makeOgResponse(
       c,
@@ -385,11 +305,11 @@ const app = new Hono<AppEnv>()
           displayName: profile?.displayName,
           avatarUrl: profile?.avatar ? `${origin}/images/w_320/${profile.avatar}` : undefined,
           bio: profile?.description ?? null,
-          totalBooks: Number(totalRow?.count ?? 0),
-          booksThisYear: Number(yearRow?.count ?? 0),
-          currentlyReading: currentlyReadingRow?.title ?? null,
-          recentCovers: toCovers(recentBooks, origin, 260).slice(0, 6),
-          topGenres: genreRows.map((r) => ({ genre: r.genre, count: Number(r.count) })),
+          totalBooks: cardStats.totalBooks,
+          booksThisYear: cardStats.booksThisYear,
+          currentlyReading: cardStats.currentlyReading,
+          recentCovers: toCovers(cardStats.covers, origin, 260).slice(0, 6),
+          topGenres: cardStats.genres,
         },
       },
       TTL.PROFILE,
@@ -399,35 +319,10 @@ const app = new Hono<AppEnv>()
     const author = decodeURIComponent(c.req.param("author"));
     const origin = getOrigin(c);
 
-    const [totalRow, avgRow, books] = await Promise.all([
-      c
-        .get("ctx")
-        // Joined to hive_book like the two queries below it. Counting
-        // hive_book_author alone would report a different total than the books
-        // actually rendered if the mapping ever holds a row whose book is gone.
-        .db.selectFrom("hive_book")
-        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("hive_book_author.author", "=", author)
-        .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("hive_book")
-        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-        .select(sql<number>`AVG(rating)`.as("avg"))
-        .where("hive_book_author.author", "=", author)
-        .where("rating", "is not", null)
-        .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("hive_book")
-        .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-        .select(["cover", "thumbnail"])
-        .where("hive_book_author.author", "=", author)
-        .orderBy("ratingsCount", "desc")
-        .limit(6)
-        .execute(),
-    ]);
+    const { totalBooks, avgRating, covers } = await getAuthorCardStats({
+      db: c.get("ctx").db,
+      author,
+    });
 
     return makeOgResponse(
       c,
@@ -436,9 +331,9 @@ const app = new Hono<AppEnv>()
         props: {
           label: "Author",
           name: author,
-          totalBooks: Number(totalRow?.count ?? 0),
-          covers: toCovers(books, origin, 260),
-          avgRating: avgRow?.avg ?? null,
+          totalBooks,
+          covers: toCovers(covers, origin, 260),
+          avgRating,
         },
       },
       TTL.DAILY,
@@ -448,30 +343,7 @@ const app = new Hono<AppEnv>()
     const genre = decodeURIComponent(c.req.param("genre"));
     const origin = getOrigin(c);
 
-    const [totalRow, readerRow, books] = await Promise.all([
-      c
-        .get("ctx")
-        .db.selectFrom("hive_book_genre")
-        .select((eb) => eb.fn.countAll().as("count"))
-        .where("genre", "=", genre)
-        .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .innerJoin("hive_book_genre", "user_book.hiveId", "hive_book_genre.hiveId")
-        .select(sql<number>`COUNT(DISTINCT user_book.userDid)`.as("count"))
-        .where("hive_book_genre.genre", "=", genre)
-        .executeTakeFirst(),
-      c
-        .get("ctx")
-        .db.selectFrom("hive_book")
-        .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
-        .select(["hive_book.cover", "hive_book.thumbnail"])
-        .where("hive_book_genre.genre", "=", genre)
-        .orderBy("hive_book.ratingsCount", "desc")
-        .limit(6)
-        .execute(),
-    ]);
+    const genreStats = await getGenreCardStats({ db: c.get("ctx").db, genre });
 
     return makeOgResponse(
       c,
@@ -480,9 +352,9 @@ const app = new Hono<AppEnv>()
         props: {
           label: "Genre",
           name: genre,
-          totalBooks: Number(totalRow?.count ?? 0),
-          covers: toCovers(books, origin, 260),
-          readerCount: Number(readerRow?.count ?? 0),
+          totalBooks: genreStats.totalBooks,
+          covers: toCovers(genreStats.covers, origin, 260),
+          readerCount: genreStats.readerCount,
         },
       },
       TTL.DAILY,

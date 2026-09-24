@@ -1,6 +1,8 @@
 import type { HiveBook } from "../types";
 import { getHiveId } from "./getHiveId";
-import { normalizeGoodreadsId } from "../utils/bookIdentifiers";
+import { normalizeGoodreadsId } from "../data/bookIdentifiers";
+import { apiHeaders, UA } from "./waf/http";
+import { displayRatingToHiveRating } from "../core/rating";
 
 interface GoodreadsAuthor {
   id: number;
@@ -33,7 +35,8 @@ interface GoodreadsBook {
 class Goodreads {
   public static readonly NAME = "Goodreads";
   private static readonly BOOK_URL = "https://www.goodreads.com/book/show/";
-  private static readonly SEARCH_URL = "https://www.goodreads.com/book/auto_complete";
+  private static readonly ORIGIN = "https://www.goodreads.com";
+  private static readonly SEARCH_URL = `${Goodreads.ORIGIN}/book/auto_complete`;
 
   private readonly active: boolean;
 
@@ -57,12 +60,12 @@ class Goodreads {
         limit: "20",
       });
 
+      // Must claim the same browser as the page fetch — a mismatched sec-ch-ua/
+      // User-Agent pair is a one-line bot signature (see src/scrapers/waf/README.md).
       const response = await fetch(`${Goodreads.SEARCH_URL}?${params.toString()}`, {
         signal: AbortSignal.timeout(15_000),
         headers: {
-          accept: "*/*",
-          "cache-control": "no-cache",
-          "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+          ...apiHeaders(Goodreads.ORIGIN, UA, true),
           "x-requested-with": "XMLHttpRequest",
         },
       });
@@ -101,7 +104,7 @@ class Goodreads {
       cover: this.parseCover(result, genericCover),
       thumbnail: result.imageUrl,
       description: this.parseDescription(result.description),
-      rating: parseInt((parseFloat(result.avgRating) * 1000).toString()),
+      rating: displayRatingToHiveRating(parseFloat(result.avgRating)),
       ratingsCount: parseInt(result.ratingsCount.toString()),
       createdAt: now,
       updatedAt: now,
@@ -128,7 +131,6 @@ class Goodreads {
   }
 
   private parseDescription(description: GoodreadsDescription | undefined): string {
-    // Remove HTML tags from description
     return description?.html.replace(/<[^>]*>/g, "") || "";
   }
 }

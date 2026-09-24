@@ -1,30 +1,6 @@
-import type { FC, PropsWithChildren } from "hono/jsx/dom";
+import { useEffect, useRef, type FC, type PropsWithChildren } from "hono/jsx/dom";
 
-/*
- * Why this is a checkbox and not the Popover API.
- *
- * An element with an open `popover` is in the top layer, and the top layer
- * detaches it from the containing-block chain entirely: `offsetParent` is null
- * and `position: static | relative | absolute | fixed` all resolve against the
- * initial containing block (measured, not assumed — `static` and `relative` are
- * even coerced to a computed `position: absolute`). So the *only* way to tether
- * an open popover to its trigger is the CSS anchor positioning API, which is
- * Chromium-only; Firefox and Safari fell back to a viewport-centred sheet.
- *
- * So the popover is gone and this is the plain `absolute`-inside-`relative`
- * placement every other menu in the app uses (navbar user menu, book status
- * dropdown, share menus). Everything popover gave us for free is replaced
- * without JavaScript:
- *
- *   - open/close   → a `peer` checkbox + `peer-checked:` variants
- *   - light dismiss → a viewport-filling `<button type="reset">` behind the panel
- *   - item closes menu → `<button type="reset">`, which is why the whole menu is
- *     wrapped in a `<form>`: reset returns every checkbox in it to unchecked,
- *     closing the menu *and* any nested confirmation in one declarative step.
- *
- * The trigger is a visually hidden but still focusable checkbox plus a `<label>`,
- * so the control stays keyboard operable (Tab to it, Space to open).
- */
+// Plain `absolute`-inside-`relative` placement, not the Popover API — a popover's top-layer breaks anchoring outside Chromium's CSS anchor positioning; both were tried and reverted.
 
 const DEFAULT_TRIGGER_CLASS =
   "inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]";
@@ -38,7 +14,7 @@ const PANEL_CLASS =
   "invisible absolute top-full right-0 z-50 mt-1 opacity-0 transition-[opacity,visibility] duration-100 ease-out peer-checked:visible peer-checked:opacity-100";
 
 /**
- * A dropdown menu tethered to its trigger with no JavaScript.
+ * Checkbox-driven dropdown; JavaScript only keeps panels inside the content column.
  *
  * `id` must be unique on the page — it is the id of the checkbox that holds the
  * open state, and the `for` target of the trigger label.
@@ -53,37 +29,65 @@ export const AnchoredMenu: FC<
     trigger?: unknown;
     width?: string;
   }>
-> = ({ id, label, triggerClass, trigger, width = "w-48", children }) => (
-  // The form exists purely so `type="reset"` buttons inside it can close the
-  // menu. `method="dialog"` with no ancestor <dialog> makes submission a no-op
-  // (verified: even a forced `requestSubmit()` does not navigate), so the form
-  // can never take the page away — no JS guard needed.
-  <form method="dialog" class="relative inline-flex">
-    {/* Visually hidden, but still in the tab order and Space-toggleable. */}
-    <input type="checkbox" id={id} aria-label={label} class="peer sr-only" />
+> = ({ id, label, triggerClass, trigger, width = "w-48", children }) => {
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const positionPanels = () => {
+    const form = formRef.current;
+    if (!form) return;
+    const main = form.closest("main")?.getBoundingClientRect();
+    const left = Math.max(16, main ? main.left + 16 : 0);
+    const right = Math.min(
+      document.documentElement.clientWidth - 16,
+      main ? main.right - 16 : Infinity,
+    );
+    // Parent-first: moving the menu changes the confirmation's containing block.
+    for (const panel of form.querySelectorAll<HTMLElement>("[data-menu-panel]")) {
+      panel.style.maxWidth = `${Math.max(0, right - left)}px`;
+      panel.style.right = "0px";
+      const rect = panel.getBoundingClientRect();
+      const x = Math.max(left, Math.min(rect.left, right - rect.width));
+      panel.style.right = `${rect.left - x}px`;
+    }
+  };
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    const observer = new ResizeObserver(positionPanels);
+    observer.observe(form.closest("main") ?? document.documentElement);
+    window.addEventListener("resize", positionPanels);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", positionPanels);
+    };
+  }, []);
+  return (
+    // The form exists purely so `type="reset"` buttons inside it can close the menu; `method="dialog"` with no ancestor <dialog> makes submission a no-op, so the form can never take the page away.
+    <form ref={formRef} method="dialog" class="relative inline-flex" onChange={positionPanels}>
+      {/* Visually hidden, but still in the tab order and Space-toggleable. */}
+      <input type="checkbox" id={id} aria-label={label} class="peer sr-only" />
 
-    <label for={id} class={`${triggerClass ?? DEFAULT_TRIGGER_CLASS} ${TRIGGER_STATE_CLASS}`}>
-      {trigger ?? <MoreIcon />}
-    </label>
+      <label for={id} class={`${triggerClass ?? DEFAULT_TRIGGER_CLASS} ${TRIGGER_STATE_CLASS}`}>
+        {trigger ?? <MoreIcon />}
+      </label>
 
-    {/* Light dismiss. Fills the viewport behind the panel; resetting the form
-        closes this menu and any nested confirmation at once. `fixed` is safe
-        here only because no ancestor sets a transform/filter — see the note on
-        the action layer in PersonalBookCard. */}
-    <button
-      type="reset"
-      tabIndex={-1}
-      aria-hidden="true"
-      class="invisible fixed inset-0 z-40 cursor-default peer-checked:visible"
-    />
+      {/* Light dismiss; resetting the form closes this menu and any nested confirmation. `fixed` is safe here only because no ancestor sets a transform/filter — see PersonalBookCard's action-layer note. */}
+      <button
+        type="reset"
+        tabIndex={-1}
+        aria-hidden="true"
+        class="invisible fixed inset-0 z-40 cursor-default peer-checked:visible"
+      />
 
-    <div class={PANEL_CLASS}>
-      <div class={`${width} rounded-md border border-border bg-popover py-1 text-left shadow-md`}>
-        {children}
+      <div data-menu-panel class={PANEL_CLASS}>
+        <div
+          class={`${width} max-w-full rounded-md border border-border bg-popover py-1 text-left shadow-md`}
+        >
+          {children}
+        </div>
       </div>
-    </div>
-  </form>
-);
+    </form>
+  );
+};
 
 /**
  * An item inside an `AnchoredMenu`. Passing `menuId` makes it a reset button, so
@@ -136,8 +140,8 @@ export const MenuConfirm: FC<{
       {label}
     </label>
 
-    <div class={PANEL_CLASS}>
-      <div class="w-56 rounded-md border border-border bg-popover p-3 shadow-md">
+    <div data-menu-panel class={PANEL_CLASS}>
+      <div class="w-56 max-w-full rounded-md border border-border bg-popover p-3 shadow-md">
         <p class="text-xs text-muted-foreground">{description}</p>
         <div class="mt-2 flex items-center gap-3">
           <button

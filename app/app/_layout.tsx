@@ -37,20 +37,17 @@ function useOTAUpdates() {
         if (update.isAvailable) {
           const result = await Updates.fetchUpdateAsync();
           if (result.isNew) {
-            // Reload the app to apply the update
             await Updates.reloadAsync();
           }
         }
       } catch (e) {
-        // Silently fail — update check is best-effort
+        // Best-effort — failures are logged, not surfaced.
         console.log("OTA update check failed:", e);
       }
     }
 
-    // Check on initial mount
     void checkAndApplyUpdate();
 
-    // Also check when app returns from background
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         void checkAndApplyUpdate();
@@ -69,11 +66,9 @@ const queryClient = new QueryClient({
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours
       retry: (failureCount, error: any) => {
-        // Don't retry if it's a non-retryable error
         if (error?.networkError && !error.networkError.retryable) {
           return false;
         }
-        // Retry up to 3 times for retryable errors
         return failureCount < 3;
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),

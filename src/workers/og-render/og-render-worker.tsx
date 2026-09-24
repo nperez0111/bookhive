@@ -12,6 +12,7 @@ import {
   AppOgCard,
   OG_RENDER_OPTIONS,
 } from "./components";
+import { errorMessage } from "../../lib/errors";
 
 self.onmessage = async (event: MessageEvent<OgRenderRequest>) => {
   const { id, card } = event.data;
@@ -50,7 +51,7 @@ self.onmessage = async (event: MessageEvent<OgRenderRequest>) => {
       type: "render-result",
       id,
       ok: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     };
     self.postMessage(msg);
   }

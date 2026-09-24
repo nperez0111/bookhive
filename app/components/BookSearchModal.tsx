@@ -18,6 +18,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
 import { useSearchBooks } from "@/hooks/useBookhiveQuery";
+import { formatAuthors } from "@/utils/personalLibrary";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import type { HiveBook } from "../../src/types";
 
@@ -187,7 +188,7 @@ export function BookSearchModal({
                       style={{ color: colors.secondaryText }}
                       numberOfLines={1}
                     >
-                      {item.authors?.split("\t").join(", ")}
+                      {formatAuthors(item.authors)}
                     </ThemedText>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.tertiaryText} />

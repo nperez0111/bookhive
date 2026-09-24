@@ -2,6 +2,9 @@ import { useEffect, useState, useRef, type FC } from "hono/jsx/dom";
 
 type StarType = "full" | "half" | "empty";
 
+const STAR_PATH =
+  "M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z";
+
 interface StarRatingProps {
   initialRating?: number;
   onChange?: (rating: number) => void;
@@ -61,10 +64,7 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
 
   const handleMouseDown = (event: MouseEvent) => {
     const newRating = calculateRatingFromEvent(event);
-    // A click on the leftmost sliver computes 0, which consumers treat as "no
-    // change" — painting it would strand the widget at empty, since the prop
-    // never moves back. Bail before entering the drag state: a no-op click
-    // that set it left hover previews suppressed until the next mouseup.
+    // A click on the leftmost sliver computes 0, which consumers treat as "no change" — bail rather than painting it, or the widget strands at empty since the prop never moves back.
     if (!newRating) return;
     setIsDragging(true);
     setRating(newRating);
@@ -88,52 +88,27 @@ export const StarRating: FC<StarRatingProps> = ({ initialRating = 0, onChange })
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
       >
-        {stars.map((type, index) => {
-          const baseClasses = "w-8 h-8 transition-colors duration-150";
-          if (type === "full") {
-            return (
-              <svg
-                key={index}
-                className={`${baseClasses} text-accent`}
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z" />
-              </svg>
-            );
-          } else if (type === "half") {
-            return (
-              <svg
-                key={index}
-                className={`${baseClasses} text-accent`}
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <defs>
-                  <linearGradient id={`half-${index}`}>
-                    <stop offset="50%" stopColor="currentColor" />
-                    <stop offset="50%" stopColor="#d1d5dc" />
-                  </linearGradient>
-                </defs>
-                <path
-                  fill={`url(#half-${index})`}
-                  d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z"
-                />
-              </svg>
-            );
-          } else {
-            return (
-              <svg
-                key={index}
-                className={`${baseClasses} text-muted-foreground/35`}
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M17.56 21a1 1 0 0 1-.46-.11L12 18.22l-5.1 2.67a1 1 0 0 1-1.45-1.06l1-5.63-4.12-4a1 1 0 0 1-.25-1 1 1 0 0 1 .81-.68l5.7-.83 2.51-5.13a1 1 0 0 1 1.8 0l2.54 5.12 5.7.83a1 1 0 0 1 .81.68 1 1 0 0 1-.25 1l-4.12 4 1 5.63a1 1 0 0 1-.4 1 1 1 0 0 1-.62.18z" />
-              </svg>
-            );
-          }
-        })}
+        {stars.map((type, index) => (
+          // One element, not three near-identical branches: the half star is the full one with a 50/50 gradient fill, and "empty" is just a colour.
+          <svg
+            key={index}
+            className={`h-8 w-8 transition-colors duration-150 ${
+              type === "empty" ? "text-muted-foreground/35" : "text-accent"
+            }`}
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            {type === "half" && (
+              <defs>
+                <linearGradient id={`half-${index}`}>
+                  <stop offset="50%" stopColor="currentColor" />
+                  <stop offset="50%" stopColor="#d1d5dc" />
+                </linearGradient>
+              </defs>
+            )}
+            <path {...(type === "half" ? { fill: `url(#half-${index})` } : {})} d={STAR_PATH} />
+          </svg>
+        ))}
       </div>
       <div className="text-foreground mt-1 w-10 text-lg">
         {displayRating ? `${displayRating / 2}` : ""}

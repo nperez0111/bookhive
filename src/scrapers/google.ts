@@ -1,7 +1,6 @@
 // Warning: This is AI slop, translated from https://github.com/janeczku/calibre-web/blob/master/cps/metadata_provider/google.py
 import { LANGUAGE_NAMES, languageMap } from "./languageNames";
 
-// Type definitions
 export interface MetaSourceInfo {
   id: string;
   description: string;
@@ -72,7 +71,6 @@ class Google {
   }
 
   private getTitleTokens(title: string, stripJoiners: boolean = true): string[] {
-    // Title patterns to clean up the search string
     const titlePatterns: [RegExp, string][] = [
       // Remove things like: (2010) (Omnibus) etc.
       [
@@ -93,13 +91,11 @@ class Google {
       [/[:,;!@$%^&*(){}.`~"\s[\]/]《》「」""""/g, " "],
     ];
 
-    // Apply all patterns sequentially
     let cleanTitle = title;
     for (const [pattern, replacement] of titlePatterns) {
       cleanTitle = cleanTitle.replace(pattern, replacement);
     }
 
-    // Split into tokens and filter
     const tokens = cleanTitle
       .split(/\s+/)
       .map((token) => token.trim().replace(/['"]/g, ""))
@@ -163,11 +159,9 @@ class Google {
       },
     };
 
-    // Parse cover
     match.cover = this.parseCover(result.volumeInfo, genericCover);
     match.thumbnail = result.volumeInfo.imageLinks?.thumbnail || genericCover;
 
-    // Parse other fields
     match.description = result.volumeInfo.description || "";
     match.languages = this.parseLanguages(result.volumeInfo, locale);
     match.publisher = result.volumeInfo.publisher || "";
@@ -177,7 +171,6 @@ class Google {
     match.series_index = 1;
     match.tags = result.volumeInfo.categories || [];
 
-    // Parse ISBN
     this.parseIsbn(result.volumeInfo, match);
 
     return match;
@@ -222,7 +215,6 @@ class Google {
     if (!date) return "";
 
     try {
-      // Verify the date is in YYYY-MM-DD format
       if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         const parsedDate = new Date(date);
         if (!isNaN(parsedDate.getTime())) {
@@ -235,15 +227,12 @@ class Google {
     }
   }
 
-  // Placeholder methods for language conversion
-  // These would need to be implemented based on your language mapping requirements
+  // Placeholder — language conversion isn't fully implemented.
   private getLang3(lang: string): string {
     try {
-      // Return 3-letter code if input is already 3 letters
       if (lang.length === 3) {
         return lang;
       }
-      // Convert 2-letter code to 3-letter code
       if (lang.length === 2) {
         return languageMap[lang.toLowerCase() as keyof typeof languageMap] || lang;
       }

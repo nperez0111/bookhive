@@ -1,3 +1,5 @@
+import { displayAuthors } from "../../../core/authors";
+
 /** E-reader reading progress for a book, as returned by getPersonalLibrary. */
 export type SyncProgress = {
   /** Fraction between 0 and 1, transported as a string by the lexicon. */
@@ -57,11 +59,13 @@ export const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-/** Tab-separated authors, as stored, rendered as a comma list. */
-export const authorsDisplay = (authors: string | null): string =>
-  authors?.replace(/\t/g, ", ") ?? "";
+export const authorsDisplay = displayAuthors;
 
-/** Fraction (0..1) → whole percent, clamped. */
+/**
+ * Fraction (0..1) → whole percent, clamped. `bridgeProgressToUserBook` applies
+ * the identical clamp server-side before persisting; both exist because this
+ * one runs on already-fetched data in the browser.
+ */
 export const toPercent = (fraction: number): number =>
   Math.max(0, Math.min(100, Math.round(fraction * 100)));
 

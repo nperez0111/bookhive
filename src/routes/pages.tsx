@@ -11,6 +11,8 @@ import { zValidator } from "@hono/zod-validator";
 import type { AppEnv } from "../context";
 import { BOOKHIVE_DID } from "../constants";
 import { Error as ErrorPage } from "../pages/error";
+import { MyBooks } from "../pages/myBooks";
+import { listAllUserBooks } from "../data/userShelves";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
@@ -19,20 +21,43 @@ import { SimpleNavbar } from "../pages/simple-navbar";
 import { LibraryImport } from "../pages/import";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
-import { GenreBooks, getBooksByGenre } from "../pages/genreBooks";
+import { GenreBooks } from "../pages/genreBooks";
 import { AuthorDirectory } from "../pages/authorDirectory";
-import { AuthorBooks, getBooksByAuthor } from "../pages/authorBooks";
+import { AuthorBooks } from "../pages/authorBooks";
 import { SearchResults } from "../pages/searchResults";
-import { searchBooks, cacheControl } from "./lib";
-import { NO_STORE } from "../utils/cacheHeaders";
-import { getAvailableLanguages, resolveLanguage } from "../utils/getLanguages";
-import { feedQuerySchema, getActivityFeed } from "../utils/activityFeed";
+import { cacheControl } from "./lib";
+import { searchBooks } from "../services/searchBooks";
+import { NO_STORE } from "../core/cacheHeaders";
+import { getAvailableLanguages, resolveLanguage } from "../data/getLanguages";
+import { feedQuerySchema, getActivityFeed } from "../data/activityFeed";
+import { calculatePagination } from "../lib/pagination";
+import { hydrateSearchResults, listBooksByAuthor, listBooksByGenre } from "../data/catalogBooks";
+
+/**
+ * `?page=` and `?sort=` for the two paginated catalogue pages. `?lang=` is not
+ * here because it's validated against the catalogue itself (`resolveLanguage`),
+ * which a schema cannot do.
+ */
+const catalogQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).catch(1),
+  sort: z.string().optional(),
+});
 
 const app = new Hono<AppEnv>()
+  .get("/my-books", zValidator("query", z.object({})), async (c) => {
+    c.header("Cache-Control", NO_STORE);
+    const ctx = c.get("ctx");
+    const profile = await ctx.getProfile();
+    if (!profile) return c.redirect("/login", 302);
+    const books = await listAllUserBooks({ db: ctx.db, userDid: profile.did });
+    return c.render(<MyBooks books={books} handle={profile.handle} />, {
+      title: "BookHive | My Books",
+    });
+  })
   .get("/home", async (c) => {
-    // Personalized: never stored, not even for revalidation. `no-cache` would
-    // still let the browser write the page to disk, which is how a previous
-    // account's /home survived an account switch.
+    // Personalized: never stored, not even for revalidation — `no-cache` would
+    // still let the browser write the page to disk, letting a previous
+    // account's /home survive a switch.
     c.header("Cache-Control", NO_STORE);
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
@@ -41,9 +66,8 @@ const app = new Hono<AppEnv>()
     return c.render(<Home />, { title: "BookHive | Home" });
   })
   .get("/feed", zValidator("query", feedQuerySchema), async (c) => {
-    // Fully personalized (the friends and tracking tabs are follow-graph
-    // specific), and it previously set no Cache-Control at all — same exposure
-    // as /home above.
+    // Fully personalized (friends/tracking tabs are follow-graph specific) —
+    // same exposure as /home above.
     c.header("Cache-Control", NO_STORE);
     const profile = await c.get("ctx").getProfile();
     if (!profile) {
@@ -160,40 +184,18 @@ const app = new Hono<AppEnv>()
       ]);
       endTime(c, "search_parallel");
 
-      // Fetch full rows by ID, preserving search relevance order
-      // Language is a soft preference: sort matching-language books first, don't filter
       startTime(c, "search_db_external");
-      let dbQuery = ctx.db.selectFrom("hive_book").selectAll();
-      if (searchIds.length) {
-        dbQuery = dbQuery.where("id", "in", searchIds);
-      }
-      const allBooks = searchIds.length
-        ? await dbQuery.execute().then((rows) => {
-            if (lang) {
-              // Sort: preferred language first, then by search relevance
-              rows.sort((a, b) => {
-                const aMatch = a.language === lang ? 0 : 1;
-                const bMatch = b.language === lang ? 0 : 1;
-                if (aMatch !== bMatch) return aMatch - bMatch;
-                return searchIds.indexOf(a.id) - searchIds.indexOf(b.id);
-              });
-            } else {
-              rows.sort((a, b) => searchIds.indexOf(a.id) - searchIds.indexOf(b.id));
-            }
-            return rows;
-          })
-        : [];
+      const allBooks = await hydrateSearchResults({ db, ids: searchIds, language: lang });
       endTime(c, "search_db_external");
       const totalBooks = allBooks.length;
-      const totalPages = Math.ceil(totalBooks / pageSize);
-      const offset = (page - 1) * pageSize;
+      const { totalPages, offset, validPage } = calculatePagination(totalBooks, pageSize, page);
       const books = allBooks.slice(offset, offset + pageSize);
 
       return c.render(
         <SearchResults
           query={query}
           books={books}
-          currentPage={page}
+          currentPage={validPage}
           totalPages={totalPages}
           totalBooks={totalBooks}
           pageSize={pageSize}
@@ -213,40 +215,52 @@ const app = new Hono<AppEnv>()
   .use("/authors/*", cacheControl("public, max-age=3600, stale-while-revalidate=600"))
   .get("/explore", async (c) => {
     const { db, kv } = c.get("ctx");
-    // Validated, not passed through: `lang` keys a cached 356k-row aggregate,
-    // so an arbitrary string is an unbounded KV-cardinality and CPU amplifier.
+    // Validated, not passed through: `lang` keys a cached aggregate, so an
+    // arbitrary string is an unbounded KV-cardinality and CPU amplifier.
     const [lang, languages] = await Promise.all([
       resolveLanguage(db, kv, c.req.query("lang")),
       getAvailableLanguages(db, kv),
     ]);
     return c.render(<Explore lang={lang} languages={languages} />, {
-      title: "BookHive | Explore",
+      title: "BookHive | Discover",
       description: "Discover books by genre or author on BookHive",
     });
   })
   // Explore sub-pages
-  .get("/explore/genres", (c) =>
-    c.render(<GenresDirectory />, {
+  .get("/explore/genres", async (c) => {
+    // Validated, never passed through, same as /explore and /explore/authors:
+    // it's in the anon page cache's ALLOWED_QUERY_PARAMS, so an arbitrary
+    // string is an unbounded KV-cardinality amplifier.
+    const { db, kv } = c.get("ctx");
+    const lang = await resolveLanguage(db, kv, c.req.query("lang"));
+    return c.render(<GenresDirectory lang={lang} />, {
       title: "BookHive | Explore Genres",
       description: "Explore books by genre on BookHive",
-    }),
-  )
-  .get("/explore/genres/:genre", async (c) => {
+    });
+  })
+  .get("/explore/genres/:genre", zValidator("query", catalogQuerySchema), async (c) => {
     const genre = decodeURIComponent(c.req.param("genre"));
-    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const sortBy = (c.req.query("sort") as "popularity" | "relevance" | "reviews") || "popularity";
-    const lang = c.req.query("lang") || undefined;
+    const { page, sort } = c.req.valid("query");
+    const sortBy = sort === "relevance" || sort === "reviews" ? sort : "popularity";
     const pageSize = 100;
     const { db, kv } = c.get("ctx");
-    const [result, languages] = await Promise.all([
-      (async () => {
-        startTime(c, "genre_books");
-        const r = await getBooksByGenre(genre, c.get("ctx"), page, pageSize, sortBy, c, lang);
-        endTime(c, "genre_books");
-        return r;
-      })(),
+    // Same rule as `/explore` and its siblings: `lang` is validated, never
+    // passed through — it's an unbounded KV-cardinality amplifier otherwise,
+    // and it reaches the SQL's `CASE WHEN language = ?`.
+    const [lang, languages] = await Promise.all([
+      resolveLanguage(db, kv, c.req.query("lang")),
       getAvailableLanguages(db, kv),
     ]);
+    startTime(c, "genre_books");
+    const result = await listBooksByGenre({
+      db,
+      genre,
+      page,
+      pageSize,
+      sort: sortBy,
+      language: lang,
+    });
+    endTime(c, "genre_books");
     return c.render(
       <GenreBooks
         genre={genre}
@@ -268,10 +282,9 @@ const app = new Hono<AppEnv>()
   })
   .get("/explore/authors", async (c) => {
     const { db, kv } = c.get("ctx");
-    // This route used to ignore `lang` entirely while /explore linked here with
-    // it and the anon page cache keyed on it — every language a crawler found
-    // became a separate cache entry holding byte-identical HTML, each paying
-    // its own cold render.
+    // Same rule as /explore: `lang` must be validated here too, or every
+    // language a crawler finds becomes its own anon-page-cache entry holding
+    // byte-identical HTML.
     const [lang, languages] = await Promise.all([
       resolveLanguage(db, kv, c.req.query("lang")),
       getAvailableLanguages(db, kv),
@@ -289,22 +302,28 @@ const app = new Hono<AppEnv>()
       301,
     ),
   )
-  .get("/authors/:author", async (c) => {
+  .get("/authors/:author", zValidator("query", catalogQuerySchema), async (c) => {
     const author = decodeURIComponent(c.req.param("author"));
-    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const sortBy = (c.req.query("sort") as "popularity" | "reviews") || "popularity";
-    const lang = c.req.query("lang") || undefined;
+    const { page, sort } = c.req.valid("query");
+    const sortBy = sort === "reviews" ? sort : "popularity";
     const pageSize = 100;
     const { db, kv } = c.get("ctx");
-    const [result, languages] = await Promise.all([
-      (async () => {
-        startTime(c, "author_books");
-        const r = await getBooksByAuthor(author, c.get("ctx"), page, pageSize, sortBy, c, lang);
-        endTime(c, "author_books");
-        return r;
-      })(),
+    // See the note on /explore/genres/:genre — `lang` is validated, never
+    // passed through.
+    const [lang, languages] = await Promise.all([
+      resolveLanguage(db, kv, c.req.query("lang")),
       getAvailableLanguages(db, kv),
     ]);
+    startTime(c, "author_books");
+    const result = await listBooksByAuthor({
+      db,
+      author,
+      page,
+      pageSize,
+      sort: sortBy,
+      language: lang,
+    });
+    endTime(c, "author_books");
     return c.render(
       <AuthorBooks
         author={author}

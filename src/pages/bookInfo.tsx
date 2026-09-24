@@ -1,49 +1,52 @@
-import { format, formatDistanceToNow } from "date-fns";
+import { viewTransitionName } from "../lib/viewTransitionName";
+import { format } from "date-fns";
 import { type FC, Fragment } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
-import { sql } from "kysely";
 import { BOOK_STATUS, BOOK_STATUS_MAP } from "../constants";
 import { buildCrossPostText } from "../bsky/crossPost";
 import { env } from "../env";
 import type { HiveBook } from "../types";
-import { normalizeBookMeta } from "../utils/bookMeta";
-import { loadGenresForHiveBook } from "../utils/hiveBookGenres";
-import { hydrateUserBook } from "../utils/bookProgress";
-import { toUserBookView } from "../utils/userBookView";
+import { normalizeBookMeta } from "../core/bookMeta";
+import { parseAuthors } from "../core/authors";
+import { hiveRatingToDisplayRating, starsToDisplayRating } from "../core/rating";
+import { toDateInputValue } from "../lib/dateInput";
+import { loadGenresForHiveBook } from "../data/hiveBookGenres";
+import { hydrateUserBook } from "../core/bookProgress";
+import { toUserBookView } from "../core/userBookView";
 import type { BookActionsProps } from "../client/components/book/userBookStore";
-import { getUserLists } from "../utils/lists";
-import { getProfiles } from "../utils/getProfile";
-import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../utils/imageProxy";
+import { getUserLists } from "../services/lists";
+import { getProfiles } from "../services/getProfile";
+import { avatarImageUrl, coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
 import { CommentsSection } from "./comments";
 import { StarDisplay } from "./components/cards";
 import { BookTooltip, CoverImage, normalizeBookData } from "./components/BookCard";
 import { Script } from "./utils/script";
+import { ShareMenu } from "./components/ShareMenu";
+import { Book, CheckSolid, ChevronDown } from "./components/icons";
+import { ProgressMeter } from "./components/ProgressMeter";
+import { TimeAgo } from "./components/TimeAgo";
+import {
+  countBookReviews,
+  getViewerBook,
+  listBookActivity,
+  listOtherBooksByAuthor,
+  listProgressHistory,
+  listShelvesHoldingBook,
+} from "../data/bookDetail";
 
 // --- Recommendations (Who's Reading) ---
 
 async function Recommendations({ book, did }: { book: HiveBook; did: string | null }) {
   const c = useRequestContext();
   startTime(c, "db_peer_books");
-  const db = c.get("ctx").db;
-  const [peerBooks, totalOthersCountResult] = await Promise.all([
-    db
-      .selectFrom("user_book")
-      .selectAll()
-      .where("hiveId", "==", book.id)
-      .orderBy("indexedAt", "desc")
-      .limit(101)
-      .execute(),
-    db
-      .selectFrom("user_book")
-      .select((eb) => eb.fn.countAll<number>().as("count"))
-      .where("hiveId", "==", book.id)
-      .$if(did !== null, (qb) => qb.where("userDid", "!=", did!))
-      .executeTakeFirstOrThrow(),
-  ]);
+  const { rows: peerBooks, othersTotal: totalOthersCount } = await listBookActivity({
+    db: c.get("ctx").db,
+    hiveId: book.id,
+    limit: 101,
+    excludeDid: did,
+  });
   endTime(c, "db_peer_books");
-
-  const totalOthersCount = Number(totalOthersCountResult.count);
 
   startTime(c, "resolver_peer_profiles");
   const others = peerBooks.filter((r) => r.userDid !== did);
@@ -108,10 +111,13 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
                   {related.status && related.status in BOOK_STATUS_MAP
                     ? BOOK_STATUS_MAP[related.status as keyof typeof BOOK_STATUS_MAP]
                     : related.status || BOOK_STATUS_MAP[BOOK_STATUS.READING]}{" "}
-                  {formatDistanceToNow(related.indexedAt, { addSuffix: true })}
+                  <TimeAgo ts={related.indexedAt} />
                 </span>
                 {related.stars && (
-                  <span class="text-muted-foreground"> - rated {related.stars / 2}</span>
+                  <span class="text-muted-foreground">
+                    {" "}
+                    - rated {starsToDisplayRating(related.stars)}
+                  </span>
                 )}
                 {related.review && <span class="text-muted-foreground"> - reviewed</span>}
               </div>
@@ -143,107 +149,47 @@ export const BookInfo: FC<{
   const did = (await c.get("ctx").getSessionAgent())?.did ?? null;
   endTime(c, "get_session");
 
-  // Split once, trimmed, and used for every author-keyed lookup and link on
-  // this page. `hive_book.authors` stays tab-separated as the canonical form,
-  // but mig 020's trigger stores each name through `trim(substr(...))` — so a
-  // padded segment here fails the equality filter and produces an /authors/
-  // link that matches nothing. Deriving both from one array is what keeps the
-  // first author and the rendered list from disagreeing about that.
-  const authors = book.authors
-    .split("\t")
-    .map((author) => author.trim())
-    .filter(Boolean);
+  // Split once, trimmed, and used for every author-keyed lookup and link on this page — an untrimmed split disagrees with hive_book_author and produces an /authors/ link that matches nothing.
+  const authors = parseAuthors(book.authors);
   const firstAuthor = authors[0] ?? "";
 
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
   const [
     rawUserBook,
-    reviewCountResult,
+    reviewCount,
     userLists,
     bookOnShelves,
     userHandle,
     otherBooksByAuthor,
     genres,
   ] = await Promise.all([
-    // db_user_book
-    did
-      ? c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .selectAll()
-          .where("userDid", "==", did)
-          .where("hiveId", "==", book.id)
-          .executeTakeFirst()
-      : Promise.resolve(undefined),
-    // db_reviews_of_this_book — only the count is rendered here; the reviews
-    // themselves are fetched and rendered by CommentsSection.
-    c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .select(sql<number>`count(*)`.as("count"))
-      .where("user_book.hiveId", "=", book.id)
-      .where("user_book.review", "!=", "")
-      .executeTakeFirst(),
-    // db_user_lists
+    getViewerBook({ db: c.get("ctx").db, userDid: did, hiveId: book.id }),
+    // Only the count is rendered here; the reviews themselves are fetched and rendered by CommentsSection.
+    countBookReviews({ db: c.get("ctx").db, hiveId: book.id }),
     did
       ? getUserLists({ db: c.get("ctx").db, userDid: did })
       : Promise.resolve([] as Awaited<ReturnType<typeof getUserLists>>),
-    // db_book_on_shelves
-    did
-      ? c
-          .get("ctx")
-          .db.selectFrom("book_list_item")
-          .innerJoin("book_list", "book_list_item.listUri", "book_list.uri")
-          .select([
-            "book_list.uri",
-            "book_list.name",
-            "book_list.userDid",
-            "book_list_item.uri as itemUri",
-          ])
-          .where("book_list_item.hiveId", "==", book.id)
-          .execute()
-      : Promise.resolve([] as { uri: string; name: string; userDid: string; itemUri: string }[]),
-    // userHandle
+    listShelvesHoldingBook({ db: c.get("ctx").db, userDid: did, hiveId: book.id }),
     did
       ? c
           .get("ctx")
           .resolver.resolveDidToHandle(did)
           .catch(() => did)
       : Promise.resolve(null),
-    // db_other_books_by_author — prefer books in the same language as the current book
-    firstAuthor
-      ? (() => {
-          let q = c
-            .get("ctx")
-            .db.selectFrom("hive_book")
-            .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-            .selectAll("hive_book")
-            .where("hive_book.id", "!=", book.id)
-            .where("hive_book_author.author", "=", firstAuthor);
-          if (book.language) {
-            q = q.orderBy(sql`CASE WHEN language = ${book.language} THEN 0 ELSE 1 END`, "asc");
-          }
-          return q.orderBy("ratingsCount", "desc").orderBy("rating", "desc").limit(6).execute();
-        })()
-      : Promise.resolve([] as HiveBook[]),
+    listOtherBooksByAuthor({
+      db: c.get("ctx").db,
+      author: firstAuthor,
+      excludeHiveId: book.id,
+      language: book.language,
+    }),
     loadGenresForHiveBook(c.get("ctx").db, book.id),
   ]);
   endTime(c, "db_parallel_queries");
-  const reviewCount = reviewCountResult?.count ?? 0;
   const usersBook = rawUserBook ? hydrateUserBook(rawUserBook) : undefined;
-  const progressHistory =
-    did && usersBook
-      ? await c
-          .get("ctx")
-          .db.selectFrom("progress_history")
-          .select(["currentPage", "totalPages", "percent", "createdAt"])
-          .where("userDid", "=", did)
-          .where("hiveId", "=", book.id)
-          .orderBy("createdAt", "desc")
-          .limit(20)
-          .execute()
-      : [];
+  const progressHistory = usersBook
+    ? await listProgressHistory({ db: c.get("ctx").db, userDid: did, hiveId: book.id })
+    : [];
   const meta = normalizeBookMeta(book.meta);
   const seriesData = book.series ? JSON.parse(book.series) : null;
   const bookUrl = `${env.PUBLIC_URL}/books/${book.id}`;
@@ -264,7 +210,6 @@ export const BookInfo: FC<{
 
   const genericShareHref = `https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out "${book.title}" by ${firstAuthor} on BookHive \u{1F4DA}\u{1F499} ${origin ? `${origin}/books/${book.id}` : ""}`)}`;
 
-  // Publication details
   const pubDetails: string[] = [];
   if (meta.publicationYear) pubDetails.push(String(meta.publicationYear));
   if (meta?.publisher) pubDetails.push(meta.publisher);
@@ -300,9 +245,7 @@ export const BookInfo: FC<{
                       }
                       alt={`Cover of ${book.title}`}
                       decoding="async"
-                      /* The LCP element on /books/:id — the page anon page-caching exists to
-                         serve. `aspect-2/3` already reserves the box, so this only affects
-                         fetch order, not layout. */
+                      /* The LCP element on /books/:id; aspect-2/3 already reserves the box, so this only affects fetch order, not layout. */
                       fetchpriority="high"
                       class="book-cover col-span-1 row-span-full aspect-2/3 w-full rounded-r-md object-cover outline outline-1 outline-black/5"
                       style={`--book-cover-name: book-cover-${book.id}`}
@@ -339,13 +282,13 @@ export const BookInfo: FC<{
 
               {/* Rating display */}
               <div class="mb-4 flex items-center gap-2">
-                <StarDisplay rating={(book.rating || 0) / 1000} />
+                <StarDisplay rating={hiveRatingToDisplayRating(book.rating) ?? 0} />
                 {book.rating && (
                   <span
                     class="text-lg font-semibold"
                     style={{ fontVariantNumeric: "tabular-nums" }}
                   >
-                    {book.rating / 1000}
+                    {hiveRatingToDisplayRating(book.rating)}
                   </span>
                 )}
                 {book.ratingsCount && (
@@ -415,18 +358,7 @@ export const BookInfo: FC<{
                                     : usersBook.status)) ||
                                   "Want to Read"}
                               </span>
-                              <svg
-                                class="h-4 w-4 opacity-70"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                aria-hidden="true"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
+                              <ChevronDown class="h-4 w-4 opacity-70" />
                             </span>
                           </button>
 
@@ -461,13 +393,7 @@ export const BookInfo: FC<{
                                       class="absolute inset-y-0 right-2 flex items-center"
                                       aria-hidden="true"
                                     >
-                                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                        <path
-                                          fillRule="evenodd"
-                                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                          clipRule="evenodd"
-                                        />
-                                      </svg>
+                                      <CheckSolid class="h-4 w-4" />
                                     </span>
                                   )}
                                 </button>
@@ -536,18 +462,7 @@ export const BookInfo: FC<{
                           }`}
                         >
                           <span class="flex items-center gap-1.5">
-                            <svg
-                              class="h-4 w-4"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            >
-                              <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-                              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-                            </svg>
+                            <Book class="h-4 w-4" />
                             {usersBook?.owned ? "Owned" : "Own"}
                           </span>
                         </button>
@@ -555,10 +470,7 @@ export const BookInfo: FC<{
                     </div>
                   )}
 
-                  {/* Logged-out CTA. Without this the action row holds nothing but the
-                      right-aligned Share button, so it reads as an empty strip — and an anonymous
-                      visitor (the audience /books/* is anon-cached for) gets no way to act on the
-                      book at all. */}
+                  {/* Logged-out CTA — without it the action row reads as an empty strip and an anonymous visitor has no way to act on the book. */}
                   {!did && (
                     <a href="/login" class="btn btn-primary min-h-10">
                       Add to your library
@@ -566,134 +478,13 @@ export const BookInfo: FC<{
                   )}
 
                   {/* Share dropdown */}
-                  <div class="relative ml-auto">
-                    <button
-                      type="button"
-                      id="share-btn"
-                      class="btn btn-ghost btn-sm min-h-10 min-w-10"
-                      aria-haspopup="true"
-                      aria-expanded="false"
-                    >
-                      <svg
-                        class="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                        <polyline points="16 6 12 2 8 6" />
-                        <line x1="12" y1="2" x2="12" y2="15" />
-                      </svg>
-                      Share
-                    </button>
-                    <div
-                      id="share-menu"
-                      class="invisible absolute right-0 z-10 mt-1 w-48 rounded-lg bg-card opacity-0 shadow-lg ring-1 ring-border transition-[opacity,visibility] duration-100 ease-in-out peer-aria-expanded:visible peer-aria-expanded:opacity-100"
-                    >
-                      <div class="p-1">
-                        <a
-                          href={shareHref || genericShareHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                        >
-                          <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true">
-                            <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.204-.659-.299-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
-                          </svg>
-                          Share on Bluesky
-                        </a>
-                        <button
-                          type="button"
-                          id="copy-link-btn"
-                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                          data-book-url={`/books/${book.id}`}
-                        >
-                          <svg
-                            class="h-4 w-4"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                          >
-                            <rect x="9" y="9" width="13" height="13" rx="2" />
-                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                          </svg>
-                          <span id="copy-link-text">Copy link</span>
-                        </button>
-                        <button
-                          type="button"
-                          id="copy-rss-btn"
-                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-                          data-rss-url={`/rss/book/${book.id}`}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            class="h-4 w-4 text-orange-500"
-                          >
-                            <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20C4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z" />
-                          </svg>
-                          <span id="copy-rss-text">Copy RSS feed</span>
-                        </button>
-                      </div>
-                    </div>
-                    <Script
-                      script={(document) => {
-                        const btn = document.getElementById("share-btn")!;
-                        const menu = document.getElementById("share-menu")!;
-                        btn.addEventListener("click", () => {
-                          const open = menu.classList.contains("invisible");
-                          menu.classList.toggle("invisible", !open);
-                          menu.classList.toggle("opacity-0", !open);
-                          btn.setAttribute("aria-expanded", open ? "true" : "false");
-                        });
-                        document.addEventListener("click", (e) => {
-                          if (!btn.contains(e.target as any) && !menu.contains(e.target as any)) {
-                            menu.classList.add("invisible", "opacity-0");
-                            btn.setAttribute("aria-expanded", "false");
-                          }
-                        });
-                        const copyBtn = document.getElementById("copy-link-btn");
-                        const copyText = document.getElementById("copy-link-text");
-                        if (copyBtn && copyText) {
-                          copyBtn.addEventListener("click", () => {
-                            const url = copyBtn.getAttribute("data-book-url");
-                            if (url) {
-                              void navigator.clipboard.writeText(
-                                (window.location.origin || "") + url,
-                              );
-                              copyText.textContent = "Copied!";
-                              setTimeout(() => {
-                                copyText.textContent = "Copy link";
-                              }, 1500);
-                            }
-                          });
-                        }
-                        const rssBtn = document.getElementById("copy-rss-btn");
-                        const rssText = document.getElementById("copy-rss-text");
-                        if (rssBtn && rssText) {
-                          rssBtn.addEventListener("click", () => {
-                            const url = rssBtn.getAttribute("data-rss-url");
-                            if (url) {
-                              void navigator.clipboard.writeText(
-                                (window.location.origin || "") + url,
-                              );
-                              rssText.textContent = "Copied!";
-                              setTimeout(() => {
-                                rssText.textContent = "Copy RSS feed";
-                              }, 1500);
-                            }
-                          });
-                        }
-                      }}
-                    />
-                  </div>
+                  <ShareMenu
+                    class="ml-auto"
+                    buttonClass="btn-sm"
+                    blueskyHref={shareHref || genericShareHref}
+                    copyPath={`/books/${book.id}`}
+                    rssPath={`/rss/book/${book.id}`}
+                  />
                 </div>
               </div>
 
@@ -702,10 +493,16 @@ export const BookInfo: FC<{
                 <div id="mount-book-timestamp">
                   {usersBook && (
                     <p class="mb-4 text-sm text-muted-foreground">
-                      {`${usersBook.finishedAt ? "Finished" : usersBook.startedAt ? "Started" : "Added"}: ${formatDistanceToNow(
-                        usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt,
-                        { addSuffix: true },
-                      )}`}
+                      {usersBook.finishedAt
+                        ? "Finished"
+                        : usersBook.startedAt
+                          ? "Started"
+                          : "Added"}
+                      :{" "}
+                      <TimeAgo
+                        ts={usersBook.finishedAt ?? usersBook.startedAt ?? usersBook.createdAt}
+                        class="text-sm"
+                      />
                     </p>
                   )}
                 </div>
@@ -754,7 +551,7 @@ export const BookInfo: FC<{
                       key={index}
                       href={`/explore/genres/${encodeURIComponent(genre)}`}
                       class="genre-name min-h-10 inline-flex items-center rounded-full bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80"
-                      style={`--genre-name: genre-${genre}`}
+                      style={`--genre-name: ${viewTransitionName("genre", genre)}`}
                     >
                       {genre}
                     </a>
@@ -881,12 +678,7 @@ export const BookInfo: FC<{
                         <label class="mb-2 block text-sm font-semibold text-foreground">
                           Reading Progress
                         </label>
-                        <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            class="h-full rounded-full bg-green-500 transition-[width] duration-300"
-                            style="width: 100%"
-                          />
-                        </div>
+                        <ProgressMeter percent={100} class="mb-3" />
                         <p class="text-sm text-muted-foreground">
                           <span class="font-medium text-green-600 dark:text-green-400">
                             Finished!
@@ -904,12 +696,11 @@ export const BookInfo: FC<{
                       Reading Progress
                     </label>
                     {!!usersBook?.bookProgress?.percent && (
-                      <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          class="h-full rounded-full bg-primary transition-[width] duration-300"
-                          style={`width: ${usersBook.bookProgress.percent}%`}
-                        />
-                      </div>
+                      <ProgressMeter
+                        percent={usersBook.bookProgress.percent}
+                        class="mb-3"
+                        barClass="bg-primary"
+                      />
                     )}
                     <div class="flex items-center gap-2">
                       <label class="text-sm text-muted-foreground">Page</label>
@@ -918,7 +709,7 @@ export const BookInfo: FC<{
                         id="progress-pages-current"
                         name="currentPage"
                         value={usersBook?.bookProgress?.currentPage ?? ""}
-                        min={0}
+                        min={1}
                         class="input focus-ring w-20 px-2 py-1.5 text-sm"
                         placeholder="0"
                       />
@@ -998,11 +789,7 @@ export const BookInfo: FC<{
                         <input
                           type="date"
                           name="startedAt"
-                          value={
-                            usersBook.startedAt
-                              ? new Date(usersBook.startedAt).toISOString().slice(0, 10)
-                              : ""
-                          }
+                          value={toDateInputValue(usersBook.startedAt)}
                           class="rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         />
                       </div>
@@ -1011,11 +798,7 @@ export const BookInfo: FC<{
                         <input
                           type="date"
                           name="finishedAt"
-                          value={
-                            usersBook.finishedAt
-                              ? new Date(usersBook.finishedAt).toISOString().slice(0, 10)
-                              : ""
-                          }
+                          value={toDateInputValue(usersBook.finishedAt)}
                           class="rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                         />
                       </div>
@@ -1056,36 +839,6 @@ export const BookInfo: FC<{
                         </li>
                       );
                     })}
-                </ul>
-              </div>
-            )}
-
-            {/* Reading Timeline */}
-            {progressHistory.length > 0 && (
-              <div>
-                <p class="mb-2 block text-sm font-semibold text-foreground">Reading Timeline</p>
-                <ul class="space-y-1.5 text-sm">
-                  {progressHistory.map((entry, i) => (
-                    <li
-                      key={`${entry.createdAt}-${i}`}
-                      class="flex items-baseline justify-between gap-2"
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
-                      <span class="text-foreground">
-                        Page {entry.currentPage}
-                        {entry.totalPages ? ` of ${entry.totalPages}` : ""}
-                        {entry.percent != null && (
-                          <span class="text-muted-foreground ml-1">({entry.percent}%)</span>
-                        )}
-                      </span>
-                      <time
-                        datetime={entry.createdAt}
-                        class="shrink-0 text-xs text-muted-foreground"
-                      >
-                        {format(new Date(entry.createdAt), "MMM d, yyyy")}
-                      </time>
-                    </li>
-                  ))}
                 </ul>
               </div>
             )}
@@ -1135,6 +888,38 @@ export const BookInfo: FC<{
                 />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== SECTION 3b: Reading Timeline =====
+          Its own card, outside #mount-book-activity: mountBookIslands replaces that element's
+          children on hydration, and progressHistory isn't in BookActionsProps, so nesting it
+          in there would make the timeline paint and then vanish. */}
+      {did && progressHistory.length > 0 && (
+        <div class="card">
+          <div class="card-body">
+            <h2 class="card-title mb-3">Reading Timeline</h2>
+            <ul class="space-y-1.5 text-sm">
+              {progressHistory.map((entry, i) => (
+                <li
+                  key={`${entry.createdAt}-${i}`}
+                  class="flex items-baseline justify-between gap-2"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  <span class="text-foreground">
+                    Page {entry.currentPage}
+                    {entry.totalPages ? ` of ${entry.totalPages}` : ""}
+                    {entry.percent != null && (
+                      <span class="text-muted-foreground ml-1">({entry.percent}%)</span>
+                    )}
+                  </span>
+                  <time datetime={entry.createdAt} class="shrink-0 text-xs text-muted-foreground">
+                    {format(new Date(entry.createdAt), "MMM d, yyyy")}
+                  </time>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -1352,18 +1137,7 @@ export const BookInfo: FC<{
                       >
                         <span class="flex items-center justify-between">
                           <span>Add to shelf...</span>
-                          <svg
-                            class="text-muted-foreground h-4 w-4"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
+                          <ChevronDown class="text-muted-foreground h-4 w-4" />
                         </span>
                       </button>
                       <div

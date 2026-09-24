@@ -1,10 +1,11 @@
 /// WAF challenge.js deobfuscation.
+import { errorMessage } from "../../lib/errors";
 ///
-/// Pure function — no worker/network. It evaluates the obfuscated string-array
-/// + decoder functions out of `challenge.js` via `new Function()` and brute-
-/// forces the decoded string table to recover the AES key, signal identifier,
-/// and signal version. Imported by `solver-worker.ts`; can also be run directly
-/// as a CLI for offline testing (see README).
+/// Pure function — no worker/network. Evaluates the obfuscated string-array +
+/// decoder functions out of `challenge.js` via `new Function()` and brute-forces
+/// the decoded string table to recover the AES key, signal identifier, and
+/// signal version. Imported by `solver-worker.ts`; can also run as a CLI for
+/// offline testing (see README).
 
 export interface ExtractedConfig {
   key: string | null;
@@ -174,9 +175,7 @@ if (import.meta.main && process.argv[2]) {
     const script = await Bun.file(process.argv[2]).text();
     process.stdout.write(JSON.stringify(doExtract(script)));
   } catch (error) {
-    process.stdout.write(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-    );
+    process.stdout.write(JSON.stringify({ error: errorMessage(error) }));
     process.exit(1);
   }
 }

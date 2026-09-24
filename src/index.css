@@ -140,11 +140,6 @@ body {
   }
 }
 
-/* View Transitions - Cross-document transitions */
-@view-transition {
-  navigation: auto;
-}
-
 /* Book cover view transitions */
 .book-cover {
   view-transition-name: var(--book-cover-name);

@@ -9,14 +9,16 @@ import {
   createTgzReadStream,
   prepareSanitizedExportFiles,
   isAuthorizedExportRequest,
-} from "../utils/dbExport";
-import { backfillCatalogBooks, getBackfillProgress } from "../utils/catalogBookService";
+} from "../data/dbExport";
+import { backfillCatalogBooks, getBackfillProgress } from "../services/catalogBookService";
 import { createActorResolver } from "../bsky/id-resolver";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
-import { serializeUserBook } from "../utils/bookProgress";
-import { feedActivityIndexedAt } from "../db";
-import { searchBooks } from "./lib";
+import { serializeUserBook } from "../core/bookProgress";
+import { buzzUpsertSet, userBookUpsertSet } from "../db";
+import { warmCatalogSearch } from "../services/searchBooks";
+import { pruneMirroredRecords } from "../data/repoMirror";
 import type { HiveId, UserBook, Buzz } from "../types";
+import { errorMessage } from "../lib/errors";
 
 const admin = new Hono<AppEnv>()
   .post("/backfill-catalog", async (c) => {
@@ -228,7 +230,6 @@ const admin = new Hono<AppEnv>()
 
     const logger = c.get("appLogger");
     try {
-      // Resolve to DID + PDS
       const actorResolver = createActorResolver();
       const actor = await actorResolver.resolve(
         identifier as Parameters<typeof actorResolver.resolve>[0],
@@ -242,7 +243,7 @@ const admin = new Hono<AppEnv>()
 
       ctx.addWideEventContext({ admin_refresh_user: did, pds });
 
-      // Read-only refresh: fetch books from user's PDS (unauthenticated) and upsert locally
+      // Read-only: fetches books from the user's PDS unauthenticated and upserts locally.
       const uris: string[] = [];
       let cursor: string | undefined;
       let totalBooks = 0;
@@ -273,8 +274,7 @@ const admin = new Hono<AppEnv>()
         const rowsToUpsert = validBooks.map(({ record, book }) => {
           uris.push(record.uri);
 
-          // Fire-and-forget search to ensure hive_book entries exist
-          void searchBooks({ query: book.title, ctx });
+          void warmCatalogSearch(book.title, ctx);
 
           return serializeUserBook({
             uri: record.uri,
@@ -301,26 +301,7 @@ const admin = new Hono<AppEnv>()
           await ctx.db
             .insertInto("user_book")
             .values(rowsToUpsert.slice(i, i + 100))
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                cid: c.ref("excluded.cid"),
-                userDid: c.ref("excluded.userDid"),
-                createdAt: c.ref("excluded.createdAt"),
-                indexedAt: feedActivityIndexedAt,
-                title: c.ref("excluded.title"),
-                authors: c.ref("excluded.authors"),
-                status: c.ref("excluded.status"),
-                owned: c.ref("excluded.owned"),
-                startedAt: c.ref("excluded.startedAt"),
-                finishedAt: c.ref("excluded.finishedAt"),
-                hiveId: c.ref("excluded.hiveId"),
-                review: c.ref("excluded.review"),
-                stars: c.ref("excluded.stars"),
-                bookProgress: c.ref("excluded.bookProgress"),
-                previousReads: c.ref("excluded.previousReads"),
-                record: c.ref("excluded.record"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(userBookUpsertSet))
             .execute();
         }
 
@@ -329,7 +310,6 @@ const admin = new Hono<AppEnv>()
         if (cursor) await new Promise((r) => setTimeout(r, 100));
       } while (cursor);
 
-      // Clean up stale local records not found on the PDS
       if (uris.length === 0) {
         await ctx.db.deleteFrom("user_book").where("userDid", "=", did).execute();
       } else {
@@ -340,7 +320,6 @@ const admin = new Hono<AppEnv>()
           .execute();
       }
 
-      // Also refresh buzzes
       const buzzUris: string[] = [];
       let buzzCursor: string | undefined;
       do {
@@ -395,14 +374,7 @@ const admin = new Hono<AppEnv>()
             await ctx.db
               .insertInto("buzz")
               .values(buzzRows.slice(i, i + 100))
-              .onConflict((oc) =>
-                oc.column("uri").doUpdateSet((c) => ({
-                  cid: c.ref("excluded.cid"),
-                  hiveId: c.ref("excluded.hiveId"),
-                  comment: c.ref("excluded.comment"),
-                  indexedAt: c.ref("excluded.indexedAt"),
-                })),
-              )
+              .onConflict((oc) => oc.column("uri").doUpdateSet(buzzUpsertSet))
               .execute();
           }
 
@@ -415,14 +387,8 @@ const admin = new Hono<AppEnv>()
         if (buzzCursor) await new Promise((r) => setTimeout(r, 100));
       } while (buzzCursor);
 
-      // Clean up stale buzz records
-      if (buzzUris.length > 0) {
-        await ctx.db
-          .deleteFrom("buzz")
-          .where("userDid", "=", did)
-          .where("uri", "not in", buzzUris)
-          .execute();
-      }
+      // A `length > 0` guard here would let a user who deleted every PDS comment keep them visible forever.
+      await pruneMirroredRecords({ db: ctx.db, table: "buzz", userDid: did, keepUris: buzzUris });
 
       ctx.addWideEventContext({
         admin_refresh_user_books: "completed",
@@ -440,7 +406,7 @@ const admin = new Hono<AppEnv>()
       logger.error({ err }, "[admin/refresh-user-books] Failed");
       ctx.addWideEventContext({
         admin_refresh_user_books: "error",
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage(err),
       });
       return c.json({ message: err instanceof Error ? err.message : "Internal error" }, 500);
     }
