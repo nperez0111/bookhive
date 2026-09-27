@@ -17,6 +17,7 @@ async function request(
   url: string,
   init: RequestInit,
   signal?: AbortSignal,
+  requireUserBook = false,
 ): Promise<BookWriteResult> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
@@ -29,7 +30,7 @@ async function request(
       message?: string;
       userBook?: UserBookView;
     };
-    if (!res.ok || body.success === false) {
+    if (!res.ok || body.success !== true || (requireUserBook && !body.userBook)) {
       return {
         ok: false,
         status: res.status,
@@ -58,6 +59,7 @@ export function writeBook(
       body: JSON.stringify({ hiveId, ...fields }),
     },
     signal,
+    true,
   );
 }
 

@@ -189,13 +189,14 @@ const app = new Hono<AppEnv>()
     }
     try {
       startTime(c, "pds_delete_book");
-      await agent.post("com.atproto.repo.deleteRecord", {
+      const deleted = await agent.post("com.atproto.repo.deleteRecord", {
         input: {
           repo: agent.did,
           collection: ids.BuzzBookhiveBook,
           rkey: book[0]!.uri.split("/").at(-1)!,
         },
       });
+      if (!deleted.ok) throw new Error("Failed to delete book from PDS");
       endTime(c, "pds_delete_book");
       startTime(c, "db_delete_user_book");
       await c

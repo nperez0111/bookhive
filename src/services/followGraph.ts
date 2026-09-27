@@ -12,6 +12,7 @@ import * as TID from "@atcute/tid";
 
 import type { SessionClient } from "../auth/client";
 import type { Database } from "../db";
+import { errorMessage } from "../lib/errors";
 
 const FOLLOW_COLLECTION = "app.bsky.graph.follow";
 
@@ -66,29 +67,33 @@ export async function followUser({
   agent: SessionClient;
   targetDid: string;
 }): Promise<FollowResult> {
-  const createdAt = new Date().toISOString();
-  const response = await agent.post("com.atproto.repo.applyWrites", {
-    input: {
-      repo: agent.did,
-      writes: [
-        {
-          $type: "com.atproto.repo.applyWrites#create",
-          collection: FOLLOW_COLLECTION,
-          rkey: TID.now(),
-          value: { subject: targetDid, createdAt },
-        },
-      ],
-    },
-  });
+  try {
+    const createdAt = new Date().toISOString();
+    const response = await agent.post("com.atproto.repo.applyWrites", {
+      input: {
+        repo: agent.did,
+        writes: [
+          {
+            $type: "com.atproto.repo.applyWrites#create",
+            collection: FOLLOW_COLLECTION,
+            rkey: TID.now(),
+            value: { subject: targetDid, createdAt },
+          },
+        ],
+      },
+    });
 
-  const out = response.data as ApplyWritesOut | null;
-  const first = response.ok && out?.results?.[0] ? out.results[0] : undefined;
-  if (!response.ok || first?.$type !== "com.atproto.repo.applyWrites#createResult") {
-    return { ok: false, message: "Failed to follow user" };
+    const out = response.data as ApplyWritesOut | null;
+    const first = response.ok && out?.results?.[0] ? out.results[0] : undefined;
+    if (!response.ok || first?.$type !== "com.atproto.repo.applyWrites#createResult") {
+      return { ok: false, message: "Failed to follow user" };
+    }
+
+    await markFollowed(db, agent.did, targetDid, createdAt);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to follow user: ${errorMessage(error)}` };
   }
-
-  await markFollowed(db, agent.did, targetDid, createdAt);
-  return { ok: true };
 }
 
 export async function unfollowUser({
@@ -100,53 +105,63 @@ export async function unfollowUser({
   agent: SessionClient;
   targetDid: string;
 }): Promise<FollowResult> {
-  let cursor: string | undefined;
-  let followUri: string | null = null;
+  try {
+    let cursor: string | undefined;
+    let followUri: string | null = null;
 
-  for (let page = 0; page < MAX_LIST_PAGES && !followUri; page++) {
-    const listRes = await agent.get("com.atproto.repo.listRecords", {
-      params: {
+    for (let page = 0; page < MAX_LIST_PAGES && !followUri; page++) {
+      const listRes = await agent.get("com.atproto.repo.listRecords", {
+        params: {
+          repo: agent.did,
+          collection: FOLLOW_COLLECTION,
+          limit: LIST_PAGE_SIZE,
+          ...(cursor ? { cursor } : {}),
+        },
+      });
+      // Not "assume it worked" — we can't tell "no such follow" from "couldn't ask".
+      if (!listRes.ok) return { ok: false, message: "Failed to list follows" };
+
+      const data = listRes.data as {
+        records: Array<{ uri: string; value?: { subject?: string } }>;
+        cursor?: string;
+      };
+      followUri = data.records.find((r) => r.value?.subject === targetDid)?.uri ?? null;
+      cursor = data.cursor;
+      if (!cursor || data.records.length === 0) break;
+    }
+
+    // A page limit (or an anomalous empty page with a cursor) is not proof that
+    // the follow is absent. Leave the local mirror alone until we know.
+    if (!followUri && cursor) {
+      return { ok: false, message: "Could not finish listing follows" };
+    }
+
+    // The record is genuinely absent from the repo, so the local row is the only
+    // thing left claiming the follow exists.
+    if (!followUri) {
+      await markUnfollowed(db, agent.did, targetDid);
+      return { ok: true, alreadyGone: true };
+    }
+
+    const applyResult = await agent.post("com.atproto.repo.applyWrites", {
+      input: {
         repo: agent.did,
-        collection: FOLLOW_COLLECTION,
-        limit: LIST_PAGE_SIZE,
-        ...(cursor ? { cursor } : {}),
+        writes: [
+          {
+            $type: "com.atproto.repo.applyWrites#delete",
+            collection: FOLLOW_COLLECTION,
+            rkey: followUri.split("/").at(-1)!,
+          },
+        ],
       },
     });
-    // Not "assume it worked" — we can't tell "no such follow" from "couldn't ask".
-    if (!listRes.ok) return { ok: false, message: "Failed to list follows" };
+    if (!applyResult.ok) {
+      return { ok: false, message: "Failed to delete follow record on remote" };
+    }
 
-    const data = listRes.data as {
-      records: Array<{ uri: string; value?: { subject?: string } }>;
-      cursor?: string;
-    };
-    followUri = data.records.find((r) => r.value?.subject === targetDid)?.uri ?? null;
-    cursor = data.cursor;
-    if (!cursor || data.records.length === 0) break;
-  }
-
-  // The record is genuinely absent from the repo, so the local row is the only
-  // thing left claiming the follow exists.
-  if (!followUri) {
     await markUnfollowed(db, agent.did, targetDid);
-    return { ok: true, alreadyGone: true };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: `Failed to unfollow user: ${errorMessage(error)}` };
   }
-
-  const applyResult = await agent.post("com.atproto.repo.applyWrites", {
-    input: {
-      repo: agent.did,
-      writes: [
-        {
-          $type: "com.atproto.repo.applyWrites#delete",
-          collection: FOLLOW_COLLECTION,
-          rkey: followUri.split("/").at(-1)!,
-        },
-      ],
-    },
-  });
-  if (!applyResult.ok) {
-    return { ok: false, message: "Failed to delete follow record on remote" };
-  }
-
-  await markUnfollowed(db, agent.did, targetDid);
-  return { ok: true };
 }

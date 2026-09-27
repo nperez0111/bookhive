@@ -42,8 +42,15 @@ the PDS write succeeded**; `/api/unfollow-form` cleared `isActive` when `listRec
 
 The cores are `updateBookRecord`, `upsertBuzz` (`services/buzzWrite.ts`) and
 `followUser`/`unfollowUser` (`services/followGraph.ts`). Adapters own status codes and redirects;
-the core owns the rules and returns a discriminated result, **never throws** — a util that throws
-an HTTP-shaped exception forces every caller to catch and translate it.
+the cores own the rules without throwing HTTP-shaped exceptions. `upsertBuzz` and the follow cores
+return discriminated results; `updateBookRecord` throws `BookWriteError` for invalid inputs and
+other errors for write failures, which its two adapters catch and translate.
+
+The unfollow core scans PDS `listRecords` pages (100 records each) with a 50-page request ceiling.
+If the ceiling is reached while a cursor remains, absence has **not** been established: return a
+failure and keep `user_follows` active. The same applies to a failed PDS request or an anomalous
+empty page with a cursor. Both cores translate transport/DB exceptions into failure results so the
+form adapters can still redirect and the JSON adapters can report a rejected write.
 
 - **A `user_book` strongRef lookup must filter on `userDid`.** Both buzz writers used to select
   `user_book` by `hiveId` alone, so the `book` ref published into the author's PDS pointed at
@@ -67,8 +74,14 @@ an HTTP-shaped exception forces every caller to catch and translate it.
   `LibraryTable` and the import table for every status/rating/date/delete write) — it used to be
   `try { await fetch(…) } catch {}` with `res.ok` never read, so a refused write was silently
   swallowed and the table kept showing a value the server had rejected. `bookApi.ts` returns a
-  discriminated result; `LibraryTable` rolls edits back on failure and keeps a deletion visible
-  until the server confirms it.
+  discriminated result; it requires an explicit `success: true` response (and a canonical
+  `userBook` for updates), so an empty/malformed 2xx cannot confirm an optimistic edit.
+  The book-detail store and `LibraryTable` both use it; they roll edits back on failure and
+  keep deletions visible until the server confirms them.
+- **A book deletion must be confirmed by the PDS before deleting its local mirror.**
+  `DELETE /books/:hiveId` checks `deleteRecord.ok` before removing `user_book`; an HTTP-successful
+  XRPC response can still contain a rejected PDS operation. Clearing the mirror in that case
+  made the deleted book reappear on the next re-sync.
 - **A re-sync's cleanup must handle the empty case** — `pruneMirroredRecords`
   (`data/repoMirror.ts`). A re-sync deletes `user_book`/`buzz` mirrors the PDS didn't return, and
   `uri not in ()` isn't expressible — the admin backfill used to guard the whole delete on

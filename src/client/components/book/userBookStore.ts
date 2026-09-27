@@ -8,6 +8,7 @@
 import type { UserBookView } from "../../../core/userBookView";
 import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../../../constants";
 import { nextReadingState } from "../../../core/bookLifecycle";
+import { deleteBook, writeBook } from "../bookApi";
 
 /** The same four values the server writes, mirroring the table in `constants.ts`. */
 export const STATUS = {
@@ -55,9 +56,6 @@ export type StoreState = {
 };
 
 export type UserBookStore = ReturnType<typeof createUserBookStore>;
-
-/** Bounds how long one mutation can hold the queue. */
-const REQUEST_TIMEOUT_MS = 20_000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -151,44 +149,25 @@ export function createUserBookStore(props: BookActionsProps) {
   let deleting = false;
 
   async function send(fields: UpdateFields, explicitSave: boolean): Promise<boolean> {
-    // A request the browser never times out would wedge the queue.
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      const res = await fetch("/api/update-book", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ hiveId: props.hiveId, ...fields }),
-        signal: abort.signal,
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        message?: string;
-        userBook?: UserBookView;
-      };
-      if (!res.ok || !body.success || !body.userBook) {
-        throw new Error(body.message || `Could not save (${res.status})`);
-      }
+    const result = await writeBook(props.hiveId, fields);
+    if (result.ok && result.userBook) {
       const pending = state.pending - 1;
       set({
-        confirmed: body.userBook,
+        confirmed: result.userBook,
         pending,
-        view: pending === 0 ? body.userBook : state.view,
+        view: pending === 0 ? result.userBook : state.view,
         savedAt: explicitSave ? Date.now() : state.savedAt,
       });
       return true;
-    } catch (e) {
-      // The server's message names CIDs and lexicon paths.
-      console.error("[book] save failed:", e);
-      set({
-        pending: state.pending - 1,
-        view: state.confirmed,
-        error: "That change could not be saved. Your library was left as it was.",
-      });
-      return false;
-    } finally {
-      clearTimeout(timer);
     }
+    // The server's message can name CIDs and lexicon paths.
+    console.error("[book] save failed:", result.ok ? "Missing book" : result.message);
+    set({
+      pending: state.pending - 1,
+      view: state.confirmed,
+      error: "That change could not be saved. Your library was left as it was.",
+    });
+    return false;
   }
 
   return {
@@ -214,16 +193,9 @@ export function createUserBookStore(props: BookActionsProps) {
       deleting = true;
       set({ error: null });
       await queue.catch(() => {});
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
       try {
-        const res = await fetch(`/books/${props.hiveId}`, {
-          method: "DELETE",
-          headers: { accept: "application/json" },
-          signal: abort.signal,
-        });
-        const body = (await res.json().catch(() => ({}))) as { success?: boolean };
-        if (!res.ok || !body.success) throw new Error(`Could not remove (${res.status})`);
+        const result = await deleteBook(props.hiveId);
+        if (!result.ok) throw new Error(result.message);
         set({ view: null, confirmed: null });
         return true;
       } catch (e) {
@@ -231,7 +203,6 @@ export function createUserBookStore(props: BookActionsProps) {
         set({ error: "The book could not be removed. Please try again." });
         return false;
       } finally {
-        clearTimeout(timer);
         deleting = false;
       }
     },
