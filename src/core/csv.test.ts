@@ -1,5 +1,10 @@
 import { describe, it, expect } from "bun:test";
-import { getGoodreadsCsvParser, getHardcoverCsvParser, getStorygraphCsvParser } from "./csv";
+import {
+  getGoodreadsCsvParser,
+  getHardcoverCsvParser,
+  getStorygraphCsvParser,
+  parseHardcoverRecord,
+} from "./csv";
 import { HARDCOVER_CSV } from "../workers/import/__fixtures__/hardcover-csv";
 
 describe("CSV Parsers", () => {
@@ -274,6 +279,77 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
   });
 
   describe("Hardcover CSV Parser", () => {
+    // Synthetic cases stay separate from the shared export sample.
+    it.each([
+      ["2025-01-31", "2025-01-31T00:00:00.000Z"],
+      ["2023-09-01", "2023-09-01T00:00:00.000Z"],
+      ["2024-02-29", "2024-02-29T00:00:00.000Z"],
+      ["2025-01-10T17:21:40", "2025-01-10T17:21:40.000Z"],
+      ["2025-01-10T17:21:40Z", "2025-01-10T17:21:40.000Z"],
+      ["2025-01-10T17:21:40.9Z", "2025-01-10T17:21:40.900Z"],
+      ["2025-01-10T17:21:40.98Z", "2025-01-10T17:21:40.980Z"],
+      ["2025-01-10T17:21:40.987Z", "2025-01-10T17:21:40.987Z"],
+      ["2025-01-10T17:21:40.987654Z", "2025-01-10T17:21:40.987Z"],
+      ["2025-01-10T17:21:40+02:00", "2025-01-10T15:21:40.000Z"],
+      ["2025-01-10T17:21:40-02:00", "2025-01-10T19:21:40.000Z"],
+    ])("parses every date field for %s", (input, expected) => {
+      const book = parseHardcoverRecord(
+        Object.fromEntries(
+          ["Publish Date", "Date Added", "Date Started", "Date Finished", "Review Date"].map(
+            (field) => [field, input],
+          ),
+        ),
+      );
+      for (const date of [
+        book.publishDate,
+        book.dateAdded,
+        book.dateStarted,
+        book.dateFinished,
+        book.reviewDate,
+      ]) {
+        expect(date?.toISOString()).toBe(expected);
+      }
+    });
+
+    it.each([
+      "",
+      "not a date",
+      "2025",
+      "2025-01",
+      "2025-02-29",
+      "2025-02-30",
+      "2025-04-31",
+      "2025-13-01",
+      "2025-01-00",
+      "2025-01-10T25:00:00Z",
+    ])("rejects invalid or incomplete dates: %s", (input) => {
+      const book = parseHardcoverRecord({ "Date Finished": input });
+      expect(book.dateFinished).toBeNull();
+      expect(book.status).toBe("buzz.bookhive.defs#wantToRead");
+    });
+
+    it.each([
+      ["Helen Lazer (Narrator), Alison Espach", "Alison Espach"],
+      ["Helena Fraga (Translator), Kenneth Haigh (Narrator), Dan Simmons", "Dan Simmons"],
+      [" Alice , Bob , ", "Alice, Bob"],
+      ["A (Editor), B", "A (Editor), B"],
+      ["A (Narrator), B (Translator)", ""],
+      [", ,", ""],
+    ])("cleans author credits: %s", (author, expected) => {
+      expect(parseHardcoverRecord({ Author: author }).author).toBe(expected);
+    });
+
+    it.each([true, false])(
+      "skips empty identities, including the final row (newline: %s)",
+      async (newline) => {
+        const csv = `Title,Author,Status\nValid,A,Read\n,A,Read\nMissing author,,Read\nCredits only,A (Narrator),Read\nSpaces," , ",Read${newline ? "\n" : ""}`;
+        const books = await Array.fromAsync(
+          new Blob([csv]).stream().pipeThrough(getHardcoverCsvParser()),
+        );
+        expect(books.map((book) => book.title)).toEqual(["Valid"]);
+      },
+    );
+
     it("should parse basic Hardcover CSV data correctly", async () => {
       const csvData = HARDCOVER_CSV;
       const parser = getHardcoverCsvParser();
@@ -298,14 +374,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
       // Test first book (want to read)
       expect(books[0]).toMatchObject({
         asin: "0374100144",
-        author: "Roberto Bolaño, Natasha Wimmer (Translator)",
+        author: "Roberto Bolaño",
         binding: "",
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
-        dateFinished: null,
-        dateStarted: null,
         durationInSeconds: 0,
         genres: "",
         hardcoverBookId: "75726",
@@ -320,12 +393,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 898,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("2008-11-11T00:00:00.000Z"),
         publisher: "Farrar, Straus and Giroux",
         rating: 0,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-15T13:56:31.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -335,8 +406,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         title: "2666",
       });
 
-      expect(books[0]!.dateAdded).toBeInstanceOf(Date);
-      expect(books[0]!.dateAdded?.getFullYear()).toBe(2025);
+      expect(books[0]!.dateAdded?.toISOString()).toBe("2025-01-15T00:00:00.000Z");
+      expect(books[0]!.dateFinished).toBe(null);
+      expect(books[0]!.dateStarted).toBe(null);
+      expect(books[0]!.publishDate?.toISOString()).toBe("2008-11-11T00:00:00.000Z");
+      expect(books[0]!.reviewDate?.toISOString()).toBe("2025-01-15T13:56:31.000Z");
 
       // Test second book (read with date finished)
       expect(books[1]).toMatchObject({
@@ -346,9 +420,6 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-10T00:00:00.000Z"),
-        dateFinished: new Date("2025-01-23T00:00:00.000Z"),
-        dateStarted: new Date("2025-01-01T00:00:00.000Z"),
         durationInSeconds: 25686,
         genres: "",
         hardcoverBookId: "2440",
@@ -363,12 +434,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 191,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("1986-04-01T00:00:00.000Z"),
         publisher: "Audible Frontiers",
         rating: 9,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-10T17:21:40.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -379,8 +448,11 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         title: "Burning Chrome",
       });
 
-      expect(books[1]!.dateFinished).toBeInstanceOf(Date);
-      expect(books[1]!.dateFinished?.getFullYear()).toBe(2025);
+      expect(books[1]!.dateAdded?.toISOString()).toBe("2025-01-10T00:00:00.000Z");
+      expect(books[1]!.dateFinished?.toISOString()).toBe("2025-01-23T00:00:00.000Z");
+      expect(books[1]!.dateStarted?.toISOString()).toBe("2025-01-01T00:00:00.000Z");
+      expect(books[1]!.publishDate?.toISOString()).toBe("1986-04-01T00:00:00.000Z");
+      expect(books[1]!.reviewDate?.toISOString()).toBe("2025-01-10T17:21:40.000Z");
 
       // Test third book (currently-read)
       expect(books[2]).toMatchObject({
@@ -390,9 +462,6 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         compilation: false,
         contentWarnings: "",
         countryCode: "us",
-        dateAdded: new Date("2025-01-15T00:00:00.000Z"),
-        dateFinished: null,
-        dateStarted: new Date("2025-01-25T00:00:00.000Z"),
         durationInSeconds: 0,
         genres: "",
         hardcoverBookId: "427460",
@@ -407,12 +476,10 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         pages: 492,
         privacy: "Public",
         privateNotes: "",
-        publishDate: new Date("1989-05-26T00:00:00.000Z"),
         publisher: "Crown",
         rating: 0,
         review: "",
         reviewContainsSpoilers: false,
-        reviewDate: new Date("2025-01-15T13:56:57.000Z"),
         reviewMediaUrl: "",
         reviewSlate: "{}",
         reviewUrl: "",
@@ -422,6 +489,12 @@ Test Book,Test Author,"","",ebook,currently-reading,2024/01/01,"","",2,fast,slow
         tags: "",
         title: "Hyperion",
       });
+
+      expect(books[2]!.dateAdded?.toISOString()).toBe("2025-01-15T00:00:00.000Z");
+      expect(books[2]!.dateFinished).toBe(null);
+      expect(books[2]!.dateStarted?.toISOString()).toBe("2025-01-25T00:00:00.000Z");
+      expect(books[2]!.publishDate?.toISOString()).toBe("1989-05-26T00:00:00.000Z");
+      expect(books[2]!.reviewDate?.toISOString()).toBe("2025-01-15T13:56:57.000Z");
     });
 
     it("should handle empty values and different read statuses correctly", async () => {

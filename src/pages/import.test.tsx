@@ -23,7 +23,7 @@ test("CSV input label contains instructions, with import code outside its access
 });
 
 // Execute the rendered inline script so tests exercise the same handlers browsers receive.
-async function importControlHarness() {
+async function importControlHarness(service: string | null = "goodreads") {
   class Element {
     listeners = new Map<string, (event: any) => unknown>();
     classList = {
@@ -67,7 +67,8 @@ async function importControlHarness() {
     {
       getElementById: getElement,
       querySelectorAll: () => [getElement("service")],
-      querySelector: () => getElement("service"),
+      querySelector: () =>
+        service === null ? null : Object.assign(getElement("service"), { value: service }),
       addEventListener: (_type: string, handler: () => void) => handler(),
     },
     { dispatchEvent: (event: CustomEvent) => events.push(event.detail) },
@@ -144,3 +145,14 @@ test("picker and drop reject non-CSV and multiple files before starting an impor
   expect(getElement("import-file-error").textContent).toBe("");
   expect(requests).toHaveLength(1);
 });
+
+test.each([null, "goodreads", "storygraph", "hardcover"])(
+  "imports using the selected service or Goodreads fallback: %s",
+  async (service) => {
+    const { getElement, requests } = await importControlHarness(service);
+    const input = getElement("import-file");
+    input.files = [new File(["Title,Author"], "export.csv")];
+    await input.dispatchEvent(new Event("change"));
+    expect(requests[0]?.endpoint).toBe(`/import/${service ?? "goodreads"}`);
+  },
+);

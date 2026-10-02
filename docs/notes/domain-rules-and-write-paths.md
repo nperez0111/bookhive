@@ -187,6 +187,14 @@ and stop; otherwise the lenient parsers silently dropped every row and reported 
 imports for unrelated CSV files. Validate identity columns, not the resulting book count:
 header-only exports are valid empty libraries, and valid all-existing imports are still success.
 
+Hardcover field helpers in `core/csv.ts` accept strings, not CSV records. Dates use date-fns
+`parseISO`/`isValid`, rejecting impossible calendar days rather than letting JavaScript roll
+them into the next month. Date-only and timezone-less timestamps are explicitly UTC so imports
+do not depend on the server's timezone; explicit offsets retain their meaning. Author cleanup
+removes narrator/translator credits and empty names. Rows without a title or remaining author
+are skipped in both the streaming and final flush paths. Keep the shared Hardcover export sample
+unchanged; synthetic date/credit/invalid-row cases belong in the parser tests, not that fixture.
+
 Import error events distinguish terminal failures with `stage: "error"`; partial batch-save
 errors keep `stage: "uploading"`. The import island stops progress/spinner and offers Try again
 only for terminal failures, while retaining partial-save errors alongside ongoing progress.

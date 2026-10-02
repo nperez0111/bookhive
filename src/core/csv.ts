@@ -1,5 +1,6 @@
 import { parse as parseCsvSync } from "csv-parse/sync";
 import { parse } from "csv-parse";
+import { isValid, parseISO } from "date-fns";
 import { BOOK_STATUS, type BookStatus } from "../constants";
 import { displayRatingToStars } from "./rating";
 
@@ -355,10 +356,14 @@ function get(record: Record<string, string>, key: string): string {
   return record[key] || "";
 }
 
+/** Hardcover's date-only and timezone-less values are UTC, not the server's local time. */
 function parseDate(date: string): Date | null {
-  const newDate = new Date(date);
-  if (isNaN(newDate.getTime())) return null;
-  return newDate;
+  const [day, time] = date.split("T");
+  // Exports contain complete calendar dates, never ISO years or ordinal/week dates.
+  if (day?.length !== 10 || day[4] !== "-" || day[7] !== "-") return null;
+  const zoned = time?.endsWith("Z") || time?.includes("+") || time?.includes("-");
+  const parsed = parseISO(time === undefined ? `${date}T00:00:00Z` : zoned ? date : `${date}Z`);
+  return isValid(parsed) ? parsed : null;
 }
 
 function parseBoolean(input: string): boolean {
@@ -393,11 +398,30 @@ function parseStatus(status: string, dateFinished: Date | null): BookStatus {
   }
 }
 
+/**
+ * Remove narrators and translators from authors. Assumes a single author entry won't
+ * contain a comma.
+ *
+ * "Roberto Bolaño, Natasha Wimmer (Translator)" -> "Roberto Bolaño"
+ * "Helen Lazer (Narrator), Alison Espach" -> "Alison Espach"
+ */
+function parseAuthor(input: string): string {
+  const authors = input
+    .split(",")
+    .map((author) => author.trim())
+    .filter(
+      (author) =>
+        author !== "" && !author.endsWith(" (Narrator)") && !author.endsWith(" (Translator)"),
+    )
+    .join(", ");
+  return authors;
+}
+
 export function parseHardcoverRecord(record: Record<string, string>): HardcoverBook {
   const dateFinished = parseDate(get(record, "Date Finished"));
   return {
-    title: get(record, "Title"),
-    author: get(record, "Author"),
+    title: get(record, "Title").trim(),
+    author: parseAuthor(get(record, "Author")),
     series: get(record, "Series"),
     status: parseStatus(get(record, "Status"), dateFinished),
     privacy: get(record, "Privacy"),
@@ -480,13 +504,16 @@ export function getHardcoverCsvParser() {
       try {
         parser.end();
 
-        let record: any;
+        let record: Record<string, string> | undefined;
         while ((record = parser.read())) {
-          if (record && "Title" in record && "Author" in record) {
-            controller.enqueue(parseHardcoverRecord(record));
-          } else {
-            console.warn("Skipping invalid Hardcover record during flush:", record);
+          if (record) {
+            const parsedRecord = parseHardcoverRecord(record);
+            if (parsedRecord.title !== "" && parsedRecord.author !== "") {
+              controller.enqueue(parsedRecord);
+              continue;
+            }
           }
+          console.warn("Skipping invalid Hardcover record during flush:", record);
         }
       } catch (error) {
         console.warn("Error during CSV parser flush:", error);
