@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { ProfileViewDetailed } from "../types";
 import { env } from "../env";
-import { avatarImageUrl } from "../utils/imageProxy";
+import { avatarImageUrl } from "../core/imageUrl";
 
 export const PdsLanding: FC<{
   profiles: ProfileViewDetailed[];

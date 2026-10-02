@@ -26,11 +26,7 @@ type ActionSheetProps = {
   actions: SheetAction[];
 };
 
-/**
- * Themed bottom sheet of actions. Used instead of `Alert.alert` with many
- * buttons: an alert with five options reads as a warning and stacks badly on
- * Android, while a sheet can show icons, secondary labels and a busy state.
- */
+/** Themed bottom sheet of actions, used instead of `Alert.alert` for menus with several options. */
 export function ActionSheet({ visible, onClose, title, subtitle, actions }: ActionSheetProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];

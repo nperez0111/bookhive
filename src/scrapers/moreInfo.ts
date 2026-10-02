@@ -1,7 +1,8 @@
 import { fetchGoodreadsViaWaf } from "./waf/solver";
 import { NEXT_DATA_MARKER } from "./waf/pageMarker";
+import { errorMessage } from "../lib/errors";
+import { deadVerdict, deferVerdict, verdictFields } from "../core/enrichVerdict";
 
-// TypeScript interfaces for Goodreads data structure
 interface ParsedGoodreadsData {
   book: {
     id: string;
@@ -66,16 +67,13 @@ function parseGoodreadsData(json: any): ParseResult {
     const apolloState = json.props?.pageProps?.apolloState;
     if (!apolloState?.ROOT_QUERY) return parseFailed("next_data_parse_failed");
 
-    // Find the book reference
     const bookQuery = Object.keys(apolloState.ROOT_QUERY).find((key) =>
       key.startsWith("getBookByLegacyId"),
     );
     if (!bookQuery) return parseFailed("next_data_parse_failed");
 
-    // The query resolved, to nothing. Goodreads served a real page and told us
-    // this legacy id has no book behind it any more — deleted, or merged into
-    // another edition. Verified live against /book/show/12701475, whose
-    // `getBookByLegacyId({"legacyId":"12701475"})` is literally `null`.
+    // Resolved to null: Goodreads served a real page telling us this legacy id
+    // has no book behind it any more (deleted, or merged into another edition).
     const bookRef = apolloState.ROOT_QUERY[bookQuery];
     if (bookRef === null) return parseFailed("book_not_found_upstream");
 
@@ -85,22 +83,17 @@ function parseGoodreadsData(json: any): ParseResult {
     const bookData = apolloState[bookId];
     if (!bookData) return parseFailed("next_data_parse_failed");
 
-    // Extract work data
     const workRef = bookData.work?.__ref;
     const workData = workRef ? apolloState[workRef] : null;
 
-    // Extract primary author data
     const authorRef = bookData.primaryContributorEdge?.node?.__ref;
     const authorData = authorRef ? apolloState[authorRef] : null;
 
-    // Extract series data
     const seriesRef = bookData.bookSeries?.[0]?.series?.__ref;
     const seriesData = seriesRef ? apolloState[seriesRef] : null;
 
-    // Parse genres
     const genres = bookData.bookGenres?.map((bg: any) => bg.genre?.name).filter(Boolean) || [];
 
-    // Parse secondary contributors (only authors)
     const secondaryContributors =
       bookData.secondaryContributorEdges
         ?.filter((edge: any) => edge.role === "Author")
@@ -109,7 +102,6 @@ function parseGoodreadsData(json: any): ParseResult {
           role: edge.role || "",
         })) || [];
 
-    // Parse ratings distribution
     const ratingsDistribution = workData?.stats?.ratingsCountDist || [];
 
     const data: ParsedGoodreadsData = {
@@ -179,8 +171,8 @@ async function getBookDetailedInfo(
 ): Promise<ParsedGoodreadsData | null> {
   const addCtx = addWideEventContext ?? (() => {});
   try {
-    // Fetches the page on this thread, handing a WAF challenge off to the solver
-    // worker only if one actually comes back. See scrapers/waf/solver.ts.
+    // Fetches the page on this thread; only hands a WAF challenge to the solver
+    // worker if one comes back (see scrapers/waf/solver.ts).
     const html = await fetchGoodreadsViaWaf(sourceUrl, addCtx);
     if (!html) return null;
 
@@ -189,17 +181,19 @@ async function getBookDetailedInfo(
 
     // Only the parser can conclude a book is gone, because only it can see that
     // `getBookByLegacyId` resolved to null. Everything else defers.
-    addCtx({
-      scrape_failure: result.failure,
-      enrich_retry: result.failure === "book_not_found_upstream" ? "dead" : "defer",
-    });
+    addCtx(
+      verdictFields(
+        result.failure === "book_not_found_upstream"
+          ? deadVerdict(result.failure)
+          : deferVerdict(result.failure),
+      ),
+    );
     return null;
   } catch (error) {
     addCtx({
-      scrape_failure: "exception",
-      scrape_error: error instanceof Error ? error.message : String(error),
+      ...verdictFields(deferVerdict("exception")),
+      scrape_error: errorMessage(error),
       scrape_url: sourceUrl,
-      enrich_retry: "defer",
     });
     return null;
   }

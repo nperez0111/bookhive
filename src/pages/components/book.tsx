@@ -2,8 +2,8 @@ import { type Child, type FC } from "hono/jsx";
 import type { Book } from "../../types";
 import { BOOK_STATUS } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
-import { hydrateUserBook } from "../../utils/bookProgress";
 import { BookCard, normalizeBookData } from "./BookCard";
+import { listAllUserBooks } from "../../data/userShelves";
 
 const NO_BOOKS_FOUND = <p className="text-center text-lg">No books in this list</p>;
 
@@ -15,18 +15,7 @@ export const BookList: FC<{
   const agent = await c.get("ctx").getSessionAgent();
   const books =
     booksFromProps ||
-    (agent
-      ? await c
-          .get("ctx")
-          .db.selectFrom("user_book")
-          .innerJoin("hive_book", "user_book.hiveId", "hive_book.id")
-          .selectAll()
-          .where("user_book.userDid", "=", agent.did)
-          .orderBy("user_book.createdAt", "desc")
-          .limit(10_000)
-          .execute()
-          .then((books) => books.map((book) => hydrateUserBook(book)))
-      : []);
+    (agent ? await listAllUserBooks({ db: c.get("ctx").db, userDid: agent.did }) : []);
 
   if (!books?.length) {
     return (fallback || NO_BOOKS_FOUND) as any;
@@ -53,12 +42,10 @@ export const BookList: FC<{
     return (fallback || NO_BOOKS_FOUND) as any;
   }
 
-  // Default to first non-empty tab
   const defaultTab = readingBooks.length ? "reading" : wantBooks.length ? "want" : "read";
 
   return (
-    // `overflow-clip-margin` lets the w-48 book tooltips overhang the first/last grid column
-    // without this panel being able to propagate horizontal scrollable overflow.
+    // `overflow-clip-margin` lets the w-48 book tooltips overhang the grid edge without this panel propagating horizontal scrollable overflow.
     <div class="relative overflow-x-clip [overflow-clip-margin:5rem] rounded-lg bg-card pb-16">
       <input
         type="radio"

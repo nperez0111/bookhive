@@ -7,7 +7,7 @@
 import { createDb } from "../db";
 import sqliteKv, { createSharedKvDb } from "../sqlite-kv";
 import { createIngester } from "../bsky/ingester";
-import { createServiceAccountAgent } from "../utils/catalogBookService";
+import { createServiceAccountAgent } from "../services/catalogBookService";
 import { env } from "../env";
 import { createStorage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";

@@ -19,7 +19,6 @@ export const Modal = ({
         {button}
       </label>
 
-      {/* Modal */}
       <label
         htmlFor={`modal-${id}`}
         className="invisible fixed inset-0 z-40 bg-black/50 opacity-0 transition-opacity duration-200 peer-checked:visible peer-checked:opacity-100"

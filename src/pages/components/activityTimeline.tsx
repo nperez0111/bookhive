@@ -1,28 +1,18 @@
 import { type FC } from "hono/jsx";
-import { format, formatDistanceToNowStrict } from "date-fns";
+import { format } from "date-fns";
+import { TimeAgo as Timestamp } from "./TimeAgo";
 
-import type { FeedGroup, FeedItem } from "../../utils/activityFeed";
+import type { FeedGroup, FeedItem } from "../../data/activityFeed";
 import type { ProfileViewDetailed } from "../../types";
-import { avatarImageUrl } from "../../utils/imageProxy";
+import { avatarImageUrl } from "../../core/imageUrl";
 import { authorsDisplay, CoverImage, normalizeBookData } from "./BookCard";
 import { StarDisplay } from "./cards/StarDisplay";
+import { starsToDisplayRating } from "../../core/rating";
 
 /**
- * The activity feed, as an actual timeline.
- *
- * It used to render through `BuzzSection` — a 2-to-5 column cover grid built for
- * the "recently read" shelves. A grid has no single reading order (across or
- * down are both defensible), so even correctly-sorted activity read as
- * shuffled. An `<ol>` has exactly one reading order and screen readers announce
- * the position, so the semantics carry the fix.
- *
- * `formatDistanceToNowStrict`, not `formatDistanceToNow`: the fuzzy one emits
- * "about 2 months ago" and "almost 1 year ago", whose hedges and lengths vary
- * between adjacent rows and read as inconsistency even when the order is right.
- *
- * Every timestamp is a `<time datetime>` with a `title` — the absolute time was
- * previously nowhere in the app, so a reader who found a row's placement
- * confusing had no way to check it.
+ * The activity feed, as an actual timeline. Renders as an `<ol>` rather than a
+ * cover grid — a grid has no single reading order, so even correctly-sorted
+ * activity reads as shuffled.
  */
 
 type Ctx = {
@@ -58,10 +48,9 @@ const Avatar: FC<{ did: string; ctx: Ctx }> = ({ did, ctx }) => {
 };
 
 /**
- * Intrinsic `width`/`height` on every image is not decoration here. Covers are
- * the only variable-height thing in a row, and without them a 25-row list
- * reflows 25 times as lazy images resolve — which on a chronological list looks
- * exactly like the content reordering itself, i.e. the bug being fixed.
+ * Intrinsic `width`/`height` matter here: without them, lazy-loaded covers
+ * reflow the list, which on a chronological feed looks like the content
+ * reordering itself.
  */
 const RowCover: FC<{ item: FeedItem }> = ({ item }) => (
   <a
@@ -71,16 +60,6 @@ const RowCover: FC<{ item: FeedItem }> = ({ item }) => (
   >
     <CoverImage book={normalizeBookData(item.book)} class="h-[66px] w-11 rounded object-cover" />
   </a>
-);
-
-const Timestamp: FC<{ ts: string; class?: string }> = ({ ts, class: className }) => (
-  <time
-    datetime={ts}
-    title={format(new Date(ts), "PPPp XXX")}
-    class={`text-muted-foreground text-xs tabular-nums ${className ?? ""}`}
-  >
-    {formatDistanceToNowStrict(new Date(ts), { addSuffix: true })}
-  </time>
 );
 
 const SingleRow: FC<{ item: FeedItem; ctx: Ctx }> = ({ item, ctx }) => {
@@ -109,7 +88,7 @@ const SingleRow: FC<{ item: FeedItem; ctx: Ctx }> = ({ item, ctx }) => {
           )}
         </p>
         {book.stars != null && book.stars > 0 && (
-          <StarDisplay rating={book.stars / 2} size="sm" class="mt-1 flex" />
+          <StarDisplay rating={starsToDisplayRating(book.stars) ?? 0} size="sm" class="mt-1 flex" />
         )}
         {book.review && (
           <p class="text-muted-foreground mt-1 line-clamp-2 text-sm italic">“{book.review}”</p>
@@ -122,13 +101,10 @@ const SingleRow: FC<{ item: FeedItem; ctx: Ctx }> = ({ item, ctx }) => {
 };
 
 /**
- * A burst row. This is what a CSV import looks like now: the worst single-user
- * burst measured on production was 513 books sharing one minute, which used to
- * be roughly twenty consecutive pages of one person's backlog.
- *
- * `-space-x-5` with a `ring-background` ring gives the deck-of-cards read; the
- * ring is what separates the covers from each other, rather than a border that
- * would fight `.book-cover`.
+ * A burst row — collapses a run of same-actor activity (e.g. a CSV import)
+ * into one row. `-space-x-5` with a `ring-background` ring gives the
+ * deck-of-cards read; the ring separates the covers rather than a border,
+ * which would fight `.book-cover`.
  */
 const BurstRow: FC<{
   group: Extract<FeedGroup, { kind: "burst" }>;
@@ -183,11 +159,10 @@ const BurstRow: FC<{
 };
 
 /**
- * The server has no idea what timezone the viewer is in — there is no tz cookie
- * anywhere in this app — so buckets are UTC days and the separator renders a
- * real date, which is never wrong. The inline script below relabels the two
- * newest to "Today"/"Yesterday" only when they match the browser's local date.
- * With JS off you get real dates rather than a wrong "Today".
+ * The server doesn't know the viewer's timezone, so buckets are UTC days and
+ * the separator renders a real date. The inline script below relabels the two
+ * newest to "Today"/"Yesterday" only when they match the browser's local date
+ * — with JS off you still get a real date, never a wrong "Today".
  */
 function dayKey(ts: string): string {
   return ts.slice(0, 10);

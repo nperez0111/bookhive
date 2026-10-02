@@ -30,7 +30,7 @@ describe("createCrossProcessLock", () => {
 
   it("releases the lock when the callback throws", async () => {
     const lock = createCrossProcessLock(db);
-    await expect(
+    expect(
       lock("test-key", async () => {
         throw new Error("boom");
       }),
@@ -41,10 +41,7 @@ describe("createCrossProcessLock", () => {
   });
 
   it("allows re-entrant calls within the same process", async () => {
-    // Within a single process, all calls share the same OWNER, so the lock
-    // is re-entrant. This is by design — @atcute's CachedGetter#pending
-    // handles in-process serialization; the cross-process lock only needs
-    // to block different workers (different OWNER values).
+    // All calls in one process share the OWNER, so the lock is re-entrant by design — only different workers need to block each other.
     const lock = createCrossProcessLock(db);
     const results: string[] = [];
 
@@ -65,7 +62,6 @@ describe("createCrossProcessLock", () => {
     const [r1, r2] = await Promise.all([p1, p2]);
     expect(r1).toBe("first");
     expect(r2).toBe("second");
-    // Both should complete (re-entrant within same process)
     expect(results).toContain("p1-start");
     expect(results).toContain("p1-end");
     expect(results).toContain("p2");
@@ -94,7 +90,6 @@ describe("createCrossProcessLock", () => {
   });
 
   it("cleans up stale locks from other owners", async () => {
-    // Create the table first by initializing the lock.
     const lock = createCrossProcessLock(db);
 
     // Simulate a stale lock from a crashed process.
@@ -115,11 +110,11 @@ describe("createCrossProcessLock", () => {
       db,
     );
 
-    // Our lock attempt should block until the other owner releases.
-    // We release it after a short delay to avoid a real timeout.
+    // Blocks until the other owner releases; release after a short delay to avoid a real timeout.
+    const releaseAfterMs = 120;
     const releaseTimer = setTimeout(async () => {
       await sql`DELETE FROM auth_refresh_lock WHERE id = 'held-key'`.execute(db);
-    }, 300);
+    }, releaseAfterMs);
 
     const start = Date.now();
     const result = await lock("held-key", async () => "acquired");
@@ -127,27 +122,30 @@ describe("createCrossProcessLock", () => {
 
     clearTimeout(releaseTimer);
     expect(result).toBe("acquired");
-    expect(elapsed).toBeGreaterThanOrEqual(200);
+    // Tied to the release delay rather than a bare 200: the claim is that the
+    // waiter actually blocked until the other owner let go, and that stays true
+    // whatever the delay is scaled to. Allow one backoff tick of slack.
+    expect(elapsed).toBeGreaterThanOrEqual(releaseAfterMs * 0.8);
   });
 
-  // Regression for 2026-08-02: a holder wedged on an unreachable PDS kept its
-  // lock alive via the heartbeat, and waiters spun for 37.5s issuing 750
-  // synchronous SQLite statements each — enough concurrent waiters and the
-  // worker stopped servicing its event loop at all.
+  // Regression: a holder wedged on an unreachable PDS kept its lock alive via the heartbeat, so waiters spun forever issuing blocking SQLite statements.
   it("gives up on a permanently held lock within its wait budget", async () => {
-    // A short wait budget stands in for MAX_WAIT_MS: the invariant is that a
-    // waiter gives up rather than spinning forever, not the exact budget.
-    const maxWaitMs = 300;
+    // A short wait budget stands in for MAX_WAIT_MS — the invariant is giving up rather than spinning forever, not the exact budget.
+    const maxWaitMs = 120;
     const lock = createCrossProcessLock(db, { maxWaitMs });
     await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('wedged', 'other-pid-999', ${Date.now()})`.execute(
       db,
     );
 
+    // Awaited explicitly rather than through `expect().rejects`: the assertion
+    // below measures how long the waiter blocked, and bun's `.rejects` returns
+    // `undefined` (it drains the loop internally) so nothing in the expression
+    // makes that dependency visible.
     const start = Date.now();
-    await expect(lock("wedged", async () => "never")).rejects.toThrow(
-      "Cross-process lock timeout for wedged",
-    );
+    const error = await lock("wedged", async () => "never").catch((e: unknown) => e);
     const elapsed = Date.now() - start;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("Cross-process lock timeout for wedged");
 
     expect(elapsed).toBeGreaterThanOrEqual(maxWaitMs);
     expect(elapsed).toBeLessThan(maxWaitMs + 3_000);
@@ -157,7 +155,7 @@ describe("createCrossProcessLock", () => {
   });
 
   it("backs off exponentially rather than polling at a fixed interval", async () => {
-    const lock = createCrossProcessLock(db, { maxWaitMs: 300 });
+    const lock = createCrossProcessLock(db, { maxWaitMs: 120 });
     await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('counted', 'other-pid-999', ${Date.now()})`.execute(
       db,
     );
@@ -169,14 +167,18 @@ describe("createCrossProcessLock", () => {
       return originalExecuteQuery(compiled as never);
     }) as typeof db.executeQuery;
 
+    let error: unknown;
     try {
-      await expect(lock("counted", async () => "never")).rejects.toThrow("Cross-process lock");
+      // Awaited directly, not via `expect().rejects`: the `finally` must not
+      // restore `executeQuery` until the waiter has finished polling, or
+      // `selects` counts nothing.
+      error = await lock("counted", async () => "never").catch((e: unknown) => e);
     } finally {
       db.executeQuery = originalExecuteQuery;
     }
+    expect((error as Error).message).toContain("Cross-process lock");
 
-    // A flat 150ms poll over this budget would be ~20 attempts; the old 37.5s
-    // budget was 250. Backoff must keep it to a handful.
+    // Backoff must keep the attempt count to a handful, not scale linearly with the wait budget.
     expect(selects).toBeLessThan(15);
   });
 });

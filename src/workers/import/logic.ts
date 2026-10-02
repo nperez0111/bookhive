@@ -9,6 +9,7 @@ import type { SessionClient } from "../../auth/client";
 import { type BookIdentifiers, type HiveId } from "../../types";
 import { Book as BookRecord } from "../../bsky/lexicon";
 import {
+  csvHeaderProblem,
   getGoodreadsCsvParser,
   getStorygraphCsvParser,
   getHardcoverCsvParser,
@@ -16,8 +17,8 @@ import {
   type GoodreadsBook,
   type StorygraphBook,
   type HardcoverBook,
-} from "../../utils/csv";
-import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../../utils/getBook";
+} from "../../core/csv";
+import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../../services/getBook";
 import {
   normalizeStr,
   mapGoodreadsStatus,
@@ -29,12 +30,17 @@ import {
   buildStorygraphBookRecord,
   buildHardcoverBookRecord,
   deduplicateUnmatchedWithDetails,
-} from "../../utils/importBook";
-// Note: Worker threads get isolated metric registries, so metrics here won't appear
-// at the main /metrics endpoint. The main thread (routes/import.ts) tracks import
-// duration and active operations. Per-book counts are conveyed via SSE events.
-import { searchBooks } from "../../routes/lib";
+  normalizeGoodreadsRating,
+  normalizeStorygraphRating,
+} from "../../core/importBook";
+import { normalizeIsbn, normalizeIsbn13 } from "../../data/bookIdentifiers";
+// Worker threads get isolated metric registries, so metrics here won't appear
+// at the main /metrics endpoint — the main thread tracks import duration and
+// active operations; per-book counts travel via SSE events instead.
+import { searchBooks } from "../../services/searchBooks";
+import { starsToDisplayRating } from "../../core/rating";
 import type { ImportContext } from "./types";
+import { errorMessage } from "../../lib/errors";
 
 /** Serialize an SSE payload with an auto-stamped ISO timestamp. */
 function sseJSON(payload: Record<string, unknown>): string {
@@ -107,7 +113,7 @@ async function flushBatch({
   } catch (error) {
     ctx.addWideEventContext({
       import_batch_update: "failed",
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
       book_count: batch.size,
     });
     let individualSuccesses = 0;
@@ -120,8 +126,7 @@ async function flushBatch({
         individualFailures++;
         ctx.addWideEventContext({
           import_individual_book: "failed",
-          error:
-            individualError instanceof Error ? individualError.message : String(individualError),
+          error: errorMessage(individualError),
           hiveId,
         });
         unmatchedBooks.push({ book: makeFallbackBook(bookUpdate), reason: "update_error" });
@@ -190,21 +195,55 @@ async function flushBatch({
 
 // ─── Goodreads ───────────────────────────────────────────────────────────────
 
-export async function processGoodreadsImport({
+// ─── The one import pipeline ─────────────────────────────────────────────────
+
+/**
+ * Everything a CSV source has to supply. The three importers below are
+ * descriptors over this one loop rather than near-identical copies — the
+ * three had already drifted (differing rating math, ISBN cleanup, and array
+ * conversion) before being unified.
+ */
+type CsvImportSource<TBook> = {
+  /** Wire label, used in wide events. */
+  name: string;
+  requiredHeaders: string[];
+  parser: () => TransformStream<Uint8Array, TBook>;
+  title: (book: TBook) => string;
+  /** The author string as stored in `hive_book.authors` for this source. */
+  author: (book: TBook) => string;
+  mergeIdentifiers: (
+    book: TBook,
+    existingIdentifiers: BookIdentifiers,
+    hiveBookId: string,
+  ) => { identifiers: BookIdentifiers; changed: boolean };
+  buildRecord: (args: {
+    book: TBook;
+    hiveBook: { id: string; title: string; cover: string | null };
+    existingHiveIds: Set<string>;
+  }) => BookUpdate;
+  /** Synthesises a source row from a book we failed to match, for the retry list. */
+  makeFallbackBook: (bu: BookUpdate) => TBook;
+  /** The per-book payload the client renders in the "couldn't match these" table. */
+  toDetails: (entry: { book: TBook; reason: string }) => Record<string, unknown>;
+};
+
+async function processCsvImport<TBook>({
   csvData,
   ctx,
   agent,
   onSSE,
+  source,
 }: {
   csvData: ArrayBuffer;
   ctx: ImportContext;
   agent: SessionClient;
   onSSE: (data: string) => void | Promise<void>;
+  source: CsvImportSource<TBook>;
 }): Promise<void> {
   const id = { value: 0 };
   const matchedBooks = { value: 0 };
   const uploadedBooks = { value: 0 };
-  const unmatchedBooks: Array<{ book: GoodreadsBook; reason: string }> = [];
+  const unmatchedBooks: Array<{ book: TBook; reason: string }> = [];
   const unmatchedSet = new Set<string>();
 
   await onSSE(
@@ -216,21 +255,204 @@ export async function processGoodreadsImport({
     }),
   );
 
-  // Phase 1: Parse entire CSV
-  const allBooks = await drainStream(
-    new Blob([csvData]).stream().pipeThrough(getGoodreadsCsvParser()),
-  );
+  const headerProblem = csvHeaderProblem(csvData, source.requiredHeaders, source.name);
+  if (headerProblem) {
+    await onSSE(
+      sseJSON({
+        event: "import-error",
+        stage: "error",
+        error: headerProblem,
+        stageProgress: { message: headerProblem },
+        id: id.value++,
+      }),
+    );
+    return;
+  }
+
+  // Phase 1: parse the entire CSV.
+  const allBooks = await drainStream(new Blob([csvData]).stream().pipeThrough(source.parser()));
   const totalBooks = allBooks.length;
 
-  // Start fetching user's existing PDS records in the background
+  // Start fetching the user's existing PDS records in the background.
   const bookRecords = getUserRepoRecords({ ctx, agent });
   const existingHiveIdsPromise = bookRecords.then(
     (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
   );
 
-  // Phase 2: Search in groups of SEARCH_CONCURRENCY, process results in order
+  // Phase 2: search in groups of SEARCH_CONCURRENCY, process results in order.
   let currentBatch = new Map<HiveId, BookUpdate>();
-  const grFallback = (bu: BookUpdate) =>
+
+  for (let i = 0; i < allBooks.length; i += SEARCH_CONCURRENCY) {
+    const chunk = allBooks.slice(i, i + SEARCH_CONCURRENCY);
+    // Fire every search in this chunk, then consume them in order.
+    const searches = chunk.map((book) => searchBooks({ query: source.title(book), ctx }));
+
+    for (let j = 0; j < chunk.length; j++) {
+      const book = chunk[j]!;
+      const title = source.title(book);
+      const author = source.author(book);
+
+      await onSSE(
+        sseJSON({
+          title,
+          author,
+          processed: matchedBooks.value,
+          failed: unmatchedBooks.length,
+          total: totalBooks,
+          event: "book-load",
+          stage: "searching",
+          stageProgress: {
+            current: i + j + 1,
+            total: totalBooks,
+            message: `Looking up "${title}"…`,
+          },
+          id: id.value++,
+        }),
+      );
+
+      await searches[j];
+
+      const hiveBook = await ctx.db
+        .selectFrom("hive_book")
+        .select(["id", "title", "cover", "identifiers"])
+        .where("hive_book.rawTitle", "=", title)
+        .where("authors", "=", author)
+        .executeTakeFirst();
+
+      if (!hiveBook) {
+        const key = `${normalizeStr(title)}::${normalizeStr(author)}`;
+        if (!unmatchedSet.has(key)) {
+          unmatchedSet.add(key);
+          unmatchedBooks.push({ book, reason: "no_match" });
+        }
+        continue;
+      }
+
+      const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+        ? JSON.parse(hiveBook.identifiers)
+        : {};
+      const { identifiers: newIdentifiers, changed } = source.mergeIdentifiers(
+        book,
+        existingIdentifiers,
+        hiveBook.id,
+      );
+      if (changed) {
+        await persistMergedIdentifiers(ctx, hiveBook.id as HiveId, newIdentifiers);
+      }
+
+      const existingHiveIds = await existingHiveIdsPromise;
+      currentBatch.set(
+        hiveBook.id as HiveId,
+        source.buildRecord({ book, hiveBook, existingHiveIds }),
+      );
+
+      if (currentBatch.size >= BATCH_SIZE) {
+        await flushBatch({
+          batch: currentBatch,
+          ctx,
+          agent,
+          bookRecords,
+          onSSE,
+          id,
+          matchedBooks,
+          uploadedBooks,
+          unmatchedBooks,
+          totalBooks,
+          makeFallbackBook: source.makeFallbackBook,
+        });
+        currentBatch = new Map();
+      }
+    }
+  }
+
+  await flushBatch({
+    batch: currentBatch,
+    ctx,
+    agent,
+    bookRecords,
+    onSSE,
+    id,
+    matchedBooks,
+    uploadedBooks,
+    unmatchedBooks,
+    totalBooks,
+    makeFallbackBook: source.makeFallbackBook,
+  });
+
+  await onSSE(
+    sseJSON({
+      event: "import-complete",
+      stage: "complete",
+      stageProgress: {
+        current: matchedBooks.value,
+        total: totalBooks,
+        message: `Import complete! Successfully imported ${uploadedBooks.value} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
+      },
+      ...deduplicateUnmatchedWithDetails(
+        unmatchedBooks,
+        (b) => source.title(b),
+        (b) => source.author(b),
+        source.toDetails,
+      ),
+      id: id.value++,
+    }),
+  );
+}
+
+/**
+ * Write merged identifiers back onto `hive_book` and keep `book_id_map` in
+ * sync so `findBookIdentifiersByLookup` sees them.
+ */
+async function persistMergedIdentifiers(
+  ctx: ImportContext,
+  hiveId: HiveId,
+  identifiers: BookIdentifiers,
+): Promise<void> {
+  const updatedAt = new Date().toISOString();
+  await ctx.db
+    .updateTable("hive_book")
+    .set({ identifiers: JSON.stringify(identifiers), updatedAt })
+    .where("id", "=", hiveId)
+    .execute();
+  await ctx.db
+    .insertInto("book_id_map")
+    .values({
+      hiveId,
+      isbn: identifiers.isbn10 ?? null,
+      isbn13: identifiers.isbn13 ?? null,
+      goodreadsId: identifiers.goodreadsId ?? null,
+      updatedAt,
+    })
+    .onConflict((oc) =>
+      oc.column("hiveId").doUpdateSet((eb) => ({
+        isbn: eb.ref("excluded.isbn"),
+        isbn13: eb.ref("excluded.isbn13"),
+        goodreadsId: eb.ref("excluded.goodreadsId"),
+        updatedAt: eb.ref("excluded.updatedAt"),
+      })),
+    )
+    .execute();
+}
+
+// ─── Sources ─────────────────────────────────────────────────────────────────
+
+const goodreadsSource: CsvImportSource<GoodreadsBook> = {
+  name: "goodreads",
+  requiredHeaders: ["Book Id", "Title", "Author"],
+  parser: getGoodreadsCsvParser,
+  title: (b) => b.title,
+  author: (b) => b.author,
+  mergeIdentifiers: (book, existingIdentifiers, hiveBookId) =>
+    mergeGoodreadsIdentifiers({
+      bookId: book.bookId,
+      isbn: book.isbn,
+      isbn13: book.isbn13,
+      existingIdentifiers,
+      hiveBookId,
+    }),
+  buildRecord: ({ book, hiveBook, existingHiveIds }) =>
+    buildGoodreadsBookRecord({ book, hiveBook, existingHiveIds }),
+  makeFallbackBook: (bu) =>
     ({
       bookId: "",
       title: bu.title || "Unknown",
@@ -239,7 +461,7 @@ export async function processGoodreadsImport({
       additionalAuthors: [],
       isbn: "",
       isbn13: "",
-      myRating: bu.stars ? bu.stars / 2 : 0,
+      myRating: starsToDisplayRating(bu.stars) ?? 0,
       averageRating: 0,
       publisher: "",
       binding: "",
@@ -256,207 +478,31 @@ export async function processGoodreadsImport({
       privateNotes: "",
       readCount: 0,
       ownedCopies: 0,
-    }) as GoodreadsBook;
+    }) as GoodreadsBook,
+  toDetails: (b) => ({
+    title: b.book.title,
+    author: b.book.author,
+    isbn10: normalizeIsbn(b.book.isbn) ?? undefined,
+    isbn13: normalizeIsbn13(b.book.isbn13) ?? undefined,
+    stars: normalizeGoodreadsRating(b.book.myRating),
+    review: b.book.myReview || undefined,
+    finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
+    status: mapGoodreadsStatus(b.book),
+    reason: b.reason,
+  }),
+};
 
-  for (let i = 0; i < allBooks.length; i += SEARCH_CONCURRENCY) {
-    const chunk = allBooks.slice(i, i + SEARCH_CONCURRENCY);
-
-    // Fire all searches in this chunk (non-blocking)
-    const searches = chunk.map((book) => searchBooks({ query: book.title, ctx }));
-
-    // Process each book in order, awaiting its search
-    for (let j = 0; j < chunk.length; j++) {
-      const book = chunk[j]!;
-      const bookIdx = i + j;
-
-      await onSSE(
-        sseJSON({
-          title: book.title,
-          author: book.author,
-          processed: matchedBooks.value,
-          failed: unmatchedBooks.length,
-          total: totalBooks,
-          event: "book-load",
-          stage: "searching",
-          stageProgress: {
-            current: bookIdx + 1,
-            total: totalBooks,
-            message: `Looking up "${book.title}"…`,
-          },
-          id: id.value++,
-        }),
-      );
-
-      // Await this book's search (others in the chunk are already in-flight)
-      await searches[j];
-
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", book.title)
-        .where("authors", "=", book.author)
-        .executeTakeFirst();
-
-      if (!hiveBook) {
-        const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
-        if (!unmatchedSet.has(key)) {
-          unmatchedSet.add(key);
-          unmatchedBooks.push({ book, reason: "no_match" });
-        }
-        continue;
-      }
-
-      const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-        ? JSON.parse(hiveBook.identifiers)
-        : {};
-      const { identifiers: newIdentifiers, changed } = mergeGoodreadsIdentifiers({
-        bookId: book.bookId,
-        isbn: book.isbn,
-        isbn13: book.isbn13,
-        existingIdentifiers,
-        hiveBookId: hiveBook.id,
-      });
-      if (changed) {
-        const updatedAt = new Date().toISOString();
-        await ctx.db
-          .updateTable("hive_book")
-          .set({
-            identifiers: JSON.stringify(newIdentifiers),
-            updatedAt,
-          })
-          .where("id", "=", hiveBook.id)
-          .execute();
-        // Keep book_id_map in sync so findBookIdentifiersByLookup sees the merged IDs
-        await ctx.db
-          .insertInto("book_id_map")
-          .values({
-            hiveId: hiveBook.id as HiveId,
-            isbn: newIdentifiers.isbn10 ?? null,
-            isbn13: newIdentifiers.isbn13 ?? null,
-            goodreadsId: newIdentifiers.goodreadsId ?? null,
-            updatedAt,
-          })
-          .onConflict((oc) =>
-            oc.column("hiveId").doUpdateSet((eb) => ({
-              isbn: eb.ref("excluded.isbn"),
-              isbn13: eb.ref("excluded.isbn13"),
-              goodreadsId: eb.ref("excluded.goodreadsId"),
-              updatedAt: eb.ref("excluded.updatedAt"),
-            })),
-          )
-          .execute();
-      }
-
-      const existingHiveIds = await existingHiveIdsPromise;
-      currentBatch.set(
-        hiveBook.id as HiveId,
-        buildGoodreadsBookRecord({ book, hiveBook, existingHiveIds }),
-      );
-
-      if (currentBatch.size >= BATCH_SIZE) {
-        await flushBatch({
-          batch: currentBatch,
-          ctx,
-          agent,
-          bookRecords,
-          onSSE,
-          id,
-          matchedBooks,
-          uploadedBooks,
-          unmatchedBooks,
-          totalBooks,
-          makeFallbackBook: grFallback,
-        });
-        currentBatch = new Map();
-      }
-    } // end inner for (j)
-  } // end outer for (i += SEARCH_CONCURRENCY)
-
-  // Flush remaining
-  await flushBatch({
-    batch: currentBatch,
-    ctx,
-    agent,
-    bookRecords,
-    onSSE,
-    id,
-    matchedBooks,
-    uploadedBooks,
-    unmatchedBooks,
-    totalBooks,
-    makeFallbackBook: grFallback,
-  });
-
-  await onSSE(
-    sseJSON({
-      event: "import-complete",
-      stage: "complete",
-      stageProgress: {
-        current: matchedBooks.value,
-        total: totalBooks,
-        message: `Import complete! Successfully imported ${uploadedBooks.value} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
-      },
-      ...deduplicateUnmatchedWithDetails(
-        unmatchedBooks,
-        (b) => b.title,
-        (b) => b.author,
-        (b) => ({
-          title: b.book.title,
-          author: b.book.author,
-          isbn10: b.book.isbn || undefined,
-          isbn13: b.book.isbn13 || undefined,
-          stars: b.book.myRating ? b.book.myRating * 2 : undefined,
-          review: b.book.myReview || undefined,
-          finishedAt: b.book.dateRead ? b.book.dateRead.toISOString() : undefined,
-          status: mapGoodreadsStatus(b.book),
-          reason: b.reason,
-        }),
-      ),
-      id: id.value++,
-    }),
-  );
-}
-
-// ─── StoryGraph ──────────────────────────────────────────────────────────────
-
-export async function processStorygraphImport({
-  csvData,
-  ctx,
-  agent,
-  onSSE,
-}: {
-  csvData: ArrayBuffer;
-  ctx: ImportContext;
-  agent: SessionClient;
-  onSSE: (data: string) => void | Promise<void>;
-}): Promise<void> {
-  const id = { value: 0 };
-  const matchedBooks = { value: 0 };
-  const uploadedBooks = { value: 0 };
-  const unmatchedBooks: Array<{ book: StorygraphBook; reason: string }> = [];
-  const unmatchedSet = new Set<string>();
-
-  await onSSE(
-    sseJSON({
-      event: "import-start",
-      stage: "initializing",
-      stageProgress: { message: "Reading CSV file..." },
-      id: id.value++,
-    }),
-  );
-
-  const allBooks = await drainStream(
-    new Blob([csvData]).stream().pipeThrough(getStorygraphCsvParser()),
-  );
-  const totalBooks = allBooks.length;
-
-  const bookRecords = getUserRepoRecords({ ctx, agent });
-  const existingHiveIdsPromise = bookRecords.then(
-    (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
-  );
-
-  let currentBatch = new Map<HiveId, BookUpdate>();
-  const sgFallback = (bu: BookUpdate) =>
+const storygraphSource: CsvImportSource<StorygraphBook> = {
+  name: "storygraph",
+  requiredHeaders: ["Title", "Authors"],
+  parser: getStorygraphCsvParser,
+  title: (b) => b.title,
+  author: (b) => b.authors,
+  mergeIdentifiers: (book, existingIdentifiers, hiveBookId) =>
+    mergeStorygraphIdentifiers({ isbn: book.isbn, existingIdentifiers, hiveBookId }),
+  buildRecord: ({ book, hiveBook, existingHiveIds }) =>
+    buildStorygraphBookRecord({ book, hiveBook, existingHiveIds }),
+  makeFallbackBook: (bu) =>
     ({
       title: bu.title || "Unknown",
       authors: bu.authors || "Unknown",
@@ -475,377 +521,71 @@ export async function processStorygraphImport({
       loveableCharacters: "",
       diverseCharacters: "",
       flawedCharacters: "",
-      starRating: bu.stars ? bu.stars / 2 : 0,
+      starRating: starsToDisplayRating(bu.stars) ?? 0,
       review: bu.review || "",
       contentWarnings: "",
       contentWarningDescription: "",
       tags: "",
       owned: false,
-    }) as StorygraphBook;
+    }) as StorygraphBook,
+  // StoryGraph ships one `isbn` column that may hold either width.
+  toDetails: (b) => ({
+    title: b.book.title,
+    author: b.book.authors,
+    isbn10: normalizeIsbn(b.book.isbn) ?? undefined,
+    isbn13: normalizeIsbn13(b.book.isbn) ?? undefined,
+    stars: normalizeStorygraphRating(b.book.starRating),
+    review: b.book.review || undefined,
+    finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
+    status: mapStorygraphStatus(b.book),
+    reason: b.reason,
+  }),
+};
 
-  for (let i = 0; i < allBooks.length; i += SEARCH_CONCURRENCY) {
-    const chunk = allBooks.slice(i, i + SEARCH_CONCURRENCY);
-
-    // Fire all searches in this chunk (non-blocking)
-    const searches = chunk.map((book) => searchBooks({ query: book.title, ctx }));
-
-    for (let j = 0; j < chunk.length; j++) {
-      const book = chunk[j]!;
-      const bookIdx = i + j;
-
-      await onSSE(
-        sseJSON({
-          title: book.title,
-          author: book.authors,
-          processed: matchedBooks.value,
-          failed: unmatchedBooks.length,
-          total: totalBooks,
-          event: "book-load",
-          stage: "searching",
-          stageProgress: {
-            current: bookIdx + 1,
-            total: totalBooks,
-            message: `Looking up "${book.title}"…`,
-          },
-          id: id.value++,
-        }),
-      );
-
-      await searches[j];
-
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", book.title)
-        .where("authors", "=", book.authors)
-        .executeTakeFirst();
-
-      if (!hiveBook) {
-        const key = `${normalizeStr(book.title)}::${normalizeStr(book.authors)}`;
-        if (!unmatchedSet.has(key)) {
-          unmatchedSet.add(key);
-          unmatchedBooks.push({ book, reason: "no_match" });
-        }
-        continue;
-      }
-
-      const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-        ? JSON.parse(hiveBook.identifiers)
-        : {};
-      const { identifiers: newIdentifiers, changed } = mergeStorygraphIdentifiers({
-        isbn: book.isbn,
-        existingIdentifiers,
-        hiveBookId: hiveBook.id,
-      });
-      if (changed) {
-        const updatedAt = new Date().toISOString();
-        await ctx.db
-          .updateTable("hive_book")
-          .set({
-            identifiers: JSON.stringify(newIdentifiers),
-            updatedAt,
-          })
-          .where("id", "=", hiveBook.id)
-          .execute();
-        // Keep book_id_map in sync so findBookIdentifiersByLookup sees the merged IDs
-        await ctx.db
-          .insertInto("book_id_map")
-          .values({
-            hiveId: hiveBook.id as HiveId,
-            isbn: newIdentifiers.isbn10 ?? null,
-            isbn13: newIdentifiers.isbn13 ?? null,
-            goodreadsId: newIdentifiers.goodreadsId ?? null,
-            updatedAt,
-          })
-          .onConflict((oc) =>
-            oc.column("hiveId").doUpdateSet((eb) => ({
-              isbn: eb.ref("excluded.isbn"),
-              isbn13: eb.ref("excluded.isbn13"),
-              goodreadsId: eb.ref("excluded.goodreadsId"),
-              updatedAt: eb.ref("excluded.updatedAt"),
-            })),
-          )
-          .execute();
-      }
-
-      const existingHiveIds = await existingHiveIdsPromise;
-      currentBatch.set(
-        hiveBook.id as HiveId,
-        buildStorygraphBookRecord({ book, hiveBook, existingHiveIds }),
-      );
-
-      if (currentBatch.size >= BATCH_SIZE) {
-        await flushBatch({
-          batch: currentBatch,
-          ctx,
-          agent,
-          bookRecords,
-          onSSE,
-          id,
-          matchedBooks,
-          uploadedBooks,
-          unmatchedBooks,
-          totalBooks,
-          makeFallbackBook: sgFallback,
-        });
-        currentBatch = new Map();
-      }
-    }
-  }
-
-  await flushBatch({
-    batch: currentBatch,
-    ctx,
-    agent,
-    bookRecords,
-    onSSE,
-    id,
-    matchedBooks,
-    uploadedBooks,
-    unmatchedBooks,
-    totalBooks,
-    makeFallbackBook: sgFallback,
-  });
-
-  await onSSE(
-    sseJSON({
-      event: "import-complete",
-      stage: "complete",
-      stageProgress: {
-        current: matchedBooks.value,
-        total: totalBooks,
-        message: `Import complete! Successfully imported ${uploadedBooks.value} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
-      },
-      ...deduplicateUnmatchedWithDetails(
-        unmatchedBooks,
-        (b) => b.title,
-        (b) => b.authors,
-        (b) => {
-          const cleanIsbn = b.book.isbn?.replace(/[-\s]/g, "") || "";
-          return {
-            title: b.book.title,
-            author: b.book.authors,
-            isbn10: cleanIsbn.length === 10 ? cleanIsbn : undefined,
-            isbn13: cleanIsbn.length === 13 ? cleanIsbn : undefined,
-            stars: b.book.starRating ? b.book.starRating * 2 : undefined,
-            review: b.book.review || undefined,
-            finishedAt: b.book.lastDateRead ? b.book.lastDateRead.toISOString() : undefined,
-            status: mapStorygraphStatus(b.book),
-            reason: b.reason,
-          };
-        },
-      ),
-      id: id.value++,
-    }),
-  );
-}
-
-// ─── Hardcover ──────────────────────────────────────────────────────────────
-
-export async function processHardcoverImport({
-  csvData,
-  ctx,
-  agent,
-  onSSE,
-}: {
-  csvData: ArrayBuffer;
-  ctx: ImportContext;
-  agent: SessionClient;
-  onSSE: (data: string) => void | Promise<void>;
-}): Promise<void> {
-  const id = { value: 0 };
-  const matchedBooks = { value: 0 };
-  const uploadedBooks = { value: 0 };
-  const unmatchedBooks: Array<{ book: HardcoverBook; reason: string }> = [];
-  const unmatchedSet = new Set<string>();
-
-  await onSSE(
-    sseJSON({
-      event: "import-start",
-      stage: "initializing",
-      stageProgress: { message: "Reading CSV file..." },
-      id: id.value++,
-    }),
-  );
-
-  const allBooks = await drainStream(
-    new Blob([csvData]).stream().pipeThrough(getHardcoverCsvParser()),
-  );
-  const totalBooks = allBooks.length;
-
-  const bookRecords = getUserRepoRecords({ ctx, agent });
-  const existingHiveIdsPromise = bookRecords.then(
-    (br) => new Set(br.books.values().map((b) => b.hiveId)),
-  );
-
-  let currentBatch = new Map<HiveId, BookUpdate>();
-  const hcFallback = (bu: BookUpdate): HardcoverBook => {
-    return parseHardcoverRecord({
+const hardcoverSource: CsvImportSource<HardcoverBook> = {
+  name: "hardcover",
+  requiredHeaders: ["Title", "Author", "Status"],
+  parser: getHardcoverCsvParser,
+  title: (b) => b.title,
+  author: (b) => b.author,
+  mergeIdentifiers: (book, existingIdentifiers, hiveBookId) =>
+    mergeHardcoverIdentifiers({ book, existingIdentifiers, hiveBookId }),
+  buildRecord: ({ book, hiveBook, existingHiveIds }) =>
+    buildHardcoverBookRecord({ book, hiveBook, existingHiveIds }),
+  makeFallbackBook: (bu) =>
+    parseHardcoverRecord({
       Author: bu.authors || "Unknown",
       "Date Added": bu.createdAt ?? "",
       "Date Started": bu.startedAt ?? "",
       "Date Finished": bu.finishedAt ?? "",
-      Rating: `${(bu.stars || 0) / 2}`,
+      Rating: `${starsToDisplayRating(bu.stars) ?? 0}`,
       Review: bu.review || "",
       Status: bu.status || "",
       Title: bu.title || "Unknown",
-    });
-  };
-
-  for (let i = 0; i < allBooks.length; i += SEARCH_CONCURRENCY) {
-    const chunk = allBooks.slice(i, i + SEARCH_CONCURRENCY);
-
-    // Fire all searches in this chunk (non-blocking)
-    const searches = chunk.map((book) => searchBooks({ query: book.title, ctx }));
-
-    for (let j = 0; j < chunk.length; j++) {
-      const book = chunk[j]!;
-      const bookIdx = i + j;
-
-      await onSSE(
-        sseJSON({
-          title: book.title,
-          author: book.author,
-          processed: matchedBooks.value,
-          failed: unmatchedBooks.length,
-          total: totalBooks,
-          event: "book-load",
-          stage: "searching",
-          stageProgress: {
-            current: bookIdx + 1,
-            total: totalBooks,
-            message: `Looking up "${book.title}"…`,
-          },
-          id: id.value++,
-        }),
-      );
-
-      await searches[j];
-
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", book.title)
-        .where("authors", "=", book.author)
-        .executeTakeFirst();
-
-      if (!hiveBook) {
-        const key = `${normalizeStr(book.title)}::${normalizeStr(book.author)}`;
-        if (!unmatchedSet.has(key)) {
-          unmatchedSet.add(key);
-          unmatchedBooks.push({ book, reason: "no_match" });
-        }
-        continue;
-      }
-
-      const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-        ? JSON.parse(hiveBook.identifiers)
-        : {};
-      const { identifiers: newIdentifiers, changed } = mergeHardcoverIdentifiers({
-        book,
-        existingIdentifiers,
-        hiveBookId: hiveBook.id,
-      });
-      if (changed) {
-        const updatedAt = new Date().toISOString();
-        await ctx.db
-          .updateTable("hive_book")
-          .set({
-            identifiers: JSON.stringify(newIdentifiers),
-            updatedAt,
-          })
-          .where("id", "=", hiveBook.id)
-          .execute();
-        // Keep book_id_map in sync so findBookIdentifiersByLookup sees the merged IDs
-        await ctx.db
-          .insertInto("book_id_map")
-          .values({
-            hiveId: hiveBook.id as HiveId,
-            isbn: newIdentifiers.isbn10 ?? null,
-            isbn13: newIdentifiers.isbn13 ?? null,
-            goodreadsId: newIdentifiers.goodreadsId ?? null,
-            updatedAt,
-          })
-          .onConflict((oc) =>
-            oc.column("hiveId").doUpdateSet((eb) => ({
-              isbn: eb.ref("excluded.isbn"),
-              isbn13: eb.ref("excluded.isbn13"),
-              goodreadsId: eb.ref("excluded.goodreadsId"),
-              updatedAt: eb.ref("excluded.updatedAt"),
-            })),
-          )
-          .execute();
-      }
-
-      const existingHiveIds = await existingHiveIdsPromise;
-      currentBatch.set(
-        hiveBook.id as HiveId,
-        buildHardcoverBookRecord({ book, hiveBook, existingHiveIds }),
-      );
-
-      if (currentBatch.size >= BATCH_SIZE) {
-        await flushBatch({
-          batch: currentBatch,
-          ctx,
-          agent,
-          bookRecords,
-          onSSE,
-          id,
-          matchedBooks,
-          uploadedBooks,
-          unmatchedBooks,
-          totalBooks,
-          makeFallbackBook: hcFallback,
-        });
-        currentBatch = new Map();
-      }
-    }
-  }
-
-  await flushBatch({
-    batch: currentBatch,
-    ctx,
-    agent,
-    bookRecords,
-    onSSE,
-    id,
-    matchedBooks,
-    uploadedBooks,
-    unmatchedBooks,
-    totalBooks,
-    makeFallbackBook: hcFallback,
-  });
-
-  await onSSE(
-    sseJSON({
-      event: "import-complete",
-      stage: "complete",
-      stageProgress: {
-        current: matchedBooks.value,
-        total: totalBooks,
-        message: `Import complete! Successfully imported ${uploadedBooks.value} books${unmatchedBooks.length > 0 ? ` (${unmatchedBooks.length} failed)` : ""}`,
-      },
-      ...deduplicateUnmatchedWithDetails(
-        unmatchedBooks,
-        (b) => b.title,
-        (b) => b.author,
-        (b) => {
-          const cleanIsbn10 = b.book.isbn10?.replace(/[-\s]/g, "") || "";
-          const cleanIsbn13 = b.book.isbn13?.replace(/[-\s]/g, "") || "";
-          return {
-            title: b.book.title,
-            author: b.book.author,
-            isbn10: cleanIsbn10.length === 10 ? cleanIsbn10 : undefined,
-            isbn13: cleanIsbn13.length === 13 ? cleanIsbn13 : undefined,
-            stars: b.book.rating || undefined,
-            review: b.book.review || undefined,
-            finishedAt: b.book.dateFinished ? b.book.dateFinished.toISOString() : undefined,
-            status: b.book.status,
-            reason: b.reason,
-          };
-        },
-      ),
-      id: id.value++,
     }),
-  );
-}
+  toDetails: (b) => ({
+    title: b.book.title,
+    author: b.book.author,
+    isbn10: normalizeIsbn(b.book.isbn10) ?? undefined,
+    isbn13: normalizeIsbn13(b.book.isbn13) ?? undefined,
+    stars: b.book.rating || undefined,
+    review: b.book.review || undefined,
+    finishedAt: b.book.dateFinished ? b.book.dateFinished.toISOString() : undefined,
+    status: b.book.status,
+    reason: b.reason,
+  }),
+};
+
+type ImportArgs = {
+  csvData: ArrayBuffer;
+  ctx: ImportContext;
+  agent: SessionClient;
+  onSSE: (data: string) => void | Promise<void>;
+};
+
+export const processGoodreadsImport = (a: ImportArgs) =>
+  processCsvImport({ ...a, source: goodreadsSource });
+export const processStorygraphImport = (a: ImportArgs) =>
+  processCsvImport({ ...a, source: storygraphSource });
+export const processHardcoverImport = (a: ImportArgs) =>
+  processCsvImport({ ...a, source: hardcoverSource });

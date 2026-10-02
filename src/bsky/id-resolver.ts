@@ -11,18 +11,15 @@ import {
 } from "@atcute/identity-resolver";
 import { NodeDnsHandleResolver } from "@atcute/identity-resolver-node";
 
-import { readThroughCache } from "../utils/readThroughCache";
+import { readThroughCache } from "../lib/readThroughCache";
 
 let sharedDidDocumentResolver: DidDocumentResolver | undefined;
 
 /**
- * The process-wide DID document resolver.
- *
- * Memoised rather than constructed per caller so the OAuth client, the handle
- * resolvers and the service-auth JWT verifier all share one instance — and
- * therefore one DID-document cache. The verifier re-resolves with
- * `noCache: true` when a signature fails, to recover from key rotation;
- * `CompositeDidDocumentResolver` forwards that through, so sharing is safe.
+ * The process-wide DID document resolver — memoised so the OAuth client, handle
+ * resolvers, and service-auth verifier share one DID-document cache. Safe to share
+ * because `noCache: true` (used on signature failure to recover from key rotation)
+ * forwards through `CompositeDidDocumentResolver`.
  */
 export function getDidDocumentResolver(): DidDocumentResolver {
   return (sharedDidDocumentResolver ??= new CompositeDidDocumentResolver({
@@ -33,7 +30,6 @@ export function getDidDocumentResolver(): DidDocumentResolver {
   }));
 }
 
-/** Create ActorResolver for OAuth (handle/DID resolution). */
 export function createActorResolver(): ActorResolver {
   const handleResolver = new CompositeHandleResolver({
     methods: {
@@ -51,7 +47,6 @@ export type BaseIdResolver = {
   handle: { resolve(handle: string): Promise<string> };
 };
 
-/** Create resolver that resolves handle -> DID (for app routes). */
 export function createBaseIdResolver(): BaseIdResolver {
   const actorResolver = createActorResolver();
   return {
@@ -74,21 +69,26 @@ export type CachingBaseIdResolverOptions = {
 
 const IDENTITY_CACHE_PREFIX = "identity:";
 
+/** Build cache keys only via these helpers — a bare DID key silently misses the `identity:` KV mount and is never read. */
+function identityDidKey(did: string): string {
+  return IDENTITY_CACHE_PREFIX + "did:" + did;
+}
+
+function identityHandleKey(handle: string): string {
+  return IDENTITY_CACHE_PREFIX + "handle:" + handle.toLowerCase();
+}
+
 /** Serialize identity for storage (sqlite-kv expects string values). */
 function identityCacheValue(entry: IdentityCacheEntry): string {
   return JSON.stringify(entry);
 }
 
-/**
- * Write { did, handle } to the unified identity cache under both keys.
- * Used by resolvers on miss and by getProfile/getProfiles to warm the cache from profile data.
- * Awaits storage so the next request can hit the cache.
- */
+/** Writes both cache keys; awaits so the next request can hit the cache. */
 export async function setIdentityCache(kv: Storage, did: string, handle: string): Promise<void> {
   const value = identityCacheValue({ did, handle });
   const now = Date.now();
-  const didKey = IDENTITY_CACHE_PREFIX + "did:" + did;
-  const handleKey = IDENTITY_CACHE_PREFIX + "handle:" + handle.toLowerCase();
+  const didKey = identityDidKey(did);
+  const handleKey = identityHandleKey(handle);
   await Promise.all([
     kv.set(didKey, value),
     kv.setMeta(didKey, { timestamp: now }),
@@ -117,10 +117,7 @@ function identityFromCache(raw: unknown): IdentityCacheEntry | null {
   return null;
 }
 
-/**
- * Wraps BaseIdResolver with the unified identity cache (handle -> DID).
- * Uses readThroughCache; on miss writes both identity keys so DID->handle lookups also hit.
- */
+/** On miss, writes both identity keys so DID->handle lookups also hit the cache. */
 export function createCachingBaseIdResolver(
   kv: Storage,
   inner: BaseIdResolver,
@@ -131,7 +128,7 @@ export function createCachingBaseIdResolver(
   return {
     handle: {
       resolve: async (handle: string): Promise<string> => {
-        const key = IDENTITY_CACHE_PREFIX + "handle:" + handle.toLowerCase();
+        const key = identityHandleKey(handle);
         const raw = await readThroughCache(
           kv as Storage<string>,
           key,
@@ -157,10 +154,7 @@ export interface BidirectionalResolver {
   resolveDidsToHandles(dids: string[]): Promise<Record<string, string>>;
 }
 
-/**
- * Ensures we always return a handle string. Handles legacy cache entries that
- * stored the raw DID resolution object (e.g. { doc, updatedAt }) instead of the handle.
- */
+/** Handles legacy cache entries that stored the raw DID resolution object instead of a handle string. */
 function normalizeDidResolutionToHandle(value: unknown, did: string): string {
   if (typeof value === "string" && value.length > 0) {
     return value;
@@ -175,7 +169,6 @@ function normalizeDidResolutionToHandle(value: unknown, did: string): string {
   return did;
 }
 
-/** Create BidirectionalResolver using @atcute/identity-resolver (DID -> handle). */
 export function createBidirectionalResolverAtcute(): BidirectionalResolver {
   const actorResolver = createActorResolver();
 
@@ -206,10 +199,7 @@ export type CachingBidirectionalResolverOptions = {
   ttl?: number;
 };
 
-/**
- * Wraps a BidirectionalResolver with DID->handle cache.
- * Only new format { did, handle } is read or written.
- */
+/** Reads and writes only the new { did, handle } cache format. */
 export function createCachingBidirectionalResolver(
   kv: Storage,
   inner: BidirectionalResolver,
@@ -221,11 +211,13 @@ export function createCachingBidirectionalResolver(
     async resolveDidToHandle(did: string): Promise<string> {
       const raw = await readThroughCache(
         kv as Storage<string>,
-        did,
+        identityDidKey(did),
         async () => {
           const handle = await inner
             .resolveDidToHandle(did)
             .then((v) => normalizeDidResolutionToHandle(v, did));
+          // Write both directions so a DID->handle miss also warms the handle->DID side.
+          if (handle && handle !== did) await setIdentityCache(kv, did, handle);
           return identityCacheValue({ did, handle });
         },
         "",

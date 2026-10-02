@@ -43,13 +43,12 @@ export type BookIdentifiers = {
   openLibraryId?: string;
 };
 
-export const BookStatus = {
-  finished: "buzz.bookhive.defs#finished",
-  reading: "buzz.bookhive.defs#reading",
-  wantToRead: "buzz.bookhive.defs#wantToRead",
-} as const;
-
-export type BookStatus = (typeof BookStatus)[keyof typeof BookStatus];
+/**
+ * Re-exported so `types.ts` stays the one import for row shapes. The values
+ * live in `constants.ts`; there used to be a second literal table here that had
+ * silently lost `abandoned`.
+ */
+export type { BookStatus } from "./constants";
 
 export type UserBook = {
   /**
@@ -346,7 +345,7 @@ export type SyncDocumentRow = {
   documentHash: string;
   hiveId: HiveId | null;
   filename: string | null;
-  /** Normalized `filename`; see src/utils/filenameMatching.ts. */
+  /** Normalized `filename`; see src/core/filenameMatching.ts. */
   filenameKey: string | null;
   title: string | null;
   authors: string | null;

@@ -1,24 +1,23 @@
+/// <reference types="bun" />
+
 /**
  * Rebuilds the vendored `boko` WASM module in `vendor/boko/`.
  *
- * The build is checked in deliberately: a clone runs with no Rust toolchain and
- * CI compiles nothing. Run this only to bump the version, then commit the
- * result.
+ * The build is checked in deliberately: a clone has no Rust toolchain and CI
+ * compiles nothing. Run this only to bump the version, then commit the result.
  *
  *   bun run build:boko              # rebuild at BOKO_VERSION below
  *   bun run build:boko 0.6.0        # bump, then commit vendor/boko/
  *
- * **boko is GPL-3.0-or-later and BookHive is MIT.** The module is linked into
- * our own process, so the distributed artifact is a combined work — a
- * deliberate, informed choice, recorded in `src/utils/convertToEpub.ts` and
- * AGENTS.md. Two obligations this script exists partly to keep automatic:
- * `LICENSE` is copied alongside the binary (GPL-3 §4), and `manifest.json`
- * records the full upstream commit that is the corresponding source (§6).
+ * **boko is GPL-3.0-or-later and BookHive is MIT.** Linking it into our own
+ * process makes the distributed artifact a combined work (see
+ * `src/services/convertToEpub.ts` and AGENTS.md), so this script also keeps
+ * two GPL obligations automatic: `LICENSE` ships alongside the binary (§4),
+ * and `manifest.json` records the corresponding-source commit (§6).
  *
- * Both must also reach the *image*, which is the thing actually conveyed —
- * only `.output/` is copied into it, so `vite.config.ts` emits them next to
- * `boko_bg.wasm` as `boko.LICENSE` / `boko.manifest.json`. Vendoring them here
- * alone would satisfy the repo and not the artifact.
+ * Both must reach the *image*, not just the repo — only `.output/` is copied
+ * into it, so `vite.config.ts` emits them next to `boko_bg.wasm` as
+ * `boko.LICENSE` / `boko.manifest.json`.
  */
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -33,10 +32,9 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 const vendorDir = path.join(repoRoot, "vendor", "boko");
 
 /**
- * What gets vendored. `package.json` is skipped (we import `boko.js` by path,
- * not by package name) and so, importantly, is wasm-pack's `.gitignore` — it
- * contains a single `*`, which would exclude this whole directory from git and
- * ship an image with no converter in it.
+ * What gets vendored. `package.json` is skipped (imported by path, not
+ * package name), and so is wasm-pack's `.gitignore` — it's a single `*`,
+ * which would exclude this whole directory from git.
  */
 const ARTIFACTS = ["boko.js", "boko.d.ts", "boko_bg.wasm", "boko_bg.wasm.d.ts", "LICENSE"];
 
@@ -71,16 +69,13 @@ try {
     "https://github.com/zacharydenton/boko",
     src,
   ]);
-  // The *full* SHA, not the abbreviated one: this is the identifier a
-  // Corresponding Source request is answered with, and an abbreviation is only
-  // unambiguous until the upstream repo grows enough objects to collide.
+  // Full SHA, not abbreviated — this is what a Corresponding Source request gets answered with.
   const commit = run("git", ["rev-parse", "HEAD"], src).trim();
 
   console.log(`→ building wasm (${commit}) — a couple of minutes on a cold cargo cache`);
-  // `--target nodejs`: the glue reads the .wasm from its own directory at import
-  // time, synchronously, with no `fetch` and no top-level await — which is what
-  // lets the bundled worker load it. `--no-default-features` drops the CLI-only
-  // deps that do not build for wasm32.
+  // `--target nodejs` loads the wasm synchronously with no fetch/top-level await,
+  // which is what lets the bundled worker load it. `--no-default-features` drops
+  // CLI-only deps that don't build for wasm32.
   run(
     "wasm-pack",
     [
@@ -126,7 +121,7 @@ try {
 
   const wasmKb = Math.round(Bun.file(path.join(vendorDir, "boko_bg.wasm")).size / 1024);
   console.log(`✓ vendor/boko updated to v${version} (${commit}), ${wasmKb} KB wasm`);
-  console.log("  next: bun test src/utils/convertToEpub.test.ts && git add vendor/boko");
+  console.log("  next: bun test src/services/convertToEpub.test.ts && git add vendor/boko");
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

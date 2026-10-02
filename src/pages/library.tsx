@@ -1,10 +1,7 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 
-/**
- * E-reader connection details. Rendered inline on an empty library (it's the
- * first thing a new user needs) and inside a dialog once they have books.
- */
+/** E-reader connection details. Rendered inline on an empty library, or inside a dialog once the user has books. */
 const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
   <div class="space-y-3">
     <div>
@@ -165,13 +162,16 @@ const LibraryScripts: FC = () => (
           }
           try {
             const res = await fetch("/library/sync/password");
-            const data = (await res.json()) as { password: string };
+            // Without the `res.ok` check, an error body rendered as the literal password value.
+            if (!res.ok) throw new Error(String(res.status));
+            const data = (await res.json()) as { password?: string };
+            if (!data.password) throw new Error("no password in response");
             pwEl.textContent = data.password;
             revealBtn.textContent = "Hide";
             if (copyPwBtn) copyPwBtn.classList.remove("hidden");
             revealed = true;
           } catch {
-            // ignore
+            pwEl.textContent = "Could not load — reload and try again.";
           }
         });
 
@@ -187,13 +187,16 @@ const LibraryScripts: FC = () => (
             }
             try {
               const res = await fetch("/library/sync/rotate", { method: "POST" });
-              const data = (await res.json()) as { password: string };
+              if (!res.ok) throw new Error(String(res.status));
+              const data = (await res.json()) as { password?: string };
+              if (!data.password) throw new Error("no password in response");
               pwEl.textContent = data.password;
               revealBtn.textContent = "Hide";
               if (copyPwBtn) copyPwBtn.classList.remove("hidden");
               revealed = true;
             } catch {
-              // ignore
+              // A failed rotate must not claim success — the old password's validity is unknown, and we never showed the new one.
+              pwEl.textContent = "Reset failed — reload and try again.";
             }
           });
         }
@@ -272,8 +275,7 @@ const LibraryDialog: FC<{
   description?: string;
   children?: unknown;
 }> = ({ id, title, description, children }) => (
-  // `m-auto` restores the centering a modal <dialog> gets from the UA
-  // stylesheet — Tailwind's preflight resets margin to 0 on every element.
+  // `m-auto` restores the centering a modal <dialog> gets from the UA stylesheet, which Tailwind's preflight resets.
   <dialog
     id={id}
     class="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-card p-6 text-card-foreground shadow-xl backdrop:bg-black/50"
@@ -296,12 +298,7 @@ const LibraryDialog: FC<{
   </dialog>
 );
 
-/**
- * What a failed upload said, for the codes `POST /library/upload` redirects
- * with. A plain `<form>` post can't read a JSON error body, so the browser path
- * round-trips a code and renders it here — it used to land on a page showing
- * raw JSON as text.
- */
+/** Messages for the error codes `POST /library/upload` redirects with — a plain `<form>` post can't read a JSON body, so the browser path round-trips a code instead. */
 const UPLOAD_ERRORS: Record<string, string> = {
   TooLarge: "That file is larger than the 100 MB limit.",
   QuotaExceeded: "Your library is full. Delete a book to free up space, then try again.",
@@ -328,16 +325,14 @@ export const LibraryPage: FC<{
   /** `?error=` code from a failed upload redirect, if any. */
   uploadError?: string | undefined;
 }> = ({ handle, bookCount, syncDocCount, uploadError }) => {
-  // Nothing uploaded and nothing synced: there's no library to manage yet, so
-  // explain the feature and put setup right on the page instead of behind
-  // buttons the user has no reason to press.
+  // Nothing to manage yet, so put setup inline instead of behind buttons the user has no reason to press.
   const isEmpty = bookCount === 0 && syncDocCount === 0;
 
   if (isEmpty) {
     return (
       <div class="mx-auto max-w-2xl space-y-8 px-4 py-8 lg:px-8">
         <div>
-          <h1 class="text-2xl font-bold text-foreground">Personal Library</h1>
+          <h1 class="text-2xl font-bold text-foreground">Ebooks &amp; Devices</h1>
           <p class="text-muted-foreground mt-2 text-sm">
             Your private ebook shelf. Upload your files here and BookHive serves them to your
             e-reader as an OPDS catalog -- browse and download them straight from KOReader, and your
@@ -379,7 +374,7 @@ export const LibraryPage: FC<{
   return (
     <div class="mx-auto max-w-6xl px-4 py-8 lg:px-8">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-bold text-foreground">Personal Library</h1>
+        <h1 class="text-2xl font-bold text-foreground">Ebooks &amp; Devices</h1>
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"

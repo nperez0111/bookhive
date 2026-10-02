@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import { sourceAvatarImageUrl } from "../../../utils/imageProxy";
+import { sourceAvatarImageUrl } from "../../../core/imageUrl";
 
 const sizeMap = {
   sm: { avatar: "h-8 w-8", showDisplayName: false },
@@ -31,9 +31,7 @@ export const UserBlock: FC<{
     <div class={`bg-muted ${avatarClass} rounded-full`} />
   );
 
-  // Callers fall back to the raw DID when a handle hasn't resolved yet
-  // (`user.handle ?? user.did`). A 32-char `did:plc:…` reads as noise and blows out narrow
-  // columns, so show it shortened while keeping the full value in the tooltip.
+  // A raw `did:plc:…` (callers fall back to it when a handle hasn't resolved) reads as noise and blows out narrow columns, so shorten it and keep the full value in the tooltip.
   const isDid = handle.startsWith("did:");
   const label = isDid ? `${handle.slice(0, 12)}…${handle.slice(-4)}` : `@${handle}`;
 

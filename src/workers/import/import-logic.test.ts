@@ -13,7 +13,7 @@ const mockGetUserRepoRecords = mock(async () => ({
   buzzes: new Map(),
 }));
 
-void mock.module("../../utils/getBook", () => ({
+void mock.module("../../services/getBook", () => ({
   getUserRepoRecords: mockGetUserRepoRecords,
   updateBookRecords: mock(async () => {}),
   updateBookRecord: mock(async () => ({ book: {}, userBook: {} })),
@@ -22,13 +22,9 @@ void mock.module("../../utils/getBook", () => ({
   getBookRecord: mock(async () => null),
 }));
 
-// `logic.ts` calls `searchBooks`, whose real implementation scrapes Goodreads
-// (`findBookDetails`). Stub it so matching relies only on the seeded local
-// `hive_book` rows and the test never touches the network. Without this the
-// file only passed because another test file's process-wide `mock.module` for
-// the same path leaked in — which broke the moment tests ran isolated (e.g.
-// `bun test --parallel`, or this file on its own).
-void mock.module("../../routes/lib", () => ({
+// Stub `searchBooks` (real impl scrapes Goodreads) so matching relies only on
+// seeded local `hive_book` rows and the test never touches the network.
+void mock.module("../../services/searchBooks", () => ({
   searchBooks: mock(async () => []),
 }));
 
@@ -176,12 +172,10 @@ describe("processGoodreadsImport", () => {
 
     const eventTypes = sseEvents.map((e) => e.event);
 
-    // Should have the core lifecycle events
     expect(eventTypes).toContain("import-start");
     expect(eventTypes).toContain("book-load");
     expect(eventTypes).toContain("import-complete");
 
-    // import-complete should have the right counts
     const complete = sseEvents.find((e) => e.event === "import-complete");
     expect(complete).toBeDefined();
     expect(complete.stage).toBe("complete");
@@ -189,14 +183,13 @@ describe("processGoodreadsImport", () => {
     expect(complete.stageProgress.current).toBe(1);
     expect(complete.stageProgress.total).toBe(2);
 
-    // Should have failed book details for Europe in Autumn
     expect(complete.failedBooks).toHaveLength(1);
     expect(complete.failedBooks[0].title).toBe("Europe in Autumn");
     expect(complete.failedBooks[0].author).toBe("Dave Hutchinson");
   });
 
   it("reports all books as failed when none match in the database", async () => {
-    const { db } = await createTestDb(); // empty DB — no hive_book rows
+    const { db } = await createTestDb(); // no hive_book rows seeded
     const ctx = createMockCtx(db);
     const agent = createMockAgent();
     const sseEvents: any[] = [];
@@ -320,4 +313,53 @@ describe("processHardcoverImport", () => {
       },
     ]);
   });
+});
+
+describe("CSV header validation", () => {
+  for (const [name, process, validCsv] of [
+    ["Goodreads", processGoodreadsImport, GOODREADS_CSV],
+    ["StoryGraph", processStorygraphImport, STORYGRAPH_CSV],
+    ["Hardcover", processHardcoverImport, HARDCOVER_CSV],
+  ] as const) {
+    it(`${name}: rejects unrecognized headers without reporting success or touching PDS`, async () => {
+      const { db } = await createTestDb();
+      try {
+        const agent = createMockAgent();
+        const events: any[] = [];
+        const callsBefore = mockGetUserRepoRecords.mock.calls.length;
+        await process({
+          csvData: new TextEncoder().encode("unrecognized_column\nnot-a-book\n").buffer,
+          ctx: createMockCtx(db),
+          agent,
+          onSSE: (data) => {
+            events.push(JSON.parse(data));
+          },
+        });
+        expect(events.map((event) => event.event)).toEqual(["import-start", "import-error"]);
+        expect(events[1].error).toContain("missing");
+        expect(mockGetUserRepoRecords.mock.calls.length).toBe(callsBefore);
+        expect(agent.post).not.toHaveBeenCalled();
+      } finally {
+        await db.destroy();
+      }
+    });
+    it(`${name}: accepts a valid header-only empty export`, async () => {
+      const { db } = await createTestDb();
+      try {
+        const events: any[] = [];
+        await process({
+          csvData: new TextEncoder().encode(validCsv.split("\n")[0] + "\n").buffer,
+          ctx: createMockCtx(db),
+          agent: createMockAgent(),
+          onSSE: (data) => {
+            events.push(JSON.parse(data));
+          },
+        });
+        expect(events.some((event) => event.event === "import-error")).toBe(false);
+        expect(events.some((event) => event.event === "import-complete")).toBe(true);
+      } finally {
+        await db.destroy();
+      }
+    });
+  }
 });

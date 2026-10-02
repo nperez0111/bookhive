@@ -3,22 +3,14 @@ import { type HtmlEscapedString } from "hono/utils/html";
 
 /**
  * AT Tags — declare which ATProto records/identities a web page corresponds to.
+ * Implements https://tangled.org/chrisshank.com/at-tags/ as
+ * `<meta name="at:{prop}" content="{at-uri}">` tags. `<meta>`, not `<link>`,
+ * because AT URIs aren't valid URIs and break `<link>`'s HTML validation.
  *
- * Implements the community proposal at https://tangled.org/chrisshank.com/at-tags/
- * Renders `<meta name="at:{prop}" content="{at-uri}">` tags. `<meta>` (not
- * `<link>`) is used because AT URIs are not technically valid URIs and break
- * HTML validation inside `<link>`.
- *
- * Built with hono's `html` template rather than JSX `<meta>` elements because
- * hono/jsx deduplicates head `<meta>` tags by `name`, which would collapse the
- * proposal's array semantics (e.g. multiple `at:canonical`).
- *
- * All properties follow array semantics: multiple values emit multiple tags.
- * - `canonical` — the record(s) this page *is* (deleting them removes the page)
- * - `alternate` — auxiliary record(s) referenced (page survives their deletion)
- * - `author`    — DID(s) that authored the page (content is `at://did:...`)
- * - `me`        — DID(s) that own the overall site/section (content is `at://did:...`)
- * - `custom`    — namespaced props keyed `"ns:prop"` → `name="at:ns:prop"`
+ * Built with hono's `html` template rather than JSX `<meta>` because hono/jsx
+ * dedupes head `<meta>` tags by `name`, which would collapse the array
+ * semantics (multiple `at:canonical`). All properties follow array semantics:
+ * multiple values emit multiple tags.
  */
 
 type MaybeList = string | null | undefined | (string | null | undefined)[];
@@ -83,7 +75,6 @@ export const AtTags = ({
     }
   }
 
-  // hono renders an array of `html` fragments without re-escaping each one, and
-  // the interpolations here are auto-escaped (see layout.tsx's link/meta maps).
+  // hono renders an array of `html` fragments without re-escaping each one; the interpolations here are auto-escaped (see layout.tsx's link/meta maps).
   return html`${tags.map((t) => html`<meta name="${t.name}" content="${t.content}" />`)}`;
 };

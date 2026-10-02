@@ -55,7 +55,7 @@ export const SettingsPage: FC<{
 
       <div class="card">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-foreground">E-Reader &amp; Personal Library</h2>
+          <h2 class="text-lg font-semibold text-foreground">Ebooks &amp; Devices</h2>
           <p class="text-muted-foreground mt-1 text-sm">
             Manage your e-reader connection, upload ebooks, and sync reading progress.
           </p>
@@ -63,7 +63,7 @@ export const SettingsPage: FC<{
             href="/library"
             class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            Go to your Personal Library
+            Manage ebooks and devices
             <svg
               class="size-4"
               fill="none"
@@ -77,6 +77,19 @@ export const SettingsPage: FC<{
                 d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
               />
             </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="card" id="book-sync">
+        <div class="card-body">
+          <h2 class="text-lg font-semibold text-foreground">Book sync</h2>
+          <p class="text-muted-foreground mt-1 text-sm">
+            Missing changes made in another app? Refresh your books from your account to bring them
+            up to date.
+          </p>
+          <a href="/refresh-books" class="btn btn-outline mt-4 min-h-10">
+            Refresh books
           </a>
         </div>
       </div>

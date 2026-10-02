@@ -22,7 +22,7 @@ describe("isSessionTerminatingError", () => {
   });
 
   it("treats network failures as transient", () => {
-    // These are what silently logged users out during the 2026-08-02 incident.
+    // These are what silently logged users out before this distinction existed.
     expect(isSessionTerminatingError(new Error("The operation timed out."))).toBe(false);
     expect(
       isSessionTerminatingError(new Error("Unable to connect. Is the computer able to access")),
@@ -39,20 +39,22 @@ describe("guardedRestore", () => {
   });
 
   it("times out a hung restore instead of hanging the request", async () => {
-    // A short override stands in for RESTORE_TIMEOUT_MS: the invariant under
-    // test is that a blackholing host is bounded by the timeout, not that the
-    // timeout is any particular length.
+    // A short override stands in for RESTORE_TIMEOUT_MS — the invariant is that a blackholing host is bounded, not the exact timeout length.
     const timeoutMs = 200;
     const start = Date.now();
-    await expect(guardedRestore("dead.example", blackhole, undefined, timeoutMs)).rejects.toThrow(
-      "timed out",
+    // Awaited directly, not via `expect().rejects`: the elapsed-time assertion
+    // below depends on this having blocked, and `expect().rejects` returns
+    // `undefined` so nothing in the expression expresses that dependency.
+    const error = await guardedRestore("dead.example", blackhole, undefined, timeoutMs).catch(
+      (e: unknown) => e,
     );
+    expect((error as Error).message).toContain("timed out");
     expect(Date.now() - start).toBeLessThan(timeoutMs + 2_000);
   });
 
   it("stops dispatching to a host that keeps failing", async () => {
     for (let i = 0; i < 3; i++) {
-      await expect(
+      expect(
         guardedRestore("dead.example", async () => {
           throw new Error("Unable to connect.");
         }),
@@ -61,7 +63,7 @@ describe("guardedRestore", () => {
 
     // Fourth call must not reach the host at all.
     let dispatched = false;
-    await expect(
+    expect(
       guardedRestore("dead.example", async () => {
         dispatched = true;
         return "unreachable";
@@ -72,22 +74,21 @@ describe("guardedRestore", () => {
 
   it("isolates hosts from each other", async () => {
     for (let i = 0; i < 3; i++) {
-      await expect(
+      expect(
         guardedRestore("dead.example", async () => {
           throw new Error("Unable to connect.");
         }),
       ).rejects.toThrow();
     }
 
-    // A different PDS must be unaffected — one dead host cannot lock out the
-    // rest of the network.
-    await expect(guardedRestore("healthy.example", async () => "ok")).resolves.toBe("ok");
+    // A different PDS must be unaffected — one dead host cannot lock out the rest of the network.
+    expect(guardedRestore("healthy.example", async () => "ok")).resolves.toBe("ok");
   });
 
   it("does not open the breaker on a revoked token", async () => {
     // The PDS answered us correctly; that is evidence of health, not sickness.
     for (let i = 0; i < 5; i++) {
-      await expect(
+      expect(
         guardedRestore("healthy.example", async () => {
           throw new Error("invalid_grant");
         }),
@@ -95,7 +96,7 @@ describe("guardedRestore", () => {
     }
 
     let dispatched = false;
-    await expect(
+    expect(
       guardedRestore("healthy.example", async () => {
         dispatched = true;
         return "ok";
@@ -105,14 +106,11 @@ describe("guardedRestore", () => {
   });
 
   it("stays bounded even when every tracked host is open", async () => {
-    // The scenario this module exists for: a mass PDS outage. Eviction used to
-    // consider only *closed* breakers, so with nothing closed there was no
-    // candidate, nothing was dropped, and the map grew one entry per host
-    // forever — an unbounded leak inside the leak guard.
+    // Mass PDS outage: eviction used to only consider closed breakers, so when every breaker was open the map grew unbounded — a leak inside the leak guard.
     for (let i = 0; i < MAX_BREAKERS + 50; i++) {
       // Trip each host so it lands open, never closed.
       for (let n = 0; n < 3; n++) {
-        await expect(
+        expect(
           guardedRestore(`dead-${i}.example`, async () => {
             throw new Error("Unable to connect.");
           }),

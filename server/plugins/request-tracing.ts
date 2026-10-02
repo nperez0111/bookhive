@@ -25,8 +25,7 @@ export default definePlugin((nitroApp) => {
   const spans = new WeakMap<object, { span: Span; start: number }>();
 
   nitroApp.hooks.hook("request", (event) => {
-    // Nitro's HTTPEvent types are incomplete; h3 v2 exposes the Fetch Request
-    // as `req` at runtime but the type declarations omit it.
+    // h3 v2 exposes the Fetch Request as `req` at runtime, but Nitro's HTTPEvent types omit it.
     const req = (event as unknown as { req: Request }).req;
     const url = new URL(req.url);
 
@@ -58,7 +57,6 @@ export default definePlugin((nitroApp) => {
       code: response.status >= 500 ? SpanStatusCode.ERROR : SpanStatusCode.OK,
     });
 
-    // Append root timing to Server-Timing header
     const dur = performance.now() - start;
     const existing = response.headers.get("Server-Timing") ?? "";
     const rootTiming = `root;dur=${dur.toFixed(1)}`;

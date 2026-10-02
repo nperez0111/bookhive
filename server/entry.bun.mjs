@@ -1,21 +1,17 @@
 /**
  * Repo-local replacement for nitro's bun preset runtime entry
- * (node_modules/nitro/dist/presets/bun/runtime/bun.mjs, nitro 3.0.260610-beta)
- * wired in via the `entry` option in vite.config.ts (production builds only).
- * On nitro upgrades, diff against the upstream file.
+ * (node_modules/nitro/dist/presets/bun/runtime/bun.mjs, nitro 3.0.260610-beta),
+ * wired in via `entry` in vite.config.ts (production builds only). Diff
+ * against upstream on nitro upgrades.
  *
- * The one functional change: `reusePort: true`, so N worker processes spawned
- * by server/cluster.ts can all bind port 8080 and the kernel load-balances
- * accepts across them (SO_REUSEPORT — Linux only; harmless single-process and
- * on macOS).
+ * The one functional change: `reusePort: true`, so the N worker processes
+ * spawned by server/cluster.ts can all bind port 8080 and the kernel
+ * load-balances across them (SO_REUSEPORT — Linux only, harmless elsewhere).
  *
- * Dropped vs upstream (all unused by this app):
- * - TLS (NITRO_SSL_CERT/KEY) — external Caddy/Cloudflare terminate TLS.
- * - The websocket branch — no crossws/websocket usage.
- * - startScheduleRunner — no nitro tasks.
- * - trapUnhandledErrors — imported from `#nitro/runtime/*`, which is a
- *   package-scoped subpath import that does not resolve from repo files;
- *   inlined below via the public nitroApp.captureError instead.
+ * Dropped vs upstream (all unused here): TLS (Caddy/Cloudflare terminate it),
+ * the websocket branch, startScheduleRunner, and trapUnhandledErrors (its
+ * `#nitro/runtime/*` import doesn't resolve from repo files — inlined below
+ * via the public nitroApp.captureError instead).
  */
 import "#nitro/virtual/polyfills";
 import { serve } from "srvx/bun";
@@ -37,9 +33,7 @@ serve({
 });
 
 // Inlined from nitro's trapUnhandledErrors (#nitro/runtime/error/hooks).
-// Emitted as a single JSON line rather than console.error(error): the raw form
-// printed multi-line stack traces and bare DOMException dumps into a log stream
-// the pipeline parses as JSON (2,428 unparseable lines in 24h on 2026-08-01).
+// Emitted as one JSON line — a raw console.error(error) prints multi-line stack traces that break the JSON log pipeline.
 function captureError(error, type) {
   console.error(
     JSON.stringify({

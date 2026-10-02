@@ -1,7 +1,7 @@
 import { type FC } from "hono/jsx";
 import type { HiveBook } from "../types";
 import { BookCard, normalizeBookData } from "./components/BookCard";
-import { buildUrl } from "./utils/buildUrl";
+import { Pagination } from "./components/Pagination";
 import { LanguageSelect } from "./components/LanguageSelect";
 import { Script } from "./utils/script";
 
@@ -15,26 +15,6 @@ interface SearchResultsProps {
   lang?: string;
   languages: string[];
 }
-
-const ChevronLeft = () => (
-  <svg class="size-5" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      fill-rule="evenodd"
-      d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-      clip-rule="evenodd"
-    />
-  </svg>
-);
-
-const ChevronRight = () => (
-  <svg class="size-5" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      fill-rule="evenodd"
-      d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-      clip-rule="evenodd"
-    />
-  </svg>
-);
 
 export const SearchResults: FC<SearchResultsProps> = ({
   query,
@@ -147,68 +127,12 @@ export const SearchResults: FC<SearchResultsProps> = ({
             </section>
           </div>
 
-          {totalPages > 1 && (
-            <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
-              {currentPage > 1 ? (
-                <a
-                  href={buildUrl("/search", { q: query, page: currentPage - 1, lang })}
-                  class="btn btn-sm btn-ghost min-h-10 min-w-10"
-                >
-                  <span class="sr-only">Previous</span>
-                  <ChevronLeft />
-                </a>
-              ) : (
-                <span
-                  class="btn btn-sm btn-ghost min-h-10 min-w-10 opacity-50"
-                  aria-disabled="true"
-                >
-                  <span class="sr-only">Previous</span>
-                  <ChevronLeft />
-                </span>
-              )}
-
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum: number;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                const isCurrentPage = pageNum === currentPage;
-                return (
-                  <a
-                    href={buildUrl("/search", { q: query, page: pageNum, lang })}
-                    class={`btn btn-sm min-h-10 min-w-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
-                    aria-current={isCurrentPage ? "page" : undefined}
-                  >
-                    {pageNum}
-                  </a>
-                );
-              })}
-
-              {currentPage < totalPages ? (
-                <a
-                  href={buildUrl("/search", { q: query, page: currentPage + 1, lang })}
-                  class="btn btn-sm btn-ghost min-h-10 min-w-10"
-                >
-                  <span class="sr-only">Next</span>
-                  <ChevronRight />
-                </a>
-              ) : (
-                <span
-                  class="btn btn-sm btn-ghost min-h-10 min-w-10 opacity-50"
-                  aria-disabled="true"
-                >
-                  <span class="sr-only">Next</span>
-                  <ChevronRight />
-                </span>
-              )}
-            </nav>
-          )}
+          <Pagination
+            basePath="/search"
+            currentPage={currentPage}
+            totalPages={totalPages}
+            params={{ q: query, lang }}
+          />
         </>
       )}
     </div>

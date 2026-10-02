@@ -1,40 +1,23 @@
-/**
- * Regression for the 2026-08-01/02 outage.
- *
- * One user's PDS (`caramelo.social.br`) began blackholing packets. Because
- * `oauthClient.restore()` had no timeout, the refresh hung while holding the
- * cross-process lock — whose heartbeat renewed it, so it was never evicted as
- * stale. Every other request for that DID, across all three worker processes,
- * then burned the lock's full 37.5s poll budget, each poll issuing three
- * synchronous SQLite statements. Workers stopped servicing their event loops;
- * Caddy recorded 166,450 `dial tcp: i/o timeout` and 171,145 502s.
- *
- * These tests model that shape against the real lock and the real guard.
- */
+// Regression for an outage where an unreachable PDS wedged the cross-process
+// lock — its heartbeat kept renewing it, so every request for that DID piled
+// up behind it. These tests model that shape against the real lock and guard.
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { sql } from "kysely";
+
 import { createSharedKvDb, type KvDb } from "../sqlite-kv";
 import { createCrossProcessLock } from "./refresh-lock";
 import { guardedRestore, resetRestoreGuards } from "./restore-guard";
 
-/**
- * Short stand-ins for the real `RESTORE_TIMEOUT_MS` (5 s) and lock wait budget
- * (3 s). The invariants under test are architectural — waiters are bounded, the
- * breaker trips, healthy hosts are untouched — and hold at any scale, so the
- * tests run at a scale that doesn't sit through the real waits. The lock budget
- * is the tighter of the two, so it is what actually frees each waiter; keeping
- * it below the restore timeout matches production, where the same is true.
- */
-const RESTORE_TIMEOUT = 400;
-const LOCK_MAX_WAIT = 200;
+// Stand-ins for the real RESTORE_TIMEOUT_MS and lock wait budget, scaled down
+// so the tests don't sit through the real waits; the lock budget stays the
+// tighter of the two, matching production.
+const RESTORE_TIMEOUT = 120;
+const LOCK_MAX_WAIT = 60;
 
 let db: KvDb;
 
-/**
- * Releases for every in-flight fake stall. A genuinely never-settling promise
- * would outlive the test and then hit a destroyed Kysely driver, so the hang is
- * abortable — the code under test can't tell the difference, since it only ever
- * sees "still pending" for as long as the assertions run.
- */
+// Lets each fake stall be aborted at teardown — a genuinely never-settling
+// promise would outlive the test and hit a destroyed Kysely driver.
 let releases: Array<() => void> = [];
 
 beforeEach(() => {
@@ -46,7 +29,14 @@ beforeEach(() => {
 afterEach(async () => {
   for (const release of releases.splice(0)) release();
   // Let each lock's `finally` land its DELETE before the driver goes away.
-  await Bun.sleep(100);
+  // Polled rather than slept: the releases above resolve on the next tick, so a
+  // fixed sleep is either flaky or (as at 100ms x 3 tests) a third of this
+  // file's runtime spent waiting for something that already happened.
+  for (let i = 0; i < 40; i++) {
+    const rows = await sql`SELECT COUNT(*) AS n FROM auth_refresh_lock`.execute(db);
+    if (Number((rows.rows[0] as { n: number }).n) === 0) break;
+    await Bun.sleep(5);
+  }
   await db.destroy();
 });
 
@@ -60,8 +50,7 @@ describe("unreachable PDS", () => {
   it("does not let a wedged refresh pin later requests for the full lock budget", async () => {
     const lock = createCrossProcessLock(db, { maxWaitMs: LOCK_MAX_WAIT });
 
-    // Request 1 acquires the lock and hangs on the dead host. Nothing awaits
-    // it — this is the wedged holder.
+    // Request 1 acquires the lock and hangs on the dead host; nothing awaits it — the wedged holder.
     void guardedRestore(
       "caramelo.social.br",
       () => lock("oauth-session-did:plc:victim", blackhole),
@@ -85,8 +74,7 @@ describe("unreachable PDS", () => {
     const elapsed = Date.now() - start;
 
     expect(results.every((r) => r.status === "rejected")).toBe(true);
-    // Old behaviour: every one of these sat for ~37.5s. The whole batch must
-    // now clear inside the (bounded) wait budget.
+    // The whole batch must clear inside the bounded wait budget, not each request paying it separately.
     expect(elapsed).toBeLessThan(LOCK_MAX_WAIT + RESTORE_TIMEOUT);
   }, 30_000);
 
@@ -110,8 +98,7 @@ describe("unreachable PDS", () => {
     await Promise.all([attempt(), attempt(), attempt()]);
     const before = dispatches;
 
-    // Subsequent traffic must cost nothing at all — no lock, no SQLite, no
-    // socket. This is what keeps one dead PDS off the event loop.
+    // Subsequent traffic must cost nothing at all — no lock, no SQLite, no socket — to keep one dead PDS off the event loop.
     const start = Date.now();
     const names = await Promise.all([attempt(), attempt(), attempt(), attempt()]);
     const elapsed = Date.now() - start;
@@ -124,14 +111,20 @@ describe("unreachable PDS", () => {
   it("leaves users on healthy PDSes completely unaffected", async () => {
     const lock = createCrossProcessLock(db, { maxWaitMs: LOCK_MAX_WAIT });
 
-    for (let i = 0; i < 3; i++) {
-      await guardedRestore(
-        "caramelo.social.br",
-        () => lock("oauth-session-did:plc:victim", blackhole),
-        undefined,
-        RESTORE_TIMEOUT,
-      ).catch(() => {});
-    }
+    // Trip the breaker on the dead host. Concurrently, not in sequence: the
+    // three attempts are only here to reach the failure threshold, and awaiting
+    // them one at a time paid the full restore timeout three times over for no
+    // added coverage. Test 2 above already trips it the same way.
+    await Promise.all(
+      Array.from({ length: 3 }, () =>
+        guardedRestore(
+          "caramelo.social.br",
+          () => lock("oauth-session-did:plc:victim", blackhole),
+          undefined,
+          RESTORE_TIMEOUT,
+        ).catch(() => {}),
+      ),
+    );
 
     const start = Date.now();
     const result = await guardedRestore(
@@ -141,6 +134,9 @@ describe("unreachable PDS", () => {
       RESTORE_TIMEOUT,
     );
     expect(result).toBe("session");
-    expect(Date.now() - start).toBeLessThan(1_000);
+    // Tied to the timeout rather than a loose 1s: a healthy PDS must not pay the
+    // dead one's restore budget at all, which is a stronger claim than "under a
+    // second" and survives the constants being scaled.
+    expect(Date.now() - start).toBeLessThan(RESTORE_TIMEOUT);
   }, 30_000);
 });

@@ -6,6 +6,7 @@
  *   main → worker: { type: "init", options: Options }
  *   main → worker: { type: "log", data: string }  (newline-delimited JSON)
  */
+import { errorMessage } from "../lib/errors";
 
 interface Options {
   url: string;
@@ -49,11 +50,9 @@ self.onmessage = (event: MessageEvent) => {
 
 /**
  * Bun reports a refused connection as `code: "ConnectionRefused"`; Node uses
- * `ECONNREFUSED`. Matching only the Node spelling meant this never self-
- * disabled — every flush fell through to the generic branch instead, and
- * `console.error(error)` makes Bun print the error *with source context*,
- * which for a bundled worker is the entire minified file. That is a
- * multi-hundred-line non-JSON blob in stdout on every deploy.
+ * `ECONNREFUSED`. Matching only the Node spelling meant this never
+ * self-disabled, and letting the error fall through to console.error made Bun
+ * dump the entire bundled worker source as an unparseable blob in stdout.
  */
 function isConnectionRefused(error: any): boolean {
   const code = error?.cause?.code ?? error?.code;
@@ -64,11 +63,7 @@ function isConnectionRefused(error: any): boolean {
   );
 }
 
-/**
- * One structured line, matching pino's shape. Everything this worker writes
- * lands in the same stdout stream as the app's logs, and ~4% of that stream
- * being unparseable is what forced `jq -R 'fromjson?'` during the incident.
- */
+/** One structured line, matching pino's shape — everything this worker writes lands in the same stdout stream as the app's logs, so it must stay valid JSON. */
 function logLine(level: number, msg: string, fields: Record<string, unknown> = {}): void {
   console.log(JSON.stringify({ level, time: Date.now(), name: "open-observe", msg, ...fields }));
 }
@@ -120,7 +115,7 @@ async function flush() {
       }
     } else {
       logLine(50, "openobserve_send_failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   } finally {

@@ -1,4 +1,6 @@
 import { BOOK_STATUS } from "../constants";
+import { displayAuthors } from "../core/authors";
+import { MAX_DISPLAY_RATING, starsToDisplayRating } from "../core/rating";
 
 export type CrossPostParams = {
   title: string;
@@ -41,9 +43,12 @@ const STATUS_PHRASES: Record<string, string> = {
 
 export function buildCrossPostText(params: CrossPostParams): { text: string } {
   const { title, authors, status, stars, review, bookUrl, genres } = params;
-  const authorList = authors.split("\t").join(", ");
+  const authorList = displayAuthors(authors);
   const phrase = (status && STATUS_PHRASES[status]) ?? "Added to BookHive";
-  const starsStr = stars ? " " + "⭐".repeat(Math.min(5, Math.round(stars / 2))) : "";
+  const displayRating = starsToDisplayRating(stars ?? null);
+  const starsStr = displayRating
+    ? " " + "⭐".repeat(Math.min(MAX_DISPLAY_RATING, Math.round(displayRating)))
+    : "";
   const reviewPart = review
     ? `\n\n"${review.slice(0, 200)}${review.length > 200 ? "..." : ""}"`
     : "";

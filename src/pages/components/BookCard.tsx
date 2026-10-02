@@ -3,7 +3,9 @@ import type { Book, HiveBook } from "../../types";
 import { BOOK_STATUS_MAP } from "../../constants";
 import { FallbackCover } from "./fallbackCover";
 import { StarDisplay } from "./cards/StarDisplay";
-import { coverImageUrl, sourceCoverImageUrl } from "../../utils/imageProxy";
+import { coverImageUrl, sourceCoverImageUrl } from "../../core/imageUrl";
+import { displayAuthors } from "../../core/authors";
+import { hiveRatingToDisplayRating, starsToDisplayRating } from "../../core/rating";
 
 // --- Shared types ---
 
@@ -23,7 +25,10 @@ export function normalizeBookData(book: Book | HiveBook): BookCardData {
   const isUserBook = "hiveId" in book;
   const hiveId = isUserBook ? book.hiveId : book.id;
   const stars = isUserBook ? (book as Book).stars : null;
-  const rating = stars != null ? stars / 2 : "rating" in book ? (book.rating || 0) / 1000 : 0;
+  // `rating` on the card is always a *display* rating (0-5) regardless of which stored scale it came from — the only place either conversion happens for a card, so consumers pass it to `StarDisplay` unconverted.
+  const rating =
+    starsToDisplayRating(stars) ??
+    ("rating" in book ? (hiveRatingToDisplayRating(book.rating) ?? 0) : 0);
 
   return {
     hiveId,
@@ -38,9 +43,8 @@ export function normalizeBookData(book: Book | HiveBook): BookCardData {
   };
 }
 
-export function authorsDisplay(authors: string): string {
-  return authors?.replace(/\t/g, ", ") ?? "";
-}
+/** Re-exported under its old name for the card components that already import it. */
+export const authorsDisplay = displayAuthors;
 
 // --- Shared sub-components ---
 
@@ -143,11 +147,7 @@ type DenseProps = {
   badge?: Child;
   overlay?: Child;
   tooltipPosition?: "top" | "bottom";
-  /**
-   * Show the author under the title. Worth turning on wherever a grid can contain several
-   * editions or translations of the same work (search, genre listings) — without it those rows
-   * are visually identical and there is no way to tell them apart without hovering.
-   */
+  /** Show the author under the title — needed wherever a grid can contain several editions or translations of the same work, or those rows are indistinguishable without hovering. */
   showAuthor?: boolean;
 };
 
@@ -163,25 +163,22 @@ const DenseCard: FC<DenseProps> = ({
   const Tag = href ? "a" : "div";
 
   return (
-    // `hover:z-30`: the tooltip is z-20 inside this wrapper, but sibling grid items are
-    // unlayered, so DOM order would paint it *under* the covers of later cards in the row.
-    // Raising the whole card while hovered is what PersonalBookCard does with has-[:checked]:z-20.
+    // `hover:z-30` raises the whole card above unlayered sibling grid items while hovered, so the z-20 tooltip isn't painted under later cards' covers.
     <div class={`relative hover:z-30 ${className ?? ""}`}>
       <div class="group relative">
         <BookTooltip book={book} position={tooltipPosition} />
 
-        <Tag
-          {...(href ? { href } : {})}
-          class="book-cover-frame relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-md"
-        >
-          <CoverImage book={book} class="h-full w-full object-cover" />
-          {badge}
+        <div class="book-cover-frame relative block aspect-[2/3] w-full overflow-hidden rounded-lg shadow-sm transition-[transform,box-shadow] duration-200 group-hover:-translate-y-1 group-hover:shadow-md">
+          <Tag {...(href ? { href } : {})} class="block h-full w-full">
+            <CoverImage book={book} class="h-full w-full object-cover" />
+            {badge}
+          </Tag>
           {overlay && (
-            <div class="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <div class="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [&>*]:pointer-events-auto">
               {overlay}
             </div>
           )}
-        </Tag>
+        </div>
       </div>
 
       {href ? (

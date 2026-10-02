@@ -5,11 +5,13 @@
 import { Hono } from "hono";
 import { isDid } from "@atcute/lexicons/syntax";
 
-import type { AppEnv } from "../context";
+import type { AppContext, AppEnv } from "../context";
 import { BookFields } from "../db";
 import { BOOK_STATUS } from "../constants";
 import type { HiveId } from "../types";
-import { escapeXml } from "../utils/xml";
+import { escapeXml } from "../lib/xml";
+import { displayAuthors, primaryAuthor } from "../core/authors";
+import { MAX_DISPLAY_RATING, starsToDisplayRating } from "../core/rating";
 
 const STATUS_SHORTHAND: Record<string, string> = {
   finished: BOOK_STATUS.FINISHED,
@@ -60,239 +62,212 @@ type ChannelMeta = {
   description: string;
 };
 
-/**
- * Ordered by, and dated with, `indexedAt` — the same activity time the site's
- * feed uses (see migration 027). Both must move together: emitting `createdAt`
- * as `pubDate` while ordering by `indexedAt` would reproduce the exact
- * sorted-by-one-column-labelled-with-another bug this replaced, just in XML.
- *
- * Safe because `<guid isPermaLink="false">` is the AT URI and does not change,
- * so readers dedupe on it and nothing re-notifies as unread; only the sort
- * position moves, which is what you want when someone finally finishes a book.
- * Migration 027's clamp must land first, though — without it every row still
- * carries a library re-sync stamp and subscribers would see one wholesale
- * reorder on deploy.
- */
-function buildRssXml(items: FeedItem[], channel: ChannelMeta): string {
-  const lastBuildDate =
-    items.length > 0 && items[0]
-      ? toRfc2822(items[0].indexedAt)
-      : toRfc2822(new Date().toISOString());
-
-  const itemsXml = items
-    .map((item) => {
-      const actionText = getActionText(item.status);
-      const authors = item.authors?.replace(/\t/g, ", ") ?? "";
-      const starDisplay = item.stars != null ? item.stars / 2 : null;
-
-      let descHtml = `<p><strong>${escapeXml(authors)}</strong></p>`;
-      if (starDisplay != null) {
-        descHtml += `<p>Rating: ${starDisplay} / 5</p>`;
-      }
-      if (item.review) {
-        descHtml += `<p><em>${escapeXml(item.review)}</em></p>`;
-      }
-
-      return `    <item>
-      <title>${escapeXml(`${actionText} "${item.title}"`)}</title>
-      <link>https://bookhive.buzz/books/${escapeXml(item.hiveId)}</link>
-      <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
-      <pubDate>${toRfc2822(item.indexedAt)}</pubDate>
-      <description><![CDATA[${descHtml}]]></description>
-    </item>`;
-    })
-    .join("\n");
-
+// Ordered by, and dated with, `indexedAt` — the same activity time the site's feed uses;
+// emitting `createdAt` as `pubDate` while ordering by `indexedAt` would reproduce the
+// sorted-by-one-column-labelled-with-another bug, just in XML. Safe to re-date because
+// `<guid isPermaLink="false">` is the AT URI and doesn't change, so readers dedupe on it.
+/** The channel envelope, shared so each feed differs only in title/description. */
+function rssFeed(channel: ChannelMeta, items: string[], latestIso: string | undefined): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>${escapeXml(channel.title)}</title>
     <link>${escapeXml(channel.link)}</link>
     <description>${escapeXml(channel.description)}</description>
-    <lastBuildDate>${lastBuildDate}</lastBuildDate>
-${itemsXml}
+    <lastBuildDate>${toRfc2822(latestIso ?? new Date().toISOString())}</lastBuildDate>
+${items.join("\n")}
   </channel>
 </rss>`;
 }
+
+/** One `<item>`. `guid` is the AT URI, `pubDate` is `indexedAt` — see the note above. */
+function rssItem(item: FeedItem, opts: { title: string; link: string; descHtml: string }): string {
+  return `    <item>
+      <title>${escapeXml(opts.title)}</title>
+      <link>${escapeXml(opts.link)}</link>
+      <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
+      <pubDate>${toRfc2822(item.indexedAt)}</pubDate>
+      <description><![CDATA[${opts.descHtml}]]></description>
+    </item>`;
+}
+
+/** Rating and review lines, identical in all three feeds. */
+function ratingAndReview(item: FeedItem): string {
+  let html = "";
+  const starDisplay = starsToDisplayRating(item.stars);
+  if (starDisplay != null) {
+    html += `<p>Rating: ${starDisplay} / ${MAX_DISPLAY_RATING}</p>`;
+  }
+  if (item.review) {
+    html += `<p><em>${escapeXml(item.review)}</em></p>`;
+  }
+  return html;
+}
+
+/** The `?status=` and `?limit=` preamble, written out three times. */
+function feedParams(c: { req: { query: (k: string) => string | undefined } }) {
+  return {
+    statusFilter: parseStatusFilter(c.req.query("status")),
+    limit: Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10))),
+  };
+}
+
+/**
+ * The rows behind every RSS feed: `user_book` joined to `hive_book`, newest
+ * activity first, with `uri` as the keyset tiebreaker — mirrors `buildFeedQuery`
+ * in `src/data/activityFeed.ts`, differing only in `where`.
+ */
+async function activityRows(
+  db: AppContext["db"],
+  scope:
+    | { kind: "user"; did: string }
+    | { kind: "book"; hiveId: HiveId }
+    | { kind: "friends"; did: string },
+  { limit, statusFilter }: { limit: number; statusFilter: string[] | null },
+): Promise<FeedItem[]> {
+  let query = db
+    .selectFrom("user_book")
+    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+    .select(BookFields)
+    .orderBy("user_book.indexedAt", "desc")
+    .orderBy("user_book.uri", "desc")
+    .limit(limit);
+
+  if (scope.kind === "user") {
+    query = query.where("user_book.userDid", "=", scope.did) as typeof query;
+  } else if (scope.kind === "book") {
+    query = query.where("user_book.hiveId", "=", scope.hiveId) as typeof query;
+  } else {
+    query = query.where(
+      "user_book.userDid",
+      "in",
+      db
+        .selectFrom("user_follows")
+        .where("user_follows.userDid", "=", scope.did)
+        .where("user_follows.isActive", "=", 1)
+        .select("user_follows.followsDid"),
+    ) as typeof query;
+  }
+
+  if (statusFilter) {
+    query = query.where("user_book.status", "in", statusFilter) as typeof query;
+  }
+
+  return await query.execute();
+}
+
+const RSS_HEADERS = {
+  "Content-Type": "application/rss+xml; charset=utf-8",
+  "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
+} as const;
 
 const app = new Hono<AppEnv>()
   .get("/user/:handle", async (c) => {
     const ctx = c.get("ctx");
     const handleParam = c.req.param("handle");
-    const statusFilter = parseStatusFilter(c.req.query("status"));
-    const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
 
     const did = isDid(handleParam)
       ? handleParam
       : await ctx.baseIdResolver.handle.resolve(handleParam);
+    if (!did) return c.text("User not found", 404);
 
-    if (!did) {
-      return c.text("User not found", 404);
-    }
-
-    let query = ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.userDid", "=", did)
-      .orderBy("user_book.indexedAt", "desc")
-      .orderBy("user_book.uri", "desc")
-      .limit(limit);
-
-    if (statusFilter) {
-      query = query.where("user_book.status", "in", statusFilter) as typeof query;
-    }
-
-    const rows = await query.execute();
-
+    const rows = await activityRows(ctx.db, { kind: "user", did }, feedParams(c));
     const handle = isDid(handleParam)
       ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)
       : handleParam;
 
-    const xml = buildRssXml(rows, {
-      title: `BookHive | @${handle}'s activity`,
-      link: `https://bookhive.buzz/profile/${handle}`,
-      description: `Book activity for @${handle} on BookHive`,
-    });
+    const xml = rssFeed(
+      {
+        title: `BookHive | @${handle}'s activity`,
+        link: `https://bookhive.buzz/profile/${handle}`,
+        description: `Book activity for @${handle} on BookHive`,
+      },
+      rows.map((item) =>
+        rssItem(item, {
+          title: `${getActionText(item.status)} "${item.title}"`,
+          link: `https://bookhive.buzz/books/${item.hiveId}`,
+          descHtml:
+            `<p><strong>${escapeXml(displayAuthors(item.authors))}</strong></p>` +
+            ratingAndReview(item),
+        }),
+      ),
+      rows[0]?.indexedAt,
+    );
 
-    return c.text(xml, 200, {
-      "Content-Type": "application/rss+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
-    });
+    return c.text(xml, 200, RSS_HEADERS);
   })
   .get("/book/:hiveId", async (c) => {
     const ctx = c.get("ctx");
     const hiveId = c.req.param("hiveId") as HiveId;
-    const statusFilter = parseStatusFilter(c.req.query("status"));
-    const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
 
     const bookRow = await ctx.db
       .selectFrom("hive_book")
       .select(["title", "authors"])
       .where("id", "=", hiveId)
       .executeTakeFirst();
+    if (!bookRow) return c.text("Book not found", 404);
 
-    if (!bookRow) {
-      return c.text("Book not found", 404);
-    }
-
-    let query = ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.hiveId", "=", hiveId)
-      .orderBy("user_book.indexedAt", "desc")
-      .orderBy("user_book.uri", "desc")
-      .limit(limit);
-
-    if (statusFilter) {
-      query = query.where("user_book.status", "in", statusFilter) as typeof query;
-    }
-
-    const rows = await query.execute();
-
-    const allDids = [...new Set(rows.map((r) => r.userDid))];
-    const didHandleMap = await ctx.resolver.resolveDidsToHandles(allDids);
-
-    const firstAuthor = bookRow.authors?.split("\t")[0] ?? "";
+    const rows = await activityRows(ctx.db, { kind: "book", hiveId }, feedParams(c));
+    const didHandleMap = await ctx.resolver.resolveDidsToHandles([
+      ...new Set(rows.map((r) => r.userDid)),
+    ]);
     const bookTitle = bookRow.title ?? hiveId;
 
-    const itemsXml = rows
-      .map((item) => {
-        const actionText = getActionText(item.status);
+    const xml = rssFeed(
+      {
+        title: `BookHive | "${bookTitle}" activity`,
+        link: `https://bookhive.buzz/books/${hiveId}`,
+        description: `Reader activity for "${bookTitle}" by ${primaryAuthor(bookRow.authors)} on BookHive`,
+      },
+      rows.map((item) => {
         const handle = didHandleMap[item.userDid] ?? item.userDid;
-        const starDisplay = item.stars != null ? item.stars / 2 : null;
+        const actionText = getActionText(item.status);
+        return rssItem(item, {
+          title: `@${handle} ${actionText}`,
+          link: `https://bookhive.buzz/profile/${handle}`,
+          descHtml:
+            `<p><strong>@${escapeXml(handle)}</strong> ${escapeXml(actionText)}</p>` +
+            ratingAndReview(item),
+        });
+      }),
+      rows[0]?.indexedAt,
+    );
 
-        let descHtml = `<p><strong>@${escapeXml(handle)}</strong> ${escapeXml(actionText)}</p>`;
-        if (starDisplay != null) {
-          descHtml += `<p>Rating: ${starDisplay} / 5</p>`;
-        }
-        if (item.review) {
-          descHtml += `<p><em>${escapeXml(item.review)}</em></p>`;
-        }
-
-        return `    <item>
-      <title>${escapeXml(`@${handle} ${actionText}`)}</title>
-      <link>https://bookhive.buzz/profile/${escapeXml(handle)}</link>
-      <guid isPermaLink="false">${escapeXml(item.uri)}</guid>
-      <pubDate>${toRfc2822(item.indexedAt)}</pubDate>
-      <description><![CDATA[${descHtml}]]></description>
-    </item>`;
-      })
-      .join("\n");
-
-    const lastBuildDate =
-      rows.length > 0 && rows[0]
-        ? toRfc2822(rows[0].indexedAt)
-        : toRfc2822(new Date().toISOString());
-
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>${escapeXml(`BookHive | "${bookTitle}" activity`)}</title>
-    <link>${escapeXml(`https://bookhive.buzz/books/${hiveId}`)}</link>
-    <description>${escapeXml(`Reader activity for "${bookTitle}" by ${firstAuthor} on BookHive`)}</description>
-    <lastBuildDate>${lastBuildDate}</lastBuildDate>
-${itemsXml}
-  </channel>
-</rss>`;
-
-    return c.text(xml, 200, {
-      "Content-Type": "application/rss+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
-    });
+    return c.text(xml, 200, RSS_HEADERS);
   })
   .get("/friends/:handle", async (c) => {
     const ctx = c.get("ctx");
     const handleParam = c.req.param("handle");
-    const statusFilter = parseStatusFilter(c.req.query("status"));
-    const limit = Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
 
     const did = isDid(handleParam)
       ? handleParam
       : await ctx.baseIdResolver.handle.resolve(handleParam);
+    if (!did) return c.text("User not found", 404);
 
-    if (!did) {
-      return c.text("User not found", 404);
-    }
-
-    let query = ctx.db
-      .selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where(
-        "user_book.userDid",
-        "in",
-        ctx.db
-          .selectFrom("user_follows")
-          .where("user_follows.userDid", "=", did)
-          .where("user_follows.isActive", "=", 1)
-          .select("user_follows.followsDid"),
-      )
-      .orderBy("user_book.indexedAt", "desc")
-      .orderBy("user_book.uri", "desc")
-      .limit(limit);
-
-    if (statusFilter) {
-      query = query.where("user_book.status", "in", statusFilter) as typeof query;
-    }
-
-    const rows = await query.execute();
-
+    const rows = await activityRows(ctx.db, { kind: "friends", did }, feedParams(c));
     const handle = isDid(handleParam)
       ? ((await ctx.resolver.resolveDidToHandle(did)) ?? handleParam)
       : handleParam;
 
-    const xml = buildRssXml(rows, {
-      title: `BookHive | @${handle}'s friends' activity`,
-      link: `https://bookhive.buzz/profile/${handle}`,
-      description: `Book activity from accounts followed by @${handle} on BookHive`,
-    });
+    const xml = rssFeed(
+      {
+        title: `BookHive | @${handle}'s friends' activity`,
+        link: `https://bookhive.buzz/profile/${handle}`,
+        description: `Book activity from accounts followed by @${handle} on BookHive`,
+      },
+      rows.map((item) =>
+        rssItem(item, {
+          title: `${getActionText(item.status)} "${item.title}"`,
+          link: `https://bookhive.buzz/books/${item.hiveId}`,
+          descHtml:
+            `<p><strong>${escapeXml(displayAuthors(item.authors))}</strong></p>` +
+            ratingAndReview(item),
+        }),
+      ),
+      rows[0]?.indexedAt,
+    );
 
-    return c.text(xml, 200, {
-      "Content-Type": "application/rss+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=300, stale-while-revalidate=60",
-    });
+    return c.text(xml, 200, RSS_HEADERS);
   });
 
 export default app;

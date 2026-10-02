@@ -1,9 +1,6 @@
-/**
- * Catches thrown errors, stores them on the context for wide-event logging, then rethrows.
- * Mount after wide-event middleware so that when a route throws, we set c.requestError before
- * wide-event's finally runs. Handlers that catch and return 5xx should call c.set('requestError', e)
- * so the request log includes the error.
- */
+// Catches thrown errors, stores them for wide-event logging, then rethrows.
+// Must mount after wide-event middleware so requestError is set before its finally runs.
+// Handlers that catch and return 5xx themselves should call c.set('requestError', e) to be included in the log.
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../context";
 

@@ -18,8 +18,6 @@ describe("deriveSyncPassword", () => {
   });
 
   it("matches what KOReader transmits (md5 of the password)", () => {
-    // KOReader stores and sends md5(password) as x-auth-key; the middleware
-    // compares against md5 of the derived value. This guards that round-trip.
     const pw = deriveSyncPassword(DID, SECRET, 0);
     const koreaderSends = md5(pw);
     const middlewareExpects = md5(deriveSyncPassword(DID, SECRET, 0));

@@ -2,28 +2,28 @@
  * Profile and refresh-books routes.
  * Mount at / so paths are /profile, /profile/:handle, /profile/:handle/image, /refresh-books.
  */
-import { isDid } from "@atcute/lexicons/syntax";
-import { Fragment } from "hono/jsx";
+import { resolveActorDid } from "../services/actor";
+import { renderError } from "./errorPage";
 import { Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
 
-import { sql } from "kysely";
 import type { AppEnv } from "../context";
-import { BookFields } from "../db";
 import { Error as ErrorPage } from "../pages/error";
 import { ProfilePage } from "../pages/profile";
 import { ReadingStatsPage } from "../pages/readingStats";
-import { getProfile, getProfiles } from "../utils/getProfile";
-import { hydrateUserBook } from "../utils/bookProgress";
+import { getProfile, getProfiles } from "../services/getProfile";
 import {
-  computeReadingStats,
-  filterFinishedBooksAllTime,
-  filterFinishedBooksByYear,
-  MIN_BOOKS_FOR_YEAR_STATS,
-} from "../utils/readingStats";
+  getFollowCounts,
+  getFollowDids,
+  getGenreCounts,
+  isBuzzer as isBuzzerCheck,
+  isFollowing as isFollowingCheck,
+  listRecentProgress,
+} from "../data/profileSummary";
+import { listAllUserBooks } from "../data/userShelves";
+import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
 import { refetchBooks } from "./lib";
-import { getUserLists } from "../utils/lists";
-import { readThroughCache } from "../utils/readThroughCache";
+import { getUserLists } from "../services/lists";
 
 const app = new Hono<AppEnv>()
   .get("/refresh-books", async (c) => {
@@ -43,14 +43,13 @@ const app = new Hono<AppEnv>()
     await refetchBooks({ agent, ctx: c.get("ctx") });
     endTime(c, "refetch_books");
     if (c.req.header()["accept"] === "application/json") {
-      const books = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .selectAll()
-        .where("userDid", "=", agent.did)
-        .orderBy("indexedAt", "desc")
-        .limit(10)
-        .execute();
+      // A confirmation payload for the re-sync, not a library listing.
+      const books = await listAllUserBooks({
+        db: c.get("ctx").db,
+        userDid: agent.did,
+        orderBy: "indexedAt",
+        limit: 10,
+      });
       return c.json(books);
     }
     return c.redirect("/home");
@@ -73,7 +72,7 @@ const app = new Hono<AppEnv>()
   })
   .get("/profile/:handle/image", async (c) => {
     const handle = c.req.param("handle");
-    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = await resolveActorDid(c.get("ctx"), handle);
     const profile = await getProfile({ ctx: c.get("ctx"), did: did! });
     if (!profile || !profile.avatar) {
       c.status(404);
@@ -97,7 +96,7 @@ const app = new Hono<AppEnv>()
     const handle = c.req.param("handle");
     const yearParam = c.req.param("year");
     const year = parseInt(yearParam, 10);
-    if (Number.isNaN(year) || year < 2000 || year > 2100) {
+    if (!isValidStatsYear(year)) {
       c.status(400);
       return c.render(
         <ErrorPage
@@ -110,7 +109,7 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "resolveDid");
-    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = await resolveActorDid(c.get("ctx"), handle);
     endTime(c, "resolveDid");
 
     if (!did) {
@@ -126,26 +125,11 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "isBuzzer+profile+books");
-    const [isBuzzerRow, profile, books] = await Promise.all([
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select("userDid")
-        .where("userDid", "=", did)
-        .limit(1)
-        .executeTakeFirst(),
+    const [isBuzzer, profile, books] = await Promise.all([
+      isBuzzerCheck({ db: c.get("ctx").db, did }),
       getProfile({ ctx: c.get("ctx"), did }),
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .select(BookFields)
-        .where("user_book.userDid", "=", did)
-        .orderBy("user_book.indexedAt", "desc")
-        .limit(10_000)
-        .execute(),
+      listAllUserBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" }),
     ]);
-    const isBuzzer = Boolean(isBuzzerRow);
     endTime(c, "isBuzzer+profile+books");
 
     if (!isBuzzer) {
@@ -160,75 +144,22 @@ const app = new Hono<AppEnv>()
       );
     }
 
-    const parsedBooks = books.map((book) => hydrateUserBook(book));
+    const parsedBooks = books;
 
     const sessionAgent = await c.get("ctx").getSessionAgent();
     const isOwnProfile = sessionAgent?.did === did;
 
-    const finishedInYear = filterFinishedBooksByYear(parsedBooks, year);
-    const showYearInBooks = finishedInYear.length >= MIN_BOOKS_FOR_YEAR_STATS;
+    startTime(c, "db_genre_stats");
+    // One helper owns the year filter, genre aggregate, MIN_BOOKS_FOR_YEAR_STATS
+    // fallback and available-years window, so this route, the OG card and XRPC agree.
+    const { stats, allTimeStats, showYearInBooks, availableYears } = await getReadingStatsForYear({
+      db: c.get("ctx").db,
+      books: parsedBooks,
+      year,
+    });
+    endTime(c, "db_genre_stats");
 
-    startTime(c, "db_genre_stats_year");
-    let genreStatsForYear: { genre: string; count: number }[] = [];
-    if (finishedInYear.length > 0) {
-      const hiveIds = finishedInYear.map((b) => b.hiveId);
-      const rows = await c
-        .get("ctx")
-        .db.selectFrom("hive_book_genre")
-        .select(["genre", sql<number>`COUNT(*)`.as("count")])
-        .where("hiveId", "in", hiveIds)
-        .groupBy("genre")
-        .orderBy(sql`COUNT(*)`, "desc")
-        .limit(15)
-        .execute();
-      genreStatsForYear = rows.map((r) => ({
-        genre: r.genre,
-        count: Number(r.count),
-      }));
-    }
-    endTime(c, "db_genre_stats_year");
-
-    const stats = computeReadingStats(finishedInYear, genreStatsForYear);
-
-    let allTimeStats: ReturnType<typeof computeReadingStats> | undefined;
-    let availableYears: number[] = [];
-    startTime(c, "db_genre_stats_alltime");
-    if (!showYearInBooks && year != null) {
-      const allFinished = filterFinishedBooksAllTime(parsedBooks);
-      const allHiveIds = allFinished.map((b) => b.hiveId);
-      let allTimeGenreStats: { genre: string; count: number }[] = [];
-      if (allHiveIds.length > 0) {
-        const rows = await c
-          .get("ctx")
-          .db.selectFrom("hive_book_genre")
-          .select(["genre", sql<number>`COUNT(*)`.as("count")])
-          .where("hiveId", "in", allHiveIds)
-          .groupBy("genre")
-          .orderBy(sql`COUNT(*)`, "desc")
-          .limit(15)
-          .execute();
-        allTimeGenreStats = rows.map((r) => ({
-          genre: r.genre,
-          count: Number(r.count),
-        }));
-      }
-      allTimeStats = computeReadingStats(allFinished, allTimeGenreStats);
-    }
-    endTime(c, "db_genre_stats_alltime");
-
-    const finishedAllTime = filterFinishedBooksAllTime(parsedBooks);
-    const yearSet = new Set(
-      finishedAllTime
-        .map((b) => (b.finishedAt ? new Date(b.finishedAt).getFullYear() : 0))
-        .filter((y) => y >= 2000 && y <= 2100),
-    );
-    const currentYear = new Date().getFullYear();
-    if (!yearSet.has(currentYear)) yearSet.add(currentYear);
-    availableYears = [...yearSet].sort((a, b) => b - a);
-
-    // Page renders viewer-specific UI (isOwnProfile), so use `private` (browser
-    // cache only, never a shared/CDN cache). Historical years are effectively
-    // immutable; the current year revalidates after a short TTL.
+    // `private`: renders viewer-specific UI (isOwnProfile), so no shared/CDN cache.
     c.header("Cache-Control", "private, max-age=600, stale-while-revalidate=600");
 
     return c.render(
@@ -256,17 +187,18 @@ const app = new Hono<AppEnv>()
     const forceRefresh = c.req.query("force-refresh") === "true";
 
     startTime(c, "resolveDid");
-    const did = isDid(handle) ? handle : await c.get("ctx").baseIdResolver.handle.resolve(handle);
+    const did = await resolveActorDid(c.get("ctx"), handle);
     endTime(c, "resolveDid");
 
     if (!did) {
-      return c.render(
-        <Fragment>
-          <h1>Profile {handle} not found</h1>
-          <p>This profile may not exist or has not logged any books on bookhive</p>
-        </Fragment>,
-        { title: "Profile Not Found" },
-      );
+      // Use renderError (not a bare c.render with no c.status()) so an
+      // unresolvable handle answers 404, not a 200 a crawler or fetch() reads as success.
+      return renderError(c, {
+        status: 404,
+        title: "Profile Not Found",
+        message: `Profile ${handle} not found`,
+        description: "This profile may not exist or has not logged any books on bookhive",
+      });
     }
 
     if (forceRefresh) {
@@ -280,120 +212,42 @@ const app = new Hono<AppEnv>()
     }
 
     startTime(c, "isBuzzer+profile");
-    const [isBuzzerRow, profile] = await Promise.all([
-      c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select("userDid")
-        .where("userDid", "=", did)
-        .limit(1)
-        .executeTakeFirst(),
+    const [isBuzzer, profile] = await Promise.all([
+      isBuzzerCheck({ db: c.get("ctx").db, did }),
       getProfile({ ctx: c.get("ctx"), did }),
     ]);
-    const isBuzzer = Boolean(isBuzzerRow);
     endTime(c, "isBuzzer+profile");
 
     startTime(c, "books+session");
-    const [books, sessionAgent] = await Promise.all([
+    const [parsedBooks, sessionAgent] = await Promise.all([
       isBuzzer
-        ? c
-            .get("ctx")
-            .db.selectFrom("user_book")
-            .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-            .select(BookFields)
-            .where("user_book.userDid", "=", did)
-            .orderBy("user_book.indexedAt", "desc")
-            .limit(10_000)
-            .execute()
+        ? listAllUserBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" })
         : Promise.resolve([]),
       c.get("ctx").getSessionAgent(),
     ]);
-    const parsedBooks = books.map((book) => hydrateUserBook(book));
     endTime(c, "books+session");
 
     startTime(c, "isFollowing");
-    const isFollowing =
-      sessionAgent && sessionAgent.did !== did
-        ? Boolean(
-            await c
-              .get("ctx")
-              .db.selectFrom("user_follows")
-              .select(["followsDid"])
-              .where("userDid", "=", sessionAgent.did)
-              .where("followsDid", "=", did)
-              .where("isActive", "=", 1)
-              .executeTakeFirst(),
-          )
-        : undefined;
+    const isFollowing = await isFollowingCheck({
+      db: c.get("ctx").db,
+      viewerDid: sessionAgent?.did,
+      targetDid: did,
+    });
     endTime(c, "isFollowing");
 
-    // DIDs that have at least one book on BookHive (for following/followers filtering)
-    const buzzersSubquery = c.get("ctx").db.selectFrom("user_book").select("userDid").distinct();
-
     startTime(c, "followCounts");
-    const { followingCount, followersCount } = await readThroughCache<{
-      followingCount: number;
-      followersCount: number;
-    }>(
-      c.get("ctx").kv as import("unstorage").Storage<{
-        followingCount: number;
-        followersCount: number;
-      }>,
-      `followCounts:${did}`,
-      async () => {
-        const [followingCountRes, followersCountRes] = await Promise.all([
-          c
-            .get("ctx")
-            .db.selectFrom("user_follows")
-            .select((eb) => eb.fn.countAll().as("count"))
-            .where("userDid", "=", did)
-            .where("isActive", "=", 1)
-            .where("followsDid", "in", buzzersSubquery)
-            .executeTakeFirst(),
-          c
-            .get("ctx")
-            .db.selectFrom("user_follows")
-            .select((eb) => eb.fn.countAll().as("count"))
-            .where("followsDid", "=", did)
-            .where("isActive", "=", 1)
-            .where("userDid", "in", buzzersSubquery)
-            .executeTakeFirst(),
-        ]);
-        return {
-          followingCount: Number(followingCountRes?.count ?? 0),
-          followersCount: Number(followersCountRes?.count ?? 0),
-        };
-      },
-      { followingCount: 0, followersCount: 0 },
-      { ttl: 300_000 },
-    );
+    const { followingCount, followersCount } = await getFollowCounts({
+      db: c.get("ctx").db,
+      kv: c.get("ctx").kv,
+      did,
+    });
     endTime(c, "followCounts");
 
     startTime(c, "followingFollowers");
-    const [followingRows, followersRows] = await Promise.all([
-      c
-        .get("ctx")
-        .db.selectFrom("user_follows")
-        .select("followsDid")
-        .where("userDid", "=", did)
-        .where("isActive", "=", 1)
-        .where("followsDid", "in", buzzersSubquery)
-        .orderBy("followedAt", "desc")
-        .limit(50)
-        .execute(),
-      c
-        .get("ctx")
-        .db.selectFrom("user_follows")
-        .select("userDid")
-        .where("followsDid", "=", did)
-        .where("isActive", "=", 1)
-        .where("userDid", "in", buzzersSubquery)
-        .orderBy("followedAt", "desc")
-        .limit(50)
-        .execute(),
-    ]);
-    const followingDids = followingRows.map((r) => r.followsDid);
-    const followersDids = followersRows.map((r) => r.userDid);
+    const { following: followingDids, followers: followersDids } = await getFollowDids({
+      db: c.get("ctx").db,
+      did,
+    });
     const [followingProfiles, followersProfiles] = await Promise.all([
       followingDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followingDids }) : [],
       followersDids.length > 0 ? getProfiles({ ctx: c.get("ctx"), dids: followersDids }) : [],
@@ -405,63 +259,22 @@ const app = new Hono<AppEnv>()
     endTime(c, "userLists");
 
     startTime(c, "genreStats");
-    let genreStats: { genre: string; count: number }[] = [];
-    if (isBuzzer && parsedBooks.length > 0) {
-      const hiveIds = parsedBooks.map((b) => b.hiveId);
-      const rows = await c
-        .get("ctx")
-        .db.selectFrom("hive_book_genre")
-        .select(["genre", sql<number>`COUNT(*)`.as("count")])
-        .where("hiveId", "in", hiveIds)
-        .groupBy("genre")
-        .orderBy(sql`COUNT(*)`, "desc")
-        .limit(10)
-        .execute();
-      genreStats = rows.map((r) => ({
-        genre: r.genre,
-        count: Number(r.count),
-      }));
-    }
+    const genreStats =
+      isBuzzer && parsedBooks.length > 0
+        ? await getGenreCounts({ db: c.get("ctx").db, hiveIds: parsedBooks.map((b) => b.hiveId) })
+        : [];
     endTime(c, "genreStats");
 
     startTime(c, "progressHistory");
     const isOwnProfile = sessionAgent?.did === did;
-    let progressHistory: {
-      hiveId: string;
-      title: string;
-      cover: string | null;
-      thumbnail: string;
-      currentPage: number | null;
-      totalPages: number | null;
-      percent: number | null;
-      createdAt: string;
-    }[] = [];
-    if (isOwnProfile && isBuzzer) {
-      const rows = await c
-        .get("ctx")
-        .db.selectFrom("progress_history")
-        .innerJoin("hive_book", "progress_history.hiveId", "hive_book.id")
-        .select([
-          "progress_history.hiveId",
-          "hive_book.title",
-          "hive_book.cover",
-          "hive_book.thumbnail",
-          "progress_history.currentPage",
-          "progress_history.totalPages",
-          "progress_history.percent",
-          "progress_history.createdAt",
-        ])
-        .where("progress_history.userDid", "=", did)
-        .orderBy("progress_history.createdAt", "desc")
-        .limit(10)
-        .execute();
-      progressHistory = rows;
-    }
+    const progressHistory =
+      isOwnProfile && isBuzzer
+        ? await listRecentProgress({ db: c.get("ctx").db, did, limit: 10 })
+        : [];
     endTime(c, "progressHistory");
 
-    // Page renders viewer-specific UI (follow button / isOwnProfile), so use
-    // `private` (browser cache only, never shared/CDN). Short TTL with
-    // stale-while-revalidate avoids recomputing the ~7 queries on quick revisits.
+    // `private`: renders viewer-specific UI (follow button / isOwnProfile), so
+    // no shared/CDN cache. Short TTL + SWR avoids recomputing on quick revisits.
     c.header("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
 
     return c.render(

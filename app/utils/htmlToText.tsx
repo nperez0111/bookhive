@@ -7,7 +7,6 @@
 import React from "react";
 import { Text, Linking } from "react-native";
 
-// Default styles for inline elements
 const DEFAULT_STYLES = {
   b: { fontWeight: "bold" as const },
   strong: { fontWeight: "bold" as const },
@@ -36,9 +35,6 @@ interface ParsedElement {
   children?: ParsedElement[];
 }
 
-/**
- * Parse HTML string into a tree structure that handles nested tags
- */
 function parseHtmlToTree(html: string): ParsedElement[] {
   if (!html) return [];
 
@@ -46,11 +42,9 @@ function parseHtmlToTree(html: string): ParsedElement[] {
   let currentIndex = 0;
 
   while (currentIndex < html.length) {
-    // Find the next tag
     const tagStart = html.indexOf("<", currentIndex);
 
     if (tagStart === -1) {
-      // No more tags, add remaining text
       const remainingText = html.substring(currentIndex);
       if (remainingText.trim()) {
         elements.push({
@@ -61,7 +55,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
       break;
     }
 
-    // Add text before the tag
     if (tagStart > currentIndex) {
       const textContent = html.substring(currentIndex, tagStart);
       if (textContent.trim()) {
@@ -72,7 +65,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
       }
     }
 
-    // Find the end of the tag
     const tagEnd = html.indexOf(">", tagStart);
     if (tagEnd === -1) {
       // Malformed HTML, treat as text
@@ -90,17 +82,15 @@ function parseHtmlToTree(html: string): ParsedElement[] {
     const isClosingTag = fullTag.startsWith("</");
 
     if (isClosingTag) {
-      // This is a closing tag, we'll handle it in the opening tag logic
+      // Handled as part of the opening tag's lookup below.
       currentIndex = tagEnd + 1;
       continue;
     }
 
-    // Parse opening tag
     const tagMatch = fullTag.match(/<(\w+)(?:\s+([^>]*))?>/);
     if (tagMatch) {
       const [, tagName, attributes] = tagMatch;
 
-      // Parse attributes
       const attrs: Record<string, string> = {};
       if (attributes) {
         const attrRegex = /(\w+)=["']([^"']*)["']/g;
@@ -110,7 +100,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
         }
       }
 
-      // Find the matching closing tag
       const closingTagPattern = new RegExp(`</${tagName}>`, "gi");
       const closingMatch = closingTagPattern.exec(html.substring(tagEnd + 1));
 
@@ -119,7 +108,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
         const contentEnd = tagEnd + 1 + closingMatch.index;
         const content = html.substring(contentStart, contentEnd);
 
-        // Recursively parse the content
         const children = parseHtmlToTree(content);
 
         elements.push({
@@ -131,7 +119,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
 
         currentIndex = tagEnd + 1 + closingMatch.index + closingMatch[0].length;
       } else {
-        // Self-closing tag or malformed HTML
         if (tagName === "br") {
           elements.push({
             type: "tag",
@@ -149,9 +136,6 @@ function parseHtmlToTree(html: string): ParsedElement[] {
   return elements;
 }
 
-/**
- * Render parsed elements as React Native Text components with proper nesting
- */
 function renderElements(
   elements: ParsedElement[],
   parentStyle: any = {},
@@ -209,11 +193,9 @@ function renderElements(
           </Text>,
         );
       } else if (tagName && DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES]) {
-        // Handle other inline elements with nesting
         const tagStyle = [parentStyle, DEFAULT_STYLES[tagName as keyof typeof DEFAULT_STYLES]];
 
         if (element.children && element.children.length > 0) {
-          // Render children with the combined style
           const childComponents = renderElements(element.children, tagStyle, `${key}_children`);
           components.push(
             <Text key={`${key}_${tagName}_${keyCounter++}`} style={tagStyle}>
@@ -221,15 +203,9 @@ function renderElements(
             </Text>,
           );
         } else {
-          // Self-closing tag or no content
-          components.push(
-            <Text key={`${key}_${tagName}_${keyCounter++}`} style={tagStyle}>
-              {/* Empty content */}
-            </Text>,
-          );
+          components.push(<Text key={`${key}_${tagName}_${keyCounter++}`} style={tagStyle} />);
         }
       } else {
-        // Unknown tag, just render children
         if (element.children) {
           const childComponents = renderElements(element.children, parentStyle, `${key}_unknown`);
           components.push(...childComponents);
@@ -241,26 +217,18 @@ function renderElements(
   return components;
 }
 
-/**
- * HTML to React Native Text components parser with nested tag support
- */
 export function HtmlToText({ html, style, containerStyle }: HtmlToTextProps): React.ReactElement {
   if (!html || typeof html !== "string") {
     return <Text style={style}>No description available</Text>;
   }
 
-  // Parse HTML into tree structure
   const elements = parseHtmlToTree(html);
-
-  // Render elements with proper nesting
   const components = renderElements(elements, style, "root");
 
   return <Text style={[containerStyle, style]}>{components}</Text>;
 }
 
-/**
- * Simple function to convert HTML to text (backward compatible)
- */
+/** Plain-text fallback, kept alongside `HtmlToText` for callers that want a string. */
 export function parseHtmlToText(html: string): string {
   if (!html || typeof html !== "string") {
     return "No description available";

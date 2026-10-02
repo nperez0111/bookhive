@@ -19,8 +19,8 @@ import type {
   UserBookRow,
   UserFollow,
 } from "./types";
-import { deriveBookIdentifiers } from "./utils/bookIdentifiers.js";
-import { filenameKey, koreaderFilenameHash } from "./utils/filenameMatching.js";
+import { deriveBookIdentifiers } from "./data/bookIdentifiers.js";
+import { filenameKey, koreaderFilenameHash } from "./core/filenameMatching.js";
 
 // Types
 export type DatabaseSchema = {
@@ -51,7 +51,7 @@ export type ProgressHistoryRow = {
   createdAt: string;
 };
 
-/** Pending Goodreads enrichment work — see src/utils/enrichQueue.ts. */
+/** Pending Goodreads enrichment work — see src/data/enrichQueue.ts. */
 export type EnrichQueueRow = {
   hiveId: HiveId;
   enqueuedAt: string;
@@ -91,24 +91,14 @@ export const BookFields = [
  * `indexedAt` for an `ON CONFLICT DO UPDATE` on `user_book`: advance the row's
  * activity time only when a field the activity feed actually renders changed.
  *
- * `indexedAt` is the activity feed's sort key (see migration 027). Every upsert
- * used to write `indexedAt = excluded.indexedAt` unconditionally, and
- * `refetchBooks` computes ONE timestamp for a whole library re-sync
- * (`src/routes/lib.ts`) — so a user re-syncing 400 unchanged books re-dated
- * their entire back catalogue to "a few seconds ago" and flooded every
- * follower's feed with books they added years ago.
+ * `refetchBooks` stamps one timestamp across a whole library re-sync, so an
+ * unconditional write would re-date a user's entire back catalogue every time
+ * they sync. Gating on `cid` doesn't work either — it also moves for cover
+ * re-uploads, `hiveBookUri` backfill, and every KOReader progress ping.
  *
- * Gating on `cid` would stop the flood but not the churn: `cid` is a hash of
- * the whole PDS record, so it also moves for cover-blob re-uploads,
- * `hiveBookUri` backfill, title normalisation, and every KOReader
- * `bookProgress` ping. A user reading for two hours would bump to the top of
- * every follower's feed ~20 times. None of that is activity.
- *
- * `IS NOT`, not `<>` — `<>` against a NULL yields NULL, the CASE falls through
- * to the ELSE, and "user cleared their rating" or "user set a status for the
- * first time" silently stops counting as activity. `IS NOT` is SQLite's
- * null-safe distinctness operator. This is the easiest part of this to get
- * wrong, and `src/db.feedActivity.test.ts` pins it.
+ * `IS NOT`, not `<>` — `<>` against NULL yields NULL, so the CASE would fall
+ * through to the ELSE and clearing a rating would stop counting as activity.
+ * `src/db.feedActivity.test.ts` pins this.
  */
 export const feedActivityIndexedAt = sql<string>`CASE WHEN
      excluded.status     IS NOT user_book.status
@@ -117,6 +107,75 @@ export const feedActivityIndexedAt = sql<string>`CASE WHEN
   OR excluded.finishedAt IS NOT user_book.finishedAt
   OR excluded.owned      IS NOT user_book.owned
   THEN excluded.indexedAt ELSE user_book.indexedAt END`;
+
+/**
+ * Every column a `user_book` upsert overwrites from `excluded`, i.e. everything
+ * except `uri` (the conflict target) and `indexedAt` (which
+ * `feedActivityIndexedAt` decides).
+ *
+ * Centralized because the four writers each kept their own drifting copy of
+ * this list — a new column had to be remembered at all four sites or it
+ * silently stopped being updated on conflict at some of them.
+ */
+const USER_BOOK_UPSERT_COLUMNS = [
+  "cid",
+  "userDid",
+  "createdAt",
+  "title",
+  "authors",
+  "hiveId",
+  "status",
+  "owned",
+  "startedAt",
+  "finishedAt",
+  "review",
+  "stars",
+  "bookProgress",
+  "previousReads",
+  "record",
+] as const;
+
+/** The `doUpdateSet` body for a `user_book` upsert. */
+export function userBookUpsertSet(c: {
+  ref: (reference: string) => unknown;
+}): Record<string, unknown> {
+  const set: Record<string, unknown> = { indexedAt: feedActivityIndexedAt };
+  for (const column of USER_BOOK_UPSERT_COLUMNS) {
+    set[column] = c.ref(`excluded.${column}`);
+  }
+  return set;
+}
+
+/**
+ * Every column a `buzz` upsert overwrites from `excluded`, i.e. everything
+ * except `uri` (the conflict target).
+ *
+ * Same reasoning as `userBookUpsertSet` above: four writers each kept their own
+ * drifting `c.ref("excluded.…")` list. A partial set here is worse than most —
+ * `bookUri`/`bookCid` is the strongRef into the author's `user_book` record, so
+ * leaving it stale on conflict can publish a stranger's record.
+ */
+const BUZZ_UPSERT_COLUMNS = [
+  "cid",
+  "userDid",
+  "createdAt",
+  "indexedAt",
+  "hiveId",
+  "comment",
+  "parentUri",
+  "parentCid",
+  "bookCid",
+  "bookUri",
+] as const;
+
+/** The `doUpdateSet` body for a `buzz` upsert. */
+export function buzzUpsertSet(c: { ref: (reference: string) => unknown }): Record<string, unknown> {
+  const set: Record<string, unknown> = {};
+  for (const column of BUZZ_UPSERT_COLUMNS) {
+    set[column] = c.ref(`excluded.${column}`);
+  }
+  return set;
+}
 
 // Migrations
 
@@ -706,7 +765,7 @@ migrations["017"] = {
 // Work queue for Goodreads enrichment. Any process can enqueue (a cheap
 // INSERT OR IGNORE); only the primary worker drains it, so there is one WAF
 // token cache and one writer instead of an unbounded per-request fan-out
-// across all cluster processes. See src/utils/enrichQueue.ts.
+// across all cluster processes. See src/data/enrichQueue.ts.
 migrations["018"] = {
   async up(db: Kysely<unknown>) {
     await db.schema
@@ -732,23 +791,11 @@ migrations["018"] = {
 /**
  * Full-text index over the columns search and the author pages filter on.
  *
- * Those queries were `LIKE '%…%'`, which no index can serve: both planned
- * `SCAN hive_book` + `USE TEMP B-TREE FOR ORDER BY` over 356k rows. Measured on
- * production: 633–725ms each, on routes that are ~82% of all traffic
- * (/og 705, /books 704, /authors 460 in a 3h sample), and `refetchBooks` used
- * to fire 100 of them concurrently.
- *
- * External-content FTS5, so the text is not duplicated — the index is ~36 MB
- * against a 1.6 GB database and backfills in ~2.7s, well inside the
- * supervisor's healthcheck barrier. Queries drop to 0–7ms.
- *
- * `unicode61` rather than `trigram`: trigram would preserve `LIKE`'s exact
- * substring semantics but costs 210 MB and 10.5s. Compared against LIKE on
- * production data with phrase queries (see `ftsMatchQuery`), unicode61 returns
- * identical top-20 results for realistic searches, and the cases where it
- * differs are ones where it is better — `stephen king` returns actual King
- * novels instead of junk whose *title* contains "by Stephen King", and
- * `the "great" gatsby` returns The Great Gatsby where LIKE returned nothing.
+ * Replaces `LIKE '%…%'`, which no index can serve. External-content FTS5, so
+ * the text is not duplicated. `unicode61` rather than `trigram`: trigram
+ * preserves `LIKE`'s exact substring semantics but costs far more space and
+ * index time, and unicode61 matches or beats LIKE's results on realistic
+ * queries anyway (e.g. it can match a quoted phrase LIKE returns nothing for).
  */
 migrations["019"] = {
   async up(db: Kysely<unknown>) {
@@ -806,21 +853,12 @@ migrations["019"] = {
  * Authors normalized out of the tab-separated `hive_book.authors` column, the
  * same shape `hive_book_genre` already uses for genres (migration 011).
  *
- * `authors` stores "Author1\tAuthor2\tAuthor3", so "books by this author" was
- * four LIKE patterns per query (`buildAuthorLikePatterns`) covering the sole /
- * first / middle / last positions. Two of those are leading-wildcard, so no
- * index could ever serve them: `/authors/:author` planned `SCAN hive_book` +
- * a temp B-tree sort over 356k rows at ~511ms, on ~460 requests per 3h, and
- * the author directory had to `GROUP BY` a `CASE/instr/substr/trim` expression
- * to recover the first author.
- *
- * Deliberately not FTS5: this is an exact-identity lookup, not a text search.
- * Matching "Stephen King" must not also return "Stephen Kingsley".
- *
- * Maintained by triggers rather than an application helper (the way
- * `syncHiveBookGenres` is) because `hive_book.authors` is written from the
- * ingester, the importer, enrichment and the catalog service — a helper only
- * has to be forgotten at one call site to silently desynchronize the table.
+ * Replaces four LIKE patterns per author query, two of them leading-wildcard
+ * and unservable by any index. Deliberately not FTS5: this is exact-identity
+ * lookup, not text search — "Stephen King" must not also match "Stephen
+ * Kingsley". Maintained by triggers rather than an application helper because
+ * `hive_book.authors` is written from four different places, and a helper only
+ * has to be forgotten at one to silently desync the table.
  */
 /**
  * Recursive split of a tab-separated author string into (part, pos) rows.
@@ -911,18 +949,12 @@ migrations["020"] = {
 /**
  * Durable record of enrichment failure, on the book rather than the queue.
  *
- * `enrich_queue` could not converge. A row that exhausted its attempts was
- * deleted (`enrichQueue.ts`) without recording anything on `hive_book`, and
- * `enrichedAt` is only ever set on success — so the very next page view hit
- * `!book.enrichedAt` and re-enqueued it. With a crawler systematically walking
- * all 356k books, that is a perpetual-motion machine: the queue sat at 12,444
- * rows growing ~20/min, and the drainer stayed at full concurrency forever
- * scraping books that had already failed four times.
- *
- * `enrichAttempts` is cumulative across queue rows, so the count survives the
- * row being deleted and re-added. `enrichFailedAt` is a cooldown stamp rather
- * than a permanent tombstone — a book that failed while Goodreads' WAF was up
- * should become eligible again later, just not on the next page view.
+ * A queue row that exhausted its attempts was deleted without recording
+ * anything on `hive_book`, and `enrichedAt` is only set on success — so the
+ * very next page view re-enqueued it, forever. `enrichAttempts` is cumulative
+ * across queue rows so the count survives deletion; `enrichFailedAt` is a
+ * cooldown stamp rather than a permanent tombstone, since a book that failed
+ * while Goodreads' WAF was up should become eligible again later.
  */
 migrations["021"] = {
   async up(db: Kysely<unknown>) {
@@ -953,18 +985,11 @@ migrations["021"] = {
 
 migrations["022"] = {
   async up(db: Kysely<unknown>) {
-    // Filename-derived identity for e-reader documents. See
-    // src/utils/filenameMatching.ts for what each value is and why the first is
-    // exact while the second is not:
-    //
-    // - `filenameHash` is md5(basename) — literally the `document` id a KOSync
-    //   client sends when its checksum method is FILENAME instead of BINARY.
-    //   Without it, every user on that setting has a library where no uploaded
-    //   file ever lines up with its synced progress, because the id they send
-    //   is not a content hash at all.
+    // Filename-derived identity for e-reader documents (src/core/filenameMatching.ts):
+    // - `filenameHash` is md5(basename) — the `document` id a KOSync client
+    //   sends when its checksum method is FILENAME instead of BINARY.
     // - `filenameKey` is a normalized, extension-less name, so a file survives
-    //   the calibre conversion (.epub -> .azw3) that broke the content hash in
-    //   the first place — which is the reason those users switched.
+    //   a format conversion (e.g. .epub -> .azw3) that would break the content hash.
     await db.schema.alterTable("personal_book").addColumn("filenameHash", "text").execute();
     await db.schema.alterTable("personal_book").addColumn("filenameKey", "text").execute();
     await db.schema.alterTable("sync_document").addColumn("filenameKey", "text").execute();
@@ -980,12 +1005,9 @@ migrations["022"] = {
     );
 
     // Backfill in JS: SQLite has no md5, and the normalization is Unicode-aware.
-    // Both tables hold one row per user per book, so this is small.
-    //
-    // These call the live helpers on purpose — see the header of
-    // `utils/filenameMatching.ts`. Changing their output requires a *new*
-    // migration that recomputes both columns; pinning a frozen copy here would
-    // only guarantee that a fresh install disagrees with the running app.
+    // These call the live helpers on purpose — changing their output requires
+    // a new migration that recomputes both columns, since pinning a frozen
+    // copy here would just make a fresh install disagree with the running app.
     const books = (
       await sql<{
         id: number;
@@ -1025,21 +1047,15 @@ migrations["022"] = {
 
 migrations["023"] = {
   async up(db: Kysely<unknown>) {
-    // Covering index for the storage quota. The quota is enforced as
-    // `SUM(sizeBytes) WHERE userDid = ?` evaluated inside the upload INSERT, and
-    // the existing `idx_personal_book_user` only covers `userDid` — SQLite would
-    // walk it and then fetch every row from the table to read `sizeBytes`. With
-    // the size in the index the SUM is an index-only range scan.
+    // Covering index for the storage quota (`SUM(sizeBytes) WHERE userDid = ?`
+    // inside the upload INSERT) — with size in the index the SUM is index-only.
     await sql`CREATE INDEX idx_personal_book_user_size ON personal_book(userDid, sizeBytes)`.execute(
       db,
     );
 
-    // `parseBook` returns `authors: ""` (not null) on every fallback path, and
-    // the web upload route stored that verbatim while the XRPC one normalised
-    // it. The two are indistinguishable to JS truthiness and completely
-    // different to SQL — `WHERE authors IS NULL` silently misses every row the
-    // web route wrote. Normalise the existing rows once here; the shared upload
-    // core writes NULL from now on.
+    // `authors: ""` and `authors: NULL` are indistinguishable to JS truthiness
+    // but not to SQL (`WHERE authors IS NULL` misses the empty string).
+    // Normalise the existing rows; the shared upload core writes NULL now.
     await sql`UPDATE personal_book SET authors = NULL WHERE authors = ''`.execute(db);
     await sql`UPDATE personal_book SET language = NULL WHERE language = ''`.execute(db);
   },
@@ -1051,49 +1067,28 @@ migrations["023"] = {
 /**
  * Covering indexes for the /explore family's author and genre aggregates.
  *
- * Every one of them is a `GROUP BY` over the whole of `hive_book_author` (or
- * `hive_book_genre`) joined to `hive_book`, and every one of them planned as
- * `SEARCH b USING INDEX sqlite_autoindex_hive_book_1 (id=?)` — an index probe
- * to get a rowid, then a fetch of the whole 356k-row, 1.62 GB `hive_book` row
- * just to read `ratingsCount`/`rating`/`language`. Against the 16 MB
- * `cache_size` with `mmap_size = 0` that is 356k random reads; `/explore` took
- * 6-9s and `/explore/authors` 9-14.5s, and `bun:sqlite` is synchronous, so
- * each one froze a whole worker's event loop.
- *
- * `idx_hive_book_stats` is ~18 MB and holds exactly the columns those
- * aggregates read, so the join becomes index-only and the working set fits in
- * the page cache. Deliberately WITHOUT `thumbnail` — URLs are 60-100 bytes a
- * row and would triple the index, evicting the thing we are trying to keep
- * resident. The handful of thumbnails the featured row needs are fetched by id
- * afterwards (see `src/utils/authorStats.ts`).
- *
- * IMPORTANT: the index alone does nothing. This database has never been
- * ANALYZEd, and with no `sqlite_stat1` the planner prefers the UNIQUE
- * `sqlite_autoindex_hive_book_1` for an `id = ?` equality and goes right back
- * to the table. The queries therefore say `INDEXED BY idx_hive_book_stats`
- * explicitly. Shipping `ANALYZE` instead would re-plan every other query in an
- * app whose indexes were all hand-tuned against the no-stats planner — far too
- * much blast radius for an index migration. If you drop this index, the
- * `INDEXED BY` clauses become hard errors rather than silent 9s regressions,
- * which is the intent.
+ * Without `sqlite_stat1` (this DB is never ANALYZEd), the planner prefers the
+ * UNIQUE `sqlite_autoindex_hive_book_1` for an `id = ?` equality and fetches
+ * the whole row from `hive_book` just to read a few columns — so the queries
+ * name `idx_hive_book_stats` explicitly via `INDEXED BY` rather than relying
+ * on the planner to pick it. Deliberately WITHOUT `thumbnail`, which would
+ * bloat the index enough to evict it from cache; the few thumbnails the
+ * featured row needs are fetched by id afterwards (`src/data/authorStats.ts`).
+ * Don't ship `ANALYZE` instead — it would re-plan every other query in an app
+ * whose indexes were all hand-tuned against the no-stats planner.
  */
 migrations["024"] = {
   async up(db: Kysely<unknown>) {
-    // `IF NOT EXISTS` throughout (as migration 012 does): a half-applied state
-    // — a backup restored without its WAL, an index created by hand while
-    // debugging — otherwise makes this throw `index already exists` on every
-    // boot, and since migrations run inside the startup barrier that is a
-    // permanent crash loop rather than a degraded page.
+    // `IF NOT EXISTS` throughout (as migration 012 does): migrations run
+    // inside the startup barrier, so "index already exists" against a
+    // half-applied state is a permanent crash loop, not a degraded page.
     await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_stats ON hive_book(id, ratingsCount, rating, language)`.execute(
       db,
     );
 
-    // `idx_hive_book_author_first` (migration 020) is a strict prefix of this.
-    // Adding `hiveId` makes the `WHERE position = 0 GROUP BY author` side of
-    // the aggregate index-only too — the join key no longer costs a rowid
-    // fetch per row. Every other consumer of this table filters on `author`
-    // alone and is served by `idx_hive_book_author_author`, so the old index
-    // has no remaining reader.
+    // `idx_hive_book_author_first` (migration 020) is a strict prefix of this;
+    // adding `hiveId` makes the join index-only too, and the old index has no
+    // remaining reader (everything else filters on `author` alone).
     await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_author_first_cover ON hive_book_author(position, author, hiveId)`.execute(
       db,
     );
@@ -1157,63 +1152,30 @@ export const FEED_INDEXED_AT_REPAIR_SQL = `
 migrations["027"] = {
   async up(db: Kysely<unknown>) {
     // Make `user_book.indexedAt` usable as the activity feed's sort key.
-    //
-    // The feed sorted by `createdAt` and *labelled* every card with `indexedAt`
-    // (`src/pages/components/buzz.tsx`), so the relative times it displayed ran
-    // non-monotonically — "2h ago, 3d ago, 10m ago, 1y ago" — which is why
-    // users described it as randomly shuffled. Measured on a production
-    // snapshot, the two columns disagreed on the day for 55% of rows.
-    //
-    // `createdAt` cannot be the key: it mirrors a field of the user's
-    // `buzz.bookhive.book` PDS record and is deliberately frozen forever
-    // (`src/utils/getBook.ts` — "Always prefer original values"), so finishing a
-    // book or writing a review never moved it up the feed. `indexedAt` is the
-    // only column that tracks "something happened", and from here on the
-    // upserts advance it only on a real change (see `feedActivityIndexedAt`).
-    //
-    // The existing DATA is still junk, and fixing only the write path would
-    // leave the feed monotonic but wrong — ordered by who re-synced most
-    // recently, showing a wall of "2 days ago" for books added in 2019.
-    // `refetchBooks` stamps one timestamp across a whole library, so most rows
-    // currently say "the last time this user pressed sync". Clamp each row back
-    // down to the latest moment we have actual evidence for:
+    // `createdAt` can't be it: it mirrors a frozen field of the user's PDS
+    // record, so finishing a book or writing a review never moved it — from
+    // here on `feedActivityIndexedAt` advances `indexedAt` only on a real
+    // change. The existing data is still junk (most rows currently hold "the
+    // last time this user pressed sync"), so clamp each row back down to the
+    // latest moment we have actual evidence for:
     //
     //     indexedAt := MIN(indexedAt, MAX(createdAt, finishedAt, progress.updatedAt))
     //
-    // preferring a real edit over the record's creation time, and never letting
-    // a backdated Goodreads import or a mistyped future `finishedAt` push a row
-    // ABOVE its own re-sync stamp. `MAX`/`MIN` here are the scalar
-    // (multi-argument) forms, not the aggregates; they compare TEXT
-    // lexicographically, which is correct for ISO-8601, and a date-only
-    // `finishedAt` sorts as that day's midnight, which is the right answer.
-    // `COALESCE(…, '')` is what keeps a NULL from swallowing the whole MAX.
-    //
-    // The `WHERE indexedAt > createdAt` guard keeps this off rows that were
-    // already sane and makes the statement a no-op on a fresh database. It is
-    // lossy — an edit whose only evidence is in `review`/`stars` gets pulled
-    // back to `createdAt` — but it is lossy ONCE, for history, and the
-    // alternative is every user's back catalogue permanently claiming to be
-    // new. Measured at 60,181 rows: 99ms, which is acceptable inside the
-    // startup barrier.
+    // `MAX`/`MIN` are the scalar forms; TEXT comparison is correct for
+    // ISO-8601. `COALESCE(…, '')` keeps a NULL from swallowing the whole MAX.
+    // `WHERE indexedAt > createdAt` keeps this off already-sane rows. It's
+    // lossy once, for history — the alternative is every back catalogue
+    // permanently claiming to be new.
     await sql.raw(FEED_INDEXED_AT_REPAIR_SQL).execute(db);
 
     // `IF NOT EXISTS` throughout, as 012 and 024 do: migrations run inside the
     // startup barrier, so "index already exists" against a half-applied state
     // is a permanent crash loop rather than a degraded page.
     //
-    // These are scanned in REVERSE for `ORDER BY indexedAt DESC, uri DESC` —
-    // SQLite reverses a fully-reversed ordering itself, so no DESC index is
-    // needed. `uri` is in every one of them because it is the keyset
-    // pagination tiebreaker: 5,262 distinct `createdAt` values were shared by
-    // two or more rows on the production snapshot, and without a unique final
-    // key SQLite may order ties differently between two identical requests,
-    // which silently drops rows from a paginated feed.
-    //
-    // Not optional: measured on the real database, the `all` tab ordered by
-    // `indexedAt` with no index degrades to a full scan plus a temp B-tree at
-    // 33ms against 1ms. `bun:sqlite` is synchronous and production runs three
-    // processes, so that is a third of all traffic stalled.
-    // `src/utils/activityFeed.test.ts` asserts the plans.
+    // `uri` is in every one of these as the keyset pagination tiebreaker —
+    // without a unique final key SQLite may order ties differently between two
+    // identical requests, silently dropping rows from a paginated feed.
+    // `src/data/activityFeed.test.ts` asserts the plans.
     await sql`CREATE INDEX IF NOT EXISTS idx_user_book_feed ON user_book(indexedAt, uri)`.execute(
       db,
     );
@@ -1224,9 +1186,8 @@ migrations["027"] = {
       db,
     );
 
-    // `idx_user_book_hive_id` (migration 012, on `hiveId` alone) is a strict
-    // prefix of `idx_user_book_hive_feed` and has no remaining reader — same
-    // reasoning as 024 dropping `idx_hive_book_author_first`.
+    // `idx_user_book_hive_id` (migration 012) is a strict prefix of
+    // `idx_user_book_hive_feed` and has no remaining reader.
     await sql`DROP INDEX IF EXISTS idx_user_book_hive_id`.execute(db);
 
     // Deliberately NOT dropping `idx_user_book_created_at` or
@@ -1280,9 +1241,8 @@ export const createDb = (location: string): { db: Database; sqlite: DatabaseSync
   // — keep it small.
   sqlite.exec(`PRAGMA cache_size = -${env.DB_CACHE_KB}`); // default 16 MB
   sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  // Default 0 (off). See DB_MMAP_SIZE in src/env.ts for the measurements —
-  // mapping a 1.6 GB database into every worker cost ~1 GB of the cgroup's
-  // budget and caused the reclaim thrash behind the 2026-08 stalls.
+  // Default 0 (off) — mapping the whole database into every worker caused
+  // memory reclaim thrash. See DB_MMAP_SIZE in src/env.ts.
   sqlite.exec(`PRAGMA mmap_size = ${env.DB_MMAP_SIZE}`);
 
   const db = new Kysely<DatabaseSchema>({

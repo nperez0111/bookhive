@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import type { UserBookView } from "../../../utils/userBookView";
+import type { UserBookView } from "../../../core/userBookView";
 import { STATUS, applyOptimistic, createUserBookStore } from "./userBookStore";
 
 const props = { hiveId: "bk_x", title: "Dune", authors: "Frank Herbert" };
@@ -70,6 +70,17 @@ describe("applyOptimistic", () => {
     expect(b.finishedAt?.startsWith("2026-05-05")).toBe(true);
   });
 
+  it("paints completion from the final page without waiting for the save", () => {
+    const next = applyOptimistic(
+      view({ status: STATUS.READING }),
+      { bookProgress: { currentPage: 658, totalPages: 658 } },
+      props,
+    );
+    expect(next.status).toBe(STATUS.FINISHED);
+    expect(next.finishedAt).toBeTruthy();
+    expect(next.bookProgress?.percent).toBe(100);
+  });
+
   it("forces progress to 100% on a finished book", () => {
     const next = applyOptimistic(
       view({ bookProgress: { percent: 40, totalPages: 300, currentPage: 120, updatedAt: "x" } }),
@@ -81,9 +92,7 @@ describe("applyOptimistic", () => {
   });
 
   it("stamps no date when the payload asserts no status", () => {
-    // A stars/owned/review write carries no status, and the server leaves the
-    // dates alone. Guessing from the record's status painted a "Started just
-    // now" that the response then took back.
+    // A stars/owned/review write carries no status, and the server leaves the dates alone.
     const next = applyOptimistic(
       view({ status: STATUS.READING, startedAt: null }),
       { stars: 8 },
@@ -162,7 +171,11 @@ describe("createUserBookStore", () => {
   it("keeps queued writes in order and only the last response replaces the view", async () => {
     const seen: string[] = [];
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(String(init.body)) as { status?: string; stars?: number };
+      // `RequestInit["body"]` is a `BodyInit` union, so `String()` on it would
+      // silently produce "[object Object]" if the store ever stopped sending a
+      // JSON string. Narrow instead, so that change fails here.
+      if (typeof init.body !== "string") throw new Error("expected a JSON string body");
+      const body = JSON.parse(init.body) as { status?: string; stars?: number };
       seen.push(body.status ?? `stars:${body.stars}`);
       return jsonOk({
         success: true,
@@ -222,8 +235,7 @@ describe("createUserBookStore", () => {
     const store = createUserBookStore(props);
     const removal = store.remove();
     await deleteStarted;
-    // A click landing between the DELETE going out and coming back: the server
-    // would create the record again, so the store must not send it.
+    // A click landing between the DELETE going out and coming back: the server would create the record again, so the store must not send it.
     expect(await store.update({ stars: 8 })).toBe(false);
     (unblock as unknown as () => void)();
     expect(await removal).toBe(true);

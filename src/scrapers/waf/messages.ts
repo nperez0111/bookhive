@@ -1,10 +1,9 @@
 /** Message contract between the main-thread client (`solver.ts`) and the WAF
  *  solver worker (`solver-worker.ts`). All fields are structured-clone-safe.
  *
- *  The worker does one thing: turn a challenge page into an `aws-waf-token`. It
- *  does not fetch Goodreads pages — that happens on the main thread, so a page
- *  body is never copied across the boundary and a solver problem can never stop
- *  a page fetch from being attempted. */
+ *  The worker only turns a challenge page into an `aws-waf-token` — it never
+ *  fetches Goodreads pages itself, so a solver problem can never stop a page
+ *  fetch from being attempted. */
 
 export interface SerializedConfig {
   keyHex: string;

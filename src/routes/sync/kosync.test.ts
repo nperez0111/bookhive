@@ -1,15 +1,9 @@
 /**
- * End-to-end cover for the bug PR #204 reported: an ebook uploaded *before* the
- * first KOSync push left `sync_document.hiveId` null forever, so reading
- * progress never reached the user's public book.
- *
- * The upload's writeback couldn't help — the document didn't exist yet — and the
- * KOSync handler only auto-matched on title/author, which a default-configured
- * KOReader never sends. `matchSyncDocumentForUser` closes it from the other
- * side: the document hash *is* the uploaded file's content hash, so the file's
- * own metadata (and any book already linked to it) resolves the document.
- *
- * These tests drive the real route, so they fail if either half regresses.
+ * Covers the ordering bug where an ebook uploaded before the first KOSync push
+ * left `sync_document.hiveId` null forever: the KOSync handler only
+ * auto-matched on title/author, which a default-configured KOReader never
+ * sends. `matchSyncDocumentForUser` resolves it instead through the document
+ * hash, which is the uploaded file's own content hash.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -28,12 +22,13 @@ import { migrateToLatest, type DatabaseSchema, type Database } from "../../db";
 import type { HiveId } from "../../types";
 import { currentSyncPassword } from "../../middleware/sync-auth";
 import { getHiveId } from "../../scrapers/getHiveId";
-import { koreaderPartialMD5 } from "../../utils/bookMetadata/index";
-import { makeEpub } from "../../utils/bookMetadata/testFixtures";
-import { personalBookDir } from "../../utils/personalLibrary";
-import { uploadPersonalBook } from "../../utils/uploadPersonalBook";
-import { NO_HIVE_MATCH } from "../../utils/syncMatching";
+import { koreaderPartialMD5 } from "../../core/bookMetadata/index";
+import { makeEpub } from "../../core/bookMetadata/testFixtures";
+import { personalBookDir } from "../../data/personalLibrary";
+import { uploadPersonalBook } from "../../services/uploadPersonalBook";
+import { NO_HIVE_MATCH } from "../../data/syncMatching";
 import kosyncRouter from "./kosync";
+import { testContext } from "../../test/db";
 
 const DID = "did:plc:testuser";
 const HANDLE = "alice.bsky.social";
@@ -54,14 +49,17 @@ async function createTestDb(): Promise<Database> {
 function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
-    c.set("ctx", {
-      db,
-      kv,
-      baseIdResolver: {
-        handle: { resolve: async (h: string) => (h === HANDLE ? DID : null) },
-      },
-      addWideEventContext: () => {},
-    } as unknown as AppContext);
+    c.set(
+      "ctx",
+      testContext({
+        db,
+        kv,
+        baseIdResolver: {
+          handle: { resolve: async (h: string) => (h === HANDLE ? DID : null) },
+        } as AppContext["baseIdResolver"],
+        addWideEventContext: () => {},
+      }),
+    );
     await next();
   });
   app.route("/kosync", kosyncRouter);
@@ -148,8 +146,6 @@ afterEach(async () => {
 
 describe("PUT /kosync/syncs/progress — upload first, then sync", () => {
   it("bridges progress to the public book for a client sending only a hash", async () => {
-    // This is the reported bug, in order: the file is uploaded, the catalogue
-    // book exists, and only then does the device push — with no metadata at all.
     const hiveId = await seedHiveBook("Dune", "Frank Herbert");
     await seedUserBook(hiveId);
 
@@ -182,8 +178,7 @@ describe("PUT /kosync/syncs/progress — upload first, then sync", () => {
   });
 
   it("still bridges when the upload had already resolved the book itself", async () => {
-    // The file carries the link; the document inherits it rather than
-    // re-deriving it from metadata the client never sent.
+    // The document inherits the file's link rather than re-deriving it from metadata the client never sent.
     const hiveId = await seedHiveBook("Neuromancer", "William Gibson");
     await seedUserBook(hiveId);
 

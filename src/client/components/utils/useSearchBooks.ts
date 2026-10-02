@@ -37,7 +37,6 @@ export function useSearchBooks(
       userStatuses: prev.userStatuses,
     }));
 
-    // Read language preference from localStorage
     const preferredLang = localStorage.getItem("preferred_language") || "";
     const langParam = preferredLang ? `&language=${encodeURIComponent(preferredLang)}` : "";
 

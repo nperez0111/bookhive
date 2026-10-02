@@ -15,7 +15,7 @@ import {
 import { createCrossProcessLock } from "../../auth/refresh-lock";
 import { createDb } from "../../db";
 import sqliteKv, { createSharedKvDb } from "../../sqlite-kv";
-import { createServiceAccountAgent } from "../../utils/catalogBookService";
+import { createServiceAccountAgent } from "../../services/catalogBookService";
 import { env } from "../../env";
 import type { ImportContext } from "./types";
 
@@ -77,8 +77,7 @@ export async function createWorkerContext({
   // Auth session store with pre-populated session — no KV needed for auth
   const did = storedSession.tokenSet.sub;
   const sessionStore = createInMemorySessionStore(did, storedSession);
-  // KV still needed for auth_session/auth_state mounts so createOAuthClient works,
-  // but the in-memory session store means restore() never hits SQLite for auth.
+  // KV still needed for the auth_session/auth_state mounts createOAuthClient expects, though restore() never hits SQLite since the session store is in-memory.
   const authKv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });
@@ -105,7 +104,6 @@ export async function createWorkerContext({
     kv,
     serviceAccountAgent,
     addWideEventContext(context) {
-      // Post observability data back to main thread for logging
       self.postMessage({ type: "wide-event", context });
     },
   };

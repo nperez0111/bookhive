@@ -1,43 +1,11 @@
-/**
- * Wide-event logging: one context-rich event per request for observability.
- * Middleware captures timing, status, environment; handlers add business context
- * via ctx.addWideEventContext(). See .cursor/skills/logging-best-practices.
- */
+// Wide-event logging: one context-rich event per request. Middleware captures timing/status/environment; handlers add business context via ctx.addWideEventContext().
 import type { MiddlewareHandler } from "hono";
 import { env } from "../env";
 import type { AppEnv } from "../context";
+import { toErrorPayload } from "../lib/errors";
 
 const SKIP_PATHS = ["/healthcheck", "/metrics"];
 const SKIP_PREFIXES = ["/public", "/images"];
-
-/** Truncated so a deep stack can't dominate the log line. */
-export const MAX_STACK_CHARS = 4000;
-
-/** Bound any attacker- or dependency-controlled text before it lands in a log line. */
-export function truncateForLog(text: string): string {
-  return text.slice(0, MAX_STACK_CHARS);
-}
-
-function toErrorPayload(err: unknown): {
-  message: string;
-  type: string;
-  stack?: string;
-  cause?: string;
-} {
-  if (err instanceof Error) {
-    return {
-      message: err.message,
-      type: err.name,
-      ...(err.stack ? { stack: truncateForLog(err.stack) } : {}),
-      ...(err.cause instanceof Error
-        ? { cause: truncateForLog(err.cause.message) }
-        : typeof err.cause === "string"
-          ? { cause: truncateForLog(err.cause) }
-          : {}),
-    };
-  }
-  return { message: String(err), type: "Error" };
-}
 
 function shouldEmitForPath(path: string): boolean {
   if (SKIP_PATHS.includes(path)) return false;
@@ -69,9 +37,7 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
           duration_ms: durationMs,
           outcome,
           timestamp: new Date().toISOString(),
-          // Which of the WEB_CONCURRENCY processes served this. Without it a
-          // per-worker problem is invisible in aggregate log queries — pino's
-          // `pid` changes on every OOM restart, so it can't be grouped on.
+          // Stable across OOM restarts, unlike pino's `pid`, so per-worker problems stay groupable in aggregate log queries.
           worker_index: env.WORKER_INDEX || "solo",
           env: {
             node_env: env.NODE_ENV,
@@ -84,7 +50,7 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
           Object.assign(wideEvent, bag);
         }
 
-        // Ensure error is in the log for 5xx: from bag (string/object), c.error, or requestError (thrown or set by handler)
+        // Ensure error is in the log for 5xx: from bag (string/object), c.error, or requestError.
         if (outcome === "error") {
           const fromBag = wideEvent["error"];
           const normalized =
@@ -106,9 +72,7 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
             if (err !== undefined) {
               wideEvent["error"] = toErrorPayload(err);
             } else {
-              // A 5xx with no error attached means a handler caught, swallowed
-              // the cause and returned 500 itself. Mark it rather than emitting
-              // an error-level line with nothing to act on.
+              // A 5xx with no error attached means a handler swallowed the cause; mark it rather than log nothing actionable.
               wideEvent["error"] = {
                 message: "handler returned 5xx without setting requestError",
                 type: "UnattributedError",

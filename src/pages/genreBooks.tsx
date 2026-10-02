@@ -1,12 +1,10 @@
+import { viewTransitionName } from "../lib/viewTransitionName";
 import { type FC } from "hono/jsx";
-import { sql } from "kysely";
 import type { HiveBook } from "../types";
 import { BookCard, normalizeBookData } from "./components/BookCard";
-import { endTime, startTime } from "hono/timing";
-import type { AppContext } from "../context";
-import type { Context } from "hono";
 import { LanguageSelect } from "./components/LanguageSelect";
-import { buildUrl } from "./utils/buildUrl";
+import { buildUrl } from "../lib/buildUrl";
+import { Pagination } from "./components/Pagination";
 
 type SortOption = "popularity" | "relevance" | "reviews";
 
@@ -27,26 +25,6 @@ const sorts = [
   { key: "relevance" as const, label: "Relevance" },
   { key: "reviews" as const, label: "Reviews" },
 ];
-
-const ChevronLeft = () => (
-  <svg class="size-5" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      fill-rule="evenodd"
-      d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-      clip-rule="evenodd"
-    />
-  </svg>
-);
-
-const ChevronRight = () => (
-  <svg class="size-5" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      fill-rule="evenodd"
-      d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-      clip-rule="evenodd"
-    />
-  </svg>
-);
 
 const NO_BOOKS_FOUND = (genre: string) => (
   <div class="card">
@@ -100,7 +78,7 @@ export const GenreBooks: FC<GenreBooksProps> = ({
         <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <h1
             class="genre-name text-3xl font-bold tracking-tight text-foreground lg:text-4xl"
-            style={`--genre-name: genre-${genre}`}
+            style={`--genre-name: ${viewTransitionName("genre", genre)}`}
           >
             {genre}
           </h1>
@@ -144,155 +122,15 @@ export const GenreBooks: FC<GenreBooksProps> = ({
               </section>
             </div>
 
-            {totalPages > 1 && (
-              <nav class="flex flex-wrap items-center justify-center gap-2" aria-label="Pagination">
-                {currentPage > 1 ? (
-                  <a
-                    href={buildUrl(basePath, { sort: sortBy, page: String(currentPage - 1), lang })}
-                    class="btn btn-sm btn-ghost min-w-10 min-h-10"
-                  >
-                    <span class="sr-only">Previous</span>
-                    <ChevronLeft />
-                  </a>
-                ) : (
-                  <span
-                    class="btn btn-sm btn-ghost min-w-10 min-h-10 opacity-50"
-                    aria-disabled="true"
-                  >
-                    <span class="sr-only">Previous</span>
-                    <ChevronLeft />
-                  </span>
-                )}
-
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  const isCurrentPage = pageNum === currentPage;
-
-                  return (
-                    <a
-                      href={buildUrl(basePath, { sort: sortBy, page: String(pageNum), lang })}
-                      class={`btn btn-sm min-w-10 min-h-10 tabular-nums ${isCurrentPage ? "btn-primary" : "btn-ghost"}`}
-                      aria-current={isCurrentPage ? "page" : undefined}
-                    >
-                      {pageNum}
-                    </a>
-                  );
-                })}
-
-                {currentPage < totalPages ? (
-                  <a
-                    href={buildUrl(basePath, { sort: sortBy, page: String(currentPage + 1), lang })}
-                    class="btn btn-sm btn-ghost min-w-10 min-h-10"
-                  >
-                    <span class="sr-only">Next</span>
-                    <ChevronRight />
-                  </a>
-                ) : (
-                  <span
-                    class="btn btn-sm btn-ghost min-w-10 min-h-10 opacity-50"
-                    aria-disabled="true"
-                  >
-                    <span class="sr-only">Next</span>
-                    <ChevronRight />
-                  </span>
-                )}
-              </nav>
-            )}
+            <Pagination
+              basePath={basePath}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              params={{ sort: sortBy, lang }}
+            />
           </>
         )}
       </div>
     </div>
   );
 };
-
-export async function getBooksByGenre(
-  genre: string,
-  ctx: AppContext,
-  page: number = 1,
-  pageSize: number = 20,
-  sortBy: SortOption = "popularity",
-  c: Context,
-  language?: string,
-): Promise<{
-  books: HiveBook[];
-  totalBooks: number;
-  totalPages: number;
-  currentPage: number;
-}> {
-  const offset = (page - 1) * pageSize;
-
-  startTime(c, "genre-books-count-query");
-  startTime(c, "genre-books-data-query");
-
-  let dataQuery = ctx.db
-    .selectFrom("hive_book")
-    .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
-    .selectAll("hive_book")
-    .where("hive_book_genre.genre", "=", genre);
-
-  // Language is a soft preference: sort matching-language books first, don't filter
-  if (language) {
-    dataQuery = dataQuery.orderBy(
-      sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`,
-      "asc",
-    );
-  }
-
-  switch (sortBy) {
-    case "popularity":
-      dataQuery = dataQuery
-        .orderBy("hive_book.ratingsCount", "desc")
-        .orderBy("hive_book.rating", "desc");
-      break;
-    case "relevance":
-      // Lower rowid ≈ earlier in scraped genre list (syncHiveBookGenres insert order).
-      // The UNIQUE (hiveId, genre) index guarantees exactly one joined row per book,
-      // so the joined row's rowid is the ordering key — no correlated subquery needed.
-      dataQuery = dataQuery.orderBy(sql`hive_book_genre.rowid`, "asc");
-      break;
-    case "reviews":
-      dataQuery = dataQuery
-        .orderBy("hive_book.rating", "desc")
-        .orderBy("hive_book.ratingsCount", "desc");
-      break;
-  }
-
-  const countQuery = ctx.db
-    .selectFrom("hive_book_genre")
-    .select(sql<number>`COUNT(*)`.as("count"))
-    .where("hive_book_genre.genre", "=", genre);
-
-  const [totalCountResult, books] = await Promise.all([
-    countQuery.executeTakeFirst().then((r) => {
-      endTime(c, "genre-books-count-query");
-      return r;
-    }),
-    dataQuery
-      .limit(pageSize)
-      .offset(offset)
-      .execute()
-      .then((r) => {
-        endTime(c, "genre-books-data-query");
-        return r;
-      }),
-  ]);
-
-  const totalBooks = totalCountResult?.count ?? 0;
-  const totalPages = Math.ceil(totalBooks / pageSize);
-
-  return {
-    books,
-    totalBooks,
-    totalPages,
-    currentPage: page,
-  };
-}

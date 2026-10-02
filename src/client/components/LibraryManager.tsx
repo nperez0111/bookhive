@@ -6,6 +6,9 @@ import { PersonalBookCard } from "./library/PersonalBookCard";
 import { ShelfTabs } from "./library/ShelfTabs";
 import { AlsoTracking, SyncTriage } from "./library/SyncDocumentSections";
 import type { PersonalBook, Shelf, SyncDoc } from "./library/types";
+import { formatBytes } from "../../lib/formatBytes";
+import { BookOpen } from "../../pages/components/icons";
+import { ProgressMeter } from "../../pages/components/ProgressMeter";
 
 const PAGE_SIZE = 24;
 
@@ -19,30 +22,10 @@ const postJson = (url: string, body: unknown): Promise<Response> =>
     body: JSON.stringify(body),
   });
 
-/**
- * These endpoints sit behind the app's global `etag` middleware, so a plain
- * re-fetch of the same URL after a mutation is served from the browser cache and
- * shows pre-mutation state (a dismissed document reappearing in the triage
- * strip, say). Always go to the network — this data is per-user and private.
- */
+// Bypass the browser cache — these endpoints sit behind the app's `etag` middleware, so a plain re-fetch after a mutation would replay pre-mutation state.
 const getJson = (url: string): Promise<Response> => fetch(url, { cache: "no-store" });
 
-/**
- * The personal library manager: the OPDS catalog and e-reader sync progress in
- * one view.
- *
- * Personal books and synced documents are keyed by the same KOReader partial
- * MD5, so a document with a matching file is folded into the grid card (as a
- * progress bar) rather than listed separately. Documents with no file are
- * triaged above the grid, or parked in "Also tracking" below it once the user
- * has linked or dismissed them.
- */
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-}
-
+/** Usage against the per-user quota. Warns from 80%. */
 const StorageMeter: FC<{ storage: { usedBytes: number; quotaBytes: number } | null }> = ({
   storage,
 }) => {
@@ -60,24 +43,18 @@ const StorageMeter: FC<{ storage: { usedBytes: number; quotaBytes: number } | nu
         </span>
         <span>{pct}%</span>
       </div>
-      <span
-        class="h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Library storage used"
-      >
-        <span
-          class={`block h-full rounded-full transition-all ${barColor}`}
-          style={`width: ${Math.max(pct, 1)}%`}
-        />
-      </span>
+      <ProgressMeter percent={pct} minWidth={1} barClass={barColor} label="Library storage used" />
       {full && <span class="text-destructive">Library full — delete a book to upload more.</span>}
     </div>
   );
 };
 
+/**
+ * The personal library manager: the OPDS catalog and e-reader sync progress in
+ * one view. Personal books and synced documents are keyed by the same
+ * KOReader partial MD5, so a document with a matching file folds into the
+ * grid card instead of being listed separately.
+ */
 export const LibraryManager: FC = () => {
   const [books, setBooks] = useState<PersonalBook[] | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -105,8 +82,7 @@ export const LibraryManager: FC = () => {
   };
 
   const fetchBooks = useCallback((shelfId: number | null) => {
-    // Deliberately not clearing `books` here: blanking the grid on every tab
-    // switch causes a full-height layout jump. We dim instead.
+    // Deliberately not clearing `books` — blanking the grid on tab switch causes a layout jump, so we dim instead.
     setRefreshing(true);
     setError(false);
     getJson(libraryUrl(shelfId))
@@ -124,8 +100,7 @@ export const LibraryManager: FC = () => {
           setBooks(d.books);
           setCursor(d.cursor);
           if (shelfId === null) setTotalBooks(d.total ?? d.books.length);
-          // Rides along on the list every client already refetches after each
-          // mutation, so the usage bar stays current with no extra request.
+          // Rides along on the list refetch every mutation already triggers, so the usage bar stays current with no extra request.
           if (d.storage) setStorage(d.storage);
         },
       )
@@ -183,8 +158,7 @@ export const LibraryManager: FC = () => {
     fetchDocs();
   }, [fetchShelves, fetchDocs]);
 
-  // Uploading is a full form POST + redirect, so returning to this page from
-  // the bfcache would otherwise show a stale grid.
+  // Uploading is a full form POST + redirect, so returning via bfcache would otherwise show a stale grid.
   useEffect(() => {
     const onPageShow = (e: PageTransitionEvent) => {
       if (!e.persisted) return;
@@ -221,13 +195,9 @@ export const LibraryManager: FC = () => {
     try {
       const res = await postJson("/xrpc/buzz.bookhive.deletePersonalBook", { contentHash });
       if (!res.ok) throw new Error("Failed");
-      // Refetch rather than subtract the deleted size locally: `storage` is the
-      // server's `SUM(sizeBytes)`, and the list response carries it for free.
-      // Without this the usage bar keeps showing the freed space as used, and a
-      // user who deletes a book to get under quota still can't upload.
+      // Refetch rather than subtract the deleted size locally — `storage` is the server's SUM(sizeBytes), and the list response carries it for free.
       fetchBooks(activeShelfId);
-      // The file is gone but its sync document may live on, so it can reappear
-      // in the triage/tracking sections.
+      // The file is gone but its sync document may live on, so it can reappear in the triage/tracking sections.
       fetchDocs();
       fetchShelves();
     } catch {
@@ -260,8 +230,7 @@ export const LibraryManager: FC = () => {
           hiveId: hiveBook.id,
         });
         if (!res.ok) throw new Error("Failed");
-        // Linking overwrites the file's title/authors with the hive book's, so
-        // re-fetch rather than guessing at the new values.
+        // Re-fetch the linked catalogue fields while preserving the file's title/authors.
         fetchBooks(activeShelfId);
       } else {
         const res = await postJson("/library/sync/link", {
@@ -278,12 +247,7 @@ export const LibraryManager: FC = () => {
 
   // ── Sync document actions ──
 
-  /**
-   * Mark a document as having no BookHive counterpart. There is no un-dismiss
-   * action: linking the document to a book overwrites the sentinel, which is
-   * the only correction worth offering. The endpoint still accepts
-   * `dismissed: false` for completeness.
-   */
+  // Mark a document as having no BookHive counterpart. There is no un-dismiss action — linking the document to a book overwrites the sentinel.
   const dismissDocument = async (document: string) => {
     const previous = docs;
     setDocs((prev) =>
@@ -464,19 +428,7 @@ export const LibraryManager: FC = () => {
 
       {isEmptyGrid && (
         <div class="mt-6 rounded-lg border border-dashed border-border px-6 py-10 text-center">
-          <svg
-            class="mx-auto size-10 text-muted-foreground/50"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-            />
-          </svg>
+          <BookOpen class="mx-auto size-10 text-muted-foreground/50" />
           <p class="mt-3 text-sm text-muted-foreground">
             {activeShelfId !== null
               ? 'No books on this shelf yet. Add them from the "All books" tab.'

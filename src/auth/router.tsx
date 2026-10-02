@@ -1,4 +1,4 @@
-import { getIronSession, sealData, type SessionOptions } from "iron-session";
+import { getIronSession, sealData } from "iron-session";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
@@ -6,7 +6,7 @@ import type { Did } from "@atcute/lexicons";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import { env } from "../env";
 import type { AppContext, HonoServer, Session } from "../context";
-import { setCachedSessionClient } from "../context";
+import { getSessionConfig, setCachedSessionClient } from "./session";
 import { Layout } from "../pages/layout";
 
 import { Error } from "../pages/error";
@@ -21,24 +21,7 @@ import {
   createEmptyProfile,
   uploadBlob,
 } from "../pds/client";
-import { generateInitialsAvatar } from "../utils/generateInitialsAvatar";
-
-// Helper function to get consistent session configuration
-export function getSessionConfig(): SessionOptions {
-  return {
-    cookieName: "sid",
-    password: env.COOKIE_SECRET,
-    ttl: 60 * 60 * 24 * 180, // 180 days — match confidential OAuth client session length
-    cookieOptions: {
-      // For localhost development, we need to disable secure flag
-      secure: env.NODE_ENV === "production",
-      // Ensure SameSite is set to Lax for cross-origin redirects
-      sameSite: "lax",
-      // Allow cookies to work across localhost ports
-      httpOnly: true,
-    },
-  };
-}
+import { generateInitialsAvatar } from "../core/generateInitialsAvatar";
 
 export function loginRouter(
   app: HonoServer,
@@ -84,8 +67,7 @@ export function loginRouter(
 
       const agent = sessionClientFromOAuthSession(session);
 
-      // Pre-warm the in-memory session cache so the first request after login
-      // doesn't need to call oauthClient.restore() (which can race with onLogin background tasks).
+      // Pre-warm the in-memory session cache so the first request after login doesn't race oauthClient.restore() with onLogin's background tasks.
       const tokenInfo = await session.getTokenInfo(false);
       setCachedSessionClient(session.did, agent, tokenInfo.expiresAt?.getTime());
 
@@ -123,11 +105,7 @@ export function loginRouter(
         }
       }
 
-      // Straight to /home rather than bouncing through /. Both work — `/` is
-      // `Vary: Cookie`, so the newly-set session cookie misses the stored
-      // marketing page and the `/` → `/home` redirect fires — but landing on
-      // /home directly saves the extra round trip on the one request where the
-      // user is already waiting.
+      // Straight to /home rather than bouncing through / — both work (Vary: Cookie), but this saves a round trip on the request the user is already waiting on.
       return c.redirect("/home");
     } catch (err: unknown) {
       const errMsg =

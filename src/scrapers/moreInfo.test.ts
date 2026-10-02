@@ -54,19 +54,16 @@ describe("parseGoodreadsData", () => {
     }
   });
 
-  // The distinction the enrich queue acts on. `book_not_found_upstream` tombstones
-  // a book on its first attempt; `next_data_parse_failed` keeps retrying. Getting
-  // these the wrong way round in either direction is expensive: one wastes four
-  // requests per dead book forever, the other writes off the whole catalogue the
-  // day Goodreads changes its markup.
+  // The distinction enrich_queue acts on: book_not_found_upstream tombstones a
+  // book on its first attempt, next_data_parse_failed keeps retrying.
   describe("book gone vs. parser confused", () => {
     const withRootQuery = (rootQuery: Record<string, unknown>) => ({
       props: { pageProps: { apolloState: { ROOT_QUERY: rootQuery } } },
     });
 
     test("a resolved-to-null book query means Goodreads deleted the book", () => {
-      // Verified live against /book/show/12701475 on 2026-08-03: the page is a
-      // normal 200 with valid __NEXT_DATA__, and the query value is literally null.
+      // Verified against a real Goodreads response where the query resolves to
+      // literally null.
       const json = withRootQuery({
         __typename: "Query",
         'getBookByLegacyId({"legacyId":"12701475"})': null,

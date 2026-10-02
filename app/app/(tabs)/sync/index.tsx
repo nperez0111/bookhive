@@ -19,13 +19,9 @@ import { useRotateSyncPassword, useSyncDocuments, useSyncPassword } from "@/hook
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
-/**
- * The metadata step is not cosmetic. KOReader's "Send document metadata" toggle
- * defaults to off, and with it off a sync request identifies the book by one
- * partial-MD5 hash and nothing else — so for a file the user never uploaded
- * here, there is nothing to match a catalog entry against. Turning it on is the
- * difference between progress landing on the right book and landing nowhere.
- */
+// KOReader's "Send document metadata" toggle defaults to off, and without it a sync
+// request identifies the book only by a partial-MD5 hash, so a file never uploaded
+// here has nothing to match a catalog entry against.
 const SETUP_STEPS = [
   "Open a book on your KOReader device.",
   "Go to Settings → Progress sync → Custom sync server.",

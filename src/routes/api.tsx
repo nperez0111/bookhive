@@ -2,38 +2,22 @@
  * JSON/form API: update-book, update-comment, follow, follow-form.
  * Mount at /api so paths are /api/update-book, etc.
  */
-import * as TID from "@atcute/tid";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { startTime, endTime } from "hono/timing";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import { ids, validateMain } from "../bsky/lexicon";
-import { BOOK_STATUS } from "../constants";
 import type { BookProgress, HiveId } from "../types";
-import { getUserBook, updateBookRecord } from "../utils/getBook";
-import { toUserBookView } from "../utils/userBookView";
-
-/**
- * Convert a date-input value to a full ISO datetime. YYYY-MM-DD inputs use
- * noon UTC so the calendar date survives display in any timezone (max offset
- * ±14h can't shift noon past a day boundary).
- */
-function dateInputToISO(val: string): string {
-  if (!val || val === "") return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-    const [year, month, day] = val.split("-").map(Number) as [number, number, number];
-    const parsed = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
-    if (parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
-      // 2025-02-31 rolls over to March 3 in Date.UTC — return the raw value so
-      // the downstream datetime() check rejects it instead of storing the wrong day.
-      return val;
-    }
-    return parsed.toISOString();
-  }
-  return val;
-}
+import { bookProgressProblem } from "../core/bookProgress";
+import { upsertBuzz } from "../services/buzzWrite";
+import { followUser, unfollowUser } from "../services/followGraph";
+import { BookWriteError, getUserBook, updateBookRecord, withBookLock } from "../services/getBook";
+import { errorMessage } from "../lib/errors";
+import { toUserBookView } from "../core/userBookView";
+import { dateInputToISO } from "../lib/dateInput";
+import { HIVE_ID_PATTERN } from "../core/hiveId";
+import { jsonUnauthorized } from "./authResponse";
 
 const updateBookSchema = z.object({
   hiveId: z.string(),
@@ -81,16 +65,15 @@ const updateBookSchema = z.object({
 });
 
 const userBookQuerySchema = z.object({
-  hiveId: z.string().regex(/^bk_[A-Za-z0-9]+$/),
+  hiveId: z.string().regex(HIVE_ID_PATTERN),
 });
 
 const app = new Hono<AppEnv>()
-  // Read half of the update-book contract. Cookie DID only — no OAuth
-  // restore, since nothing here touches the PDS.
+  // Cookie DID only — no OAuth restore, since nothing here touches the PDS.
   .get("/user-book", zValidator("query", userBookQuerySchema), async (c) => {
     const did = await c.get("ctx").getSessionDid();
     if (!did) {
-      return c.json({ success: false, message: "Invalid Session" }, 401);
+      return jsonUnauthorized(c);
     }
     const { hiveId } = c.req.valid("query");
     const userBook = await getUserBook({
@@ -103,7 +86,7 @@ const app = new Hono<AppEnv>()
   .post("/update-book", zValidator("json", updateBookSchema), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.json({ success: false, message: "Invalid Session" }, 401);
+      return jsonUnauthorized(c);
     }
     const payload = c.req.valid("json");
     const { hiveId, bookProgress, ...updates } = payload;
@@ -112,101 +95,58 @@ const app = new Hono<AppEnv>()
       | BookProgress
       | null
       | undefined;
-    if (bookProgress && bookProgress !== null) {
-      normalizedProgress = {
-        ...bookProgress,
-        updatedAt: new Date().toISOString(),
-      } as BookProgress;
-      if (
-        normalizedProgress.currentPage &&
-        normalizedProgress.totalPages &&
-        normalizedProgress.currentPage > normalizedProgress.totalPages
-      ) {
-        return c.json({ success: false, message: "Current page cannot exceed total pages" }, 400);
-      }
-      if (
-        normalizedProgress.currentChapter &&
-        normalizedProgress.totalChapters &&
-        normalizedProgress.currentChapter > normalizedProgress.totalChapters
-      ) {
-        return c.json(
-          { success: false, message: "Current chapter cannot exceed total chapters" },
-          400,
-        );
+    if (bookProgress) {
+      normalizedProgress = { ...bookProgress, updatedAt: new Date().toISOString() } as BookProgress;
+      const problem = bookProgressProblem(normalizedProgress);
+      if (problem) {
+        return c.json({ success: false, message: problem }, 400);
       }
     }
     if (normalizedProgress !== undefined) {
+      // No status asserted here — `nextReadingState` derives Reading/Finished from
+      // progress plus the existing record, so asserting it here could downgrade finished books.
       (updates as Record<string, unknown>)["bookProgress"] = normalizedProgress;
-      if (!updates.status) {
-        updates.status = BOOK_STATUS.READING;
-      }
     }
     if (!hiveId) {
       return c.json({ success: false, message: "Invalid ID" }, 400);
     }
-    const bookLockKey = "book_lock:" + agent.did;
     try {
-      await c.get("ctx").kv.setItem(bookLockKey, hiveId);
-      startTime(c, "pds_update_book");
-      const { userBook } = await updateBookRecord({
-        ctx: c.get("ctx"),
-        agent,
-        hiveId: hiveId as HiveId,
-        updates,
+      const lock = await withBookLock(c.get("ctx").kv, agent.did, hiveId as HiveId, async () => {
+        startTime(c, "pds_update_book");
+        const { userBook } = await updateBookRecord({
+          ctx: c.get("ctx"),
+          agent,
+          hiveId: hiveId as HiveId,
+          updates,
+        });
+        endTime(c, "pds_update_book");
+        return userBook;
       });
-      endTime(c, "pds_update_book");
-      if (normalizedProgress && (normalizedProgress as BookProgress).currentPage != null) {
-        const p = normalizedProgress as BookProgress;
-        const db = c.get("ctx").db;
-        // Awaited, not fire-and-forget: a detached chain outlives the handler
-        // (and the book_lock release in `finally`), and a swallowed error makes
-        // lost history undiagnosable. Failure is reported but never fails the
-        // book update itself — the PDS write already succeeded.
-        try {
-          const last = await db
-            .selectFrom("progress_history")
-            .select("currentPage")
-            .where("userDid", "=", agent.did)
-            .where("hiveId", "=", hiveId)
-            .orderBy("createdAt", "desc")
-            .limit(1)
-            .executeTakeFirst();
-          if (!last || last.currentPage !== (p.currentPage ?? null)) {
-            await db
-              .insertInto("progress_history")
-              .values({
-                userDid: agent.did,
-                hiveId,
-                currentPage: p.currentPage ?? null,
-                totalPages: p.totalPages ?? null,
-                percent: p.percent ?? null,
-                createdAt: new Date().toISOString(),
-              })
-              .execute();
-          }
-        } catch (historyError) {
-          c.get("ctx").addWideEventContext({
-            progress_history_write: "failed",
-            progress_history_error: (historyError as Error).message,
-          });
-        }
+      if (lock.locked) {
+        c.get("ctx").addWideEventContext({ api_update_book: "locked", hiveId });
+        return c.json({ success: false, message: "Another book write is in flight" }, 429);
       }
       c.get("ctx").addWideEventContext({
         api: "update_book",
         hiveId,
         userDid: agent.did,
       });
-      return c.json({ success: true, message: "Book updated", userBook: toUserBookView(userBook) });
+      return c.json({
+        success: true,
+        message: "Book updated",
+        userBook: toUserBookView(lock.value),
+      });
     } catch (e) {
+      // `BookWriteError` is a rejected input, not a defect — kept off the error-rate signal.
+      const rejected = e instanceof BookWriteError;
+      if (!rejected) c.set("requestError", e);
       c.get("ctx").addWideEventContext({
-        api_update_book: "failed",
+        api_update_book: rejected ? "rejected" : "failed",
         hiveId,
         userDid: agent.did,
-        error: (e as Error).message,
+        error: errorMessage(e),
       });
-      return c.json({ success: false, message: (e as Error).message }, 400);
-    } finally {
-      await c.get("ctx").kv.del(bookLockKey);
+      return c.json({ success: false, message: errorMessage(e) }, 400);
     }
   })
   .post(
@@ -224,221 +164,60 @@ const app = new Hono<AppEnv>()
     async (c) => {
       const agent = await c.get("ctx").getSessionAgent();
       if (!agent) {
-        return c.json({ success: false, message: "Invalid Session" }, 401);
+        return jsonUnauthorized(c);
       }
       const { hiveId, comment, parentUri, parentCid, uri } = c.req.valid("json");
 
-      startTime(c, "db_fetch_comment_refs");
-      const originalBuzz = uri
-        ? await c
-            .get("ctx")
-            .db.selectFrom("buzz")
-            .selectAll()
-            .where("uri", "=", uri)
-            .limit(1)
-            .executeTakeFirst()
-        : null;
-      const book = await c
-        .get("ctx")
-        .db.selectFrom("user_book")
-        .select(["cid", "uri"])
-        .where("hiveId", "=", hiveId as HiveId)
-        .executeTakeFirst();
-      endTime(c, "db_fetch_comment_refs");
-      const createdAt = originalBuzz?.createdAt || new Date().toISOString();
-
-      const bookRef = validateMain({ uri: book?.uri, cid: book?.cid });
-      const parentRef = validateMain({ uri: parentUri, cid: parentCid });
-      if (!bookRef.success || !parentRef.success || !book || !bookRef.value) {
-        return c.json(
-          {
-            success: false,
-            message: "Invalid Hive ID",
-            description: "The book you are looking for does not exist",
-          },
-          404,
-        );
-      }
-
       startTime(c, "pds_write_comment");
-      const response = await agent.post("com.atproto.repo.applyWrites", {
-        input: {
-          repo: agent.did,
-          writes: [
-            {
-              $type: originalBuzz
-                ? "com.atproto.repo.applyWrites#update"
-                : "com.atproto.repo.applyWrites#create",
-              collection: ids.BuzzBookhiveBuzz,
-              rkey: originalBuzz ? originalBuzz.uri.split("/").at(-1)! : TID.now(),
-              value: {
-                book: bookRef.value,
-                comment,
-                parent: parentRef.value,
-                createdAt,
-              },
-            },
-          ],
-        },
+      const result = await upsertBuzz({
+        ctx: c.get("ctx"),
+        agent,
+        input: { hiveId: hiveId as HiveId, comment, parentUri, parentCid, uri },
       });
       endTime(c, "pds_write_comment");
 
-      const applyOut = response.data as {
-        results?: Array<{ $type: string; uri?: string; cid?: string }>;
-      } | null;
-      const firstResult = response.ok && applyOut?.results?.[0] ? applyOut.results[0] : undefined;
-      if (
-        !response.ok ||
-        !applyOut?.results ||
-        applyOut.results.length === 0 ||
-        !firstResult ||
-        !(
-          firstResult.$type === "com.atproto.repo.applyWrites#createResult" ||
-          firstResult.$type === "com.atproto.repo.applyWrites#updateResult"
-        )
-      ) {
-        c.set("requestError", new Error("Failed to write comment to the database"));
-        c.get("ctx").addWideEventContext({
-          api_update_comment: "failed",
-          hiveId,
-          userDid: agent.did,
-          error: "applyWrites result invalid",
-        });
+      if (!result.ok) {
+        if (result.reason === "book_not_found") {
+          return c.json(
+            { success: false, message: "Invalid Hive ID", description: result.message },
+            404,
+          );
+        }
+        c.set("requestError", new Error(result.message));
         return c.json(
-          {
-            success: false,
-            message: "Failed to post comment",
-            description: "Failed to write comment to the database",
-          },
+          { success: false, message: "Failed to post comment", description: result.message },
           500,
         );
       }
 
-      await c
-        .get("ctx")
-        .db.insertInto("buzz")
-        .values({
-          uri: firstResult.uri!,
-          cid: firstResult.cid!,
-          userDid: agent.did,
-          createdAt: createdAt,
-          indexedAt: new Date().toISOString(),
-          hiveId: hiveId as HiveId,
-          comment,
-          parentUri,
-          parentCid,
-          bookCid: book.cid,
-          bookUri: book.uri,
-        })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            indexedAt: c.ref("excluded.indexedAt"),
-            cid: c.ref("excluded.cid"),
-            userDid: c.ref("excluded.userDid"),
-            createdAt: c.ref("excluded.createdAt"),
-            hiveId: c.ref("excluded.hiveId"),
-            comment: c.ref("excluded.comment"),
-            parentUri: c.ref("excluded.parentUri"),
-            parentCid: c.ref("excluded.parentCid"),
-            bookCid: c.ref("excluded.bookCid"),
-            bookUri: c.ref("excluded.bookUri"),
-          })),
-        )
-        .execute();
-
-      c.get("ctx").addWideEventContext({
-        api: "update_comment",
-        hiveId,
-        userDid: agent.did,
-        comment_uri: firstResult.uri,
-      });
       return c.json({
         success: true,
         message: "Comment posted",
-        comment: { uri: firstResult.uri },
+        comment: { uri: result.buzz.uri },
       });
     },
   )
   .post("/follow", zValidator("json", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.json({ success: false, message: "Invalid Session" }, 401);
+      return jsonUnauthorized(c);
     }
     const { did } = c.req.valid("json");
     if (!did || did === agent.did) {
       return c.json({ success: false, message: "Invalid DID" }, 400);
     }
-    try {
-      const createdAt = new Date().toISOString();
-      startTime(c, "pds_follow");
-      const response = await agent.post("com.atproto.repo.applyWrites", {
-        input: {
-          repo: agent.did,
-          writes: [
-            {
-              $type: "com.atproto.repo.applyWrites#create",
-              collection: "app.bsky.graph.follow",
-              rkey: TID.now(),
-              value: { subject: did, createdAt },
-            },
-          ],
-        },
-      });
-      endTime(c, "pds_follow");
-      const applyOut = response.data as {
-        results?: Array<{ $type: string }>;
-      } | null;
-      const firstResult = response.ok && applyOut?.results?.[0] ? applyOut.results[0] : undefined;
-      if (
-        !response.ok ||
-        !applyOut?.results ||
-        applyOut.results.length === 0 ||
-        !firstResult ||
-        firstResult.$type !== "com.atproto.repo.applyWrites#createResult"
-      ) {
-        throw new Error("Failed to follow user");
-      }
-      startTime(c, "db_follow");
-      await c
-        .get("ctx")
-        .db.insertInto("user_follows")
-        .values({
-          userDid: agent.did,
-          followsDid: did,
-          followedAt: createdAt,
-          syncedAt: createdAt,
-          lastSeenAt: createdAt,
-          isActive: 1,
-        })
-        .onConflict((oc) =>
-          oc.columns(["userDid", "followsDid"]).doUpdateSet({
-            lastSeenAt: createdAt,
-            isActive: 1,
-          }),
-        )
-        .execute();
-      endTime(c, "db_follow");
-      c.get("ctx").addWideEventContext({
-        api: "follow",
-        userDid: agent.did,
-        targetDid: did,
-      });
-      return c.json({ success: true });
-    } catch (e: unknown) {
-      c.get("ctx").addWideEventContext({
-        api_follow: "failed",
-        userDid: agent.did,
-        targetDid: did,
-        error: (e as Error)?.message ?? "Follow failed",
-      });
-      return c.json(
-        {
-          success: false,
-          message: (e as Error)?.message || "Follow failed",
-        },
-        400,
-      );
-    }
+    startTime(c, "pds_follow");
+    const result = await followUser({ db: c.get("ctx").db, agent, targetDid: did });
+    endTime(c, "pds_follow");
+    c.get("ctx").addWideEventContext({
+      follow_write: result.ok ? "followed" : "failed",
+      userDid: agent.did,
+      targetDid: did,
+      ...(result.ok ? {} : { error: result.message }),
+    });
+    return result.ok
+      ? c.json({ success: true })
+      : c.json({ success: false, message: result.message }, 400);
   })
   .post("/follow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
@@ -450,54 +229,14 @@ const app = new Hono<AppEnv>()
     try {
       targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
     } catch {}
-    if (!did || did === agent.did) {
-      return c.redirect(`/profile/${targetHandle}`, 302);
-    }
-    try {
-      const createdAt = new Date().toISOString();
-      await agent.post("com.atproto.repo.applyWrites", {
-        input: {
-          repo: agent.did,
-          writes: [
-            {
-              $type: "com.atproto.repo.applyWrites#create",
-              collection: "app.bsky.graph.follow",
-              rkey: TID.now(),
-              value: { subject: did, createdAt },
-            },
-          ],
-        },
-      });
-      const now = new Date().toISOString();
-      await c
-        .get("ctx")
-        .db.insertInto("user_follows")
-        .values({
-          userDid: agent.did,
-          followsDid: did,
-          followedAt: createdAt,
-          syncedAt: now,
-          lastSeenAt: now,
-          isActive: 1,
-        })
-        .onConflict((oc) =>
-          oc.columns(["userDid", "followsDid"]).doUpdateSet({
-            lastSeenAt: now,
-            isActive: 1,
-          }),
-        )
-        .execute();
+    if (did && did !== agent.did) {
+      const result = await followUser({ db: c.get("ctx").db, agent, targetDid: did });
       c.get("ctx").addWideEventContext({
-        api: "follow_form",
+        follow_write: result.ok ? "followed" : "failed",
+        follow_surface: "form",
         userDid: agent.did,
         targetDid: did,
-      });
-    } catch (e: unknown) {
-      c.get("ctx").addWideEventContext({
-        api_follow_form: "failed",
-        userDid: agent.did,
-        targetDid: did,
-        error: (e as Error)?.message ?? "Follow failed",
+        ...(result.ok ? {} : { error: result.message }),
       });
     }
     return c.redirect(`/profile/${targetHandle}`, 302);
@@ -505,92 +244,24 @@ const app = new Hono<AppEnv>()
   .post("/unfollow", zValidator("json", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) {
-      return c.json({ success: false, message: "Invalid Session" }, 401);
+      return jsonUnauthorized(c);
     }
     const { did } = c.req.valid("json");
     if (!did || did === agent.did) {
       return c.json({ success: false, message: "Invalid DID" }, 400);
     }
-    try {
-      startTime(c, "pds_list_follows");
-      const listRes = await agent.get("com.atproto.repo.listRecords", {
-        params: {
-          repo: agent.did,
-          collection: "app.bsky.graph.follow",
-          limit: 300,
-        },
-      });
-      endTime(c, "pds_list_follows");
-      if (!listRes.ok) throw new Error("Failed to list follows");
-      const data = listRes.data as {
-        records: Array<{ uri: string; value: { subject: string } }>;
-      };
-      const followRecord = data.records.find((r) => r.value?.subject === did);
-      if (!followRecord) {
-        await c
-          .get("ctx")
-          .db.updateTable("user_follows")
-          .set({ isActive: 0 })
-          .where("userDid", "=", agent.did)
-          .where("followsDid", "=", did)
-          .execute();
-        c.get("ctx").addWideEventContext({
-          api: "unfollow",
-          userDid: agent.did,
-          targetDid: did,
-        });
-        return c.json({ success: true });
-      }
-      startTime(c, "pds_unfollow");
-      const applyResult = await agent.post("com.atproto.repo.applyWrites", {
-        input: {
-          repo: agent.did,
-          writes: [
-            {
-              $type: "com.atproto.repo.applyWrites#delete",
-              collection: "app.bsky.graph.follow",
-              rkey: followRecord.uri.split("/").at(-1)!,
-            },
-          ],
-        },
-      });
-      endTime(c, "pds_unfollow");
-      if (!applyResult.ok) {
-        c.get("ctx").addWideEventContext({
-          applyWrites_unfollow_error: "remote delete failed",
-          followUri: followRecord.uri,
-          userDid: agent.did,
-        });
-        throw new Error("Failed to delete follow record on remote");
-      }
-      await c
-        .get("ctx")
-        .db.updateTable("user_follows")
-        .set({ isActive: 0 })
-        .where("userDid", "=", agent.did)
-        .where("followsDid", "=", did)
-        .execute();
-      c.get("ctx").addWideEventContext({
-        api: "unfollow",
-        userDid: agent.did,
-        targetDid: did,
-      });
-      return c.json({ success: true });
-    } catch (e: unknown) {
-      c.get("ctx").addWideEventContext({
-        api_unfollow: "failed",
-        userDid: agent.did,
-        targetDid: did,
-        error: (e as Error)?.message ?? "Unfollow failed",
-      });
-      return c.json(
-        {
-          success: false,
-          message: (e as Error)?.message || "Unfollow failed",
-        },
-        400,
-      );
-    }
+    startTime(c, "pds_unfollow");
+    const result = await unfollowUser({ db: c.get("ctx").db, agent, targetDid: did });
+    endTime(c, "pds_unfollow");
+    c.get("ctx").addWideEventContext({
+      follow_write: result.ok ? "unfollowed" : "failed",
+      userDid: agent.did,
+      targetDid: did,
+      ...(result.ok ? {} : { error: result.message }),
+    });
+    return result.ok
+      ? c.json({ success: true })
+      : c.json({ success: false, message: result.message }, 400);
   })
   .post("/unfollow-form", zValidator("form", z.object({ did: z.string() })), async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
@@ -602,66 +273,14 @@ const app = new Hono<AppEnv>()
     try {
       targetHandle = await c.get("ctx").resolver.resolveDidToHandle(did);
     } catch {}
-    if (!did || did === agent.did) {
-      return c.redirect(`/profile/${targetHandle}`, 302);
-    }
-    try {
-      const listRes = await agent.get("com.atproto.repo.listRecords", {
-        params: {
-          repo: agent.did,
-          collection: "app.bsky.graph.follow",
-          limit: 300,
-        },
-      });
-      let remoteDeleteSucceeded = true;
-      if (listRes.ok) {
-        const data = listRes.data as {
-          records: Array<{ uri: string; value: { subject: string } }>;
-        };
-        const followRecord = data.records.find((r) => r.value?.subject === did);
-        if (followRecord) {
-          const applyResult = await agent.post("com.atproto.repo.applyWrites", {
-            input: {
-              repo: agent.did,
-              writes: [
-                {
-                  $type: "com.atproto.repo.applyWrites#delete",
-                  collection: "app.bsky.graph.follow",
-                  rkey: followRecord.uri.split("/").at(-1)!,
-                },
-              ],
-            },
-          });
-          if (!applyResult.ok) {
-            remoteDeleteSucceeded = false;
-            c.get("ctx").addWideEventContext({
-              applyWrites_unfollow_form_error: "remote delete failed",
-              followUri: followRecord.uri,
-              userDid: agent.did,
-            });
-          }
-        }
-      }
-      if (remoteDeleteSucceeded) {
-        await c
-          .get("ctx")
-          .db.updateTable("user_follows")
-          .set({ isActive: 0 })
-          .where("userDid", "=", agent.did)
-          .where("followsDid", "=", did)
-          .execute();
-      }
+    if (did && did !== agent.did) {
+      const result = await unfollowUser({ db: c.get("ctx").db, agent, targetDid: did });
       c.get("ctx").addWideEventContext({
-        api: "unfollow_form",
+        follow_write: result.ok ? "unfollowed" : "failed",
+        follow_surface: "form",
         userDid: agent.did,
         targetDid: did,
-      });
-    } catch (e: unknown) {
-      c.get("ctx").addWideEventContext({
-        api_unfollow_form: "failed",
-        userDid: agent.did,
-        targetDid: did,
-        error: (e as Error)?.message ?? "Unfollow failed",
+        ...(result.ok ? {} : { error: result.message }),
       });
     }
     return c.redirect(`/profile/${targetHandle}`, 302);

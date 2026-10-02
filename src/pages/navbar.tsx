@@ -1,7 +1,9 @@
 import { type FC } from "hono/jsx";
 import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "../types";
-import { avatarImageUrl } from "../utils/imageProxy";
+import { avatarImageUrl } from "../core/imageUrl";
+import { ThemeToggle, ThemeToggleScript } from "./components/ThemeToggle";
+import { Search } from "./components/icons";
 
 export const Navbar: FC<{
   profile?: ProfileViewDetailed | null;
@@ -31,29 +33,20 @@ export const Navbar: FC<{
         </button>
 
         {/* Logo - hidden when sidebar visible (md+) */}
-        <a href={profile ? "/home" : "/"} class="flex shrink-0 items-center md:hidden">
+        <a
+          href={profile ? "/home" : "/"}
+          class="flex shrink-0 items-center md:hidden"
+          aria-label="BookHive home"
+        >
           <img src="/book.svg" alt="" width="24" height="24" />
-          <span class="ml-2 font-bold">BookHive</span>
+          <span class="ml-2 hidden font-bold sm:inline">BookHive</span>
         </a>
 
         {/* Search — form is the no-JS fallback; JS replaces it with the palette trigger */}
         <div id="mount-search-box" class="min-w-0 max-w-md flex-1">
           <form action="/search" method="get" class="relative w-full">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <svg
-                class="size-4 text-muted-foreground"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z"
-                />
-              </svg>
+              <Search class="size-4 text-muted-foreground" />
             </div>
             <input
               type="search"
@@ -65,52 +58,16 @@ export const Navbar: FC<{
           </form>
         </div>
 
-        {/* Right group: theme toggle + user — hidden on mobile (moved to sidebar) */}
-        <div class="ml-auto hidden shrink-0 items-center gap-2 md:flex">
-          {/* Dark mode toggle */}
-          <button
-            type="button"
-            class="theme-toggle flex size-10 items-center justify-center rounded-md text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]"
-            aria-label="Toggle dark mode"
-            title="Toggle dark mode"
-            id="theme-toggle"
-          >
-            <svg
-              class="size-5 dark:hidden"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21.752 15.752A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.248z"
-              />
-            </svg>
-            <svg
-              class="hidden size-5 dark:block"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
-              />
-            </svg>
-          </button>
+        {/* Account access at every size; the mobile theme toggle stays in the sidebar. */}
+        <div class="ml-auto flex shrink-0 items-center gap-2">
+          <ThemeToggle class="hidden md:flex size-10 items-center justify-center rounded-md text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]" />
 
-          {/* User */}
           {profile ? (
-            <div class="avatar-dropdown relative">
-              <button
-                class="avatar bg-secondary flex size-10 items-center justify-center rounded-full transition-[transform] duration-150 active:scale-[0.96]"
+            <details id="account-menu" class="relative">
+              <summary
+                class="list-none cursor-pointer [&::-webkit-details-marker]:hidden avatar bg-secondary flex size-10 items-center justify-center rounded-full transition-[transform] duration-150 active:scale-[0.96]"
                 id="user-menu-button"
-                aria-expanded="false"
-                aria-haspopup="true"
+                aria-label="Account menu"
               >
                 {profile?.avatar ? (
                   <img
@@ -136,38 +93,35 @@ export const Navbar: FC<{
                     <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
                   </svg>
                 )}
-              </button>
+              </summary>
 
               <div
                 id="user-menu"
-                class="dropdown-menu bg-card absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl p-1 shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)]"
-                role="menu"
-                aria-orientation="vertical"
-                aria-labelledby="user-menu-button"
-                tabindex={-1}
-                style="display: none;"
+                role="group"
+                class="bg-card absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-xl p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28),0_4px_12px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.55),0_4px_12px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,255,255,0.12)]"
+                aria-label="Account"
               >
                 <a
                   href={`/profile/${profile.handle}`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
-                  role="menuitem"
-                  tabindex={-1}
                 >
-                  Profile
+                  View my profile
                 </a>
                 <a
-                  href="/refresh-books"
+                  href={`/profile/${profile.handle}/stats`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
-                  role="menuitem"
-                  tabindex={-1}
                 >
-                  Refresh Books
+                  Year in Books
+                </a>
+                <a
+                  href="/import"
+                  class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
+                >
+                  Import books
                 </a>
                 <a
                   href="/settings"
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
-                  role="menuitem"
-                  tabindex={-1}
                 >
                   Settings
                 </a>
@@ -175,8 +129,6 @@ export const Navbar: FC<{
                   <button
                     type="submit"
                     class="text-card-foreground hover:bg-muted block w-full min-h-10 cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-[background-color] duration-150"
-                    role="menuitem"
-                    tabindex={-1}
                   >
                     Sign out
                   </button>
@@ -185,26 +137,25 @@ export const Navbar: FC<{
 
               <Script
                 script={(document) => {
-                  const btn = document.getElementById("user-menu-button")!;
-                  const menu = document.getElementById("user-menu")!;
-
-                  // close the dropdown when clicking outside of it
+                  const menu = document.getElementById("account-menu") as HTMLDetailsElement;
+                  const trigger = document.getElementById("user-menu-button")!;
                   document.addEventListener("click", (e) => {
-                    if (e.target !== btn && !btn.contains(e.target as Node)) {
-                      btn.setAttribute("aria-expanded", "false");
-                      menu.style.display = "none";
+                    if (!menu.contains(e.target as Node)) menu.open = false;
+                  });
+                  menu.addEventListener("keydown", (e) => {
+                    if (e.key === "Escape" && menu.open) {
+                      e.preventDefault();
+                      menu.open = false;
+                      trigger.focus();
                     }
                   });
-
-                  btn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    const shouldExpand = btn.getAttribute("aria-expanded") !== "true";
-                    btn.setAttribute("aria-expanded", String(shouldExpand));
-                    menu.style.display = shouldExpand ? "block" : "none";
+                  menu.addEventListener("focusout", (e) => {
+                    if (e.relatedTarget && !menu.contains(e.relatedTarget as Node))
+                      menu.open = false;
                   });
                 }}
               />
-            </div>
+            </details>
           ) : (
             <a href="/login" class="btn btn-primary btn-sm">
               Buzz in
@@ -237,11 +188,7 @@ export const Navbar: FC<{
           backdrop?.addEventListener("click", closeSidebar);
         }}
       />
-      {/* Book cover fade-in. `load` does not bubble, but it can be caught in the capture phase,
-          so one document-level listener covers every `.book-cover` on the page — including lazy
-          ones further down and the covers the client islands render after hydration. The sweep
-          afterwards catches anything already decoded before this ran (cached covers, the eager
-          hero cover on /books/:id). See `.book-cover.is-loaded` in src/index.css. */}
+      {/* Capture-phase listener, since `load` doesn't bubble — covers every `.book-cover` on the page, including lazy ones and islands rendered after hydration. */}
       <Script
         script={(document) => {
           const isCover = (el: EventTarget | null): el is HTMLImageElement =>
@@ -258,29 +205,8 @@ export const Navbar: FC<{
           });
         }}
       />
-      {/* Theme toggle — handles all .theme-toggle buttons (navbar + sidebar) */}
-      <Script
-        script={(document) => {
-          const updateThemeColor = () => {
-            const meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) {
-              meta.setAttribute(
-                "content",
-                document.documentElement.classList.contains("dark") ? "#422006" : "#f9eabc",
-              );
-            }
-          };
-          updateThemeColor();
-          document.querySelectorAll(".theme-toggle").forEach((btn) => {
-            btn.addEventListener("click", () => {
-              const html = document.documentElement;
-              const isDark = html.classList.toggle("dark");
-              localStorage.setItem("theme", isDark ? "dark" : "light");
-              updateThemeColor();
-            });
-          });
-        }}
-      />
+      {/* Handles all .theme-toggle buttons on the page (navbar + sidebar drawer) */}
+      <ThemeToggleScript />
     </header>
   );
 };

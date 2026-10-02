@@ -15,6 +15,7 @@ import { getBaseUrl } from "@/context/auth";
 import { useBookInfo, useDeleteBook, useUpdateBook } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { formatAuthors } from "@/utils/personalLibrary";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -279,7 +280,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
 
   const handleShare = () => {
     const shareUrl = `${getBaseUrl()}/books/${hiveId}`;
-    const blueskyText = `Check out "${book.title}" by ${book.authors.split("\t").join(", ")} on BookHive!\n\n${shareUrl}`;
+    const blueskyText = `Check out "${book.title}" by ${formatAuthors(book.authors)} on BookHive!\n\n${shareUrl}`;
     const blueskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(blueskyText)}`;
 
     if (Platform.OS === "ios") {
@@ -429,7 +430,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               <ThemedText
                 style={[styles.author, { color: colorScheme === "dark" ? "#E5E7EB" : colors.icon }]}
               >
-                {book.authors.split("\t").join(", ")}
+                {formatAuthors(book.authors)}
               </ThemedText>
 
               {/* Rating Display */}

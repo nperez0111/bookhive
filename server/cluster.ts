@@ -1,17 +1,15 @@
 /**
  * Multi-process supervisor — the production Docker CMD.
  *
- * Spawns WEB_CONCURRENCY (default 4) copies of the built server
- * (.output/server/index.mjs). All workers bind port 8080 via SO_REUSEPORT
- * (see server/entry.bun.mjs), so the kernel load-balances connections.
+ * Spawns WEB_CONCURRENCY (default 4) copies of the built server, all binding
+ * port 8080 via SO_REUSEPORT (see server/entry.bun.mjs).
  *
- * Worker 0 is the primary: it runs DB migrations + VACUUM and the Jetstream
- * ingester (see isPrimaryWorker in src/context.ts). It is started alone and
- * must pass /healthcheck before the siblings spawn — that ordering is the
- * migration barrier for the non-primary workers.
+ * Worker 0 is the primary (DB migrations, VACUUM, Jetstream ingester — see
+ * isPrimaryWorker in src/context.ts) and must pass /healthcheck before the
+ * siblings spawn, which is the migration barrier for the rest.
  *
  * Not bundled — the Dockerfile copies this file and ./worker-exit.ts verbatim
- * and Bun runs the TS source directly. Zero external dependencies.
+ * and Bun runs the TS source directly.
  */
 import { classifyWorkerExit, readProcessMemoryKb } from "./worker-exit.ts";
 
@@ -27,11 +25,7 @@ function log(message: string) {
   console.error(`[cluster] ${message}`);
 }
 
-/**
- * Last memory sample per worker index. `/proc/<pid>` is gone by the time
- * `onExit` fires, so a worker killed for using 2 GB would otherwise report no
- * memory at all — exactly the number an OOM investigation needs.
- */
+/** Last memory sample per worker index — `/proc/<pid>` is gone by the time `onExit` fires. */
 const lastMemory = new Map<number, { rss_kb?: number; anon_kb?: number }>();
 const MEMORY_SAMPLE_MS = 15_000;
 
@@ -42,10 +36,7 @@ function sampleWorkerMemory() {
   }
 }
 
-/** Emits the structured line and hands the classification back, so the
- *  human-readable restart message below reads the same `likely_oom` rather than
- *  re-deriving it from the raw signal — that duplicate condition is how the
- *  two logs could disagree about whether a kill was an OOM. */
+/** Returns the classification so the restart log below reuses the same `likely_oom` rather than re-deriving it. */
 function logWorkerExit(
   index: number,
   pid: number | null,
@@ -61,10 +52,7 @@ function logWorkerExit(
     uptimeMs,
     memory: lastMemory.get(index) ?? null,
   });
-  // Drop the sample now that it has been read. Indices are reused by the
-  // restarted worker, and the next sampler tick is up to 15s away — without
-  // this, a worker that dies inside that window reports its *predecessor's*
-  // memory, which is the most misleading possible number during a crash loop.
+  // Drop the sample once read — indices are reused by the restarted worker, so a stale entry would report the predecessor's memory.
   lastMemory.delete(index);
   console.error(JSON.stringify({ time: Date.now(), ...event }));
   return event;

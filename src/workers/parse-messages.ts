@@ -2,7 +2,7 @@
 /// (`parse-worker.ts` / `parse-client.ts`). Only a file path crosses in; the
 /// parsed metadata and the (already-rasterized, <=8 MB) cover cross back.
 
-import type { BookCover, BookMetadata, FormatInfo } from "../utils/bookMetadata/index";
+import type { BookCover, BookMetadata, FormatInfo } from "../core/bookMetadata/index";
 
 export type ParseRequest = {
   id: string;

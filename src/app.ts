@@ -7,7 +7,7 @@ import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
 import { endTime, startTime, timing } from "hono/timing";
 
-import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./utils/manifest";
+import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./lib/manifest";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { registry, startRuntimeMetricsCollection } from "./metrics";
@@ -61,12 +61,9 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     endTime(c, "vite_manifest");
     await next();
   });
-  // secureHeaders() sets `Cross-Origin-Resource-Policy: same-origin` *after*
-  // next() returns, which blocks the proxied images from loading cross-origin
-  // (the `/images/*` dev fallback redirects to the source CDN, and the imgproxy
-  // responses are loaded by `<img>` tags). This middleware is registered before
-  // secureHeaders (so it is the outer one) and overrides CORP after secureHeaders
-  // has finished, for image responses only.
+  // secureHeaders() sets CORP: same-origin after next() returns, which blocks
+  // the proxied images (imgproxy responses, dev's CDN redirect) from loading
+  // cross-origin — override it here, after secureHeaders has run.
   app.use("/images/*", async (c, next) => {
     await next();
     c.header("Cross-Origin-Resource-Policy", "cross-origin");
@@ -81,11 +78,9 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   });
   const compressMiddleware = compress();
   app.use("*", async (c, next) => {
-    // Ebook downloads are already-compressed containers (EPUB and CBZ are ZIP,
-    // MOBI is its own packing), so gzipping them burns CPU for ~nothing. The
-    // one that would actually match hono's compressible-type regex is FB2 —
-    // `application/x-fictionbook+xml` hits the `+xml` branch — and compressing
-    // it drops the Content-Length a client is driving a progress bar from.
+    // Ebook downloads are already-compressed containers, so gzipping burns CPU
+    // for ~nothing — and for FB2, which does match hono's compressible-type
+    // regex, it would drop the Content-Length a client's progress bar relies on.
     if (isBookDownloadPath(c.req.path)) return next();
     return compressMiddleware(c, next);
   });
@@ -131,25 +126,13 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   app.route("/import", importRoutes);
 
   // Kept for HTML, images and OG cards, which are small and benefit from 304s.
-  //
-  // Not for ebook downloads. hono's etag does `res.clone()` and drains one tee
-  // branch through the digest while nothing reads the other, so the entire body
-  // is buffered in native memory before a single byte reaches the client —
-  // measured at 134 MB of arrayBuffers for a 120 MB download, and it defeats
-  // streaming outright. Those routes set their own ETag from the stored
-  // contentHash (see streamPersonalBook), so clients keep their 304s.
-  //
+  // Not for ebook downloads: hono's etag() buffers the entire body in memory
+  // to compute the digest, defeating streaming — those routes set their own
+  // ETag from the stored contentHash instead (see streamPersonalBook).
   // `/import` is listed too, even though mounting it above this line already
-  // keeps it out. Relying on mount order alone means a future reorder silently
-  // hangs the import SSE stream forever — it never ends, so the digest never
-  // completes and no byte is ever flushed. That failure is severe and would
-  // look like "import is broken" rather than "etag is misconfigured", so it is
-  // worth being order-independent about.
-  // The two binary XRPC methods are listed by exact NSID, deliberately not as
-  // a `/xrpc/` prefix — that would cost the ~35 JSON methods their 304s. Both
-  // set their own ETag, and hono's etag() skips a response that already has
-  // one, so this is belt-and-braces: if a future edit drops that header the
-  // buffering regression above would otherwise come back silently.
+  // keeps it out — a future reorder must not silently hang its never-ending
+  // SSE stream. The two binary XRPC methods are listed by exact NSID rather
+  // than a `/xrpc/` prefix, which would cost the other JSON methods their 304s.
   const ETAG_EXCLUDED_PREFIXES = [
     "/library/books/",
     "/opds/books/",

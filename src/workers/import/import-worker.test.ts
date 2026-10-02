@@ -2,13 +2,11 @@ import { describe, it, expect } from "bun:test";
 import type { ImportRequest, ImportWorkerMessage } from "./types";
 
 /**
- * Tests at the worker boundary: verifies the Bun Worker starts, receives
- * an ImportRequest, and posts back correctly-shaped SSE events + done signal.
- *
- * These tests use a real Worker thread but mock the external dependencies
- * (DB, network) by intercepting at the logic layer. Since we can't easily
- * mock modules inside a worker, we test the message protocol shape and
- * lifecycle rather than full import logic (which is tested in importBook.test.ts).
+ * Tests at the worker boundary: verifies the Bun Worker starts, receives an
+ * ImportRequest, and posts back correctly-shaped SSE events + a done signal.
+ * Uses a real Worker thread but, since modules can't easily be mocked inside
+ * one, tests the message protocol shape and lifecycle rather than full import
+ * logic (covered in import-logic.test.ts).
  */
 
 const WORKER_PATH = new URL("./index.ts", import.meta.url);
@@ -69,11 +67,9 @@ describe("import worker boundary", () => {
     worker.postMessage(request);
     const messages = await messagesPromise;
 
-    // Should receive a done message with error from OAuth restore failure
     const doneMsg = messages.find((m) => m.type === "done");
     expect(doneMsg).toBeDefined();
     expect(doneMsg!.type).toBe("done");
-    // With fake credentials, we expect an error
     expect(doneMsg!).toHaveProperty("error");
   });
 
@@ -103,7 +99,6 @@ describe("import worker boundary", () => {
     worker.postMessage(request);
     const messages = await messagesPromise;
 
-    // Every message should have a valid type
     for (const msg of messages) {
       expect(["sse", "done"]).toContain(msg.type);
       if (msg.type === "sse") {
@@ -111,7 +106,6 @@ describe("import worker boundary", () => {
       }
     }
 
-    // Last message should always be "done"
     const last = messages[messages.length - 1]!;
     expect(last.type).toBe("done");
   });

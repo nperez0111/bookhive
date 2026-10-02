@@ -7,7 +7,7 @@ import {
   FEED_TABS,
   TAB_EMPTY,
   TAB_LABELS,
-} from "../utils/activityFeed";
+} from "../data/activityFeed";
 import { ActivityTimeline } from "./components/activityTimeline";
 import { Script } from "./utils/script";
 
@@ -88,12 +88,7 @@ export const FeedPage: FC<FeedPageProps> = ({
         </div>
       )}
 
-      {/*
-        Relabel the newest date separators to Today/Yesterday, but only when the
-        server's UTC bucket matches the viewer's local date. The server has no
-        timezone for the viewer, so it renders real dates; this upgrades them
-        rather than correcting them, and with JS off the dates stand on their own.
-      */}
+      {/* Relabels the newest date separators to Today/Yesterday client-side — the server has no timezone for the viewer, so it renders real dates as the no-JS fallback. */}
       <Script
         script={(document) => {
           const localKey = (d: Date) =>

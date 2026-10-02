@@ -1,20 +1,15 @@
+import { viewTransitionName } from "../lib/viewTransitionName";
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
 import { getEmoji } from "./genreEmoji";
-import { getFeaturedAuthors } from "../utils/authorStats";
-import { getTopGenres } from "../utils/exploreGenres";
+import { getFeaturedAuthors } from "../data/authorStats";
+import { getTopGenres } from "../data/exploreGenres";
 import { StarDisplay } from "./components/cards/StarDisplay";
-import { sourceCoverImageUrl } from "../utils/imageProxy";
+import { sourceCoverImageUrl } from "../core/imageUrl";
 import { LanguageSelect } from "./components/LanguageSelect";
-import { buildUrl } from "./utils/buildUrl";
-
-function formatCount(count: number): string {
-  if (count < 10) return `${count}`;
-  if (count < 100) return `${Math.floor(count / 10) * 10}+`;
-  if (count >= 1000) return `${Math.floor(count / 1000)}k+`;
-  return `${Math.floor(count / 100) * 100}+`;
-}
+import { buildUrl } from "../lib/buildUrl";
+import { formatCount } from "../lib/formatCount";
 
 const TOP_GENRE_COUNT = 6;
 const TOP_AUTHOR_COUNT = 8;
@@ -31,9 +26,7 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
   startTime(c, "explore-genres");
   startTime(c, "explore-authors");
 
-  // Both aggregates are cached with stale-while-revalidate inside their
-  // helpers, and shared with /explore/authors and XRPC getExplore so the three
-  // callers can't drift to three different TTLs again.
+  // Cached (SWR) inside their helpers and shared with /explore/authors and XRPC getExplore so the three callers can't drift to different TTLs.
   const [genres, topAuthors] = await Promise.all([
     getTopGenres(db, kv, TOP_GENRE_COUNT, lang).then((r) => {
       endTime(c, "explore-genres");
@@ -56,12 +49,12 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
             Home
           </a>
           <span aria-hidden="true">›</span>
-          <span class="text-foreground font-medium">Explore</span>
+          <span class="text-foreground font-medium">Discover</span>
         </nav>
 
         <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">Explore</h1>
+            <h1 class="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">Discover</h1>
             <p class="text-muted-foreground mt-2 text-base">
               Discover your next read by genre or author.
             </p>
@@ -74,7 +67,6 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
           />
         </div>
 
-        {/* Top Genres */}
         <section>
           <div class="mb-3 flex items-baseline justify-between">
             <h2 class="text-muted-foreground text-xs font-semibold uppercase tracking-widest">
@@ -92,14 +84,9 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
               <a
                 href={buildUrl(`/explore/genres/${encodeURIComponent(genre.genre)}`, { lang })}
                 class="card group flex flex-col items-center gap-1 p-4 text-center transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:scale-[0.96]"
-                style={`--genre-name: genre-${genre.genre}`}
+                style={`--genre-name: ${viewTransitionName("genre", genre.genre)}`}
               >
-                {/*
-                  The emoji used to be a `text-6xl opacity-[0.06]` watermark absolutely centred in
-                  the tile. Its glyph box was taller than the tile, so `overflow-hidden` sliced it
-                  and it read as a rendering artifact rather than decoration — worst on the short
-                  labels, where all you saw was a cropped rectangle. It works as a plain icon.
-                */}
+                {/* A large low-opacity watermark got sliced by overflow-hidden and read as a rendering artifact, so this is a plain icon instead. */}
                 <span class="text-2xl leading-none select-none" aria-hidden="true">
                   {getEmoji(genre.genre)}
                 </span>
@@ -114,7 +101,6 @@ export const Explore: FC<ExploreProps> = async ({ lang, languages }) => {
           </div>
         </section>
 
-        {/* Top Authors */}
         <section>
           <div class="mb-3 flex items-baseline justify-between">
             <h2 class="text-muted-foreground text-xs font-semibold uppercase tracking-widest">

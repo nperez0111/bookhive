@@ -3,11 +3,9 @@
 /// Two operations live here, and keeping them separate is the whole point of the
 /// file:
 ///
-///   1. **Fetch the page.** One plain GET on the main thread. Cheap (~200ms), and
-///      it succeeds ~98% of the time. It is *always* attempted — there is no
-///      breaker, no pool, no gate of any kind in front of it.
-///   2. **Solve a WAF challenge.** ~4 requests, a 1.3 MB script download, a
-///      Worker and proof-of-work. Only reached when (1) actually came back
+///   1. **Fetch the page.** One plain GET on the main thread, always attempted —
+///      there is no breaker, no pool, no gate of any kind in front of it.
+///   2. **Solve a WAF challenge.** Only reached when (1) actually came back
 ///      challenged, and rate-limited to one solve per token lifetime.
 ///
 /// The invariant this buys:
@@ -15,17 +13,11 @@
 ///   > No book is ever failed without a request to Goodreads having been sent
 ///   > and answered.
 ///
-/// That used to be false. A single circuit breaker was fed by solve outcomes and
-/// gated the page fetch, so when Goodreads' WAF stopped honouring our tokens the
-/// breaker sat open and refused the path that still worked. Over one 6h window in
-/// production that meant 8,606 refusals across 6,840 distinct books — and because
-/// `enrich_queue` counted a refusal as an attempt, 2,854 books were written off
-/// for 7 days without a single packet leaving the box. There is no circuit
-/// breaker here now; see `README.md` for why nothing replaced it.
+/// No circuit breaker here — one existed before and caused an incident by
+/// refusing traffic that still worked; do not re-add it. See `README.md`.
 ///
-/// Solving is *currently* futile from this host: since 2026-08-01 AWS WAF has
-/// refused every token minted from our egress IP (202 + `x-amzn-waf-action:
-/// challenge` on the re-fetch), while the identical code from a residential IP
+/// Solving is *currently* futile from this host: AWS WAF refuses every token
+/// minted from our egress IP, while the identical code from a residential IP
 /// gets through. That is a reputation problem, not a crypto problem, and it may
 /// recover — hence a cheap periodic attempt rather than deleting the solver.
 
@@ -33,12 +25,11 @@ import { classifyFetch, WAF_ACTION_HEADER, type FetchOutcome } from "./classify"
 import { boundedText, MAX_PAGE_BYTES, navHeaders, UA } from "./http";
 import { NEXT_DATA_MARKER } from "./pageMarker";
 import type { SerializedConfig, WafRequest, WafResult } from "./messages";
+import { errorMessage } from "../../lib/errors";
+import { deferVerdict, verdictFields } from "../../core/enrichVerdict";
 
-/** AWS WAF's default immunity time is 300s, and Goodreads uses the default:
- *  a token measured live was still accepted at 241s and challenged again at
- *  301s. Cache for less than that — the previous 10 minutes meant the back half
- *  of every window sent a token that was already dead, paying a full cold solve
- *  to discover it. */
+/** AWS WAF's default immunity window is 300s; cache for less than that so we
+ *  never send an already-dead token and pay for a cold solve to discover it. */
 const TOKEN_MAX_AGE_MS = 4 * 60 * 1000;
 const WORKER_TIMEOUT_MS = 30_000;
 const PAGE_TIMEOUT_MS = 15_000;
@@ -47,9 +38,7 @@ const PAGE_TIMEOUT_MS = 15_000;
  *
  *  Derived, not tuned: a token is only good for a token lifetime, so solving
  *  more often than that cannot produce anything we don't already have. It is
- *  also the entire rate limit on the expensive path — worst case, with every
- *  solve failing, 15 attempts an hour. (The old breaker, open ~70% of the time,
- *  allowed 16.) */
+ *  also the entire rate limit on the expensive path. */
 const SOLVE_MIN_INTERVAL_MS = TOKEN_MAX_AGE_MS;
 
 // When running the Nitro bundle (.output/server/index.mjs), load the pre-built
@@ -71,8 +60,7 @@ type SolveResult = { token: string; reason: "solved" } | { token: null; reason: 
 
 /** The one and only in-flight solve. Concurrent challenged fetches await this
  *  rather than each spawning a Worker — which is also the memory bound that
- *  replaced the old pool + semaphore. Never more than one solver Worker alive
- *  per process; the pool allowed four plus 32 queued waiters. */
+ *  replaced the old pool + semaphore. */
 let solveInFlight: Promise<SolveResult> | null = null;
 
 export type PageFetch = {
@@ -195,7 +183,7 @@ function ensureWafToken(
     .catch(
       (error): SolveResult => ({
         token: null,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: errorMessage(error),
       }),
     )
     .then((outcome) => {
@@ -253,9 +241,8 @@ export async function fetchGoodreadsViaWaf(
     // Transport failure — DNS, connect, the 15s abort, an oversized body. Says
     // nothing about this book, so it must not consume a retry attempt.
     addCtx({
-      scrape_failure: "fetch_failed",
-      scrape_error: error instanceof Error ? error.message : String(error),
-      enrich_retry: "defer",
+      ...verdictFields(deferVerdict("fetch_failed")),
+      scrape_error: errorMessage(error),
     });
     return null;
   }
@@ -273,7 +260,7 @@ export async function fetchGoodreadsViaWaf(
     // book id — but only the parser, which can see that `getBookByLegacyId`
     // resolved to null, is allowed to conclude that. Guessing it from the fetch
     // alone would tombstone the whole catalogue the day Goodreads redesigns.
-    addCtx({ scrape_failure: first.outcome, enrich_retry: "defer" });
+    addCtx(verdictFields(deferVerdict(first.outcome)));
     return null;
   }
 
@@ -290,9 +277,8 @@ export async function fetchGoodreadsViaWaf(
   );
   if (!solve.token) {
     addCtx({
-      scrape_failure: "waf_challenged",
+      ...verdictFields(deferVerdict("waf_challenged")),
       scrape_solve: solve.reason,
-      enrich_retry: "defer",
     });
     return null;
   }
@@ -303,9 +289,8 @@ export async function fetchGoodreadsViaWaf(
   } catch (error) {
     cachedToken = null;
     addCtx({
-      scrape_failure: "fetch_failed",
-      scrape_error: error instanceof Error ? error.message : String(error),
-      enrich_retry: "defer",
+      ...verdictFields(deferVerdict("fetch_failed")),
+      scrape_error: errorMessage(error),
     });
     return null;
   }
@@ -322,12 +307,13 @@ export async function fetchGoodreadsViaWaf(
   }
 
   // `challenged` here means the WAF refused a token it just issued us — the
-  // failure mode this host has been in since 2026-08-01. Anything else means we
-  // cleared the WAF and the origin said no. Neither is worth another solve now.
+  // ongoing failure mode for this host. Anything else means we cleared the WAF
+  // and the origin said no. Neither is worth another solve now.
   cachedToken = null;
-  addCtx({
-    scrape_failure: second.outcome === "challenged" ? "waf_token_rejected" : second.outcome,
-    enrich_retry: "defer",
-  });
+  addCtx(
+    verdictFields(
+      deferVerdict(second.outcome === "challenged" ? "waf_token_rejected" : second.outcome),
+    ),
+  );
   return null;
 }

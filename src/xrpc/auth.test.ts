@@ -1,12 +1,9 @@
 /**
  * Service auth on /xrpc/*.
  *
- * The verifier is NOT stubbed — a stubbed one would test nothing, and the
- * negative cases (wrong audience, wrong lxm, expired, tampered signature) are
- * the entire point. Instead a real `ServiceJwtVerifier` runs against a real
- * `createServiceJwt`-signed token, with a static one-method `DidDocumentResolver`
- * standing in for the network. That exercises every check the production path
- * runs, deterministically and offline.
+ * The verifier is NOT stubbed: a real `ServiceJwtVerifier` runs against a real
+ * `createServiceJwt`-signed token, with a static resolver standing in for the
+ * network, so it exercises every check the production path runs.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -23,11 +20,12 @@ import { ServiceJwtVerifier, createServiceJwt } from "@atcute/xrpc-server/auth";
 import type { Did, Nsid } from "@atcute/lexicons";
 
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
-import type { AppContext, AppEnv } from "../context";
+import type { AppEnv } from "../context";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
-import { makeEpub } from "../utils/bookMetadata/testFixtures";
-import { personalBookDir } from "../utils/personalLibrary";
+import { makeEpub } from "../core/bookMetadata/testFixtures";
+import { personalBookDir } from "../data/personalLibrary";
 import { createXrpcRouter, type XrpcContext } from "./router";
+import { testContext } from "../test/db";
 
 const DID = "did:plc:testuser" as Did;
 const STRANGER = "did:plc:neverheardofthem" as Did;
@@ -91,16 +89,17 @@ async function createApp(opts: { audiences?: string[]; maxAge?: number; enabled?
 
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
-    c.set("ctx", {
-      db,
-      kv,
-      resolver: { resolveDidsToHandles: async () => ({}) },
-      // No cookie session: these tests are exclusively about the Bearer path.
-      getSessionAgent: async () => null,
-      baseIdResolver: { handle: { resolve: async () => undefined } },
-      addWideEventContext: () => {},
-      serviceJwtVerifier: verifier,
-    } as unknown as AppContext);
+    c.set(
+      "ctx",
+      testContext({
+        db,
+        kv,
+        // No cookie session: these tests are exclusively about the Bearer path.
+        getSessionAgent: async () => null,
+        addWideEventContext: () => {},
+        serviceJwtVerifier: verifier,
+      }),
+    );
     await next();
   });
   createXrpcRouter<XrpcContext>(
@@ -181,9 +180,7 @@ describe("service auth — the happy path", () => {
   });
 
   it("accepts the #fragment audience form as well as the bare DID", async () => {
-    // atcute compares audiences by exact string, so both spellings must be
-    // listed. This is what will keep clients working when the DID document
-    // gains a #bookhive_appview service entry.
+    // atcute compares audiences by exact string, so both spellings must be listed.
     const app = await createApp({ audiences: [SERVICE_DID, `${SERVICE_DID}#bookhive_appview`] });
     const res = await app.request("/xrpc/buzz.bookhive.listPersonalShelves", {
       headers: {
@@ -210,8 +207,7 @@ describe("service auth — rejections", () => {
     },
     {
       name: "a token signed by the wrong key",
-      // Issued as DID, but signed with the stranger's key — the DID document
-      // for DID carries a different public key, so the signature can't verify.
+      // Issued as DID but signed with the stranger's key, so it can't verify.
       make: () => token({ key: strangerKeypair }),
     },
   ];
@@ -227,10 +223,9 @@ describe("service auth — rejections", () => {
   }
 
   it("401s a token whose signature does not cover its payload", async () => {
-    // Splice a *different* token's signature onto this one's header+payload.
-    // Deliberately not "flip the last base64url character": that char carries
-    // padding bits, so flipping it can decode to the identical signature bytes
-    // and the token still verifies — which made this test flaky.
+    // Splice a different token's signature onto this one's header+payload,
+    // rather than flipping a base64url char — flipping padding bits can decode
+    // to the same signature bytes, which made this test flaky.
     const app = await createApp();
     const [header, payload] = (await token()).split(".");
     const [, , otherSig] = (await token({ key: strangerKeypair })).split(".");
@@ -283,8 +278,8 @@ describe("service auth — rejections", () => {
 
 describe("service auth — what it deliberately cannot do", () => {
   it("refuses a method that writes to the user's repo", async () => {
-    // `createList` puts a record in the caller's repository, which needs an
-    // OAuth grant. A service token proves key control, not that we hold one.
+    // createList writes to the caller's repo, which needs an OAuth grant —
+    // a service token only proves key control.
     const app = await createApp();
     const res = await app.request("/xrpc/buzz.bookhive.createList", {
       method: "POST",
