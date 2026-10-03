@@ -317,17 +317,17 @@ export const SearchPalette: FC<{
                       }
                     }}
                   >
-                    <p class="text-sm font-semibold text-foreground truncate group-hover:text-primary">
+                    <p class="text-sm font-semibold text-foreground truncate group-hover:text-primary max-sm:whitespace-normal max-sm:line-clamp-3">
                       {book.title}
                     </p>
-                    <p class="text-xs text-muted-foreground truncate mt-0.5">
+                    <p class="text-xs text-muted-foreground truncate mt-0.5 max-sm:whitespace-normal max-sm:line-clamp-2">
                       by {displayAuthors(book.authors)}
                     </p>
                   </a>
 
                   {/* Status buttons */}
                   {isLoggedIn && !selectMode && (
-                    <div class="flex shrink-0 items-center gap-1.5 ml-auto">
+                    <div class="flex shrink-0 items-center gap-1.5 ml-auto max-sm:flex-col max-sm:gap-2">
                       {STATUS_OPTIONS.map(({ value, label }, btnIndex) => {
                         const isActive = currentStatus === value;
                         return (
@@ -343,7 +343,7 @@ export const SearchPalette: FC<{
                             onKeyDown={(e) =>
                               handleStatusKeyDown(e as unknown as KeyboardEvent, btnIndex)
                             }
-                            class={`rounded px-2 py-1 text-[11px] font-medium transition-colors border ${
+                            class={`rounded px-2 py-1 text-[11px] font-medium transition-colors border max-sm:w-24 max-sm:min-h-8 max-sm:px-1 ${
                               isActive
                                 ? "bg-primary text-primary-foreground border-primary"
                                 : "border-border text-muted-foreground hover:border-primary hover:text-primary bg-transparent"
@@ -366,15 +366,15 @@ export const SearchPalette: FC<{
             <div class="border-t border-border px-4 py-2 flex items-center gap-4 text-[11px] text-muted-foreground">
               {books.length > 0 && (
                 <>
-                  <span>
+                  <span class="hidden sm:inline">
                     <kbd class="font-sans">↑↓</kbd> navigate
                   </span>
-                  <span>
+                  <span class="hidden sm:inline">
                     <kbd class="font-sans">↵</kbd> {selectMode ? "select" : "open"}
                   </span>
                 </>
               )}
-              <span>
+              <span class="hidden sm:inline">
                 <kbd class="font-sans">esc</kbd> close
               </span>
               {!selectMode && (
