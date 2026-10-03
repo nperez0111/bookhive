@@ -13,11 +13,12 @@ import { monthStartIso, yearStartIso } from "../core/readingYear";
  */
 
 /**
- * Books in one status. `orderBy` is a parameter because the two shelves
+ * Books in one status. `orderBy` is a parameter because the three shelves
  * `/home` renders legitimately want different keys: **Currently reading** is
  * an activity list sorted by `indexedAt`, **Want to read** is a queue sorted by
- * `createdAt`. Unifying them would make the to-read list reshuffle every time
- * you rated something.
+ * `createdAt`, and **Finished reading** is ordered by `finishedAt` (undated
+ * finishes last). Unifying them would make the to-read list or reading history
+ * reshuffle every time you rated something.
  */
 export async function listShelf({
   db,
@@ -29,7 +30,7 @@ export async function listShelf({
   db: Database;
   userDid: string;
   status: string;
-  orderBy?: "indexedAt" | "createdAt";
+  orderBy?: "indexedAt" | "createdAt" | "finishedAt";
   limit?: number;
 }) {
   const rows = await db
@@ -38,7 +39,7 @@ export async function listShelf({
     .select(BookFields)
     .where("user_book.userDid", "=", userDid)
     .where("user_book.status", "=", status)
-    .orderBy(orderBy === "createdAt" ? "user_book.createdAt" : "user_book.indexedAt", "desc")
+    .orderBy(`user_book.${orderBy}`, "desc")
     // Tiebreaker, so two rows stamped in the same millisecond do not swap
     // places between two requests.
     .orderBy("user_book.uri", "desc")

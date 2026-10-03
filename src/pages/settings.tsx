@@ -23,7 +23,7 @@ export const SettingsPage: FC<{
             </label>
             <select
               id="language-select"
-              class="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              class="focus-ring mt-1 block min-h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">All languages</option>
               {languages.map((lang) => (

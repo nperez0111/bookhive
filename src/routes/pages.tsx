@@ -50,7 +50,7 @@ const app = new Hono<AppEnv>()
     const profile = await ctx.getProfile();
     if (!profile) return c.redirect("/login", 302);
     const books = await listAllUserBooks({ db: ctx.db, userDid: profile.did });
-    return c.render(<MyBooks books={books} handle={profile.handle} />, {
+    return c.render(<MyBooks books={books} />, {
       title: "BookHive | My Books",
     });
   })

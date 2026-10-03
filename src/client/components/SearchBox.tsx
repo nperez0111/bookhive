@@ -6,7 +6,7 @@ export const SearchTrigger: FC<{ onOpen: () => void }> = ({ onOpen }) => {
     <button
       type="button"
       onClick={onOpen}
-      class="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted cursor-pointer transition-colors"
+      class="focus-ring flex min-h-10 w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted cursor-pointer transition-colors"
       aria-label="Search books (Cmd+K)"
     >
       <Search class="size-4 shrink-0" />

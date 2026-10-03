@@ -1,5 +1,4 @@
 import type { FC } from "hono/jsx";
-import { avatarImageUrl } from "../core/imageUrl";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 interface SidebarProps {
@@ -24,8 +23,8 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
       authRequired: true,
     },
     { href: "/explore", label: "Discover", icon: "compass", authRequired: false },
-    { href: "/feed", label: "Activity Feed", icon: "activity", authRequired: true },
-    { href: "/library", label: "Ebooks & Devices", icon: "library", authRequired: true },
+    { href: "/feed", label: "Activity", icon: "activity", authRequired: true },
+    { href: "/library", label: "Ebooks", icon: "library", authRequired: true },
   ].filter((item) => !item.authRequired || user);
 
   return (
@@ -53,28 +52,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
         })}
       </ul>
 
-      {user ? (
-        <>
-          <hr />
-          <ul>
-            <li>
-              <a href={`/profile/${user.handle}`}>
-                <div class="avatar">
-                  <img
-                    src={
-                      (user.avatar && avatarImageUrl(user.did, { size: 80 })) ||
-                      "/default-avatar.png"
-                    }
-                    loading="lazy"
-                    alt=""
-                  />
-                </div>
-                <span>@{user.handle}</span>
-              </a>
-            </li>
-          </ul>
-        </>
-      ) : (
+      {!user && (
         <div class="md:hidden" style="padding: 0.75rem 1rem;">
           <a href="/login" class="btn btn-primary btn-sm w-full text-center">
             Buzz in

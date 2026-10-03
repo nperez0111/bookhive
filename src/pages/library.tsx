@@ -9,7 +9,7 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
       <div class="mt-1 flex items-center gap-2">
         <code
           id="sync-server-url"
-          class="rounded-md border border-border bg-muted px-3 py-1.5 text-sm"
+          class="min-h-10 min-w-0 flex-1 content-center break-all rounded-md border border-border bg-muted px-3 py-2 text-sm"
         >
           /kosync
         </code>
@@ -22,7 +22,10 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
     <div>
       <label class="text-sm font-medium text-foreground">OPDS Catalog URL</label>
       <div class="mt-1 flex items-center gap-2">
-        <code id="opds-url" class="rounded-md border border-border bg-muted px-3 py-1.5 text-sm">
+        <code
+          id="opds-url"
+          class="min-h-10 min-w-0 flex-1 content-center break-all rounded-md border border-border bg-muted px-3 py-2 text-sm"
+        >
           /opds
         </code>
         <button type="button" class="btn btn-ghost btn-sm" data-copy="opds-url">
@@ -36,7 +39,7 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
       <div class="mt-1 flex items-center gap-2">
         <code
           id="sync-username"
-          class="rounded-md border border-border bg-muted px-3 py-1.5 text-sm"
+          class="min-h-10 min-w-0 flex-1 content-center break-all rounded-md border border-border bg-muted px-3 py-2 text-sm"
         >
           {handle}
         </code>
@@ -51,7 +54,7 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
       <div class="mt-1 flex flex-wrap items-center gap-2">
         <code
           id="sync-password"
-          class="rounded-md border border-border bg-muted px-3 py-1.5 text-sm"
+          class="min-h-10 max-w-full content-center break-all rounded-md border border-border bg-muted px-3 py-2 text-sm"
         >
           ••••••••••••••••
         </code>
@@ -78,7 +81,9 @@ const EReaderCredentials: FC<{ handle: string }> = ({ handle }) => (
     </div>
 
     <details class="mt-2">
-      <summary class="text-muted-foreground cursor-pointer text-sm">Setup instructions</summary>
+      <summary class="focus-ring text-muted-foreground min-h-10 cursor-pointer content-center rounded-md text-sm">
+        Setup instructions
+      </summary>
       <ol class="text-muted-foreground mt-2 list-inside list-decimal space-y-1 text-sm">
         <li>Open a document on your KOReader device</li>
         <li>Go to Settings &rarr; Progress Sync &rarr; Custom sync server</li>

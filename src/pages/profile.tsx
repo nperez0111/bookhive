@@ -8,7 +8,6 @@ import { BOOK_STATUS } from "../constants";
 import { booksFinishedInYear } from "../core/readingYear";
 import { UserBlock } from "./components/cards";
 import { coverImageUrl } from "../core/imageUrl";
-import { TrackedBooks } from "./components/TrackedBooks";
 import { computeReadingStats } from "../data/readingStats";
 import { ProgressMeter } from "./components/ProgressMeter";
 import { TimeAgo } from "./components/TimeAgo";
@@ -154,7 +153,7 @@ export const ProfilePage: FC<{
                   href={`/profile/${handle}/stats/${year}`}
                   class="text-primary hover:underline text-sm font-medium min-h-10 inline-flex items-center"
                 >
-                  See your Year in Books →
+                  Reading Stats →
                 </a>
               </p>
             </div>
@@ -214,8 +213,8 @@ export const ProfilePage: FC<{
           )}
 
           <section>
-            <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Library</h2>
-            {isOwnProfile ? <TrackedBooks books={books} /> : <BookList books={books} />}
+            <h2 class="text-foreground mb-4 text-2xl font-bold tracking-tight">Books</h2>
+            <BookList books={books} />
           </section>
 
           {userLists.length > 0 && (

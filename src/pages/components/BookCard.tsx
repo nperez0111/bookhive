@@ -149,6 +149,8 @@ type DenseProps = {
   tooltipPosition?: "top" | "bottom";
   /** Show the author under the title — needed wherever a grid can contain several editions or translations of the same work, or those rows are indistinguishable without hovering. */
   showAuthor?: boolean;
+  /** Reserve two title lines and one author line so workspace controls align across a row. */
+  reserveTextSpace?: boolean;
 };
 
 const DenseCard: FC<DenseProps> = ({
@@ -158,6 +160,7 @@ const DenseCard: FC<DenseProps> = ({
   overlay,
   tooltipPosition = "top",
   showAuthor = false,
+  reserveTextSpace = false,
 }) => {
   const href = book.hiveId ? `/books/${book.hiveId}` : undefined;
   const Tag = href ? "a" : "div";
@@ -184,19 +187,23 @@ const DenseCard: FC<DenseProps> = ({
       {href ? (
         <a href={href} class="block">
           <h3
-            class="book-title mt-2 text-sm font-semibold leading-tight text-foreground line-clamp-2"
+            class={`book-title mt-2 text-sm font-semibold leading-tight text-foreground line-clamp-2 ${reserveTextSpace ? "h-[2.5em]" : ""}`}
             style={book.hiveId ? `--book-title-name: book-title-${book.hiveId}` : undefined}
           >
             {book.title}
           </h3>
         </a>
       ) : (
-        <h3 class="book-title mt-2 text-sm font-semibold leading-tight text-foreground line-clamp-2">
+        <h3
+          class={`book-title mt-2 text-sm font-semibold leading-tight text-foreground line-clamp-2 ${reserveTextSpace ? "h-[2.5em]" : ""}`}
+        >
           {book.title}
         </h3>
       )}
-      {showAuthor && book.authors && (
-        <p class="mt-0.5 text-xs leading-tight text-muted-foreground line-clamp-1">
+      {showAuthor && (book.authors || reserveTextSpace) && (
+        <p
+          class={`mt-0.5 text-xs leading-tight text-muted-foreground line-clamp-1 ${reserveTextSpace ? "h-[1.25em]" : ""}`}
+        >
           {authorsDisplay(book.authors)}
         </p>
       )}

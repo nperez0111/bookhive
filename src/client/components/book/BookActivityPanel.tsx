@@ -62,7 +62,7 @@ function derivedPercent(d: Draft): number | null {
 
 const inputClass = "input focus-ring w-20 px-2 py-1.5 text-sm";
 const dateClass =
-  "rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none";
+  "focus-ring min-h-10 min-w-0 rounded-md border border-border bg-card px-2 py-1.5 text-sm tabular-nums text-foreground shadow-sm";
 
 /** The line under the action buttons: the save error, if any, then "Finished: 2 days ago". */
 export const BookUserTimestamp: FC<{ store: UserBookStore }> = ({ store }) => {

@@ -36,6 +36,18 @@ Wide content (the library/import tables) already clips itself, so `<main>` doesn
 
 ## basecoat's button variants are standalone classes, not modifiers
 
+The app enforces 40px minimum targets on `.btn` (including `.btn.btn-sm`) and `.input`.
+The compact button variant keeps its smaller typography and padding, not a smaller hit area.
+Search triggers, share-menu items, settings selects and the e-reader setup disclosure follow
+the same minimum and use the shared focus recipe. Do not enlarge checkbox/radio glyphs;
+their surrounding labels provide the targets.
+
+E-reader credential rows must let their `code` values shrink and wrap (`min-w-0`, `break-all`)
+while keeping Copy actions visible. A long public origin pushed those buttons beyond the phone
+viewport; the shell's intentional clipping hid this without document-level horizontal overflow.
+Check control bounds as well as `scrollWidth` when auditing narrow screens. Book-detail controls
+and their no-JS fallback keep matching 40px heights and shared focus rings.
+
 `.btn` _is_ the primary variant (`bg-primary text-primary-foreground`); `.btn-ghost` only declares
 a `:hover` state and `.btn-outline` overrides the background but not the text colour. The app
 writes `btn btn-ghost` in ~40 places, which rendered every one as a filled primary button, and
@@ -48,6 +60,20 @@ current page, not a solid fill — they used to be byte-identical to `.btn-prima
 drawer the active nav item and the "Buzz in" sign-in button rendered as two indistinguishable
 filled amber pills. **Solid `bg-primary` means "call to action"; tinted means "you are here."**
 Keep selected/current states tinted and leave the solid fill to real actions.
+
+## Responsive audit coverage (October 2026)
+
+The signed-in preview was checked at 390px, 744px, 1133px and 1920px. Settings, shelf creation,
+import, feed, Explore and the genre directory passed control-bound and minimum-height checks
+at all four widths. E-reader setup was rechecked on phone after fixing clipped Copy actions;
+its wider layouts were already within bounds. Populated My Books was checked on phone and
+desktop, including its reading filter. Account menus, the mobile drawer and search palette
+were opened without changing account data.
+
+These are DOM/layout checks, not screenshot approval: screenshot capture was unavailable.
+The fresh development database also left feed, shelves and discovery directories empty, so
+populated versions of those views still need review. Native iPad date/select rendering and
+an image-based light/dark contrast pass remain manual checks.
 
 ## The cover fade is decode-triggered, not insertion-triggered
 
@@ -128,15 +154,42 @@ zero percent is supported, but page zero is not. Exact page counts accompany rou
 
 ## Navigation and account disclosure
 
-The sidebar keeps six reading destinations: Home, My Books, Shelves, Discover, Activity Feed,
-and Ebooks & Devices. Public profile, Year in Books, Import, Settings and Sign out live in
+The sidebar keeps six flat destinations: Home, My Books, Shelves, Discover, Activity,
+and Ebooks. Public profile, Reading Stats, Import books, Settings and Sign out live in
 Navbar's native `details` account disclosure, visible on desktop and mobile. Native disclosure
 keeps account links reachable without hydration or JavaScript; links use ordinary Tab navigation,
 with Escape returning focus to the summary and outside click/focus dismissing the panel.
 The narrow mobile header shows the logo without the wordmark to leave room for search and
 the account trigger. The theme toggle stays in the mobile drawer.
 
-My Books repeats import, shelf, stats and ebook links; Home retains its existing stats link.
+My Books has no subnavigation or repeated shelf/stats/ebook jump-links; its header retains
+Import books. It alone uses a 1600px content-column cap (other pages remain `max-w-5xl`),
+with the same shell padding and overflow clipping. The cover grid defaults at 1200px and below and grows
+to seven columns on wide displays. Search, reading-status filters and sort apply to both views.
+Above 1200px the workspace defaults to the table. Until a view is chosen manually, the default
+follows viewport changes; an explicit choice stays selected for the current page.
+Table mode preserves inline edits; at 1200px and below it uses the existing editable stacked cards.
+The view toggle uses grid/table icons with titles and accessible names, 40px square targets
+(each with its own border, without a padded outer frame, matching the search field's height),
+and a tinted selected segment, not competing action buttons. Sorting stays
+in the toolbar above either view. Dense workspace cards reserve two title lines and one author
+line (including missing authors), so their 40px status/rating controls share row baselines.
+The no-JS grid uses the same text slots and horizontal/vertical spacing.
+The fixed sidebar is 208px wide from 768–1199px (including iPad mini landscape), with a
+matching content offset. At 1200px and above it stays 280px; below 768px it remains a drawer.
+
+Above 1200px, search, result count, status filter, sorting and view controls share a single
+toolbar row; the search field shrinks to make room for the fixed-size controls. On smaller
+screens, search and the square view toggle share a row. Table status, rating, page and date
+fields retain the same 40px minimum height, and missing covers use `FallbackCover`.
+Reading-status filtering uses one native
+select alongside sorting at every viewport size, with book counts included in each option.
+The page title and Import books action share the header row, with supporting copy below.
+Public profiles use read-only cover tabs even for their owner. Home retains its stats link.
+Home uses one consistent section treatment: a heading and count, a short supporting line,
+and author-labelled covers with reserved text slots. Empty shelves use the shared `.empty`
+treatment with at most one contextual action. The header's Find a book action opens the search
+palette (with a normal `/search` fallback); the compact stats summary uses a semantic definition list.
 The optional PDS information link lives in the sidebar footer, outside primary navigation.
 
 The editable LibraryTable mobile cards stack book identity above controls. A non-shrinking

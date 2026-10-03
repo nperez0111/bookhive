@@ -105,13 +105,13 @@ export const Navbar: FC<{
                   href={`/profile/${profile.handle}`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
-                  View my profile
+                  Public profile
                 </a>
                 <a
                   href={`/profile/${profile.handle}/stats`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
-                  Year in Books
+                  Reading Stats
                 </a>
                 <a
                   href="/import"

@@ -54,6 +54,22 @@ export const SolidIcon: FC<{ class?: string; viewBox?: string; children?: Child 
 
 // --- Navigation & controls -------------------------------------------------
 
+export const Grid: FC<IconProps> = (props) => (
+  <Icon {...props}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </Icon>
+);
+
+export const Table: FC<IconProps> = (props) => (
+  <Icon {...props}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18M3 15h18M9 3v18" />
+  </Icon>
+);
+
 /** The one search icon — used in the navbar, palette, and explore filters. */
 export const Search: FC<IconProps> = (props) => (
   <Icon {...props} strokeWidth={props.strokeWidth ?? 1.5}>

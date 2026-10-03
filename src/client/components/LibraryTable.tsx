@@ -4,6 +4,9 @@ import { displayAuthors } from "../../core/authors";
 import { StatusSelect, RatingSelect, DeleteButton, BookCover, DateInput } from "./bookActions";
 import { createLibraryTableStore } from "./libraryTableStore";
 import { ProgressMeter } from "../../pages/components/ProgressMeter";
+import { BookCard } from "../../pages/components/BookCard";
+import { Grid, Search, Table } from "../../pages/components/icons";
+import { starsToDisplayRating } from "../../core/rating";
 
 type BookProgressData = {
   percent?: number;
@@ -33,6 +36,20 @@ export type LibraryBook = {
 
 type SortKey = "default" | "title" | "status" | "rating" | "date";
 type SortDir = "asc" | "desc";
+
+export function defaultBookView(width: number): "grid" | "table" {
+  return width > 1200 ? "table" : "grid";
+}
+
+export function filterLibraryBooks(books: LibraryBook[], query: string, status: string) {
+  const search = query.trim().toLocaleLowerCase();
+  return books.filter(
+    (book) =>
+      (status === "all" || (status === "none" ? !book.status : book.status === status)) &&
+      (!search ||
+        `${book.title} ${displayAuthors(book.authors)}`.toLocaleLowerCase().includes(search)),
+  );
+}
 
 const STATUS_ORDER: Record<string, number> = {
   [READING]: 0,
@@ -163,7 +180,7 @@ const PageInput: FC<{
         <input
           type="number"
           aria-label="Current page"
-          className="min-h-10 w-20 xl:min-h-0 xl:w-14 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs tabular-nums text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+          className="focus-ring min-h-10 w-16 rounded-md border border-border bg-card px-2 text-xs tabular-nums text-foreground shadow-sm"
           value={currentPage}
           min={1}
           step={1}
@@ -198,11 +215,11 @@ const TableRow: FC<{
   >
     <td className="overflow-hidden px-4 py-2">
       <div className="flex items-center space-x-3">
-        <div className="h-12 w-8 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
+        <div className="h-24 w-16 shrink-0 overflow-hidden rounded-sm shadow-sm outline outline-1 outline-black/10 dark:outline-white/10">
           <BookCover src={book.cover || book.thumbnail} alt={`Cover of ${book.title}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-1 text-sm leading-tight font-medium text-foreground">
+          <h3 className="line-clamp-2 text-sm leading-tight font-medium text-foreground">
             {book.title}
           </h3>
           <p className="line-clamp-1 text-xs text-muted-foreground">
@@ -371,6 +388,37 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
   };
   const [sortKey, setSortKey] = useState<SortKey>("default");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [view, setView] = useState<"grid" | "table">(() =>
+    defaultBookView(typeof window === "undefined" ? 0 : window.innerWidth),
+  );
+  const viewChosen = useRef(false);
+  useEffect(() => {
+    const wideScreen = window.matchMedia("(min-width: 1201px)");
+    const updateDefault = () => {
+      if (!viewChosen.current) setView(wideScreen.matches ? "table" : "grid");
+    };
+    updateDefault();
+    wideScreen.addEventListener("change", updateDefault);
+    return () => wideScreen.removeEventListener("change", updateDefault);
+  }, []);
+  const statusOptions = (
+    [
+      ["all", "All books"],
+      [READING, "Reading"],
+      [WANTTOREAD, "Want to Read"],
+      [FINISHED, "Finished"],
+      [ABANDONED, "Abandoned"],
+      ["none", "No status"],
+    ] as const
+  ).map(([value, label]) => ({
+    value,
+    label,
+    count: books.filter(
+      (book) => value === "all" || (value === "none" ? !book.status : book.status === value),
+    ).length,
+  }));
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -383,8 +431,10 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
   };
 
   const sortedBooks = useMemo(() => {
-    return [...books].sort((a, b) => compareBooks(a, b, sortKey, sortDir));
-  }, [books, sortKey, sortDir]);
+    return filterLibraryBooks(books, query, statusFilter).sort((a, b) =>
+      compareBooks(a, b, sortKey, sortDir),
+    );
+  }, [books, sortKey, sortDir, query, statusFilter]);
 
   const save = (
     book: LibraryBook,
@@ -407,6 +457,91 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
 
   return (
     <>
+      <div className="mb-6 space-y-4 border-b border-border pb-5 min-[1201px]:flex min-[1201px]:items-center min-[1201px]:gap-4 min-[1201px]:space-y-0">
+        <div className="flex items-center gap-3 min-[1201px]:contents">
+          <div className="relative w-full min-w-0 flex-1 sm:max-w-md">
+            <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground" />
+            <input
+              type="search"
+              aria-label="Search my books"
+              placeholder="Search my books..."
+              className="focus-ring min-h-10 w-full min-w-0 rounded-md border border-border bg-card pl-9 pr-3 text-sm text-foreground placeholder:text-foreground placeholder:opacity-100 hover:bg-muted transition-colors"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+          </div>
+          <div
+            role="group"
+            aria-label="Book view"
+            className="flex shrink-0 gap-1 sm:max-[1200px]:ml-auto min-[1201px]:order-last"
+          >
+            {(["grid", "table"] as const).map((mode) => (
+              <button
+                type="button"
+                title={mode === "grid" ? "Grid view" : "Table View"}
+                aria-label={mode === "grid" ? "Grid view" : "Table View"}
+                aria-pressed={view === mode ? "true" : "false"}
+                className={`focus-ring flex h-10 w-10 items-center justify-center rounded-md border border-border transition-colors ${view === mode ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                onClick={() => {
+                  viewChosen.current = true;
+                  setView(mode);
+                }}
+              >
+                {mode === "grid" ? <Grid class="size-5" /> : <Table class="size-5" />}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 items-center gap-3 sm:max-[1200px]:flex sm:max-[1200px]:justify-end min-[1201px]:contents">
+          <p
+            role="status"
+            className="order-last col-span-2 text-sm tabular-nums text-muted-foreground sm:max-[1200px]:order-first sm:max-[1200px]:mr-auto sm:flex sm:h-10 sm:items-center sm:leading-none min-[1201px]:order-none min-[1201px]:shrink-0 min-[1201px]:grow"
+          >
+            {sortedBooks.length} of {books.length} books
+          </p>
+          <select
+            aria-label="Filter by reading status"
+            className="focus-ring min-h-10 w-full min-w-0 rounded-md border border-border bg-card px-3 text-sm text-foreground sm:w-auto"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter((e.target as HTMLSelectElement).value)}
+          >
+            {statusOptions.map(({ value, label, count }) => (
+              <option value={value}>
+                {label} ({count})
+              </option>
+            ))}
+          </select>
+          <div className="flex min-w-0 items-center gap-2">
+            <label
+              for="my-books-sort"
+              className="sr-only text-sm text-muted-foreground sm:not-sr-only"
+            >
+              Sort by
+            </label>
+            <select
+              id="my-books-sort"
+              className="focus-ring min-h-10 w-full min-w-0 rounded-md border border-border bg-card px-3 text-sm text-foreground sm:w-auto"
+              value={`${sortKey}:${sortDir}`}
+              onChange={(e) => {
+                const [k, d] = (e.target as HTMLSelectElement).value.split(":") as [
+                  SortKey,
+                  SortDir,
+                ];
+                setSortKey(k);
+                setSortDir(d);
+              }}
+            >
+              <option value="default:asc">Reading first</option>
+              <option value="title:asc">Title A–Z</option>
+              <option value="title:desc">Title Z–A</option>
+              <option value="status:asc">Reading status</option>
+              <option value="rating:desc">Highest rated</option>
+              <option value="rating:asc">Lowest rated</option>
+              <option value="date:desc">Date read</option>
+            </select>
+          </div>
+        </div>
+      </div>
       {error && (
         <p
           role="status"
@@ -473,17 +608,14 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           overflow-hidden ancestor here would sink the sticky thead with the
           page). overflow-auto is the safety net for the narrow end.
 
-          `xl`, not `md`. Six columns need ~880px, but this table renders inside
-          the app shell's max-w-5xl column *next to the sidebar*: measured
-          content width is 476px at a 820px viewport and 632px at 1024px, so
-          every width below ~1130px got a table that scrolled sideways. The card
-          view below is a better answer for that range than a table you have to
-          drag. Note the ceiling is max-w-5xl, not the viewport — content tops
-          out at ~976px however wide the screen gets, so the column budget below
-          has to fit in that. */}
-      <div className="hidden max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] xl:block">
+            Above 1200px: six columns need ~880px next to the sidebar.
+           My Books expands to 1600px on large screens, but narrower screens
+           still use editable cards instead of a sideways-scrolling table. */}
+      <div
+        className={`${view === "table" ? "hidden min-[1201px]:block" : "hidden"} max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}
+      >
         <table className="table w-full min-w-[880px] table-fixed">
-          {/* The only accessible name this table has: the visible "Library"
+          {/* The only accessible name this table has: the visible "My Books"
               heading lives in the server-rendered page, outside the island. */}
           <caption className="sr-only">Your library</caption>
           {/* The row scrolling under the pinned header needs an edge to
@@ -558,30 +690,49 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
         </table>
       </div>
 
-      {/* Mobile: card view */}
-      <div className="space-y-4 xl:hidden">
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-muted-foreground">Sort by</label>
-          <select
-            className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-            value={`${sortKey}:${sortDir}`}
-            onChange={(e) => {
-              const [k, d] = (e.target as HTMLSelectElement).value.split(":") as [SortKey, SortDir];
-              setSortKey(k);
-              setSortDir(d);
+      {!sortedBooks.length && (
+        <div className="empty">
+          <h2 className="empty-title">No matching books</h2>
+          <p className="empty-description">Try another search or reading status.</p>
+          <button
+            type="button"
+            className="btn btn-outline mt-4 min-h-10"
+            onClick={() => {
+              setQuery("");
+              setStatusFilter("all");
             }}
           >
-            <option value="default:asc">Recent</option>
-            <option value="title:asc">Title A-Z</option>
-            <option value="title:desc">Title Z-A</option>
-            <option value="status:asc">Status</option>
-            <option value="rating:desc">Rating high-low</option>
-            <option value="rating:asc">Rating low-high</option>
-            <option value="date:desc">Date read</option>
-          </select>
+            Clear filters
+          </button>
         </div>
-      </div>
-      <div className="space-y-4 xl:hidden">
+      )}
+      {view === "grid" && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-6 2xl:grid-cols-7">
+          {sortedBooks.map((book) => (
+            <div key={book.hiveId} className="min-w-0 space-y-3">
+              <BookCard
+                variant="dense"
+                showAuthor
+                reserveTextSpace
+                book={{ ...book, rating: starsToDisplayRating(book.stars) ?? 0 }}
+              />
+              <div className="space-y-2 [&_select]:min-h-10" aria-label={`Update ${book.title}`}>
+                <StatusSelect
+                  label={`Reading status for ${book.title}`}
+                  status={book.status}
+                  onChange={(status) => save(book, { status })}
+                />
+                <RatingSelect
+                  label={`Rating for ${book.title}`}
+                  stars={book.stars}
+                  onChange={(stars) => save(book, { stars })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={view === "table" ? "space-y-4 min-[1201px]:hidden" : "hidden"}>
         {sortedBooks.map((book) => (
           <MobileCard
             key={book.hiveId}
