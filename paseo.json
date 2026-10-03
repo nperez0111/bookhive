@@ -5,7 +5,7 @@
   "scripts": {
     "dev": {
       "type": "service",
-      "command": "PORT=5199 DEV_HOST=0.0.0.0 DEV_HMR_CLIENT_PORT=443 PUBLIC_URL=https://5199.dev.nickthesick.com vp run dev"
+      "command": "NODE_ENV=development PORT=5199 DEV_HOST=0.0.0.0 DEV_HMR_CLIENT_PORT=443 PUBLIC_URL=https://5199.dev.nickthesick.com vp run dev"
     }
   }
 }

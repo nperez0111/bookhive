@@ -3,7 +3,6 @@ import type { Book } from "../types";
 import type { ProfileViewDetailed } from "../types";
 import type { ReadingStats } from "../data/readingStats";
 import { coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
-import { ProfileHeader } from "./components/ProfileHeader";
 import { FallbackCover } from "./components/fallbackCover";
 import { format } from "date-fns";
 
@@ -18,33 +17,19 @@ export const ReadingStatsPage: FC<{
   books: Book[];
   allTimeStats?: ReadingStats;
   showYearInBooks: boolean;
-}> = ({
-  handle,
-  did,
-  year,
-  stats,
-  profile,
-  isOwnProfile,
-  availableYears,
-  books,
-  allTimeStats,
-  showYearInBooks,
-}) => {
-  const title = year != null ? `Your ${year} in Books` : "Your reading stats";
+}> = ({ handle, year, stats, isOwnProfile, availableYears, allTimeStats, showYearInBooks }) => {
+  const title = year != null ? `Reading Stats · ${year}` : "Reading Stats";
   const totalBooksForGenre = stats.topGenres.reduce((s, g) => s + g.count, 0);
   const maxRatingCount = Math.max(1, ...Object.values(stats.ratingDistribution));
 
   return (
     <div class="space-y-6 px-4 lg:px-8">
-      <ProfileHeader
-        handle={handle}
-        did={did}
-        isFollowing={undefined}
-        canFollow={!isOwnProfile}
-        isOwnProfile={isOwnProfile}
-        profile={profile}
-        books={books}
-      />
+      <a
+        href={isOwnProfile ? "/my-books" : `/profile/${handle}`}
+        class="text-primary inline-flex min-h-10 items-center text-sm hover:underline"
+      >
+        {isOwnProfile ? "← My Books" : `← @${handle}'s profile`}
+      </a>
 
       {/* Year selector */}
       <div class="flex flex-wrap items-center gap-2">
@@ -99,48 +84,50 @@ export const ReadingStatsPage: FC<{
         </div>
       )}
 
-      {showYearInBooks && (
-        <>
-          {/* Hero stats - Spotify Wrapped style */}
-          <div class="card overflow-hidden bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
-            <div class="card-body">
-              <div class="mb-6 flex flex-wrap items-baseline gap-2">
-                <span class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
-                  {year}
-                </span>
-                <span class="text-muted-foreground text-xl">Year in Books</span>
+      {/* Hero stats - Spotify Wrapped style */}
+      <div class="card overflow-hidden bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
+        <div class="card-body">
+          {showYearInBooks && (
+            <div class="mb-6 flex flex-wrap items-baseline gap-2">
+              <span class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                {year}
+              </span>
+              <span class="text-muted-foreground text-xl">Year in Books</span>
+            </div>
+          )}
+          <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
+            <div class="text-center">
+              <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                {stats.booksCount}
               </div>
-              <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
-                <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
-                    {stats.booksCount}
-                  </div>
-                  <div class="text-muted-foreground text-sm">
-                    {year != null ? `Books in ${year}` : "Books read"}
-                  </div>
-                </div>
-                <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
-                    {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
-                  </div>
-                  <div class="text-muted-foreground text-sm">Pages read</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
-                    {stats.averageRating != null ? stats.averageRating.toFixed(1) : "—"}
-                  </div>
-                  <div class="text-muted-foreground text-sm">Avg rating</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
-                    {stats.averagePageCount != null ? stats.averagePageCount.toLocaleString() : "—"}
-                  </div>
-                  <div class="text-muted-foreground text-sm">Avg length (pgs)</div>
-                </div>
+              <div class="text-muted-foreground text-sm">
+                {year != null ? `Books in ${year}` : "Books read"}
               </div>
             </div>
+            <div class="text-center">
+              <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
+              </div>
+              <div class="text-muted-foreground text-sm">Pages read</div>
+            </div>
+            <div class="text-center">
+              <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                {stats.averageRating != null ? stats.averageRating.toFixed(1) : "—"}
+              </div>
+              <div class="text-muted-foreground text-sm">Avg rating</div>
+            </div>
+            <div class="text-center">
+              <div class="text-4xl font-bold text-foreground tabular-nums md:text-5xl">
+                {stats.averagePageCount != null ? stats.averagePageCount.toLocaleString() : "—"}
+              </div>
+              <div class="text-muted-foreground text-sm">Avg length (pgs)</div>
+            </div>
           </div>
+        </div>
+      </div>
 
+      {showYearInBooks && (
+        <>
           {/* First & Last book of year */}
           {(stats.firstBookOfYear || stats.lastBookOfYear) && (
             <div class="card">

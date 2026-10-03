@@ -342,7 +342,7 @@ export const BookInfo: FC<{
                             aria-haspopup="listbox"
                             aria-expanded="false"
                             id="status-dropdown"
-                            class={`peer cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
+                            class={`focus-ring peer min-h-10 cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] ${
                               usersBook?.status
                                 ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                 : "bg-accent text-accent-foreground hover:bg-accent/80"
@@ -381,7 +381,7 @@ export const BookInfo: FC<{
                                   aria-selected={usersBook?.status === status.value}
                                   name="status"
                                   value={status.value}
-                                  class={`relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
+                                  class={`focus-ring relative my-0.5 min-h-10 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
                                     usersBook?.status === status.value
                                       ? "bg-primary text-primary-foreground"
                                       : "text-foreground hover:bg-muted"
@@ -455,7 +455,7 @@ export const BookInfo: FC<{
                           type="submit"
                           name="owned"
                           value={usersBook?.owned ? "false" : "true"}
-                          class={`cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
+                          class={`focus-ring min-h-10 cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-[background-color,scale] duration-150 active:scale-[0.96] ${
                             usersBook?.owned
                               ? "bg-primary text-primary-foreground hover:bg-primary/90"
                               : "bg-accent text-accent-foreground hover:bg-accent/80"
@@ -790,7 +790,7 @@ export const BookInfo: FC<{
                           type="date"
                           name="startedAt"
                           value={toDateInputValue(usersBook.startedAt)}
-                          class="rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          class="focus-ring min-h-10 min-w-0 rounded-md border border-border bg-card px-2 py-1.5 text-sm tabular-nums text-foreground shadow-sm"
                         />
                       </div>
                       <div class="flex items-center gap-2">
@@ -799,7 +799,7 @@ export const BookInfo: FC<{
                           type="date"
                           name="finishedAt"
                           value={toDateInputValue(usersBook.finishedAt)}
-                          class="rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+                          class="focus-ring min-h-10 min-w-0 rounded-md border border-border bg-card px-2 py-1.5 text-sm tabular-nums text-foreground shadow-sm"
                         />
                       </div>
                     </div>

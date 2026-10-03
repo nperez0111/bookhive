@@ -46,6 +46,9 @@ test("My Books requires sign-in and only renders the viewer's records, including
     expect(html).toContain("My stopped book");
     expect(html).not.toContain("Someone else");
     expect(html).toContain('href="/books/bk_mine"');
+    expect(html).not.toContain('aria-label="Book management"');
+    expect(html).not.toContain('href="/library"');
+    expect(html).not.toContain('href="/shelves/reader.test"');
   } finally {
     await close();
   }

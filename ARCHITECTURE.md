@@ -131,5 +131,10 @@ name — full stories in the linked `docs/notes/*.md`.
 
 `/my-books` reads the signed-in viewer's books through `listAllUserBooks` and renders
 `pages/myBooks.tsx`. `pages/components/TrackedBooks.tsx` owns the LibraryTable mount,
-serialized props, and no-JS cover grid shared with the owner's profile; there is no new island.
-The grid includes every tracked status, including abandoned and status-less books.
+serialized props, and no-JS cover grid; there is no new island. The workspace has local
+title/author search, status filters (including abandoned and status-less), cover-grid/table
+views and the existing per-book serialized write queue. The owner's public profile uses
+the same read-only `BookList` presentation as other visitors, not a second management table.
+Home is a reading overview: currently reading (`indexedAt`), want to read (`createdAt`),
+then finished reading (`finishedAt` descending, undated last, URI tie-breaker). Reading Stats
+is a separate history destination with basic counts even below the Year in Books threshold.

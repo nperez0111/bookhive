@@ -2,22 +2,25 @@ import { useState, type FC } from "hono/jsx/dom";
 import { BOOK_STATUS_MAP, BOOK_STATUS_OPTIONS } from "../../constants";
 import { STARS_CHOICES, starsOptionLabel } from "../../core/rating";
 import { toDateInputValue } from "../../lib/dateInput";
+import { FallbackCover } from "../../pages/components/fallbackCover";
 
 export const STATUS_OPTIONS = BOOK_STATUS_OPTIONS;
 
 export const STATUS_LABELS: Record<string, string> = BOOK_STATUS_MAP;
 
 const selectClass =
-  "w-full cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none";
+  "focus-ring min-h-10 w-full cursor-pointer rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm";
 
 export { writeBook as updateBook, deleteBook } from "./bookApi";
 
 export const StatusSelect: FC<{
   status?: string | null;
+  label?: string;
   onChange: (status: string) => void;
-}> = ({ status, onChange }) => (
+}> = ({ status, label = "Reading status", onChange }) => (
   <select
     className={selectClass}
+    aria-label={label}
     value={status || ""}
     onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
   >
@@ -32,14 +35,16 @@ export const StatusSelect: FC<{
 
 export const RatingSelect: FC<{
   stars?: number | null;
+  label?: string;
   onChange: (stars: number) => void;
-}> = ({ stars, onChange }) => (
+}> = ({ stars, label = "Rating", onChange }) => (
   <select
     className={selectClass}
+    aria-label={label}
     value={stars ?? ""}
     onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
   >
-    <option value="">-</option>
+    <option value="">Not rated</option>
     {STARS_CHOICES.map((val) => (
       <option key={val} value={val}>
         {starsOptionLabel(val)}
@@ -72,7 +77,7 @@ export const DeleteButton: FC<{ onDelete: () => void }> = ({ onDelete }) => (
 export const BookCover: FC<{ src?: string | null; alt?: string }> = ({ src, alt }) => {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
-    return <div className="flex h-full w-full items-center justify-center bg-muted" />;
+    return <FallbackCover className="h-full w-full" />;
   }
   return (
     <img
@@ -93,7 +98,7 @@ export const DateInput: FC<{
 }> = ({ value, onChange }) => (
   <input
     type="date"
-    className="w-full rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+    className="focus-ring min-h-10 min-w-0 w-full rounded-md border border-border bg-card px-2 py-1 text-xs tabular-nums text-foreground shadow-sm"
     value={toDateInputValue(value)}
     onChange={(e) => onChange((e.target as HTMLInputElement).value)}
   />

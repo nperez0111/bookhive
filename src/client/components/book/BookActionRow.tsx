@@ -22,7 +22,7 @@ export function useUserBook(store: UserBookStore) {
 }
 
 const pillClass = (active: boolean) =>
-  `cursor-pointer rounded-lg text-sm font-semibold shadow-sm transition-[background-color,scale,opacity] duration-150 active:scale-[0.96] focus:ring-2 focus:ring-primary focus:outline-none ${
+  `focus-ring min-h-10 cursor-pointer rounded-lg text-sm font-semibold shadow-sm transition-[background-color,scale,opacity] duration-150 active:scale-[0.96] ${
     active
       ? "bg-primary text-primary-foreground hover:bg-primary/90"
       : "bg-accent text-accent-foreground hover:bg-accent/80"
@@ -83,7 +83,7 @@ export const BookActionRow: FC<{ store: UserBookStore }> = ({ store }) => {
                   type="button"
                   role="option"
                   aria-selected={selected ? "true" : "false"}
-                  class={`relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
+                  class={`focus-ring relative my-0.5 min-h-10 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm ${
                     selected
                       ? "bg-primary text-primary-foreground"
                       : "text-foreground hover:bg-muted"

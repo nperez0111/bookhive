@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
-import { pageProgressUpdate, type LibraryBook } from "./LibraryTable";
-import { READING } from "../../constants";
+import {
+  defaultBookView,
+  filterLibraryBooks,
+  pageProgressUpdate,
+  type LibraryBook,
+} from "./LibraryTable";
+import { READING, ABANDONED, FINISHED } from "../../constants";
 
 const book: LibraryBook = {
   hiveId: "bk_test",
@@ -16,6 +21,30 @@ const book: LibraryBook = {
   bookProgress: { currentPage: 66, totalPages: 658, percent: 10 },
   totalPages: 658,
 };
+
+test("workspace defaults to cards through 1200px and table above it", () => {
+  expect(defaultBookView(390)).toBe("grid");
+  expect(defaultBookView(1200)).toBe("grid");
+  expect(defaultBookView(1201)).toBe("table");
+  expect(defaultBookView(1920)).toBe("table");
+});
+
+test("library filters match title or tab-separated authors without hiding abandoned or status-less books", () => {
+  const books = [
+    book,
+    { ...book, hiveId: "bk_abandoned", status: ABANDONED, authors: "First Author\tSecond Writer" },
+    { ...book, hiveId: "bk_none", status: null },
+  ];
+  expect(filterLibraryBooks(books, "", "all")).toHaveLength(3);
+  expect(filterLibraryBooks(books, " SECOND writer ", "all").map((b) => b.hiveId)).toEqual([
+    "bk_abandoned",
+  ]);
+  expect(filterLibraryBooks(books, "progress TEST", READING)).toEqual([book]);
+  expect(filterLibraryBooks(books, "", ABANDONED)).toHaveLength(1);
+  expect(filterLibraryBooks(books, "", "none").map((b) => b.hiveId)).toEqual(["bk_none"]);
+  expect(filterLibraryBooks(books, "", FINISHED)).toEqual([]);
+  expect(books).toHaveLength(3);
+});
 
 test("library progress sends completion without an old explicit status", () => {
   const update = pageProgressUpdate("658", book);

@@ -124,38 +124,38 @@ Shared helpers: `src/routes/lib.ts` (`cacheControl`, `searchBooks`, `refetchBook
 
 Each file exports a Hono JSX component rendered server-side.
 
-| File                  | Renders                                                                   |
-| --------------------- | ------------------------------------------------------------------------- |
-| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`                         |
-| `navbar.tsx`          | Top nav bar with account disclosure on desktop/mobile, search mount point |
-| `simple-navbar.tsx`   | Simplified nav bar variant                                                |
-| `sidebar.tsx`         | Home, My Books, Shelves, Discover, Activity Feed, Ebooks & Devices        |
-| `home.tsx`            | Authenticated home page                                                   |
-| `myBooks.tsx`         | Signed-in tracked books, import and management links                      |
-| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects)                        |
-| `searchResults.tsx`   | Search results                                                            |
-| `bookInfo.tsx`        | Book detail                                                               |
-| `profile.tsx`         | User profile + shelves                                                    |
-| `shelves.tsx`         | Book shelves view                                                         |
-| `comments.tsx`        | Comments/reviews                                                          |
-| `feed.tsx`            | Activity feed                                                             |
-| `readingStats.tsx`    | Reading stats by year                                                     |
-| `settings.tsx`        | Account settings                                                          |
-| `explore.tsx`         | Explore hub                                                               |
-| `genres.tsx`          | Genre directory                                                           |
-| `genreBooks.tsx`      | Books by genre (paginated, sortable)                                      |
-| `genreEmoji.ts`       | Genre → emoji mapping                                                     |
-| `authorBooks.tsx`     | Books by author (paginated)                                               |
-| `authorDirectory.tsx` | Author directory                                                          |
-| `import.tsx`          | CSV import page                                                           |
-| `library.tsx`         | Personal library                                                          |
-| `login.tsx`           | Login form                                                                |
-| `signup.tsx`          | Sign up form                                                              |
-| `app.tsx`             | iOS app landing                                                           |
-| `privacy-policy.tsx`  | Privacy policy                                                            |
-| `terms.tsx`           | Terms of service (`/legal`)                                               |
-| `pds.tsx`             | PDS info page                                                             |
-| `error.tsx`           | Error page                                                                |
+| File                  | Renders                                                                       |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`                             |
+| `navbar.tsx`          | Top nav bar with account disclosure on desktop/mobile, search mount point     |
+| `simple-navbar.tsx`   | Simplified nav bar variant                                                    |
+| `sidebar.tsx`         | Flat navigation: Home, My Books, Shelves, Discover, Activity, Ebooks          |
+| `home.tsx`            | Reading overview: reading, want-to-read, newest finished books                |
+| `myBooks.tsx`         | Wide tracked-book management workspace with search, filters, views and import |
+| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects)                            |
+| `searchResults.tsx`   | Search results                                                                |
+| `bookInfo.tsx`        | Book detail                                                                   |
+| `profile.tsx`         | User profile + shelves                                                        |
+| `shelves.tsx`         | Book shelves view                                                             |
+| `comments.tsx`        | Comments/reviews                                                              |
+| `feed.tsx`            | Activity feed                                                                 |
+| `readingStats.tsx`    | Reading stats by year                                                         |
+| `settings.tsx`        | Account settings                                                              |
+| `explore.tsx`         | Explore hub                                                                   |
+| `genres.tsx`          | Genre directory                                                               |
+| `genreBooks.tsx`      | Books by genre (paginated, sortable)                                          |
+| `genreEmoji.ts`       | Genre → emoji mapping                                                         |
+| `authorBooks.tsx`     | Books by author (paginated)                                                   |
+| `authorDirectory.tsx` | Author directory                                                              |
+| `import.tsx`          | CSV import page                                                               |
+| `library.tsx`         | Personal library                                                              |
+| `login.tsx`           | Login form                                                                    |
+| `signup.tsx`          | Sign up form                                                                  |
+| `app.tsx`             | iOS app landing                                                               |
+| `privacy-policy.tsx`  | Privacy policy                                                                |
+| `terms.tsx`           | Terms of service (`/legal`)                                                   |
+| `pds.tsx`             | PDS info page                                                                 |
+| `error.tsx`           | Error page                                                                    |
 
 Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/viewTransitions.ts` (snapshot name deduplication; see `docs/notes/styling.md`). URL building lives in `src/lib/buildUrl.ts`.
 
@@ -175,26 +175,26 @@ Page images are `<picture>` with a WebP `<source>` and the original as the `<img
 
 ### Shared Page Components (`src/pages/components/`)
 
-| File                      | What                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| `book.tsx`                | Book card component                                                            |
-| `TrackedBooks.tsx`        | Shared LibraryTable mount, props and no-JS cover grid for My Books/own profile |
-| `BookCard.tsx`            | Composable book card (`dense` takes `showAuthor` for search/genre grids)       |
-| `icons.tsx`               | The one icon set — `Icon`/`SolidIcon` wrappers plus the named glyphs           |
-| `ThemeToggle.tsx`         | The one dark-mode toggle + its script (owns the `theme-color` value)           |
-| `Pagination.tsx`          | The one offset pager (`/search`, genre, author). Uses `pageWindow`             |
-| `ProgressMeter.tsx`       | The one filled-track meter (reading progress, storage, genre chart)            |
-| `TimeAgo.tsx`             | The one relative timestamp — strict wording, `<time datetime title>`           |
-| `FilterableDirectory.tsx` | `/explore/genres` + `/explore/authors`: filter box, rows, filter script        |
-| `ShareMenu.tsx`           | The one share dropdown (Bluesky / copy link / copy RSS)                        |
-| `activityTimeline.tsx`    | `/feed`'s chronological `<ol>` — single rows, burst rows, date separators      |
-| `BookReview.tsx`          | Book review form/display                                                       |
-| `ProfileHeader.tsx`       | Profile header with avatar/stats                                               |
-| `LanguageSelect.tsx`      | Language picker                                                                |
-| `modal.tsx`               | Modal dialog (CSS-based)                                                       |
-| `fallbackCover.tsx`       | Placeholder book cover                                                         |
-| `AtTags.tsx`              | AT Tags `<meta name="at:...">` builder                                         |
-| `cards/`                  | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                              |
+| File                      | What                                                                      |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `book.tsx`                | Book card component                                                       |
+| `TrackedBooks.tsx`        | My Books workspace mount, serialized props and no-JS cover grid           |
+| `BookCard.tsx`            | Composable book card (`dense` takes `showAuthor` for search/genre grids)  |
+| `icons.tsx`               | The one icon set — `Icon`/`SolidIcon` wrappers plus the named glyphs      |
+| `ThemeToggle.tsx`         | The one dark-mode toggle + its script (owns the `theme-color` value)      |
+| `Pagination.tsx`          | The one offset pager (`/search`, genre, author). Uses `pageWindow`        |
+| `ProgressMeter.tsx`       | The one filled-track meter (reading progress, storage, genre chart)       |
+| `TimeAgo.tsx`             | The one relative timestamp — strict wording, `<time datetime title>`      |
+| `FilterableDirectory.tsx` | `/explore/genres` + `/explore/authors`: filter box, rows, filter script   |
+| `ShareMenu.tsx`           | The one share dropdown (Bluesky / copy link / copy RSS)                   |
+| `activityTimeline.tsx`    | `/feed`'s chronological `<ol>` — single rows, burst rows, date separators |
+| `BookReview.tsx`          | Book review form/display                                                  |
+| `ProfileHeader.tsx`       | Profile header with avatar/stats                                          |
+| `LanguageSelect.tsx`      | Language picker                                                           |
+| `modal.tsx`               | Modal dialog (CSS-based)                                                  |
+| `fallbackCover.tsx`       | Placeholder book cover                                                    |
+| `AtTags.tsx`              | AT Tags `<meta name="at:...">` builder                                    |
+| `cards/`                  | `Card`, `CardActions`, `StarDisplay`, `UserBlock`                         |
 
 `AtTags.tsx` is built with hono's `html` template (not JSX `<meta>`) because hono/jsx dedupes by `name`. Routes pass tags via `c.render(..., { atTags })`. Why each of these is the _only_ correct source for its thing: `docs/notes/domain-rules-and-write-paths.md`.
 
@@ -221,7 +221,7 @@ Page images are `<picture>` with a WebP `<source>` and the original as the `<img
 
 `LibraryManager` sub-components live in `src/client/components/library/`: `AnchoredMenu.tsx`, `ShelfTabs.tsx`, `PersonalBookCard.tsx`, `SyncDocumentSections.tsx`, `types.ts`. `AnchoredMenu`/`MenuItem`/`MenuConfirm` are the house dropdown (no state, `peer` checkbox + `<form>` reset) used by all library menus — don't switch to Popover API or CSS anchor positioning (both tried and reverted).
 
-The My Books / own-profile `LibraryTable` serializes writes per book and reconciles canonical responses via `client/components/libraryTableStore.ts`. Owned toggles use that queue, and deletion keeps the row and confirmation dialog visible until the server succeeds. Empty own-profile shelves link to `/search` and open the hydrated search palette through `data-open-search`; see `docs/notes/domain-rules-and-write-paths.md`.
+The My Books `LibraryTable` offers title/author search, status filters, cover-grid/table views and sorting. It serializes writes per book and reconciles canonical responses via `client/components/libraryTableStore.ts`. Owned toggles use that queue, and deletion keeps the row and confirmation dialog visible until the server succeeds. Public profiles (including the owner's) use read-only `BookList` tabs. Empty own-profile shelves link to `/search` and open the hydrated search palette through `data-open-search`; see `docs/notes/domain-rules-and-write-paths.md`.
 
 Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/utils: `useSearchBooks.ts`, `useDebounce.ts`. Icons always come from `src/pages/components/icons.tsx` — there is no client-only icon module.
 
@@ -378,7 +378,7 @@ Form controls get a low-alpha white overlay in dark mode rather than `var(--inpu
 
 ## Build & Dev
 
-In this Paseo workspace, start the managed `dev` script (`paseo script start dev`). `paseo.json` pins it to port 5199, binds Vite to `0.0.0.0`, and sets `PUBLIC_URL=https://5199.dev.nickthesick.com` for browser access and OAuth callbacks.
+In this Paseo workspace, start the managed `dev` script (`paseo script start dev`). `paseo.json` explicitly sets `NODE_ENV=development` (including worker threads), pins it to port 5199, binds Vite to `0.0.0.0`, and sets `PUBLIC_URL=https://5199.dev.nickthesick.com` for browser access and OAuth callbacks.
 
 | Command              | What                                                                                                |
 | -------------------- | --------------------------------------------------------------------------------------------------- |

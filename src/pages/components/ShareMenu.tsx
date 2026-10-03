@@ -10,7 +10,7 @@ import { Bluesky, Copy, Rss, Share } from "./icons";
  */
 
 const ITEM_CLASS =
-  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted";
+  "focus-ring flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted";
 
 export const ShareMenu: FC<{
   /** Where "Share on Bluesky" points. */

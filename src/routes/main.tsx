@@ -251,7 +251,11 @@ export function mainRouter(deps: AppDeps): HonoServer {
               <main class="flex-1 overflow-x-clip [overflow-clip-margin:5rem] flex justify-center px-4 py-4 lg:px-6 lg:py-6">
                 {/* `w-full`: without it, this flex item under `justify-center` sizes to
                     max-content, so content-light pages render narrower than max-w-5xl. */}
-                <div class="mx-auto w-full min-w-0 max-w-5xl">{children}</div>
+                <div
+                  class={`mx-auto w-full min-w-0 ${c.req.path === "/my-books" ? "max-w-[1600px]" : "max-w-5xl"}`}
+                >
+                  {children}
+                </div>
               </main>
             </div>
           </div>
