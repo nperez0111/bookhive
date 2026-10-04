@@ -30,6 +30,12 @@ you're touching.
   - `/images/{modifiers}/{source}` — source-embedded catch-all (used by OG render, iOS app). Helpers: `sourceCoverImageUrl`, `sourceAvatarImageUrl`
 - `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx`
 
+The login handle suggestions use `public/js/actor-typeahead.js`, calling
+`https://typeahead.waow.tech/xrpc/tech.waow.typeahead.searchActors` directly from the browser
+with `q`/`limit` and `X-Client: bookhive.buzz`. Only handles and optional avatars are consumed;
+the service does not provide authenticated `viewer` state. This changes discovery only, not
+OAuth handle resolution.
+
 ### `src/routes/pages.tsx` (mounted at `/`)
 
 - `/my-books` → `src/pages/myBooks.tsx` — authenticated tracked-book management, private/no-store; reads `listAllUserBooks` for the viewer only

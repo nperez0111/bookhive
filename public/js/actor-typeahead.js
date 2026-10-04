@@ -236,12 +236,12 @@ export default class ActorTypeahead extends HTMLElement {
       return;
     }
 
-    const host = this.getAttribute("host") ?? "https://public.api.bsky.app";
-    const url = new URL("xrpc/app.bsky.actor.searchActorsTypeahead", host);
+    const host = this.getAttribute("host") ?? "https://typeahead.waow.tech";
+    const url = new URL("xrpc/tech.waow.typeahead.searchActors", host);
     url.searchParams.set("q", query);
     url.searchParams.set("limit", `${this.#rows}`);
 
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { "X-Client": "bookhive.buzz" } });
     const json = await res.json();
     this.#actors = json.actors;
     this.#index = -1;
