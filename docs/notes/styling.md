@@ -174,7 +174,22 @@ The view toggle uses grid/table icons with titles and accessible names, 40px squ
 and a tinted selected segment, not competing action buttons. Sorting stays
 in the toolbar above either view. Dense workspace cards reserve two title lines and one author
 line (including missing authors), so their 40px status/rating controls share row baselines.
-The no-JS grid uses the same text slots and horizontal/vertical spacing.
+`TrackedBooks` server-renders the actual `LibraryTable` component, with a disabled fieldset
+until the island mounts. Its `responsive` initial view paints the grid through 1200px and
+table above 1200px using CSS, without consulting a server-side viewport. JavaScript enables
+the same controls rather than replacing a read-only layout with a different toolbar or table.
+Book-title/cover links remain navigable even inside a disabled fieldset. Without scripts,
+`noscript` hides the JS-only toolbar, grid controls and delete column and explains that edits
+live on the linked book pages. Failed island loads still leave real books and working links;
+do not hide the workspace with a JS-enabled class or replace it with a loading skeleton.
+Select options explicitly serialize `selected` so SSR shows the actual status and rating
+(a select's `value` attribute alone does not select an HTML option).
+Server and client share `pages/utils/trackedBookOrder.ts` for the initial reading-first order.
+Development `Layout` links `/src/index.css?direct` as a blocking stylesheet as well as the
+client entry's HMR CSS import: JS-only CSS arrival previously allowed an unstyled first paint
+and left no-JS previews unstyled. Production still uses the manifest/inline CSS path.
+Inline JSX stylesheet strings must use `raw` for trusted, static CSS; HTML-escaped `>` in a
+child selector silently makes the selector invalid.
 The fixed sidebar is 208px wide from 768–1199px (including iPad mini landscape), with a
 matching content offset. At 1200px and above it stays 280px; below 768px it remains a drawer.
 
@@ -190,7 +205,8 @@ Home uses one consistent section treatment: a heading and count, a short support
 and author-labelled covers with reserved text slots. Empty shelves use the shared `.empty`
 treatment with at most one contextual action. The header's Find a book action opens the search
 palette (with a normal `/search` fallback); the compact stats summary uses a semantic definition list.
-The optional PDS information link lives in the sidebar footer, outside primary navigation.
+The optional PDS information link lives in the sidebar footer, outside primary navigation,
+labelled BookHive.social with the shared Users community icon.
 
 The editable LibraryTable mobile cards stack book identity above controls. A non-shrinking
 control column beside the title previously covered the title/cover on narrow viewports; dates

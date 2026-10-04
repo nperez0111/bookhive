@@ -66,7 +66,8 @@ export const Layout: FC<
   // The JSON-LD below describes the *site*, not this page, so the SearchAction target uses the origin rather than `url`.
   const origin = new URL(metaUrl).origin;
 
-  // In dev mode, CSS is imported by the client entry, so we don't need a separate link tag
+  // Development needs a real stylesheet too: importing CSS from the client entry
+  // applies it only after JavaScript loads, leaving SSR content unstyled at first paint.
   const cssUrls = assetUrls?.css ?? ["/assets/style.css"];
   const jsUrls = assetUrls?.js ?? ["/assets/index.js"];
   // In production, inline the built CSS into <head> to avoid a render-blocking stylesheet request.
@@ -101,6 +102,7 @@ export const Layout: FC<
               ${raw(inlineCss)}
             </style>`
           : cssUrls.map((href) => html`<link rel="stylesheet" href="${href}" />`)}
+        ${isDevVite ? html`<link rel="stylesheet" href="/src/index.css?direct" />` : ""}
         <style>
           ${raw(`/* Actor Typeahead - uses theme tokens so it follows light/dark toggle */
           actor-typeahead {

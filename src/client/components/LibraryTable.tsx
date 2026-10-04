@@ -7,6 +7,7 @@ import { ProgressMeter } from "../../pages/components/ProgressMeter";
 import { BookCard } from "../../pages/components/BookCard";
 import { Grid, Search, Table } from "../../pages/components/icons";
 import { starsToDisplayRating } from "../../core/rating";
+import { compareTrackedBooks } from "../../pages/utils/trackedBookOrder";
 
 type BookProgressData = {
   percent?: number;
@@ -36,6 +37,7 @@ export type LibraryBook = {
 
 type SortKey = "default" | "title" | "status" | "rating" | "date";
 type SortDir = "asc" | "desc";
+type BookView = "grid" | "table" | "responsive";
 
 export function defaultBookView(width: number): "grid" | "table" {
   return width > 1200 ? "table" : "grid";
@@ -84,21 +86,8 @@ function compareBooks(a: LibraryBook, b: LibraryBook, key: SortKey, dir: SortDir
       else cmp = new Date(aDate).getTime() - new Date(bDate).getTime();
       break;
     }
-    default: {
-      const aIsReading = a.status === READING;
-      const bIsReading = b.status === READING;
-      if (aIsReading !== bIsReading) return aIsReading ? -1 : 1;
-
-      const aIsFinished = a.status === FINISHED;
-      const bIsFinished = b.status === FINISHED;
-      if (aIsFinished && bIsFinished) {
-        if (!a.finishedAt && !b.finishedAt) return 0;
-        if (!a.finishedAt) return 1;
-        if (!b.finishedAt) return -1;
-        return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
+    default:
+      return compareTrackedBooks(a, b);
   }
   return dir === "desc" ? -cmp : cmp;
 }
@@ -220,7 +209,9 @@ const TableRow: FC<{
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm leading-tight font-medium text-foreground">
-            {book.title}
+            <a href={`/books/${book.hiveId}`} className="focus-ring rounded-sm">
+              {book.title}
+            </a>
           </h3>
           <p className="line-clamp-1 text-xs text-muted-foreground">
             {displayAuthors(book.authors)}
@@ -277,7 +268,7 @@ const TableRow: FC<{
         </div>
       </div>
     </td>
-    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+    <td className="library-js-only px-4 py-2" onClick={(e) => e.stopPropagation()}>
       <DeleteButton onDelete={onDelete} />
     </td>
   </tr>
@@ -363,7 +354,11 @@ const MobileCard: FC<{
 
 // --- Main component ---
 
-export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks }) => {
+export const LibraryTable: FC<{
+  initialBooks: LibraryBook[];
+  initialView?: BookView;
+  interactive?: boolean;
+}> = ({ initialBooks, initialView, interactive = true }) => {
   const [books, setBooks] = useState<LibraryBook[]>(initialBooks);
   const [error, setError] = useState<string | null>(null);
   const storeRef = useRef<ReturnType<typeof createLibraryTableStore> | null>(null);
@@ -390,8 +385,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [view, setView] = useState<"grid" | "table">(() =>
-    defaultBookView(typeof window === "undefined" ? 0 : window.innerWidth),
+  const [view, setView] = useState<BookView>(
+    () => initialView ?? defaultBookView(typeof window === "undefined" ? 0 : window.innerWidth),
   );
   const viewChosen = useRef(false);
   useEffect(() => {
@@ -456,8 +451,8 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
   }
 
   return (
-    <>
-      <div className="mb-6 space-y-4 border-b border-border pb-5 min-[1201px]:flex min-[1201px]:items-center min-[1201px]:gap-4 min-[1201px]:space-y-0">
+    <fieldset disabled={!interactive} className="min-w-0">
+      <div className="library-toolbar mb-6 space-y-4 border-b border-border pb-5 min-[1201px]:flex min-[1201px]:items-center min-[1201px]:gap-4 min-[1201px]:space-y-0">
         <div className="flex items-center gap-3 min-[1201px]:contents">
           <div className="relative w-full min-w-0 flex-1 sm:max-w-md">
             <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground" />
@@ -481,7 +476,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                 title={mode === "grid" ? "Grid view" : "Table View"}
                 aria-label={mode === "grid" ? "Grid view" : "Table View"}
                 aria-pressed={view === mode ? "true" : "false"}
-                className={`focus-ring flex h-10 w-10 items-center justify-center rounded-md border border-border transition-colors ${view === mode ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                className={`focus-ring flex h-10 w-10 items-center justify-center rounded-md border border-border transition-colors ${view === mode ? "bg-primary/15 text-primary" : view === "responsive" ? (mode === "table" ? "text-muted-foreground min-[1201px]:bg-primary/15 min-[1201px]:text-primary" : "bg-primary/15 text-primary min-[1201px]:bg-transparent min-[1201px]:text-muted-foreground") : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                 onClick={() => {
                   viewChosen.current = true;
                   setView(mode);
@@ -506,7 +501,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
             onChange={(e) => setStatusFilter((e.target as HTMLSelectElement).value)}
           >
             {statusOptions.map(({ value, label, count }) => (
-              <option value={value}>
+              <option value={value} selected={statusFilter === value}>
                 {label} ({count})
               </option>
             ))}
@@ -531,7 +526,9 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                 setSortDir(d);
               }}
             >
-              <option value="default:asc">Reading first</option>
+              <option value="default:asc" selected={sortKey === "default"}>
+                Reading first
+              </option>
               <option value="title:asc">Title A–Z</option>
               <option value="title:desc">Title Z–A</option>
               <option value="status:asc">Reading status</option>
@@ -612,7 +609,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
            My Books expands to 1600px on large screens, but narrower screens
            still use editable cards instead of a sideways-scrolling table. */}
       <div
-        className={`${view === "table" ? "hidden min-[1201px]:block" : "hidden"} max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}
+        className={`${view === "table" || view === "responsive" ? "hidden min-[1201px]:block" : "hidden"} max-h-[calc(100dvh-11rem)] overflow-auto rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}
       >
         <table className="table w-full min-w-[880px] table-fixed">
           {/* The only accessible name this table has: the visible "My Books"
@@ -670,7 +667,7 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                 <SortArrow active={sortKey === "date"} dir={sortKey === "date" ? sortDir : "asc"} />
               </th>
               <th
-                className="px-4 py-2 text-left text-sm font-semibold text-foreground"
+                className="library-js-only px-4 py-2 text-left text-sm font-semibold text-foreground"
                 style={{ width: "10%" }}
               >
                 Actions
@@ -706,8 +703,10 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           </button>
         </div>
       )}
-      {view === "grid" && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-6 2xl:grid-cols-7">
+      {(view === "grid" || view === "responsive") && (
+        <div
+          className={`grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-6 2xl:grid-cols-7 ${view === "responsive" ? "min-[1201px]:hidden" : ""}`}
+        >
           {sortedBooks.map((book) => (
             <div key={book.hiveId} className="min-w-0 space-y-3">
               <BookCard
@@ -716,7 +715,10 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
                 reserveTextSpace
                 book={{ ...book, rating: starsToDisplayRating(book.stars) ?? 0 }}
               />
-              <div className="space-y-2 [&_select]:min-h-10" aria-label={`Update ${book.title}`}>
+              <div
+                className="library-grid-actions space-y-2 [&_select]:min-h-10"
+                aria-label={`Update ${book.title}`}
+              >
                 <StatusSelect
                   label={`Reading status for ${book.title}`}
                   status={book.status}
@@ -732,16 +734,18 @@ export const LibraryTable: FC<{ initialBooks: LibraryBook[] }> = ({ initialBooks
           ))}
         </div>
       )}
-      <div className={view === "table" ? "space-y-4 min-[1201px]:hidden" : "hidden"}>
-        {sortedBooks.map((book) => (
-          <MobileCard
-            key={book.hiveId}
-            book={book}
-            onUpdate={(fields, payload) => save(book, fields, payload)}
-            onDelete={() => requestDelete(book)}
-          />
-        ))}
-      </div>
-    </>
+      {view === "table" && (
+        <div className="space-y-4 min-[1201px]:hidden">
+          {sortedBooks.map((book) => (
+            <MobileCard
+              key={book.hiveId}
+              book={book}
+              onUpdate={(fields, payload) => save(book, fields, payload)}
+              onDelete={() => requestDelete(book)}
+            />
+          ))}
+        </div>
+      )}
+    </fieldset>
   );
 };

@@ -178,7 +178,7 @@ Page images are `<picture>` with a WebP `<source>` and the original as the `<img
 | File                      | What                                                                      |
 | ------------------------- | ------------------------------------------------------------------------- |
 | `book.tsx`                | Book card component                                                       |
-| `TrackedBooks.tsx`        | My Books workspace mount, serialized props and no-JS cover grid           |
+| `TrackedBooks.tsx`        | My Books mount, props and SSR LibraryTable with navigable no-JS books     |
 | `BookCard.tsx`            | Composable book card (`dense` takes `showAuthor` for search/genre grids)  |
 | `icons.tsx`               | The one icon set — `Icon`/`SolidIcon` wrappers plus the named glyphs      |
 | `ThemeToggle.tsx`         | The one dark-mode toggle + its script (owns the `theme-color` value)      |

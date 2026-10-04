@@ -24,9 +24,11 @@ export const StatusSelect: FC<{
     value={status || ""}
     onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
   >
-    <option value="">Status</option>
+    <option value="" selected={!status}>
+      Status
+    </option>
     {STATUS_OPTIONS.map((s) => (
-      <option key={s.value} value={s.value}>
+      <option key={s.value} value={s.value} selected={status === s.value}>
         {s.label}
       </option>
     ))}
@@ -44,9 +46,11 @@ export const RatingSelect: FC<{
     value={stars ?? ""}
     onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
   >
-    <option value="">Not rated</option>
+    <option value="" selected={stars == null}>
+      Not rated
+    </option>
     {STARS_CHOICES.map((val) => (
-      <option key={val} value={val}>
+      <option key={val} value={val} selected={stars === val}>
         {starsOptionLabel(val)}
       </option>
     ))}

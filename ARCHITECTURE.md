@@ -131,7 +131,11 @@ name — full stories in the linked `docs/notes/*.md`.
 
 `/my-books` reads the signed-in viewer's books through `listAllUserBooks` and renders
 `pages/myBooks.tsx`. `pages/components/TrackedBooks.tsx` owns the LibraryTable mount,
-serialized props, and no-JS cover grid; there is no new island. The workspace has local
+serialized props, and server-renders the same `client/components/LibraryTable.tsx` workspace
+with a CSS-responsive initial grid/table and disabled editing controls; there is no new island.
+Its linked books remain usable without scripts, with a `noscript` edit hint and JS-only controls
+hidden. This presentation component is deliberately shared across server and client to prevent
+first-paint markup drift (it does not perform reads or writes during SSR). The workspace has local
 title/author search, status filters (including abandoned and status-less), cover-grid/table
 views and the existing per-book serialized write queue. The owner's public profile uses
 the same read-only `BookList` presentation as other visitors, not a second management table.

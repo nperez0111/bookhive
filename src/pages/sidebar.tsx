@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { Users } from "./components/icons";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 interface SidebarProps {
@@ -61,7 +62,16 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
       )}
 
       <footer>
-        {pdsEnabled && <a href="/pds">About BookHive accounts</a>}
+        {pdsEnabled && (
+          <a
+            href="/pds"
+            aria-current={currentPath === "/pds" ? "page" : undefined}
+            class="flex items-center gap-2"
+          >
+            <Users class="size-4 shrink-0" />
+            BookHive.social
+          </a>
+        )}
         {/* Theme toggle — visible on mobile only (hidden on desktop where navbar has it) */}
         <ThemeToggle
           class="flex items-center gap-2 md:!hidden"
