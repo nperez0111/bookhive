@@ -127,7 +127,7 @@ export const BookList: FC<{
           id="tab-read-panel"
           role="tabpanel"
           aria-labelledby="tab-read"
-          class="mt-8 hidden peer-checked/read:block"
+          class="mt-8 px-4 hidden peer-checked/read:block"
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {readBooks.map((book) => (
@@ -141,7 +141,7 @@ export const BookList: FC<{
           id="tab-reading-panel"
           role="tabpanel"
           aria-labelledby="tab-reading"
-          class="mt-8 hidden peer-checked/reading:block"
+          class="mt-8 px-4 hidden peer-checked/reading:block"
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {readingBooks.map((book) => (
@@ -155,7 +155,7 @@ export const BookList: FC<{
           id="tab-want-panel"
           role="tabpanel"
           aria-labelledby="tab-want"
-          class="mt-8 hidden peer-checked/want:block"
+          class="mt-8 px-4 hidden peer-checked/want:block"
         >
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {wantBooks.map((book) => (
