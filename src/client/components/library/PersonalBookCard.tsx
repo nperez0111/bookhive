@@ -33,8 +33,8 @@ const FormatPlaceholder: FC<{ format: string }> = ({ format }) => (
  * One book in the library grid. Mirrors the dense `BookCard` used across the
  * rest of the app (`src/pages/components/BookCard.tsx`) — that component is
  * server-side `hono/jsx` and can't be imported into this island — and adds the
- * library-specific affordances: format/size, e-reader progress, and a hover
- * overlay for download and management.
+ * library-specific affordances: format/size, e-reader progress, and an action
+ * overlay for download and management (always visible on touch devices).
  */
 export const PersonalBookCard: FC<{
   book: PersonalBook;
@@ -94,8 +94,8 @@ export const PersonalBookCard: FC<{
             <FormatPlaceholder format={book.format} />
           )}
 
-          {/* Scrim behind the hover actions */}
-          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100" />
+          {/* Touch devices cannot hover; keep the scrim and controls visible there. */}
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100 group-has-[:checked]:opacity-100 max-md:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:opacity-100" />
         </div>
 
         {/* Action layer — a sibling of the clipped cover box so the menu panel can overflow it.
@@ -103,7 +103,7 @@ export const PersonalBookCard: FC<{
             become the containing block for the menu's `fixed` light-dismiss backdrop, trapping
             it inside this card. `group-has-[:checked]` keeps the layer up while the menu is
             open, since the trigger is a label and holds no focus for `focus-within`. */}
-        <div class="pointer-events-none absolute inset-x-0 top-0 bottom-0 flex flex-col justify-end p-2 opacity-0 transition-[opacity,bottom] duration-200 group-focus-within:opacity-100 group-hover:bottom-1 group-hover:opacity-100 group-has-[:checked]:bottom-1 group-has-[:checked]:opacity-100">
+        <div class="pointer-events-none absolute inset-x-0 top-0 bottom-0 flex flex-col justify-end p-2 opacity-0 transition-[opacity,bottom] duration-200 group-focus-within:opacity-100 group-hover:bottom-1 group-hover:opacity-100 group-has-[:checked]:bottom-1 group-has-[:checked]:opacity-100 max-md:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:opacity-100">
           <div class="pointer-events-auto flex items-center justify-between gap-2">
             <a
               href={`/library/books/${book.contentHash}/download`}
@@ -115,7 +115,29 @@ export const PersonalBookCard: FC<{
               <DownloadIcon />
             </a>
 
-            <AnchoredMenu id={menuId} label={`Manage ${book.title}`}>
+            <AnchoredMenu
+              id={menuId}
+              label={`Manage ${book.title}`}
+              triggerClass="inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-md bg-white/15 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-white/30 active:scale-[0.96]"
+            >
+              <a
+                href={`/library/books/${book.contentHash}/download`}
+                download
+                class="focus-ring flex min-h-10 items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+              >
+                <DownloadIcon />
+                Download
+              </a>
+              {href && (
+                <a
+                  href={href}
+                  class="focus-ring flex min-h-10 items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                >
+                  <BookOpen class="size-4" />
+                  View on BookHive
+                </a>
+              )}
+
               {book.hiveId ? (
                 <MenuItem menuId={menuId} onClick={() => onUnlink(book.contentHash)}>
                   Unlink from BookHive
