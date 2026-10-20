@@ -95,6 +95,13 @@ panel blindly put the first card's delete action under the desktop sidebar or of
 mobile. Keep panel widths capped to the available column width as well. This is placement-only
 JavaScript; do not replace the checkbox/form behavior with Popover or CSS anchor positioning.
 
+Personal-library cover controls and their scrim stay visible below `md`, for `hover: none`, or
+a coarse primary pointer, rather than relying on a synthetic first-tap hover. The 40px three-dot label
+opens the existing checkbox menu with one tap; the menu includes Download and, for linked
+books, View on BookHive. Menu action rows also have 40px minimum targets. Keep the scrim
+visible while a menu is checked, and keep the action layer untransformed so its fixed
+light-dismiss backdrop can cover the viewport.
+
 ## View transition names identify one rendered element
 
 The genre directory repeats featured genres in its full list. Giving both labels the same

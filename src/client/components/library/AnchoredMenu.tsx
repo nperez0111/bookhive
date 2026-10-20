@@ -106,7 +106,7 @@ export const MenuItem: FC<
   <button
     type={menuId ? "reset" : "button"}
     onClick={onClick}
-    class={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted ${
+    class={`flex min-h-10 w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted ${
       danger ? "text-destructive" : "text-foreground"
     }`}
   >
@@ -135,7 +135,7 @@ export const MenuConfirm: FC<{
 
     <label
       for={id}
-      class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted peer-checked:bg-muted peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-primary"
+      class="flex min-h-10 w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted peer-checked:bg-muted peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-primary"
     >
       {label}
     </label>
