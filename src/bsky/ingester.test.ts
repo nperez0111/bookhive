@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { reconcileUserRepo } from "./ingester";
+import { backfillUserRepo } from "./ingester";
 import { createTestDb, testKv } from "../test/db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
@@ -74,8 +74,8 @@ function respond(input: string | URL | Request) {
         : [],
   });
 }
-const reconcile = () =>
-  reconcileUserRepo(
+const backfill = () =>
+  backfillUserRepo(
     DID,
     db,
     kv,
@@ -86,36 +86,14 @@ const reconcile = () =>
 const mirrored = () =>
   db.selectFrom("user_book").selectAll().where("uri", "=", URI).executeTakeFirstOrThrow();
 
-describe("PDS reconciliation", () => {
-  it("repairs stale records, saves the raw record, and leaves unchanged activity dates alone", async () => {
+describe("discovery backfill", () => {
+  it("leaves existing book records unchanged", async () => {
     request = async (input) => respond(input);
-    expect(await reconcile()).toBe(true);
+    await backfill();
     const row = await mirrored();
-    expect(row.cid).toBe("pds-cid");
-    expect(row.status).toBe(BOOK_STATUS.FINISHED);
-    expect(row.stars).toBe(8);
-    expect(row.review).toBe(book.review);
-    expect(JSON.parse(row.bookProgress!)).toEqual(book.bookProgress);
-    expect(JSON.parse(row.record!)).toMatchObject(book);
-    expect(row.indexedAt).not.toBe(OLD);
-    expect(await kv.get(`reconciled_at:${DID}`)).toBeTruthy();
-    expect(logs.at(-1)).toMatchObject({ outcome: "reconcile_complete", repaired: 1 });
-    expect(await reconcile()).toBe(true);
-    expect((await mirrored()).indexedAt).toBe(row.indexedAt);
-    expect(logs.at(-1)).toMatchObject({ repaired: 0 });
-  });
-
-  it("does not overwrite a newer live update received during a PDS fetch", async () => {
-    request = async (input) => {
-      await db
-        .updateTable("user_book")
-        .set({ cid: "newer-live-cid", review: "Even newer" })
-        .where("uri", "=", URI)
-        .execute();
-      return respond(input);
-    };
-    expect(await reconcile()).toBe(true);
-    expect(await mirrored()).toMatchObject({ cid: "newer-live-cid", review: "Even newer" });
+    expect(row.cid).toBe("old-cid");
+    expect(row.status).toBe(BOOK_STATUS.READING);
+    expect(row.indexedAt).toBe(OLD);
   });
 
   it("inserts a missing book from a later PDS page", async () => {
@@ -132,49 +110,27 @@ describe("PDS reconciliation", () => {
       }
       return respond(url);
     };
-    expect(await reconcile()).toBe(true);
-    expect((await mirrored()).cid).toBe("pds-cid");
-  });
-
-  it("does not re-date activity when only progress changes", async () => {
-    request = async (input) => respond(input);
-    expect(await reconcile()).toBe(true);
-    await db
-      .updateTable("user_book")
-      .set({
-        cid: "progress-behind",
-        indexedAt: OLD,
-        bookProgress: JSON.stringify({ percent: 99, updatedAt: OLD }),
-      })
-      .execute();
-    expect(await reconcile()).toBe(true);
+    await backfill();
     const row = await mirrored();
-    expect(row.indexedAt).toBe(OLD);
-    expect(JSON.parse(row.bookProgress!)).toEqual(book.bookProgress);
+    expect(row.cid).toBe("pds-cid");
+    expect(JSON.parse(row.record!)).toMatchObject(book);
+    expect(await kv.get(`backfill_done:${DID}`)).toBeTruthy();
+    expect(logs.at(-1)).toMatchObject({ outcome: "backfill_complete" });
   });
 
-  it("does not resurrect a row deleted during a PDS fetch", async () => {
-    request = async (input) => {
-      await db.deleteFrom("user_book").where("uri", "=", URI).execute();
-      return respond(input);
-    };
-    expect(await reconcile()).toBe(true);
-    expect(await db.selectFrom("user_book").select("uri").execute()).toEqual([]);
-  });
-
-  it("does not mark a partially failed scan complete, and repairs it on retry", async () => {
+  it("does not mark a failed scan complete, allowing a later attempt", async () => {
     request = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
       return url.searchParams.get("collection") === "buzz.bookhive.buzz"
         ? new Response("Unavailable", { status: 503 })
         : respond(input);
     };
-    expect(await reconcile()).toBe(false);
-    expect(await kv.get(`reconciled_at:${DID}`)).toBeNull();
-    expect(logs.at(-1)).toMatchObject({ outcome: "reconcile_error" });
+    await backfill();
+    expect(await kv.get(`backfill_done:${DID}`)).toBeNull();
+    expect(logs.at(-1)).toMatchObject({ outcome: "backfill_error" });
     request = async (input) => respond(input);
-    expect(await reconcile()).toBe(true);
-    expect(await kv.get(`reconciled_at:${DID}`)).toBeTruthy();
+    await backfill();
+    expect(await kv.get(`backfill_done:${DID}`)).toBeTruthy();
   });
 
   it("recovers shelf metadata and ranking, including same-CID mirrors from migration 029", async () => {
@@ -212,14 +168,9 @@ describe("PDS reconciliation", () => {
             ],
           })
         : Response.json({ records: [] });
-    expect(await reconcile()).toBe(true);
+    await backfill();
     const row = await db.selectFrom("book_list").selectAll().executeTakeFirstOrThrow();
     expect(row.description).toBe("Updated on Popfeed");
     expect(row.itemOrder).toBe(JSON.stringify([itemUri]));
-    expect(await reconcile()).toBe(true);
-    expect(logs.at(-1)).toMatchObject({ repaired: 0 });
-    expect((await db.selectFrom("book_list").selectAll().executeTakeFirstOrThrow()).indexedAt).toBe(
-      row.indexedAt,
-    );
   });
 });

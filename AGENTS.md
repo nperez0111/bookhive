@@ -122,7 +122,7 @@ Worker threads (bundled to .output/server/workers/):
 Shared helpers: `src/routes/lib.ts` (`cacheControl`, `searchBooks`, `refetchBooks`/`refetchBuzzes`/`refetchLists`, `syncFollowsIfNeeded`), `src/routes/syncCredentials.tsx` (KOSync/OPDS password, mounted at both `/settings/sync` and `/library/sync`), `src/routes/errorPage.tsx`'s `renderError(c, {status, ...})` — always use it rather than a bare `<ErrorPage>` render, since its `statusCode` prop is display-only and won't set the actual HTTP status.
 
 Settings → Book sync (`/refresh-books`) also re-syncs Popfeed shelves/items to repair missed
-Jetstream events. List ingestion/reconciliation/re-sync share `bookListUpsertSet`, including ranked
+Jetstream events. List ingestion/backfill/re-sync share `bookListUpsertSet`, including ranked
 `itemOrder`; see `docs/notes/domain-rules-and-write-paths.md`.
 
 ## Server-Side Pages (`src/pages/`)

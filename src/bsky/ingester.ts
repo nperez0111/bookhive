@@ -97,9 +97,9 @@ export type Ingester = {
   destroy(): Promise<void>;
 };
 
-const RECONCILED_AT_PREFIX = "reconciled_at:";
+const BACKFILL_DONE_PREFIX = "backfill_done:";
 
-export async function reconcileUserRepo(
+export async function backfillUserRepo(
   did: string,
   db: Database,
   kv: Storage,
@@ -111,9 +111,7 @@ export async function reconcileUserRepo(
       )
     ).pds,
   fetchRecords: (url: URL, init: RequestInit) => Promise<Response> = fetch,
-): Promise<boolean> {
-  const startedAt = Date.now();
-  let repaired = 0;
+): Promise<void> {
   try {
     const pds = await resolvePds(did);
 
@@ -123,24 +121,10 @@ export async function reconcileUserRepo(
       ids.SocialPopfeedFeedList,
       ids.SocialPopfeedFeedListItem,
     ]) {
-      const table =
-        collection === ids.BuzzBookhiveBook
-          ? "user_book"
-          : collection === ids.BuzzBookhiveBuzz
-            ? "buzz"
-            : collection === ids.SocialPopfeedFeedList
-              ? "book_list"
-              : "book_list_item";
-      // Snapshot BEFORE fetching. A live update/delete during the PDS request wins.
-      const snapshot = new Map(
-        (
-          await db.selectFrom(table).select(["uri", "cid"]).where("userDid", "=", did).execute()
-        ).map((row) => [row.uri, row.cid]),
-      );
       let cursor: string | undefined;
       let pages = 0;
       do {
-        if (++pages > 500) throw new Error(`Reconciliation page limit reached: ${collection}`);
+        if (++pages > 500) throw new Error(`Backfill page limit reached: ${collection}`);
         const url = new URL(`${pds}/xrpc/com.atproto.repo.listRecords`);
         url.searchParams.set("repo", did);
         url.searchParams.set("collection", collection);
@@ -157,232 +141,181 @@ export async function reconcileUserRepo(
         if (!Array.isArray(data.records) || (data.cursor && data.cursor === cursor)) {
           throw new Error(`Invalid listRecords page: ${collection}`);
         }
-        if (data.records.length)
-          await db.transaction().execute(async (db) => {
-            const current = new Map(
-              (
-                await db
-                  .selectFrom(table)
-                  .select(["uri", "cid"])
-                  .where("userDid", "=", did)
-                  .where(
-                    "uri",
-                    "in",
-                    data.records.map((record) => record.uri),
-                  )
-                  .execute()
-              ).map((row) => [row.uri, row.cid]),
-            );
-            // Migration 029 leaves itemOrder empty even when the stored CID is current.
-            const missingListOrders = new Set(
-              collection === ids.SocialPopfeedFeedList
-                ? (
-                    await db
-                      .selectFrom("book_list")
-                      .select("uri")
-                      .where("userDid", "=", did)
-                      .where("itemOrder", "is", null)
-                      .where(
-                        "uri",
-                        "in",
-                        data.records.map((record) => record.uri),
-                      )
-                      .execute()
-                  ).map((row) => row.uri)
-                : [],
-            );
-            data.records = data.records.filter(
-              (record) =>
-                record.uri.startsWith(`at://${did}/${collection}/`) &&
-                current.get(record.uri) === snapshot.get(record.uri) &&
-                (current.get(record.uri) !== record.cid || missingListOrders.has(record.uri)),
-            );
-            const now = new Date();
-            if (collection === ids.BuzzBookhiveBook) {
-              const validBooks = data.records.flatMap((record) => {
-                const parsed = Book.validateRecord(record.value);
-                return parsed.success ? [{ record, book: parsed.value }] : [];
-              });
-
-              if (validBooks.length > 0) {
-                const requestedHiveIds = validBooks.map((r) => r.book.hiveId as HiveId);
-                const existingBooks = await db
-                  .selectFrom("hive_book")
-                  .select("id")
-                  .where("id", "in", requestedHiveIds)
-                  .execute();
-                const existingHiveIds = new Set(existingBooks.map((b) => b.id));
-
-                const rowsToInsert = validBooks
-                  .filter(({ book }) => existingHiveIds.has(book.hiveId as HiveId))
-                  .map(({ record, book }) =>
-                    serializeUserBook({
-                      uri: record.uri,
-                      cid: record.cid,
-                      userDid: did,
-                      hiveId: book.hiveId as HiveId,
-                      createdAt: book.createdAt,
-                      indexedAt: now.toISOString(),
-                      title: book.title,
-                      authors: book.authors,
-                      startedAt: book.startedAt ?? null,
-                      finishedAt: book.finishedAt ?? null,
-                      status: book.status ?? null,
-                      owned: book.owned ? 1 : 0,
-                      review: book.review ?? null,
-                      stars: book.stars ?? null,
-                      bookProgress: book.bookProgress ?? null,
-                      previousReads: book.previousReads ?? null,
-                      record: book,
-                    } satisfies UserBook),
-                  );
-                for (let i = 0; i < rowsToInsert.length; i += 100) {
-                  await db
-                    .insertInto("user_book")
-                    .values(rowsToInsert.slice(i, i + 100))
-                    .onConflict((oc) => oc.column("uri").doUpdateSet(userBookUpsertSet))
-                    .execute();
-                }
-                repaired += rowsToInsert.length;
-              }
-            } else if (collection === ids.BuzzBookhiveBuzz) {
-              const validBuzzes = data.records.flatMap((record) => {
-                const parsed = Buzz.validateRecord(record.value);
-                return parsed.success ? [{ record, buzz: parsed.value }] : [];
-              });
-
-              if (validBuzzes.length > 0) {
-                const bookUris = validBuzzes.map((r) => r.buzz.book.uri);
-                const bookRows = await db
-                  .selectFrom("user_book")
-                  .select(["uri", "hiveId"])
-                  .where("uri", "in", bookUris)
-                  .execute();
-                const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
-
-                const buzzRows = validBuzzes
-                  .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
-                  .map(
-                    ({ record, buzz }) =>
-                      ({
-                        uri: record.uri,
-                        cid: record.cid,
-                        userDid: did,
-                        hiveId: uriToHiveId.get(buzz.book.uri)!,
-                        createdAt: buzz.createdAt,
-                        indexedAt: now.toISOString(),
-                        bookCid: buzz.book.cid,
-                        bookUri: buzz.book.uri,
-                        comment: buzz.comment,
-                        parentCid: buzz.parent.cid,
-                        parentUri: buzz.parent.uri,
-                      }) satisfies BuzzRecord,
-                  );
-                for (let i = 0; i < buzzRows.length; i += 100) {
-                  await db
-                    .insertInto("buzz")
-                    .values(buzzRows.slice(i, i + 100))
-                    .onConflict((oc) => oc.column("uri").doUpdateSet(buzzUpsertSet))
-                    .execute();
-                }
-                repaired += buzzRows.length;
-              }
-            } else if (collection === ids.SocialPopfeedFeedList) {
-              for (const record of data.records) {
-                const asList = List.validateRecord(record.value);
-                if (!asList.success) continue;
-                const list = asList.value;
-                if (current.get(record.uri) === record.cid && !list.itemOrder) continue;
-                await db
-                  .insertInto("book_list")
-                  .values({
-                    uri: record.uri,
-                    cid: record.cid,
-                    userDid: did,
-                    ...listRecordFields(list),
-                    indexedAt: now.toISOString(),
-                  })
-                  .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
-                  .execute();
-                repaired++;
-              }
-            } else if (collection === ids.SocialPopfeedFeedListItem) {
-              for (const record of data.records) {
-                const asItem = ListItem.validateRecord(record.value);
-                if (!asItem.success) continue;
-                const item = asItem.value;
-                if (item.creativeWorkType !== "book") continue;
-
-                let hiveId: HiveId | null = (item.identifiers?.hiveId as HiveId) ?? null;
-                if (!hiveId && (item.identifiers?.isbn13 || item.identifiers?.isbn10)) {
-                  const idRow = await db
-                    .selectFrom("book_id_map")
-                    .select("hiveId")
-                    .where((eb) =>
-                      eb.or([
-                        ...(item.identifiers?.isbn13
-                          ? [eb("isbn13", "=", item.identifiers.isbn13)]
-                          : []),
-                        ...(item.identifiers?.isbn10
-                          ? [eb("isbn", "=", item.identifiers.isbn10)]
-                          : []),
-                      ]),
-                    )
-                    .executeTakeFirst();
-                  if (idRow) hiveId = idRow.hiveId;
-                }
-                await db
-                  .insertInto("book_list_item")
-                  .values({
-                    uri: record.uri,
-                    cid: record.cid,
-                    userDid: did,
-                    listUri: item.listUri,
-                    hiveId,
-                    description: item.description ?? null,
-                    position: item.position ?? null,
-                    addedAt: item.addedAt,
-                    indexedAt: now.toISOString(),
-                    embeddedTitle: item.title ?? null,
-                    embeddedAuthor: item.mainCredit ?? null,
-                    embeddedCoverUrl: item.posterUrl ?? null,
-                    identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
-                  })
-                  .onConflict((oc) => oc.column("uri").doUpdateSet(bookListItemUpsertSet))
-                  .execute();
-                repaired++;
-              }
-            }
+        data.records = data.records.filter((record) =>
+          record.uri.startsWith(`at://${did}/${collection}/`),
+        );
+        const now = new Date();
+        if (collection === ids.BuzzBookhiveBook) {
+          const validBooks = data.records.flatMap((record) => {
+            const parsed = Book.validateRecord(record.value);
+            return parsed.success ? [{ record, book: parsed.value }] : [];
           });
+
+          if (validBooks.length > 0) {
+            const requestedHiveIds = validBooks.map((r) => r.book.hiveId as HiveId);
+            const existingBooks = await db
+              .selectFrom("hive_book")
+              .select("id")
+              .where("id", "in", requestedHiveIds)
+              .execute();
+            const existingHiveIds = new Set(existingBooks.map((b) => b.id));
+
+            const rowsToInsert = validBooks
+              .filter(({ book }) => existingHiveIds.has(book.hiveId as HiveId))
+              .map(({ record, book }) =>
+                serializeUserBook({
+                  uri: record.uri,
+                  cid: record.cid,
+                  userDid: did,
+                  hiveId: book.hiveId as HiveId,
+                  createdAt: book.createdAt,
+                  indexedAt: now.toISOString(),
+                  title: book.title,
+                  authors: book.authors,
+                  startedAt: book.startedAt ?? null,
+                  finishedAt: book.finishedAt ?? null,
+                  status: book.status ?? null,
+                  owned: book.owned ? 1 : 0,
+                  review: book.review ?? null,
+                  stars: book.stars ?? null,
+                  bookProgress: book.bookProgress ?? null,
+                  previousReads: book.previousReads ?? null,
+                  record: book,
+                } satisfies UserBook),
+              );
+            for (let i = 0; i < rowsToInsert.length; i += 100) {
+              await db
+                .insertInto("user_book")
+                .values(rowsToInsert.slice(i, i + 100))
+                .onConflict((oc) => oc.column("uri").doNothing())
+                .execute();
+            }
+          }
+        } else if (collection === ids.BuzzBookhiveBuzz) {
+          const validBuzzes = data.records.flatMap((record) => {
+            const parsed = Buzz.validateRecord(record.value);
+            return parsed.success ? [{ record, buzz: parsed.value }] : [];
+          });
+
+          if (validBuzzes.length > 0) {
+            const bookUris = validBuzzes.map((r) => r.buzz.book.uri);
+            const bookRows = await db
+              .selectFrom("user_book")
+              .select(["uri", "hiveId"])
+              .where("uri", "in", bookUris)
+              .execute();
+            const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
+
+            const buzzRows = validBuzzes
+              .filter(({ buzz }) => uriToHiveId.has(buzz.book.uri))
+              .map(
+                ({ record, buzz }) =>
+                  ({
+                    uri: record.uri,
+                    cid: record.cid,
+                    userDid: did,
+                    hiveId: uriToHiveId.get(buzz.book.uri)!,
+                    createdAt: buzz.createdAt,
+                    indexedAt: now.toISOString(),
+                    bookCid: buzz.book.cid,
+                    bookUri: buzz.book.uri,
+                    comment: buzz.comment,
+                    parentCid: buzz.parent.cid,
+                    parentUri: buzz.parent.uri,
+                  }) satisfies BuzzRecord,
+              );
+            for (let i = 0; i < buzzRows.length; i += 100) {
+              await db
+                .insertInto("buzz")
+                .values(buzzRows.slice(i, i + 100))
+                .onConflict((oc) => oc.column("uri").doNothing())
+                .execute();
+            }
+          }
+        } else if (collection === ids.SocialPopfeedFeedList) {
+          for (const record of data.records) {
+            const asList = List.validateRecord(record.value);
+            if (!asList.success) continue;
+            const list = asList.value;
+            await db
+              .insertInto("book_list")
+              .values({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                ...listRecordFields(list),
+                indexedAt: now.toISOString(),
+              })
+              .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
+              .execute();
+          }
+        } else if (collection === ids.SocialPopfeedFeedListItem) {
+          for (const record of data.records) {
+            const asItem = ListItem.validateRecord(record.value);
+            if (!asItem.success) continue;
+            const item = asItem.value;
+            if (item.creativeWorkType !== "book") continue;
+
+            let hiveId: HiveId | null = (item.identifiers?.hiveId as HiveId) ?? null;
+            if (!hiveId && (item.identifiers?.isbn13 || item.identifiers?.isbn10)) {
+              const idRow = await db
+                .selectFrom("book_id_map")
+                .select("hiveId")
+                .where((eb) =>
+                  eb.or([
+                    ...(item.identifiers?.isbn13
+                      ? [eb("isbn13", "=", item.identifiers.isbn13)]
+                      : []),
+                    ...(item.identifiers?.isbn10 ? [eb("isbn", "=", item.identifiers.isbn10)] : []),
+                  ]),
+                )
+                .executeTakeFirst();
+              if (idRow) hiveId = idRow.hiveId;
+            }
+            await db
+              .insertInto("book_list_item")
+              .values({
+                uri: record.uri,
+                cid: record.cid,
+                userDid: did,
+                listUri: item.listUri,
+                hiveId,
+                description: item.description ?? null,
+                position: item.position ?? null,
+                addedAt: item.addedAt,
+                indexedAt: now.toISOString(),
+                embeddedTitle: item.title ?? null,
+                embeddedAuthor: item.mainCredit ?? null,
+                embeddedCoverUrl: item.posterUrl ?? null,
+                identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
+              })
+              .onConflict((oc) => oc.column("uri").doNothing())
+              .execute();
+          }
+        }
 
         cursor = data.cursor;
         if (cursor) await new Promise((r) => setTimeout(r, 100));
       } while (cursor);
     }
 
-    await kv.set(RECONCILED_AT_PREFIX + did, String(Date.now()));
+    await kv.set(BACKFILL_DONE_PREFIX + did, "1");
     emitWideEvent({
       msg: "ingester",
-      outcome: "reconcile_complete",
+      outcome: "backfill_complete",
       did,
-      repaired,
-      duration_ms: Date.now() - startedAt,
       timestamp: new Date().toISOString(),
       env: { node_env: env.NODE_ENV },
     });
-    return true;
   } catch (err) {
     emitWideEvent({
       msg: "ingester",
-      outcome: "reconcile_error",
+      outcome: "backfill_error",
       did,
-      repaired,
-      duration_ms: Date.now() - startedAt,
       error: { message: errorMessage(err) },
       timestamp: new Date().toISOString(),
       env: { node_env: env.NODE_ENV },
     });
-    return false;
   }
 }
 
@@ -409,17 +342,9 @@ export function createIngester(
     },
   });
 
-  const reconciling = new Set<string>();
   async function enqueueBackfill(did: string) {
-    if (destroyed || reconciling.has(did)) return;
-    reconciling.add(did);
-    try {
-      const last = await kv.get<string>(RECONCILED_AT_PREFIX + did);
-      if (last || (await kv.get(`backfill_done:${did}`))) return;
-      await backfillSemaphore.run(() => reconcileUserRepo(did, db, kv, emitWideEvent));
-    } finally {
-      reconciling.delete(did);
-    }
+    if (destroyed || (await kv.get(BACKFILL_DONE_PREFIX + did))) return;
+    await backfillSemaphore.run(() => backfillUserRepo(did, db, kv, emitWideEvent));
   }
 
   // Log errors from fire-and-forget background operations
@@ -521,7 +446,7 @@ export function createIngester(
           // Proactively backfill full repo for newly-discovered DIDs
           if (isNewDid) {
             backfilledDids.add(evt.did);
-            tracked("reconcile", evt.did, () => enqueueBackfill(evt.did));
+            tracked("backfill", evt.did, () => enqueueBackfill(evt.did));
           }
 
           wideEvent["outcome"] = "success";

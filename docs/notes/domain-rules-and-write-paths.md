@@ -97,18 +97,18 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
 ## Ranked shelf order lives on the list
 
 Popfeed's canonical order is the list record's `itemOrder`, not the items' `position` fields.
-Migration 029 adds `book_list.itemOrder` (JSON); reconciliation, Jetstream and `refetchLists` mirror it.
+Migration 029 adds `book_list.itemOrder` (JSON); discovery backfill, Jetstream and `refetchLists` mirror it.
 `getListWithItems` applies it for ranked shelves, appending new/unlisted books in stable
 position/date/URI order. Existing mirrors use the old position order until the list re-syncs.
 Writing positions alone appeared to work locally but vanished on item re-sync, and ignored
 orders authored in Popfeed. `reorderListItems` validates a complete, duplicate-free permutation
 of this shelf's mirrored books before any PDS call, preserves other record fields, and updates
 the list mirror/CID only after a confirmed PDS update. Both web and XRPC use that core.
-Reordering mirrors all metadata from the fetched record alongside the confirmed CID: advancing
-the CID alone would hide stale metadata from subsequent CID-based reconciliation.
+Reordering mirrors all canonical metadata alongside the confirmed CID so a successful write
+does not leave the local shelf description, tags or ranked flag stale.
 `core/listRecord.ts` owns that metadata mapping for every list writer. Partial list edits preserve
-unspecified fields from the canonical PDS record, not the potentially stale mirror. List-item
-ingestion and both recovery paths share `bookListItemUpsertSet`; it deliberately leaves the original
+unspecified fields from the canonical PDS record, not the potentially stale mirror. Jetstream
+list-item ingestion and authenticated shelf re-sync share `bookListItemUpsertSet`; it leaves the original
 owner and `addedAt` untouched on conflict.
 The web controller (`pages/utils/shelfOrdering.ts`) is stringified by `Script`, not a new island;
 its helpers must remain inside its function. Controls initialize hidden, numbers follow the
@@ -130,11 +130,11 @@ draft DOM order, Cancel restores the confirmed order, and failed saves keep the 
 ## Popfeed shelf sync recovery
 
 Popfeed stores ranked order on the **list's `itemOrder`**, not item positions. Jetstream,
-repo reconciliation and login/manual re-sync must all mirror it; `bookListUpsertSet` (`src/db.ts`)
-is their shared conflict-update set. Reconciliation updates existing list metadata rather than
-leaving stale descriptions/ranking untouched. Failed PDS scans must not advance the successful
-scan timestamp. Periodic, read-only recovery and concurrent-write guards are described in
-`ingestion-and-reconciliation.md`; the old insert-only discovery backfill has been replaced.
+discovery backfill and login/manual re-sync must all mirror it; `bookListUpsertSet` (`src/db.ts`)
+is their shared conflict-update set. Backfill updates existing list metadata rather than leaving
+stale descriptions/ranking untouched, but leaves existing books, buzzes and items alone.
+Failed PDS scans must not set the backfill completion marker. Worker recovery and backfill
+limits are described in `ingestion-and-reconciliation.md`; there are no periodic PDS scans.
 
 Login re-syncs shelves; Settings → Book sync (`/refresh-books`) also re-syncs lists and
 items to repair missed creates, updates and deletes. Follow the PDS cursor even when a page

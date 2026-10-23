@@ -177,7 +177,7 @@ export function buzzUpsertSet(c: { ref: (reference: string) => unknown }): Recor
   return set;
 }
 
-/** Shared by Jetstream, repo reconciliation and explicit shelf re-sync. */
+/** Shared by Jetstream, discovery backfill and explicit shelf re-sync. */
 export function bookListUpsertSet(c: {
   ref: (reference: string) => unknown;
 }): Record<string, unknown> {
