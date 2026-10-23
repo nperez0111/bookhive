@@ -21,7 +21,7 @@ import { pruneMirroredRecords } from "../data/repoMirror";
 import { NO_STORE, hasSessionCookie } from "../core/cacheHeaders";
 import { enqueueEnrichment } from "../data/enrichQueue";
 import { serializeUserBook } from "../core/bookProgress";
-import { buzzUpsertSet, userBookUpsertSet } from "../db";
+import { bookListUpsertSet, buzzUpsertSet, userBookUpsertSet } from "../db";
 import { upsertBookIdentifiers } from "../data/bookIdentifiers";
 import { errorMessage } from "../lib/errors";
 
@@ -421,24 +421,16 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
           name: list.name,
           description: list.description ?? null,
           ordered: list.ordered ? 1 : 0,
+          itemOrder: list.itemOrder ? JSON.stringify(list.itemOrder) : null,
           tags: list.tags ? JSON.stringify(list.tags) : null,
           createdAt: list.createdAt,
           indexedAt: new Date().toISOString(),
         })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            cid: c.ref("excluded.cid"),
-            name: c.ref("excluded.name"),
-            description: c.ref("excluded.description"),
-            ordered: c.ref("excluded.ordered"),
-            tags: c.ref("excluded.tags"),
-            indexedAt: c.ref("excluded.indexedAt"),
-          })),
-        )
+        .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
         .execute();
     }
 
-    listCursor = data.records.length === 100 ? data.cursor : undefined;
+    listCursor = data.cursor;
   } while (listCursor);
 
   // Clean up deleted lists
@@ -525,7 +517,7 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
         .execute();
     }
 
-    itemCursor = data.records.length === 100 ? data.cursor : undefined;
+    itemCursor = data.cursor;
   } while (itemCursor);
 
   // Clean up deleted items

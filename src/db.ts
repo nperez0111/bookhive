@@ -177,6 +177,27 @@ export function buzzUpsertSet(c: { ref: (reference: string) => unknown }): Recor
   return set;
 }
 
+/** Shared by Jetstream, repo backfill and explicit shelf re-sync. */
+export function bookListUpsertSet(c: {
+  ref: (reference: string) => unknown;
+}): Record<string, unknown> {
+  const set: Record<string, unknown> = {};
+  for (const column of [
+    "cid",
+    "userDid",
+    "name",
+    "description",
+    "ordered",
+    "itemOrder",
+    "tags",
+    "createdAt",
+    "indexedAt",
+  ]) {
+    set[column] = c.ref(`excluded.${column}`);
+  }
+  return set;
+}
+
 // Migrations
 
 const migrations: Record<string, Migration> = {};
@@ -1226,6 +1247,15 @@ migrations["028"] = {
     await sql`DROP INDEX IF EXISTS idx_progress_history_user_recent`.execute(db);
     await sql`DROP INDEX IF EXISTS idx_progress_history_user_book`.execute(db);
     await sql`DROP TABLE IF EXISTS progress_history`.execute(db);
+  },
+};
+
+migrations["029"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`ALTER TABLE book_list ADD COLUMN itemOrder TEXT`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`ALTER TABLE book_list DROP COLUMN itemOrder`.execute(db);
   },
 };
 

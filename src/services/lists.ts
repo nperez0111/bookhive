@@ -11,7 +11,6 @@ import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { loadGenresForHiveBook } from "../data/hiveBookGenres.js";
 import { parseAuthors } from "../core/authors";
-import { sql } from "kysely";
 
 type ListDeps = {
   agent: SessionClient;
@@ -19,7 +18,12 @@ type ListDeps = {
 };
 
 /** Why a list write was refused. Adapters choose the status code. */
-export type ListFailureReason = "not_found" | "not_owner" | "book_not_found" | "pds_write_failed";
+export type ListFailureReason =
+  | "not_found"
+  | "not_owner"
+  | "book_not_found"
+  | "pds_write_failed"
+  | "invalid_order";
 
 export type ListFailure = { ok: false; reason: ListFailureReason; message: string };
 export type ListResult<T = Record<never, never>> = ({ ok: true } & T) | ListFailure;
@@ -173,6 +177,9 @@ export async function updateList({
     .set({
       cid: result.cid,
       name: name ?? existing.name,
+      itemOrder: Array.isArray(currentRecord["itemOrder"])
+        ? JSON.stringify(currentRecord["itemOrder"])
+        : null,
       description: description !== undefined ? description || null : existing.description,
       ordered: ordered !== undefined ? (ordered ? 1 : 0) : existing.ordered,
       tags: tags !== undefined ? (tags ? JSON.stringify(tags) : null) : existing.tags,
@@ -398,6 +405,23 @@ export async function reorderListItems({
   if (!list) return fail("not_found", "List not found");
   if (list.userDid !== agent.did) return fail("not_owner", "Not authorized to modify this list");
 
+  const items = await db
+    .selectFrom("book_list_item")
+    .select("uri")
+    .where("listUri", "=", listUri)
+    .execute();
+  const members = new Set(items.map((item) => item.uri));
+  if (
+    new Set(itemUris).size !== itemUris.length ||
+    itemUris.length !== members.size ||
+    itemUris.some((uri) => !members.has(uri))
+  ) {
+    return fail(
+      "invalid_order",
+      "The shelf's books have changed. Reload the page before reordering.",
+    );
+  }
+
   const rkey = listUri.split("/").at(-1)!;
   const getRes = await agent.get("com.atproto.repo.getRecord", {
     params: {
@@ -430,17 +454,20 @@ export async function reorderListItems({
 
   if (!response.ok) return fail("pds_write_failed", "Failed to update list order on PDS");
 
-  const caseFragments = itemUris.map((uri, idx) => sql`WHEN ${uri} THEN ${idx}`);
-  if (caseFragments.length > 0) {
-    await db
-      .updateTable("book_list_item")
-      .set({
-        position: sql`CASE uri ${sql.join(caseFragments, sql` `)} END`,
-        indexedAt: new Date().toISOString(),
-      })
-      .where("uri", "in", itemUris)
-      .execute();
+  const result = (response.data as { results?: Array<{ $type: string; cid: string }> })
+    .results?.[0];
+  if (result?.$type !== "com.atproto.repo.applyWrites#updateResult") {
+    return fail("pds_write_failed", "Failed to confirm list order on PDS");
   }
+  await db
+    .updateTable("book_list")
+    .set({
+      cid: result.cid,
+      itemOrder: JSON.stringify(itemUris),
+      indexedAt: new Date().toISOString(),
+    })
+    .where("uri", "=", listUri)
+    .execute();
 
   return { ok: true };
 }
@@ -493,7 +520,21 @@ export async function getListWithItems({ db, listUri }: { db: Database; listUri:
     .where("book_list_item.listUri", "=", listUri)
     .orderBy("book_list_item.position", "asc")
     .orderBy("book_list_item.addedAt", "desc")
+    .orderBy("book_list_item.uri", "asc")
     .execute();
 
+  // itemOrder belongs to the list, not each item. Item re-syncs must not erase it.
+  // Unlisted/new books follow the explicitly ordered ones in the stable fallback order.
+  if (list.ordered && list.itemOrder) {
+    try {
+      const order: unknown = JSON.parse(list.itemOrder);
+      if (Array.isArray(order)) {
+        const ranks = new Map(order.map((uri, index) => [uri, index]));
+        items.sort((a, b) => (ranks.get(a.uri) ?? Infinity) - (ranks.get(b.uri) ?? Infinity));
+      }
+    } catch {
+      /* Old/malformed mirrors keep the position-based fallback. */
+    }
+  }
   return { list, items };
 }

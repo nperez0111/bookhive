@@ -17,6 +17,7 @@ import {
   deleteList,
   addBookToList,
   removeBookFromList,
+  reorderListItems,
   type ListFailure,
   getUserLists,
   getListWithItems,
@@ -33,9 +34,18 @@ import { hydrateSearchResults, searchLocalCatalog } from "../data/catalogBooks";
  * used to be reimplemented here because `lists.ts` threw a bare `Error`
  * indistinguishable from a genuine failure.
  */
+function listFailureStatus(result: ListFailure) {
+  return result.reason === "invalid_order"
+    ? 400
+    : result.reason === "not_owner"
+      ? 403
+      : result.reason === "pds_write_failed"
+        ? 502
+        : 404;
+}
+
 function renderListFailure(c: Context<AppEnv>, result: ListFailure) {
-  const status =
-    result.reason === "not_owner" ? 403 : result.reason === "pds_write_failed" ? 502 : 404;
+  const status = listFailureStatus(result);
   return renderError(c, {
     status,
     message: result.reason === "not_owner" ? "Not authorized" : result.message,
@@ -45,6 +55,34 @@ function renderListFailure(c: Context<AppEnv>, result: ListFailure) {
 }
 
 const app = new Hono<AppEnv>()
+  .post(
+    "/:handle/:rkey/reorder",
+    zValidator("json", z.object({ itemUris: z.array(z.string().min(1)) })),
+    async (c) => {
+      const ctx = c.get("ctx");
+      const agent = await ctx.getSessionAgent();
+      if (!agent) return jsonUnauthorized(c);
+      const did = await resolveActorDid(ctx, c.req.param("handle"));
+      if (!did) return c.json({ success: false, message: "User not found" }, 404);
+      try {
+        const result = await reorderListItems({
+          agent,
+          db: ctx.db,
+          listUri: `at://${did}/social.popfeed.feed.list/${c.req.param("rkey")}`,
+          itemUris: c.req.valid("json").itemUris,
+        });
+        if (!result.ok)
+          return c.json({ success: false, message: result.message }, listFailureStatus(result));
+        return c.json({ success: true });
+      } catch (error) {
+        c.set("requestError", error);
+        return c.json(
+          { success: false, message: "Could not save the order. Please try again." },
+          500,
+        );
+      }
+    },
+  )
   // Create shelf form page
   .get("/new", async (c) => {
     const agent = await c.get("ctx").getSessionAgent();

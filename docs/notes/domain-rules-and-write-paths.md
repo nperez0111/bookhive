@@ -94,6 +94,20 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   unmatched-retry path open-coded `starRating * 2`, so a quarter-star row imported as `9` matched
   and `8.5` unmatched — into an integer column.
 
+## Ranked shelf order lives on the list
+
+Popfeed's canonical order is the list record's `itemOrder`, not the items' `position` fields.
+Migration 029 adds `book_list.itemOrder` (JSON); backfill, Jetstream and `refetchLists` mirror it.
+`getListWithItems` applies it for ranked shelves, appending new/unlisted books in stable
+position/date/URI order. Existing mirrors use the old position order until the list re-syncs.
+Writing positions alone appeared to work locally but vanished on item re-sync, and ignored
+orders authored in Popfeed. `reorderListItems` validates a complete, duplicate-free permutation
+of this shelf's mirrored books before any PDS call, preserves other record fields, and updates
+the list mirror/CID only after a confirmed PDS update. Both web and XRPC use that core.
+The web controller (`pages/utils/shelfOrdering.ts`) is stringified by `Script`, not a new island;
+its helpers must remain inside its function. Controls initialize hidden, numbers follow the
+draft DOM order, Cancel restores the confirmed order, and failed saves keep the draft editable.
+
 ## Upsert `ON CONFLICT` sets are shared, not copied
 
 - **`userBookUpsertSet`** (`src/db.ts`) — four writers (`upsertUserBook`, `refetchBooks`, the admin
@@ -108,6 +122,19 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   edited comment's date depended on whether the firehose or a re-sync indexed it last.
 
 ## Listing order — every paginated listing ends on a unique key
+
+### Popfeed shelf sync recovery
+
+Popfeed stores ranked order on the **list's `itemOrder`**, not item positions. Jetstream,
+repo backfill and login/manual re-sync must all mirror it; `bookListUpsertSet` (`src/db.ts`)
+is their shared conflict-update set. Backfill updates existing list metadata rather than
+leaving stale descriptions/ranking untouched. Failed PDS backfill requests must not mark
+the repo complete. Backfill remains discovery-only, not a periodic reconciliation job.
+
+Login re-syncs shelves; Settings → Book sync (`/refresh-books`) also re-syncs lists and
+items to repair missed creates, updates and deletes. Follow the PDS cursor even when a page
+has fewer than 100 records, and only prune a collection after all its pages succeed.
+This is a recovery path for stream gaps, not proof that a particular Jetstream outage caused one.
 
 - **`personal_book`**: every OPDS feed and `getPersonalLibrary` end their `ORDER BY` on
   `personal_book.id`. Neither `createdAt` (millisecond ISO) nor `title` is unique, and SQLite may
