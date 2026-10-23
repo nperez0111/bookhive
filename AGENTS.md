@@ -120,6 +120,10 @@ Worker threads (bundled to .output/server/workers/):
 
 Shared helpers: `src/routes/lib.ts` (`cacheControl`, `searchBooks`, `refetchBooks`/`refetchBuzzes`/`refetchLists`, `syncFollowsIfNeeded`), `src/routes/syncCredentials.tsx` (KOSync/OPDS password, mounted at both `/settings/sync` and `/library/sync`), `src/routes/errorPage.tsx`'s `renderError(c, {status, ...})` — always use it rather than a bare `<ErrorPage>` render, since its `statusCode` prop is display-only and won't set the actual HTTP status.
 
+Settings → Book sync (`/refresh-books`) also re-syncs Popfeed shelves/items to repair missed
+Jetstream events. List ingestion/backfill/re-sync share `bookListUpsertSet`, including ranked
+`itemOrder`; see `docs/notes/domain-rules-and-write-paths.md`.
+
 ## Server-Side Pages (`src/pages/`)
 
 Each file exports a Hono JSX component rendered server-side.
@@ -136,7 +140,7 @@ Each file exports a Hono JSX component rendered server-side.
 | `searchResults.tsx`   | Search results                                                                |
 | `bookInfo.tsx`        | Book detail                                                                   |
 | `profile.tsx`         | User profile + shelves                                                        |
-| `shelves.tsx`         | Book shelves view                                                             |
+| `shelves.tsx`         | Book shelves view; inline-JS Save/Cancel ordering for ranked shelves          |
 | `comments.tsx`        | Comments/reviews                                                              |
 | `feed.tsx`            | Activity feed                                                                 |
 | `readingStats.tsx`    | Reading stats by year                                                         |
@@ -229,7 +233,7 @@ Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/util
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–028) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
+SQLite via Kysely. Schema + all migrations (001–029) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -241,7 +245,7 @@ SQLite via Kysely. Schema + all migrations (001–028) in one file. `createDb` s
 | `book_id_map`         | ISBN/Goodreads cross-refs | hiveId (PK), isbn, isbn13, goodreadsId, updatedAt                                                                                                                                                        |
 | `buzz`                | Comments on books         | uri (PK), userDid, hiveId, **comment**, bookUri, parentUri, createdAt                                                                                                                                    |
 | `user_follows`        | Cached follow graph       | userDid, followsDid, followedAt, syncedAt, **isActive**                                                                                                                                                  |
-| `book_list`           | User-created book lists   | **uri (PK, AT URI)**, userDid, name, description, ordered, tags, createdAt                                                                                                                               |
+| `book_list`           | User-created book lists   | **uri (PK, AT URI)**, userDid, name, description, ordered, **itemOrder (JSON, mig 029)**, tags, createdAt                                                                                                |
 | `book_list_item`      | Items in a book list      | **uri (PK, AT URI)**, userDid, **listUri**, hiveId, position                                                                                                                                             |
 | `sync_document`       | E-reader sync progress    | id (PK), userDid, provider, documentHash (UNIQUE per user+provider), hiveId (nullable), filename, **filenameKey**, title, authors, progressData (JSON)                                                   |
 | `enrich_queue`        | Pending Goodreads enrich  | **hiveId (PK — the dedupe)**, **enqueuedAt** (age ceiling; survives re-enqueue), attempts, nextAttemptAt, claimedAt, lastError                                                                           |

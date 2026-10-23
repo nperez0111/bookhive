@@ -1,6 +1,6 @@
 import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
-import { buzzUpsertSet, userBookUpsertSet, type Database } from "../db";
+import { bookListUpsertSet, buzzUpsertSet, userBookUpsertSet, type Database } from "../db";
 import { env } from "../env";
 import {
   ingesterEventDuration,
@@ -120,7 +120,7 @@ async function backfillUserRepo(
         if (cursor) url.searchParams.set("cursor", cursor);
 
         const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-        if (!res.ok) break;
+        if (!res.ok) throw new Error(`Repo backfill failed for ${collection}: HTTP ${res.status}`);
         const data = (await res.json()) as {
           records: Array<{ uri: string; cid: string; value: unknown }>;
           cursor?: string;
@@ -228,11 +228,12 @@ async function backfillUserRepo(
                 name: list.name,
                 description: list.description ?? null,
                 ordered: list.ordered ? 1 : 0,
+                itemOrder: list.itemOrder ? JSON.stringify(list.itemOrder) : null,
                 tags: list.tags ? JSON.stringify(list.tags) : null,
                 createdAt: list.createdAt,
                 indexedAt: now.toISOString(),
               })
-              .onConflict((oc) => oc.column("uri").doNothing())
+              .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
               .execute();
           }
         } else if (collection === ids.SocialPopfeedFeedListItem) {
@@ -521,20 +522,12 @@ export function createIngester(
               name: list.name,
               description: list.description ?? null,
               ordered: list.ordered ? 1 : 0,
+              itemOrder: list.itemOrder ? JSON.stringify(list.itemOrder) : null,
               tags: list.tags ? JSON.stringify(list.tags) : null,
               createdAt: list.createdAt,
               indexedAt: now.toISOString(),
             })
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                cid: c.ref("excluded.cid"),
-                name: c.ref("excluded.name"),
-                description: c.ref("excluded.description"),
-                ordered: c.ref("excluded.ordered"),
-                tags: c.ref("excluded.tags"),
-                indexedAt: c.ref("excluded.indexedAt"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
             .execute();
           wideEvent["outcome"] = "success";
           return;

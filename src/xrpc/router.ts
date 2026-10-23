@@ -133,6 +133,8 @@ import { recordSyncProgress } from "../data/syncBridge";
 /** List-write core refusal reasons → XRPC errors, so these procedures and `routes/shelves.tsx` can't drift. */
 function listErrorFor(result: ListFailure): XRPCError {
   switch (result.reason) {
+    case "invalid_order":
+      return new XRPCError({ status: 400, error: "InvalidRequest", message: result.message });
     case "not_found":
       return new XRPCError({ status: 404, error: "NotFound", message: result.message });
     case "not_owner":

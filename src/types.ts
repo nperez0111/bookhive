@@ -261,6 +261,7 @@ export type BookListRow = {
   name: string;
   description: string | null;
   ordered: number;
+  itemOrder: string | null;
   tags: string | null;
   createdAt: string;
   indexedAt: string;

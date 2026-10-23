@@ -22,7 +22,7 @@ import {
 } from "../data/profileSummary";
 import { listAllUserBooks } from "../data/userShelves";
 import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
-import { refetchBooks } from "./lib";
+import { refetchBooks, refetchLists } from "./lib";
 import { getUserLists } from "../services/lists";
 
 const app = new Hono<AppEnv>()
@@ -40,7 +40,10 @@ const app = new Hono<AppEnv>()
       );
     }
     startTime(c, "refetch_books");
-    await refetchBooks({ agent, ctx: c.get("ctx") });
+    await Promise.all([
+      refetchBooks({ agent, ctx: c.get("ctx") }),
+      refetchLists({ agent, ctx: c.get("ctx") }),
+    ]);
     endTime(c, "refetch_books");
     if (c.req.header()["accept"] === "application/json") {
       // A confirmation payload for the re-sync, not a library listing.
