@@ -6,7 +6,7 @@ import { testKv } from "../test/db";
 type StreamEvent = JetstreamSubscription extends AsyncIterable<infer Event> ? Event : never;
 
 // Like the installed EventIterator, return() deliberately leaves pending next() unresolved.
-function fakeStream(events: StreamEvent[] = []) {
+function fakeStream(events: StreamEvent[] = [], finite = false) {
   let returned = false;
   const iterator: AsyncIterableIterator<StreamEvent> = {
     [Symbol.asyncIterator]() {
@@ -15,7 +15,9 @@ function fakeStream(events: StreamEvent[] = []) {
     next: async () =>
       events.length
         ? { done: false, value: events.shift()! }
-        : new Promise<IteratorResult<StreamEvent>>(() => {}),
+        : finite
+          ? { done: true, value: undefined }
+          : new Promise<IteratorResult<StreamEvent>>(() => {}),
     async return() {
       returned = true;
       return { done: true, value: undefined };
@@ -58,7 +60,7 @@ afterEach(async () => {
 });
 
 describe("Jetstream recovery", () => {
-  it("closes an idle iterator and reconnects from the durable cursor", async () => {
+  it("reconnects after iterator completion from the durable cursor", async () => {
     const kv = testKv();
     const time = Date.now() * 1000;
     const streams: ReturnType<typeof fakeStream>[] = [];
@@ -69,21 +71,19 @@ describe("Jetstream recovery", () => {
       options: { url: "wss://unused" },
       subscribe: ({ cursor }) => {
         cursors.push(cursor);
-        const stream = fakeStream(streams.length ? [] : [commit(time)]);
+        const stream = fakeStream(streams.length ? [] : [commit(time)], streams.length === 0);
         streams.push(stream);
         return stream;
       },
       handleEvent: async () => {},
       emit: (event) => logs.push(event),
-      stallMs: 25,
-      checkMs: 5,
       retryMs: 1,
     });
     await until(() => streams.length === 2);
     expect(streams[0]!.returned).toBe(true);
     expect(cursors).toEqual([undefined, time]);
     expect(Number(await kv.get(JETSTREAM_CURSOR_KEY))).toBe(time);
-    expect(logs.some((event) => event["outcome"] === "stalled")).toBe(true);
+    expect(logs.some((event) => event["outcome"] === "reconnecting")).toBe(true);
     await stop();
     stop = undefined;
     await Bun.sleep(35);
@@ -112,18 +112,26 @@ describe("Jetstream recovery", () => {
     expect(cursors).toEqual([123, 123]);
   });
 
-  it("logs falling behind and catching up", async () => {
+  it("keeps a quiet subscription open and cancels its pending read on shutdown", async () => {
     const kv = testKv();
-    const outcomes: unknown[] = [];
+    const stream = fakeStream();
+    let connections = 0;
     stop = startJetstream({
       kv,
       options: { url: "wss://unused" },
-      subscribe: () =>
-        fakeStream([commit((Date.now() - 3_600_000) * 1000), commit(Date.now() * 1000)]),
+      subscribe: () => {
+        connections++;
+        return stream;
+      },
       handleEvent: async () => {},
-      emit: (event) => outcomes.push(event["outcome"]),
+      emit: () => {},
     });
-    await until(() => outcomes.includes("caught_up"));
-    expect(outcomes).toContain("behind");
+    await until(() => connections === 1);
+    await Bun.sleep(35);
+    expect(connections).toBe(1);
+    expect(stream.returned).toBe(false);
+    await stop();
+    stop = undefined;
+    expect(stream.returned).toBe(true);
   });
 });

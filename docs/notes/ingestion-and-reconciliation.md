@@ -1,6 +1,6 @@
 # Ingestion & PDS Reconciliation
 
-## Why reconnecting alone is not enough
+## What failed and the recovery tradeoff
 
 Issue #242 reported external-client changes that appeared in Jetstream but not in BookHive.
 Historical `server_logs` show a global ingestion gap from **2026-10-12 07:41:31 UTC** until the
@@ -9,33 +9,33 @@ The reported October 15 changes fell inside that gap. The exact socket/worker fa
 established; current PDS and mirror records already agreed after manual refreshes and later updates.
 
 Jetstream replay is finite, so reconnecting with an old cursor cannot guarantee recovery of every
-missed change. Keep both mechanisms below. This is intentionally a best-effort mirror, not a
-durable event-processing system.
+missed change. Restart failed workers and replay the saved cursor; use Settings → Book sync for
+exceptional missed-history recovery. Do not routinely rescan known users or infer a broken
+connection from silence alone. This is a best-effort mirror, not a durable event-processing system.
 
 ## Stream lifecycle (`src/bsky/jetstream.ts`)
 
-- After **15 minutes without a received event**, close the iterator and reconnect; errors and
-  unexpected iterator completion also reconnect after 3 seconds. Identity/account events count
-  as received traffic even though only commits are mirrored.
+- Errors and unexpected iterator completion reconnect after 3 seconds. Socket reconnects are also
+  handled by the subscription library. There is no silence watchdog: a quiet filtered stream is
+  not evidence of failure.
 - Checkpoints are awaited, in order, after commit handling. Reconnection reads the saved KV
   `jetstream:cursor`, never the subscription's receive cursor (which can be ahead of DB writes).
 - **Returning the installed EventIterator closes its socket but leaves a pending `next()`
-  unresolved.** Explicitly cancel the pending read on close; `return()` alone leaves the watchdog
-  and shutdown stuck forever. Tests deliberately reproduce that behavior.
-- Existing structured logs carry `stalled`, `reconnecting`, `connecting` (`resume_lag_ms`),
-  `behind` and `caught_up` (`lag_ms`). Behind means event age exceeds 15 minutes; no separate
-  health endpoint or heartbeat protocol is introduced.
+  unresolved.** Explicitly cancel the pending read on close; `return()` alone leaves shutdown
+  stuck forever. Tests deliberately reproduce that behavior.
+- Existing structured logs carry `reconnecting`, `connecting` (`cursor`, `resume_lag_ms`), and
+  connection/stream errors. Cursor age is context, not a failure threshold; no separate health
+  endpoint or heartbeat protocol is introduced.
 - `src/context.ts` restarts an exited/errored ingester worker after 3 seconds. Shutdown cancels
   that restart. Only the primary web process owns this worker.
 
-## Bounded periodic reconciliation (`src/bsky/ingester.ts`)
+## One-time discovery backfill (`src/bsky/ingester.ts`)
 
-The worker scans known accounts (`user_book.userDid`) in sorted batches of **20 per minute**,
-with **3 concurrent repositories** and no overlapping batch. Successful scans are skipped for
-24 hours using `reconciled_at:<did>`. Newly discovered readers also enter this same limiter.
-This targets daily repair at current scale; it is not a hard daily deadline for unlimited users
-or slow PDSes. Failed accounts remain eligible on the next sweep. The old permanent
-`backfill_done:` flags are deliberately ignored.
+The first successfully mirrored book event for a reader in a worker process requests discovery
+backfill, capped at **3 concurrent repositories**. Readers with a successful `reconciled_at:<did>`
+marker or a legacy `backfill_done:<did>` marker are skipped permanently. There is no startup scan,
+daily schedule or periodic retry. A failed backfill is eligible again in a later worker process;
+manual sync remains available for known readers needing repair.
 
 `reconcileUserRepo` reads public PDS `listRecords` for books, buzzes, lists and list items,
 100 records per page, with 15-second request timeouts and a 500-page ceiling per collection.
@@ -55,7 +55,8 @@ and fill a missing order even when the list CID already matches the PDS. The sam
 guard applies; subsequent unchanged scans skip the repaired list normally.
 
 This path **never writes to the PDS**. Do not reuse `refetchBooks`: it also deletes duplicate PDS
-records and patches their catalog references. Background reconciliation deliberately does not
+records and patches their catalog references. Discovery backfill deliberately does not
 infer deletions from absent records, discover unknown accounts, catalog missing books, or queue
 every failed Jetstream event. Books still require an existing catalog row, as the original
-backfill did. Daily repair complements replay; it doesn't replace normal Jetstream ingestion.
+backfill did. A worker that stays alive but silently wedges is not automatically detected: that
+is the deliberate tradeoff for keeping recovery simple and avoiding false-alarm reconnects.

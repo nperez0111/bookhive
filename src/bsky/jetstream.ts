@@ -7,7 +7,6 @@ type StreamEvent = JetstreamSubscription extends AsyncIterable<infer Event> ? Ev
 type Subscription = { [Symbol.asyncIterator](): AsyncIterableIterator<StreamEvent> };
 
 export const JETSTREAM_CURSOR_KEY = "jetstream:cursor";
-const STALL_MS = 15 * 60_000;
 
 /** Own the iterator, not just the subscription: returning it closes the socket. */
 export function startJetstream({
@@ -16,8 +15,6 @@ export function startJetstream({
   handleEvent,
   emit,
   subscribe = (options) => new JetstreamSubscription(options),
-  stallMs = STALL_MS,
-  checkMs = 60_000,
   retryMs = 3_000,
 }: {
   kv: Storage;
@@ -25,8 +22,6 @@ export function startJetstream({
   handleEvent: (event: StreamEvent) => Promise<void>;
   emit: (event: Record<string, unknown>) => void;
   subscribe?: (options: JetstreamSubscriptionOptions) => Subscription;
-  stallMs?: number;
-  checkMs?: number;
   retryMs?: number;
 }): () => Promise<void> {
   const stop = new AbortController();
@@ -36,7 +31,6 @@ export function startJetstream({
 
   const task = (async () => {
     while (!stop.signal.aborted) {
-      let watchdog: ReturnType<typeof setInterval> | undefined;
       try {
         const saved = await kv.get<string>(JETSTREAM_CURSOR_KEY);
         if (stop.signal.aborted) break;
@@ -51,8 +45,6 @@ export function startJetstream({
         });
         const iterator = subscription[Symbol.asyncIterator]();
         let cancelRead: (() => void) | undefined;
-        let lastReceivedAt = Date.now();
-        let behind = false;
         let closing = false;
         closeCurrent = async () => {
           closing = true;
@@ -60,14 +52,6 @@ export function startJetstream({
           cancelRead?.();
           return iterator.return?.();
         };
-        watchdog = setInterval(() => {
-          const idleMs = Date.now() - lastReceivedAt;
-          if (idleMs < stallMs || closing) return;
-          log("stalled", { idle_ms: idleMs });
-          void closeCurrent?.().catch((error) =>
-            log("close_error", { error: { message: errorMessage(error) } }),
-          );
-        }, checkMs);
         while (!closing) {
           // One cancel callback per read; repeatedly racing a shared never-settled promise
           // would retain a handler for every received event until the connection closes.
@@ -80,15 +64,6 @@ export function startJetstream({
           if (result.done) break;
           const event = result.value;
           if (stop.signal.aborted || closing) break;
-          lastReceivedAt = Date.now();
-          const lagMs = Date.now() - event.time_us / 1000;
-          if (lagMs > STALL_MS && !behind) {
-            behind = true;
-            log("behind", { lag_ms: lagMs });
-          } else if (lagMs <= STALL_MS && behind) {
-            behind = false;
-            log("caught_up", { lag_ms: lagMs });
-          }
           if (event.kind !== "commit") continue;
           await handleEvent(event);
           // Serialize durable checkpoints; reconnect must not use the socket's ahead-of-DB cursor.
@@ -97,7 +72,6 @@ export function startJetstream({
       } catch (error) {
         if (!stop.signal.aborted) log("stream_error", { error: { message: errorMessage(error) } });
       } finally {
-        clearInterval(watchdog);
         await closeCurrent?.().catch(() => {});
         closeCurrent = undefined;
       }

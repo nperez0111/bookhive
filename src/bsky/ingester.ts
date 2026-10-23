@@ -98,7 +98,6 @@ export type Ingester = {
 };
 
 const RECONCILED_AT_PREFIX = "reconciled_at:";
-const RECONCILE_INTERVAL_MS = 24 * 60 * 60_000;
 
 export async function reconcileUserRepo(
   did: string,
@@ -399,7 +398,6 @@ export function createIngester(
   );
   const backfilledDids = new Set<string>();
   let stopStream: (() => Promise<void>) | undefined;
-  let reconcileTimer: ReturnType<typeof setInterval> | undefined;
   let destroyed = false;
 
   const BACKFILL_CONCURRENCY = 3;
@@ -417,31 +415,10 @@ export function createIngester(
     reconciling.add(did);
     try {
       const last = await kv.get<string>(RECONCILED_AT_PREFIX + did);
-      if (last && Date.now() - Number(last) < RECONCILE_INTERVAL_MS) return;
+      if (last || (await kv.get(`backfill_done:${did}`))) return;
       await backfillSemaphore.run(() => reconcileUserRepo(did, db, kv, emitWideEvent));
     } finally {
       reconciling.delete(did);
-    }
-  }
-
-  let reconcileCursor = "";
-  let sweeping = false;
-  async function reconcileBatch() {
-    if (destroyed || sweeping) return;
-    sweeping = true;
-    try {
-      const users = await db
-        .selectFrom("user_book")
-        .select("userDid")
-        .distinct()
-        .where("userDid", ">", reconcileCursor)
-        .orderBy("userDid")
-        .limit(20)
-        .execute();
-      await Promise.all(users.map(({ userDid }) => enqueueBackfill(userDid)));
-      reconcileCursor = users.length === 20 ? users.at(-1)!.userDid : "";
-    } finally {
-      sweeping = false;
     }
   }
 
@@ -749,13 +726,9 @@ export function createIngester(
         },
         emit: emitWideEvent,
       });
-      const sweep = () => tracked("reconcile_batch", "", reconcileBatch);
-      sweep();
-      reconcileTimer = setInterval(sweep, 60_000);
     },
     async destroy() {
       destroyed = true;
-      clearInterval(reconcileTimer);
       backfillSemaphore.clearPending("ingester destroyed");
       await stopStream?.();
     },

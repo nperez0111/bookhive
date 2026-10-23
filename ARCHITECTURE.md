@@ -91,7 +91,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | File                                    | Note                                                                                                                          |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `services/getBook.ts`                   | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
-| `bsky/jetstream.ts`, `bsky/ingester.ts` | Stream lifecycle/watchdog and bounded public-PDS mirror repair — `ingestion-and-reconciliation.md`                            |
+| `bsky/jetstream.ts`, `bsky/ingester.ts` | Stream lifecycle, saved-cursor replay and one-time public-PDS discovery backfill — `ingestion-and-reconciliation.md`          |
 | `services/userBookStore.ts`             | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
 | `services/bookRecordWrite.ts`           | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
 | `services/userBookFollowUp.ts`          | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, 3 re-apply attempts on conflict                   |
