@@ -88,44 +88,46 @@ the guarded `JSON.parse(progressData)`: `docs/notes/domain-rules-and-write-paths
 The layer table above lists every file. These are the ones whose _why_ isn't guessable from the
 name — full stories in the linked `docs/notes/*.md`.
 
-| File                             | Note                                                                                                                          |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `services/getBook.ts`            | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
-| `services/userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
-| `services/bookRecordWrite.ts`    | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
-| `services/userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, 3 re-apply attempts on conflict                   |
-| `data/enrichQueue.ts`            | Producer + primary-worker drain + `retry`/`defer`/`dead` accounting — `enrichment-and-scraping.md`                            |
-| `lib/circuitBreaker.ts`          | Three-state breaker, **`auth/restore-guard.ts` only** — wrong for scraping — `enrichment-and-scraping.md`                     |
-| `lib/readThroughCache.ts`        | KV read-through, TTL + optional SWR `revalidateAfter`; prefer SWR for anything expensive                                      |
-| `data/activityFeed.ts`           | The one activity-feed implementation — `activity-feed.md`                                                                     |
-| `data/authorStats.ts`            | `/explore` author aggregates, SWR-cached, `INDEXED BY idx_hive_book_stats` — `data-and-caching.md`                            |
-| `data/activeUsers.ts`            | Distinct readers with a shelfed book, SWR-cached for the landing-page community totals — `data-and-caching.md`                |
-| `data/communityStats.ts`         | The landing page's aggregate totals; composes `activeUsers` and degrades to `null` on a cold failure — `data-and-caching.md`  |
-| `services/uploadPersonalBook.ts` | The one "put this ebook in this user's library" — both upload adapters call it                                                |
-| `data/syncMatching.ts`           | KOReader document → book matching (3 tiers) — `e-reader-and-sync.md`                                                          |
-| `core/filenameMatching.ts`       | Filename-derived identity: `koreaderFilenameHash`, `filenameKey`, `titlesEquivalent`, `authorsMatch`                          |
-| `core/bookMatching.ts`           | Fuzzy title scoring (`similarityScore`, `contentWords`), ported from MIT-licensed shelfcheck                                  |
-| `lib/errors.ts`                  | `errorMessage`/`toErrorPayload`/`truncateForLog` — the one "unknown thrown" shape, bounded at `MAX_LOG_CHARS`                 |
-| `core/authors.ts`                | Tab-separated authors encoding, `parseAuthors` trims — `domain-rules-and-write-paths.md`                                      |
-| `core/rating.ts`                 | The three rating scales and their conversions                                                                                 |
-| `core/bookProgress.ts`           | `bookProgressProblem` (bounds) + `statusFromProgress` (progress ⇒ Reading/Finished)                                           |
-| `core/enrichVerdict.ts`          | `retry`/`defer`/`dead` verdict type + `verdictFields`, defaults to `defer` — `enrichment-and-scraping.md`                     |
-| `core/readingYear.ts`            | "Books finished in year N" — UTC boundaries, re-reads count — `activity-feed.md`                                              |
-| `core/bookLifecycle.ts`          | `nextReadingState` — the one reading-state transition, owns re-read rotation                                                  |
-| `services/actor.ts`              | `resolveActorDid` — the one handle→DID, returns `null` rather than throwing                                                   |
-| `data/repoMirror.ts`             | `pruneMirroredRecords` — re-sync cleanup; handles the empty-keep-list case — `domain-rules-and-write-paths.md`                |
-| `routes/authResponse.ts`         | The one JSON 401 body — `domain-rules-and-write-paths.md`                                                                     |
-| `services/searchBooks.ts`        | The one catalogue-ensure + concurrency ceiling — `enrichment-and-scraping.md`                                                 |
-| `data/bookDetail.ts`             | `/books/:id`, comments, XRPC `getBook`; every ordering ends on `uri`                                                          |
-| `core/hiveId.ts`                 | `HIVE_ID_PATTERN`/`isHiveId`/`asHiveId` — narrow the wire value, don't cast it                                                |
-| `core/cacheHeaders.ts`           | The one caching rule (signed-in vs signed-out)                                                                                |
-| `data/exploreGenres.ts`          | `getTopGenres`, SWR-cached, four consumers including XRPC `listGenres`                                                        |
-| `data/readingStats.ts`           | `getReadingStatsForYear` + the `MIN_BOOKS_FOR_YEAR_STATS` fallback                                                            |
-| `data/syncBridge.ts`             | `recordSyncProgress` — the one e-reader progress push; `enqueuePdsWrite` for the deferred write                               |
-| `data/personalLibrary.ts`        | Library paths, `streamPersonalBook` — `e-reader-and-sync.md`                                                                  |
-| `services/buzzWrite.ts`          | The one buzz create/update — `domain-rules-and-write-paths.md`                                                                |
-| `services/followGraph.ts`        | The one follow/unfollow — PDS write first, `user_follows` mirrored only on success                                            |
-| `lib/formatBytes.ts`             | Quota byte formatting; `app/utils/personalLibrary.ts` holds a deliberate byte-identical copy (Metro can't import from `src/`) |
+| File                                    | Note                                                                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `services/getBook.ts`                   | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
+| `bsky/jetstream.ts`, `bsky/ingester.ts` | Stream lifecycle/watchdog and bounded public-PDS mirror repair — `ingestion-and-reconciliation.md`                            |
+| `services/userBookStore.ts`             | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
+| `services/bookRecordWrite.ts`           | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
+| `services/userBookFollowUp.ts`          | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, 3 re-apply attempts on conflict                   |
+| `data/enrichQueue.ts`                   | Producer + primary-worker drain + `retry`/`defer`/`dead` accounting — `enrichment-and-scraping.md`                            |
+| `lib/circuitBreaker.ts`                 | Three-state breaker, **`auth/restore-guard.ts` only** — wrong for scraping — `enrichment-and-scraping.md`                     |
+| `lib/readThroughCache.ts`               | KV read-through, TTL + optional SWR `revalidateAfter`; prefer SWR for anything expensive                                      |
+| `data/activityFeed.ts`                  | The one activity-feed implementation — `activity-feed.md`                                                                     |
+| `data/authorStats.ts`                   | `/explore` author aggregates, SWR-cached, `INDEXED BY idx_hive_book_stats` — `data-and-caching.md`                            |
+| `data/activeUsers.ts`                   | Distinct readers with a shelfed book, SWR-cached for the landing-page community totals — `data-and-caching.md`                |
+| `data/communityStats.ts`                | The landing page's aggregate totals; composes `activeUsers` and degrades to `null` on a cold failure — `data-and-caching.md`  |
+| `services/uploadPersonalBook.ts`        | The one "put this ebook in this user's library" — both upload adapters call it                                                |
+| `data/syncMatching.ts`                  | KOReader document → book matching (3 tiers) — `e-reader-and-sync.md`                                                          |
+| `core/filenameMatching.ts`              | Filename-derived identity: `koreaderFilenameHash`, `filenameKey`, `titlesEquivalent`, `authorsMatch`                          |
+| `core/bookMatching.ts`                  | Fuzzy title scoring (`similarityScore`, `contentWords`), ported from MIT-licensed shelfcheck                                  |
+| `lib/errors.ts`                         | `errorMessage`/`toErrorPayload`/`truncateForLog` — the one "unknown thrown" shape, bounded at `MAX_LOG_CHARS`                 |
+| `core/authors.ts`                       | Tab-separated authors encoding, `parseAuthors` trims — `domain-rules-and-write-paths.md`                                      |
+| `core/listRecord.ts`                    | The shared list-record → mirror metadata mapping for writes, ingestion and reconciliation                                     |
+| `core/rating.ts`                        | The three rating scales and their conversions                                                                                 |
+| `core/bookProgress.ts`                  | `bookProgressProblem` (bounds) + `statusFromProgress` (progress ⇒ Reading/Finished)                                           |
+| `core/enrichVerdict.ts`                 | `retry`/`defer`/`dead` verdict type + `verdictFields`, defaults to `defer` — `enrichment-and-scraping.md`                     |
+| `core/readingYear.ts`                   | "Books finished in year N" — UTC boundaries, re-reads count — `activity-feed.md`                                              |
+| `core/bookLifecycle.ts`                 | `nextReadingState` — the one reading-state transition, owns re-read rotation                                                  |
+| `services/actor.ts`                     | `resolveActorDid` — the one handle→DID, returns `null` rather than throwing                                                   |
+| `data/repoMirror.ts`                    | `pruneMirroredRecords` — re-sync cleanup; handles the empty-keep-list case — `domain-rules-and-write-paths.md`                |
+| `routes/authResponse.ts`                | The one JSON 401 body — `domain-rules-and-write-paths.md`                                                                     |
+| `services/searchBooks.ts`               | The one catalogue-ensure + concurrency ceiling — `enrichment-and-scraping.md`                                                 |
+| `data/bookDetail.ts`                    | `/books/:id`, comments, XRPC `getBook`; every ordering ends on `uri`                                                          |
+| `core/hiveId.ts`                        | `HIVE_ID_PATTERN`/`isHiveId`/`asHiveId` — narrow the wire value, don't cast it                                                |
+| `core/cacheHeaders.ts`                  | The one caching rule (signed-in vs signed-out)                                                                                |
+| `data/exploreGenres.ts`                 | `getTopGenres`, SWR-cached, four consumers including XRPC `listGenres`                                                        |
+| `data/readingStats.ts`                  | `getReadingStatsForYear` + the `MIN_BOOKS_FOR_YEAR_STATS` fallback                                                            |
+| `data/syncBridge.ts`                    | `recordSyncProgress` — the one e-reader progress push; `enqueuePdsWrite` for the deferred write                               |
+| `data/personalLibrary.ts`               | Library paths, `streamPersonalBook` — `e-reader-and-sync.md`                                                                  |
+| `services/buzzWrite.ts`                 | The one buzz create/update — `domain-rules-and-write-paths.md`                                                                |
+| `services/followGraph.ts`               | The one follow/unfollow — PDS write first, `user_follows` mirrored only on success                                            |
+| `lib/formatBytes.ts`                    | Quota byte formatting; `app/utils/personalLibrary.ts` holds a deliberate byte-identical copy (Metro can't import from `src/`) |
 
 ## Reading navigation
 

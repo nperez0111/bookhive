@@ -2,6 +2,8 @@ import type { FC } from "hono/jsx";
 import type { BookListRow, HiveBook, HiveId, ProfileViewDetailed } from "../types";
 import { BookCard, type BookCardData } from "./components/BookCard";
 import { hiveRatingToDisplayRating } from "../core/rating";
+import { Script } from "./utils/script";
+import { shelfOrdering } from "./utils/shelfOrdering";
 
 type ShelfItem = {
   uri: string;
@@ -33,7 +35,11 @@ export const ShelfViewPage: FC<{
   const rkey = list.uri.split("/").at(-1)!;
 
   return (
-    <div class="space-y-6 px-4 lg:px-8">
+    <div
+      class="space-y-6 px-4 lg:px-8"
+      data-shelf-ordering
+      data-reorder-url={`/shelves/${handle}/${rkey}/reorder`}
+    >
       {/* Header */}
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0 flex-1">
@@ -165,6 +171,47 @@ export const ShelfViewPage: FC<{
       )}
 
       {/* Book list */}
+      {isOwner && Boolean(list.ordered) && items.length > 1 && (
+        <>
+          <div data-order-toolbar hidden class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-order-start
+              class="btn btn-outline btn-sm min-h-10 focus-ring"
+            >
+              Reorder books
+            </button>
+            <button
+              type="button"
+              data-order-save
+              hidden
+              class="btn btn-primary btn-sm min-h-10 focus-ring"
+            >
+              Save order
+            </button>
+            <button
+              type="button"
+              data-order-cancel
+              hidden
+              class="btn btn-ghost btn-sm min-h-10 focus-ring"
+            >
+              Cancel
+            </button>
+            <p
+              data-order-status
+              role="status"
+              aria-live="polite"
+              class="w-full text-sm text-muted-foreground"
+            />
+          </div>
+          <noscript>
+            <p class="text-sm text-muted-foreground">
+              Enable JavaScript to reorder this ranked shelf.
+            </p>
+          </noscript>
+          <Script script={shelfOrdering} />
+        </>
+      )}
       {items.length === 0 && !searchQuery ? (
         <div class="rounded-xl bg-card px-6 py-12 text-center shadow-sm">
           <p class="text-lg text-muted-foreground">This shelf is empty.</p>
@@ -175,7 +222,10 @@ export const ShelfViewPage: FC<{
           )}
         </div>
       ) : items.length === 0 ? null : (
-        <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+        <div
+          data-order-grid
+          class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
+        >
           {items.map((item, index) => {
             const bookData: BookCardData = {
               hiveId: item.hiveId,
@@ -187,43 +237,75 @@ export const ShelfViewPage: FC<{
             };
 
             return (
-              <BookCard
+              <div
                 key={item.uri}
-                variant="dense"
-                book={bookData}
-                badge={
-                  list.ordered ? (
-                    <div class="absolute top-1 left-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold tabular-nums text-white">
-                      {index + 1}
-                    </div>
-                  ) : undefined
-                }
-                overlay={
-                  <>
-                    {item.description && (
-                      <p class="mt-1 text-xs text-white/60 italic line-clamp-2">
-                        {item.description}
-                      </p>
-                    )}
-                    {isOwner && (
-                      <form
-                        action={`/shelves/${handle}/${rkey}/remove`}
-                        method="post"
-                        class="mt-1.5"
+                data-order-item={item.uri}
+                data-order-title={bookData.title}
+                class="min-w-0 space-y-2"
+              >
+                <BookCard
+                  variant="dense"
+                  book={bookData}
+                  badge={
+                    list.ordered ? (
+                      <div
+                        data-order-rank
+                        class="absolute top-1 left-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs font-bold tabular-nums text-white"
                       >
-                        <input type="hidden" name="itemUri" value={item.uri} />
-                        <button
-                          type="submit"
-                          class="min-h-10 min-w-10 rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
-                          title="Remove from shelf"
+                        {index + 1}
+                      </div>
+                    ) : undefined
+                  }
+                  overlay={
+                    <>
+                      {item.description && (
+                        <p class="mt-1 text-xs text-white/60 italic line-clamp-2">
+                          {item.description}
+                        </p>
+                      )}
+                      {isOwner && (
+                        <form
+                          action={`/shelves/${handle}/${rkey}/remove`}
+                          method="post"
+                          class="mt-1.5"
+                          data-order-remove
                         >
-                          Remove
-                        </button>
-                      </form>
-                    )}
-                  </>
-                }
-              />
+                          <input type="hidden" name="itemUri" value={item.uri} />
+                          <button
+                            type="submit"
+                            class="min-h-10 min-w-10 rounded-md bg-destructive/80 px-2.5 py-1 text-xs font-medium text-white transition-[background-color,scale] duration-150 hover:bg-destructive active:scale-95"
+                            title="Remove from shelf"
+                          >
+                            Remove
+                          </button>
+                        </form>
+                      )}
+                    </>
+                  }
+                />
+                {isOwner && Boolean(list.ordered) && items.length > 1 && (
+                  <div data-order-controls hidden class="flex flex-wrap justify-center gap-1">
+                    <button
+                      type="button"
+                      data-order-move="-1"
+                      class="btn btn-outline btn-sm min-h-10 min-w-10 focus-ring"
+                      aria-label={`Move ${bookData.title} earlier`}
+                      title="Move earlier"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      data-order-move="1"
+                      class="btn btn-outline btn-sm min-h-10 min-w-10 focus-ring"
+                      aria-label={`Move ${bookData.title} later`}
+                      title="Move later"
+                    >
+                      →
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

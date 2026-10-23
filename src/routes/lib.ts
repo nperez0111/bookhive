@@ -21,7 +21,8 @@ import { pruneMirroredRecords } from "../data/repoMirror";
 import { NO_STORE, hasSessionCookie } from "../core/cacheHeaders";
 import { enqueueEnrichment } from "../data/enrichQueue";
 import { serializeUserBook } from "../core/bookProgress";
-import { buzzUpsertSet, userBookUpsertSet } from "../db";
+import { bookListItemUpsertSet, bookListUpsertSet, buzzUpsertSet, userBookUpsertSet } from "../db";
+import { listRecordFields } from "../core/listRecord";
 import { upsertBookIdentifiers } from "../data/bookIdentifiers";
 import { errorMessage } from "../lib/errors";
 
@@ -418,27 +419,14 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
           uri: record.uri,
           cid: record.cid,
           userDid: agent.did,
-          name: list.name,
-          description: list.description ?? null,
-          ordered: list.ordered ? 1 : 0,
-          tags: list.tags ? JSON.stringify(list.tags) : null,
-          createdAt: list.createdAt,
+          ...listRecordFields(list),
           indexedAt: new Date().toISOString(),
         })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            cid: c.ref("excluded.cid"),
-            name: c.ref("excluded.name"),
-            description: c.ref("excluded.description"),
-            ordered: c.ref("excluded.ordered"),
-            tags: c.ref("excluded.tags"),
-            indexedAt: c.ref("excluded.indexedAt"),
-          })),
-        )
+        .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
         .execute();
     }
 
-    listCursor = data.records.length === 100 ? data.cursor : undefined;
+    listCursor = data.cursor;
   } while (listCursor);
 
   // Clean up deleted lists
@@ -508,24 +496,11 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
           embeddedCoverUrl: item.posterUrl ?? null,
           identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
         })
-        .onConflict((oc) =>
-          oc.column("uri").doUpdateSet((c) => ({
-            cid: c.ref("excluded.cid"),
-            listUri: c.ref("excluded.listUri"),
-            hiveId: c.ref("excluded.hiveId"),
-            description: c.ref("excluded.description"),
-            position: c.ref("excluded.position"),
-            indexedAt: c.ref("excluded.indexedAt"),
-            embeddedTitle: c.ref("excluded.embeddedTitle"),
-            embeddedAuthor: c.ref("excluded.embeddedAuthor"),
-            embeddedCoverUrl: c.ref("excluded.embeddedCoverUrl"),
-            identifiers: c.ref("excluded.identifiers"),
-          })),
-        )
+        .onConflict((oc) => oc.column("uri").doUpdateSet(bookListItemUpsertSet))
         .execute();
     }
 
-    itemCursor = data.records.length === 100 ? data.cursor : undefined;
+    itemCursor = data.cursor;
   } while (itemCursor);
 
   // Clean up deleted items
