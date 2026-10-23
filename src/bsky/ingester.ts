@@ -5,6 +5,7 @@ import {
   buzzUpsertSet,
   userBookUpsertSet,
   type Database,
+  type DatabaseSchema,
 } from "../db";
 import { listRecordFields } from "../core/listRecord";
 import { env } from "../env";
@@ -44,12 +45,19 @@ function getIngesterLabel(labels: Record<string, string>): string {
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
 
-const WANTED_COLLECTIONS = [
-  ids.BuzzBookhiveBook,
-  ids.BuzzBookhiveBuzz,
-  ids.SocialPopfeedFeedList,
-  ids.SocialPopfeedFeedListItem,
-];
+type CollectionType =
+  | typeof ids.BuzzBookhiveBook
+  | typeof ids.BuzzBookhiveBuzz
+  | typeof ids.SocialPopfeedFeedList
+  | typeof ids.SocialPopfeedFeedListItem;
+
+const COLLECTION_TABLES = {
+  [ids.BuzzBookhiveBook]: "user_book",
+  [ids.BuzzBookhiveBuzz]: "buzz",
+  [ids.SocialPopfeedFeedList]: "book_list",
+  [ids.SocialPopfeedFeedListItem]: "book_list_item",
+} as const satisfies Record<CollectionType, keyof DatabaseSchema>;
+const WANTED_COLLECTIONS = Object.keys(COLLECTION_TABLES);
 const JETSTREAM_URL = [
   "wss://jetstream1.us-east.bsky.network",
   "wss://jetstream2.us-east.bsky.network",
@@ -115,12 +123,7 @@ export async function backfillUserRepo(
   try {
     const pds = await resolvePds(did);
 
-    for (const collection of [
-      ids.BuzzBookhiveBook,
-      ids.BuzzBookhiveBuzz,
-      ids.SocialPopfeedFeedList,
-      ids.SocialPopfeedFeedListItem,
-    ]) {
+    for (const [collection, table] of Object.entries(COLLECTION_TABLES)) {
       let cursor: string | undefined;
       let pages = 0;
       do {
@@ -145,7 +148,7 @@ export async function backfillUserRepo(
           record.uri.startsWith(`at://${did}/${collection}/`),
         );
         const now = new Date();
-        if (collection === ids.BuzzBookhiveBook) {
+        if (table === "user_book") {
           const validBooks = data.records.flatMap((record) => {
             const parsed = Book.validateRecord(record.value);
             return parsed.success ? [{ record, book: parsed.value }] : [];
@@ -191,7 +194,7 @@ export async function backfillUserRepo(
                 .execute();
             }
           }
-        } else if (collection === ids.BuzzBookhiveBuzz) {
+        } else if (table === "buzz") {
           const validBuzzes = data.records.flatMap((record) => {
             const parsed = Buzz.validateRecord(record.value);
             return parsed.success ? [{ record, buzz: parsed.value }] : [];
@@ -232,7 +235,7 @@ export async function backfillUserRepo(
                 .execute();
             }
           }
-        } else if (collection === ids.SocialPopfeedFeedList) {
+        } else if (table === "book_list") {
           for (const record of data.records) {
             const asList = List.validateRecord(record.value);
             if (!asList.success) continue;
@@ -249,7 +252,7 @@ export async function backfillUserRepo(
               .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
               .execute();
           }
-        } else if (collection === ids.SocialPopfeedFeedListItem) {
+        } else if (table === "book_list_item") {
           for (const record of data.records) {
             const asItem = ListItem.validateRecord(record.value);
             if (!asItem.success) continue;
