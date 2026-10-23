@@ -11,13 +11,13 @@ established; current PDS and mirror records already agreed after manual refreshe
 Jetstream replay is finite, so reconnecting with an old cursor cannot guarantee recovery of every
 missed change. Restart failed workers and replay the saved cursor; use Settings → Book sync for
 exceptional missed-history recovery. Do not routinely rescan known users or infer a broken
-connection from silence alone. This is a best-effort mirror, not a durable event-processing system.
+connection from short periods of silence. A 12-hour absence of ingestion events triggers worker
+replacement and cursor replay. This is a best-effort mirror, not a durable event-processing system.
 
 ## Stream lifecycle (`src/bsky/jetstream.ts`)
 
 - Errors and unexpected iterator completion reconnect after 3 seconds. Socket reconnects are also
-  handled by the subscription library. There is no silence watchdog: a quiet filtered stream is
-  not evidence of failure.
+  handled by the subscription library. Short quiet periods on the filtered stream are left alone.
 - Checkpoints are awaited, in order, after commit handling. Reconnection reads the saved KV
   `jetstream:cursor`, never the subscription's receive cursor (which can be ahead of DB writes).
 - **Returning the installed EventIterator closes its socket but leaves a pending `next()`
@@ -28,6 +28,11 @@ connection from silence alone. This is a best-effort mirror, not a durable event
   endpoint or heartbeat protocol is introduced.
 - `src/context.ts` restarts an exited/errored ingester worker after 3 seconds. Shutdown cancels
   that restart. Only the primary web process owns this worker.
+- The parent checks once per minute for **12 hours without an ingestion event**, measured from
+  worker spawn or the last forwarded commit outcome (including skipped/failed commits). Connection
+  and reconciliation logs do not count. It logs `idle_ms`, terminates the worker and lets the same
+  close/restart path replace it. Watching from the parent also covers a blocked worker event loop.
+  Restart resumes the persisted cursor through normal Jetstream replay, not a PDS scan.
 
 ## One-time discovery backfill (`src/bsky/ingester.ts`)
 
@@ -58,5 +63,5 @@ This path **never writes to the PDS**. Do not reuse `refetchBooks`: it also dele
 records and patches their catalog references. Discovery backfill deliberately does not
 infer deletions from absent records, discover unknown accounts, catalog missing books, or queue
 every failed Jetstream event. Books still require an existing catalog row, as the original
-backfill did. A worker that stays alive but silently wedges is not automatically detected: that
-is the deliberate tradeoff for keeping recovery simple and avoiding false-alarm reconnects.
+backfill did. The 12-hour watchdog is deliberately conservative; it does not guarantee recovery
+of changes older than Jetstream's retained history. Manual sync handles that exceptional case.
