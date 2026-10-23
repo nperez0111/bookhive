@@ -91,6 +91,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | File                             | Note                                                                                                                          |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `services/getBook.ts`            | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
+| `bsky/jetstream.ts`              | Stream lifecycle and saved-cursor replay — `ingestion-and-reconciliation.md`                                                  |
 | `services/userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
 | `services/bookRecordWrite.ts`    | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
 | `services/userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, 3 re-apply attempts on conflict                   |
@@ -107,6 +108,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `core/bookMatching.ts`           | Fuzzy title scoring (`similarityScore`, `contentWords`), ported from MIT-licensed shelfcheck                                  |
 | `lib/errors.ts`                  | `errorMessage`/`toErrorPayload`/`truncateForLog` — the one "unknown thrown" shape, bounded at `MAX_LOG_CHARS`                 |
 | `core/authors.ts`                | Tab-separated authors encoding, `parseAuthors` trims — `domain-rules-and-write-paths.md`                                      |
+| `core/listRecord.ts`             | The shared list-record → mirror metadata mapping for writes, ingestion and re-sync                                            |
 | `core/rating.ts`                 | The three rating scales and their conversions                                                                                 |
 | `core/bookProgress.ts`           | `bookProgressProblem` (bounds) + `statusFromProgress` (progress ⇒ Reading/Finished)                                           |
 | `core/enrichVerdict.ts`          | `retry`/`defer`/`dead` verdict type + `verdictFields`, defaults to `defer` — `enrichment-and-scraping.md`                     |
