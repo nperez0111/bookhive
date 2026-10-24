@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -22,7 +23,7 @@ import { UserBlock } from "@/components/UserBlock";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
-import { useFeed } from "@/hooks/useBookhiveQuery";
+import { useFeed, type FeedActivity, type FeedGroup } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
@@ -41,69 +42,57 @@ const BOOK_STATUS_LABELS: Record<string, string> = {
   "buzz.bookhive.defs#abandoned": "abandoned",
 };
 
-type FeedActivity = {
-  userDid: string;
-  userHandle?: string;
-  hiveId: string;
-  title: string;
-  authors: string;
-  status?: string;
-  stars?: number;
-  review?: string;
-  createdAt: string;
-  /** The activity time and the feed's sort key — prefer over createdAt. */
-  indexedAt?: string;
-  thumbnail: string;
-  cover?: string;
-};
-
 export default function FeedScreen() {
   const [activeTab, setActiveTab] = useState<FeedTab>("friends");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [allActivities, setAllActivities] = useState<FeedActivity[]>([]);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const { top } = useSafeAreaInsets();
 
-  const feed = useFeed(activeTab, cursor);
+  const feed = useFeed(activeTab);
+  const { refresh, hasNextPage, isFetching, error, fetchNextPage } = feed;
 
-  // Merge activities from all pages
-  const activities = useMemo(() => {
-    const currentPageActivities = feed.data?.activities ?? [];
-    if (!cursor) return currentPageActivities;
-    // Deduplicate by composite key
-    const seen = new Set(allActivities.map((a) => `${a.hiveId}_${a.userDid}_${a.createdAt}`));
-    const newItems = currentPageActivities.filter(
-      (a) => !seen.has(`${a.hiveId}_${a.userDid}_${a.createdAt}`),
-    );
-    return [...allActivities, ...newItems];
-  }, [feed.data?.activities, cursor, allActivities]);
+  // These are mutable reading-state snapshots, not immutable historical events.
+  // Render server-defined groups as-is; do not re-collapse by status or createdAt.
+  const groups = useMemo(
+    () =>
+      feed.data?.pages.flatMap((page, pageIndex) =>
+        (
+          page.groups ??
+          page.activities.map(
+            (activity): FeedGroup => ({
+              kind: "single",
+              verb: "updated",
+              total: 1,
+              activities: [activity],
+            }),
+          )
+        ).map((group, index) => ({
+          ...group,
+          key: `${feed.data?.pageParams[pageIndex] ?? ""}:${index}`,
+        })),
+      ) ?? [],
+    [feed.data],
+  );
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    setCursor(undefined);
-    setAllActivities([]);
-    void feed.refetch().finally(() => setIsRefreshing(false));
-  }, [feed.refetch]);
+    void refresh().finally(() => setIsRefreshing(false));
+  }, [refresh]);
 
   const onTabChange = useCallback((tab: FeedTab) => {
     setActiveTab(tab);
-    setCursor(undefined);
-    setAllActivities([]);
   }, []);
 
   const onEndReached = useCallback(() => {
-    const nextCursor = feed.data?.cursor;
-    if (nextCursor && !feed.isFetching) {
-      setAllActivities(activities);
-      setCursor(nextCursor);
+    if (hasNextPage && !isFetching && !error && !isRefreshing) {
+      void fetchNextPage();
     }
-  }, [feed.data?.cursor, feed.isFetching, activities]);
+  }, [hasNextPage, isFetching, error, fetchNextPage, isRefreshing]);
 
-  const renderItem = useCallback(
+  const renderActivity = useCallback(
     ({ item }: { item: FeedActivity }) => {
       const timeAgo = (() => {
         try {
@@ -127,7 +116,8 @@ export default function FeedScreen() {
           <UserBlock
             handle={item.userHandle ?? item.userDid}
             avatar={
-              item.userHandle ? `${getBaseUrl()}/profile/${item.userHandle}/image` : undefined
+              item.userAvatar ??
+              (item.userHandle ? `${getBaseUrl()}/profile/${item.userHandle}/image` : undefined)
             }
             size="sm"
             onPress={() => router.push(`/profile/${item.userDid}` as any)}
@@ -150,6 +140,37 @@ export default function FeedScreen() {
     },
     [colors],
   );
+
+  const renderItem = ({ item }: { item: FeedGroup }) => {
+    const actor = item.activities[0];
+    if (!actor) return null;
+    if (item.kind === "single") return renderActivity({ item: actor });
+    return (
+      <View style={{ gap: 12 }}>
+        <UserBlock
+          handle={actor.userHandle ?? actor.userDid}
+          avatar={actor.userAvatar}
+          onPress={() => router.push(`/profile/${actor.userDid}` as any)}
+          suffix={`logged ${item.total}${item.truncated ? "+" : ""} books · ${formatDistanceToNow(new Date(actor.indexedAt ?? actor.createdAt), { addSuffix: true })}`}
+        />
+        {item.activities.map((activity) => (
+          <View key={`${activity.userDid}:${activity.hiveId}`}>
+            {renderActivity({ item: activity })}
+          </View>
+        ))}
+        {item.total > item.activities.length && (
+          <Pressable
+            style={{ minHeight: 44, justifyContent: "center" }}
+            onPress={() => router.push(`/profile/${actor.userDid}` as any)}
+          >
+            <ThemedText type="caption">
+              {item.total - item.activities.length} more in this group · View reader’s library
+            </ThemedText>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -188,19 +209,28 @@ export default function FeedScreen() {
         ))}
       </View>
 
-      {feed.isLoading && !isRefreshing && !cursor ? (
+      {feed.isLoading && !isRefreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : feed.error && !cursor ? (
+      ) : feed.error && !groups.length ? (
         <QueryErrorHandler
           error={feed.error}
           onRetry={() => feed.refetch()}
           showRetryButton
           showGoBackButton={false}
         />
-      ) : activities.length === 0 ? (
-        <View style={styles.emptyState}>
+      ) : groups.length === 0 && !isRefreshing ? (
+        <ScrollView
+          contentContainerStyle={[styles.emptyState, { flexGrow: 1 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+        >
           <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
             <Ionicons name="people-outline" size={40} color={colors.tertiaryText} />
           </View>
@@ -218,13 +248,12 @@ export default function FeedScreen() {
                 ? "Add books to your library to track community activity"
                 : "Check back soon"}
           </ThemedText>
-        </View>
+        </ScrollView>
       ) : (
         <FlatList
-          data={activities}
-          keyExtractor={(item) => `${item.hiveId}_${item.userDid}_${item.createdAt}`}
-          numColumns={2}
-          columnWrapperStyle={styles.gridRow}
+          key={activeTab}
+          data={groups}
+          keyExtractor={(item) => item.key}
           style={styles.feedList}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -240,7 +269,14 @@ export default function FeedScreen() {
           }
           renderItem={renderItem}
           ListFooterComponent={
-            feed.isFetching && cursor ? (
+            feed.error ? (
+              <QueryErrorHandler
+                error={feed.error}
+                onRetry={() => (feed.isFetchNextPageError ? feed.fetchNextPage() : feed.refetch())}
+                showRetryButton
+                showGoBackButton={false}
+              />
+            ) : feed.isFetchingNextPage ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>

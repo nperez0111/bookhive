@@ -36,13 +36,13 @@ export const QueryErrorHandler: React.FC<QueryErrorHandlerProps> = ({
       <ThemedView style={[styles.container, { backgroundColor }]}>
         <View style={styles.content}>
           <Ionicons name="wifi-outline" size={64} color="#FBBF24" />
-          <ThemedText style={[styles.title, { color: textColor }]}>You're Offline</ThemedText>
+          <ThemedText style={[styles.title, { color: textColor }]}>You&apos;re Offline</ThemedText>
           <ThemedText style={[styles.message, { color: textColor }]}>
             Please check your internet connection and try again.
           </ThemedText>
           {onRetry && (
             <ThemedText style={[styles.retryHint, { color: textColor }]}>
-              Pull down to refresh when you're back online.
+              Pull down to refresh when you&apos;re back online.
             </ThemedText>
           )}
         </View>

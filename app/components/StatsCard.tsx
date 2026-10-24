@@ -5,7 +5,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 
 type StatsCardProps = {
-  items: Array<{ label: string; value: string | number }>; // exactly 3 looks best
+  items: { label: string; value: string | number }[]; // exactly 3 looks best
   style?: any;
   onItemPress?: (label: string) => void;
 };

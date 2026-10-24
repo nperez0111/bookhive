@@ -12,7 +12,24 @@ you're touching.
 - `/metrics` → Prometheus
 - `/admin/*` → `src/routes/admin.ts` (gated by `EXPORT_SHARED_SECRET`). `GET /admin/backfill-catalog/progress` reads through the KV, not just process memory — the backfill runs for hours on the primary worker while the request can land on any of the three. Persist the status object directly, never `JSON.stringify` of it (unstorage runs `destr` on read; a stored JSON string reads back as an object and any `JSON.parse` of it throws).
 - `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`)
-- `/import` (POST `/goodreads`, `/storygraph`) → `src/routes/import.ts` — CSV import handler
+- `/import` (POST `/goodreads`, `/storygraph`, `/hardcover`) → `src/routes/import.ts` — CSV import handler, shared by browser and native multipart `export` uploads
+
+### Account XRPC procedures (`src/xrpc/router.ts`)
+
+- `POST /xrpc/buzz.bookhive.resyncAccount` accepts strict JSON `{}`.
+- `POST /xrpc/buzz.bookhive.deleteAccount` accepts strict JSON `{confirmHandle}`
+  matching the current handle (DID fallback). Both require a live OAuth session
+  (`pdsWrite`), reuse existing services and return `{success:true}` only after
+  completion. Errors use XRPC `{error,message}`. Deletion revokes/destroys the
+  session after cleanup and removes BookHive PDS records, not a Bluesky
+  account/posts. These are general client APIs, not mobile-specific routes.
+- CSV imports retain the shared browser/native multipart/SSE `/import` endpoints;
+  OAuth browser handoffs remain transport-specific.
+
+XRPC handlers obtain their typed application context and narrowly scoped response
+capabilities (`setRequestError`, `destroySession`) from one request-local store.
+Keep these capabilities request-bound: overlapping account requests must not write
+another response's cookie or error context. Authentication has its own caller store.
 
 ### Mounted in `src/app.ts` (after `mainRouter`)
 
@@ -29,6 +46,11 @@ you're touching.
   - `/images/avatars/:did?s=N` — ID-keyed avatar
   - `/images/{modifiers}/{source}` — source-embedded catch-all (used by OG render, iOS app). Helpers: `sourceCoverImageUrl`, `sourceAvatarImageUrl`
 - `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx`
+- `/mobile/login`, `/mobile/oauth/callback`, `/mobile/refresh-token` → the same
+  auth router. Mobile refresh uses guarded OAuth restore: terminal credentials
+  return JSON 401, including SDK missing/deleted-session errors; transient PDS
+  failures and timeouts return 503 without destroying the sid. The shared guard
+  checks SDK terminal error types and structured OAuth codes before legacy prose.
 
 The login handle suggestions use `public/js/actor-typeahead.js`, calling
 `https://typeahead.waow.tech/xrpc/tech.waow.typeahead.searchActors` directly from the browser

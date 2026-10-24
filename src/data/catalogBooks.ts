@@ -181,12 +181,15 @@ export async function searchLocalCatalog({
   q,
   limit = 20,
   exclude = [],
+  language,
 }: {
   db: Database;
   q: string;
   limit?: number;
   /** Ids already found elsewhere, so the backfill does not repeat them. */
   exclude?: HiveId[];
+  /** Preference, not a filter. Apply before limiting so later pages cannot reorder earlier ones. */
+  language?: string | undefined;
 }): Promise<HiveId[]> {
   const match = isUsefulFtsQuery(q) ? ftsMatchQuery(q) : null;
   if (!match || limit <= 0) return [];
@@ -197,7 +200,8 @@ export async function searchLocalCatalog({
       FROM hive_book_fts f
       JOIN hive_book b ON b.rowid = f.rowid
       WHERE hive_book_fts MATCH ${match}
-      ORDER BY b.ratingsCount DESC, b.rating DESC, b.id ASC
+      ORDER BY ${language ? sql`CASE WHEN b.language = ${language} THEN 0 ELSE 1 END,` : sql``}
+        b.ratingsCount DESC, b.rating DESC, b.id ASC
       LIMIT ${limit + exclude.length}
     `.execute(db)
   ).rows;
@@ -212,11 +216,73 @@ export async function searchLocalCatalog({
   return out;
 }
 
+/** Bounded discovery, not an exhaustive export of every FTS match. */
+export const MAX_SEARCH_CANDIDATES = 1000;
+export const MAX_SEARCH_PAGE_SIZE = 100;
+
+/**
+ * Page the cached search seeds plus local FTS matches. The local prefix must
+ * reach offset + limit, not merely limit. Scraping is deliberately not part of
+ * this read: the service supplies its ordinary cached seeds once per request.
+ *
+ * Fetch up to `end` local ids even when seeds already fill that many slots:
+ * preferred-language local matches may precede non-preferred seeds. Sorting
+ * local matches by language before their LIMIT makes growing prefixes stable.
+ * Only the final page hydrates full book rows (descriptions/meta/covers).
+ */
+export async function listSearchBooks({
+  db,
+  q,
+  seedIds,
+  offset = 0,
+  limit = 25,
+  language,
+}: {
+  db: Database;
+  q: string;
+  seedIds: HiveId[];
+  offset?: number;
+  limit?: number;
+  language?: string | undefined;
+}): Promise<{ books: HiveBook[]; offset: number }> {
+  const start = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : MAX_SEARCH_CANDIDATES;
+  const size = Number.isFinite(limit)
+    ? Math.min(MAX_SEARCH_PAGE_SIZE, Math.max(0, Math.floor(limit)))
+    : 0;
+  if (start >= MAX_SEARCH_CANDIDATES || size === 0 || !q.trim()) {
+    return { books: [], offset: start };
+  }
+  const end = Math.min(start + size, MAX_SEARCH_CANDIDATES);
+  const seeds = [...new Set(seedIds)].slice(0, MAX_SEARCH_CANDIDATES);
+  const localIds = await searchLocalCatalog({ db, q, limit: end, exclude: seeds, language });
+  const ids = [...seeds, ...localIds];
+  if (!ids.length) return { books: [], offset: start };
+
+  // Ranking needs only identity and language; never materialize thousands of
+  // descriptions just to discard all but the requested page.
+  const candidates = await db
+    .selectFrom("hive_book")
+    .select(["id", "language"])
+    .where("id", "in", ids)
+    .execute();
+  const rank = new Map(ids.map((id, index) => [id, index]));
+  candidates.sort((a, b) => {
+    if (language) {
+      const preference = Number(b.language === language) - Number(a.language === language);
+      if (preference) return preference;
+    }
+    return rank.get(a.id)! - rank.get(b.id)!;
+  });
+  const pageIds = candidates.slice(start, end).map(({ id }) => id);
+  const books = await hydrateSearchResults({ db, ids: pageIds });
+  return { books, offset: start + books.length };
+}
+
 /**
  * Turn an ordered list of ids from `searchBooks` into rows, preserving search
  * relevance and sorting a preferred language to the front. Shared by
- * `/search` and XRPC `searchBooks` so the two can't disagree on truncation
- * order.
+ * `/search` and the selected page of XRPC `searchBooks`. XRPC also discovers
+ * additional local candidates before selecting its page, unlike web search.
  */
 export async function hydrateSearchResults({
   db,

@@ -1,4 +1,5 @@
-import { NetworkError } from "@/components/NetworkErrorView";
+import type { NetworkError } from "@/components/NetworkErrorView";
+import { isCancelledError } from "@tanstack/react-query";
 
 export interface ApiError {
   message: string;
@@ -8,8 +9,10 @@ export interface ApiError {
 }
 
 export const classifyNetworkError = (error: any): NetworkError => {
+  const message = typeof error?.message === "string" ? error.message : "";
+  const status = error?.status ?? error?.response?.status;
   // Handle fetch errors
-  if (error.name === "TypeError" && error.message.includes("fetch")) {
+  if (error?.name === "TypeError" && message.includes("fetch")) {
     return {
       type: "network",
       message: "Unable to connect to the server. Please check your internet connection.",
@@ -18,7 +21,13 @@ export const classifyNetworkError = (error: any): NetworkError => {
   }
 
   // Handle timeout errors
-  if (error.name === "AbortError" || error.message.includes("timeout")) {
+  if (
+    error?.name === "AbortError" ||
+    error?.name === "TimeoutError" ||
+    error?.cause?.name === "TimeoutError" ||
+    message.includes("timeout") ||
+    message.includes("timed out")
+  ) {
     return {
       type: "timeout",
       message: "The request timed out. Please try again.",
@@ -27,8 +36,8 @@ export const classifyNetworkError = (error: any): NetworkError => {
   }
 
   // Handle HTTP status codes
-  if (error.status) {
-    switch (error.status) {
+  if (status) {
+    switch (status) {
       case 401:
         return {
           type: "unauthorized",
@@ -78,23 +87,23 @@ export const classifyNetworkError = (error: any): NetworkError => {
           type: "server",
           message: "Service temporarily unavailable. Please try again later.",
           retryable: true,
-          statusCode: error.status,
+          statusCode: status,
         };
       default:
         return {
           type: "server",
-          message: `Server error (${error.status}). Please try again.`,
-          retryable: error.status >= 500,
-          statusCode: error.status,
+          message: `Server error (${status}). Please try again.`,
+          retryable: status >= 500,
+          statusCode: status,
         };
     }
   }
 
   // Handle network connectivity issues
   if (
-    error.message?.includes("Network request failed") ||
-    error.message?.includes("Network Error") ||
-    error.message?.includes("ERR_NETWORK")
+    message.includes("Network request failed") ||
+    message.includes("Network Error") ||
+    message.includes("ERR_NETWORK")
   ) {
     return {
       type: "network",
@@ -104,7 +113,7 @@ export const classifyNetworkError = (error: any): NetworkError => {
   }
 
   // Handle DNS resolution errors
-  if (error.message?.includes("ENOTFOUND") || error.message?.includes("DNS")) {
+  if (message.includes("ENOTFOUND") || message.includes("DNS")) {
     return {
       type: "network",
       message: "Unable to reach the server. Please check your internet connection.",
@@ -113,7 +122,7 @@ export const classifyNetworkError = (error: any): NetworkError => {
   }
 
   // Handle SSL/TLS errors
-  if (error.message?.includes("SSL") || error.message?.includes("TLS")) {
+  if (message.includes("SSL") || message.includes("TLS")) {
     return {
       type: "network",
       message: "Secure connection failed. Please try again.",
@@ -124,9 +133,23 @@ export const classifyNetworkError = (error: any): NetworkError => {
   // Default unknown error
   return {
     type: "unknown",
-    message: error.message || "An unexpected error occurred. Please try again.",
+    message: message || "An unexpected error occurred. Please try again.",
     retryable: true,
   };
+};
+
+/** Queries may throw raw ofetch errors or the catalogue's enhanced errors. */
+export const shouldRetryQuery = (failureCount: number, error: any): boolean => {
+  const original = error?.originalError ?? error;
+  if (
+    isCancelledError(original) ||
+    original?.name === "AbortError" ||
+    original?.cause?.name === "AbortError" ||
+    original?.message?.includes("Authentication session changed")
+  ) {
+    return false;
+  }
+  return failureCount < 3 && (error?.networkError ?? classifyNetworkError(original)).retryable;
 };
 
 export const isRetryableError = (error: NetworkError): boolean => {

@@ -118,8 +118,9 @@ binding can't drift apart.
 
 - `identity` — we only need the DID (every personal-library/sync method).
 - `pdsWrite` — writes to the user's repo, needs a live OAuth session. **Service auth can never
-  satisfy this** — it proves key control, not that we hold a grant. Only the six book-list
-  procedures need it.
+  satisfy this** — it proves key control, not that we hold a grant. The six book-list
+  procedures and `resyncAccount`/`deleteAccount` require it. Account deletion is not
+  permitted with service auth, even when a cookie is also present.
 
 Load-bearing details:
 
