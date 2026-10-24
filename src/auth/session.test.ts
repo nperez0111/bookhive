@@ -1,13 +1,23 @@
-import { describe, it, expect, mock } from "bun:test";
-import { getIronSession } from "iron-session";
+import { afterEach, describe, it, expect, mock } from "bun:test";
+import * as ironSession from "iron-session";
 import { env as realEnv } from "../env";
 import { getSessionAgent } from "../context";
 
-// Mock iron-session
-const mockGetIronSession = mock();
+// Module mocks survive this file. Capture the real exports before replacing the
+// live module binding, and delegate by default so unrelated real-session tests
+// still exercise cookie decoding/sealing instead of receiving undefined.
+const realIronSession = { ...ironSession };
+const realGetIronSession = realIronSession.getIronSession;
+const mockGetIronSession = mock(realGetIronSession);
 void mock.module("iron-session", () => ({
+  ...realIronSession,
   getIronSession: mockGetIronSession,
 }));
+
+afterEach(() => {
+  mockGetIronSession.mockReset();
+  mockGetIronSession.mockImplementation(realGetIronSession);
+});
 
 // mock.module is process-wide and permanent — a bare object here blanks every
 // other env field for the rest of the run, which can fail an unrelated file
@@ -29,13 +39,13 @@ describe("Auth Session TTL Logic", () => {
     const mockReq = {} as any;
     const mockRes = {} as any;
 
-    await getIronSession(mockReq, mockRes, {
+    await ironSession.getIronSession(mockReq, mockRes, {
       cookieName: "sid",
       password: "test-secret-key-for-testing-purposes-only",
       ttl: 60 * 60 * 24,
     });
 
-    expect(getIronSession).toHaveBeenCalledWith(
+    expect(mockGetIronSession).toHaveBeenCalledWith(
       mockReq,
       mockRes,
       expect.objectContaining({

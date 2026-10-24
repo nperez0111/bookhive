@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, Pressable, StyleSheet, Platform, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -28,14 +28,17 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
 
-  const [tempDate, setTempDate] = useState<Date | null>(null);
+  const [tempDate, setTempDate] = useState<Date | null>(() => initialDate ?? new Date());
 
   // Initialize temp date when modal opens
-  useEffect(() => {
+  const initialTime = initialDate?.getTime();
+  const [previous, setPrevious] = useState({ visible, initialTime });
+  if (previous.visible !== visible || previous.initialTime !== initialTime) {
+    setPrevious({ visible, initialTime });
     if (visible) {
       setTempDate(initialDate || new Date());
     }
-  }, [visible, initialDate]);
+  }
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     if (selectedDate) {

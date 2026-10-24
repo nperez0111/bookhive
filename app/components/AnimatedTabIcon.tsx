@@ -29,7 +29,7 @@ export function AnimatedTabIcon({ name, color, size = 28, focused }: AnimatedTab
       translateY.value = withSpring(0, { damping: 16, stiffness: 160 });
       opacity.value = withTiming(0.9, { duration: 150 });
     }
-  }, [focused]);
+  }, [focused, opacity, scale, translateY]);
 
   const style = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }, { translateY: translateY.value }],

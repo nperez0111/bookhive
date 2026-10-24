@@ -44,7 +44,17 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getReadingStats", {
   output: {
     type: "lex",
     schema: /*#__PURE__*/ v.object({
+      /**
+       * All-time finished-book statistics, present only when the requested year has fewer than three finished books. The stats field always remains scoped to the requested year.
+       */
+      get allTimeStats() {
+        return /*#__PURE__*/ v.optional(readingStatsSchema);
+      },
       availableYears: /*#__PURE__*/ v.array(/*#__PURE__*/ v.integer()),
+      /**
+       * Whether the requested year meets the existing three-finished-book threshold for Year in Books.
+       */
+      showYearInBooks: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.boolean()),
       get stats() {
         return readingStatsSchema;
       },

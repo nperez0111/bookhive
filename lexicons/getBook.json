@@ -2,6 +2,26 @@
   "lexicon": 1,
   "id": "buzz.bookhive.getBook",
   "defs": {
+    "progressHistoryEntry": {
+      "type": "object",
+      "required": ["createdAt"],
+      "properties": {
+        "createdAt": { "type": "string", "format": "datetime" },
+        "currentPage": { "type": "integer" },
+        "totalPages": { "type": "integer" },
+        "percent": { "type": "integer" }
+      }
+    },
+    "shelfMembership": {
+      "type": "object",
+      "required": ["uri", "name", "userDid", "itemUri"],
+      "properties": {
+        "uri": { "type": "string", "description": "AT-URI of the public catalogue shelf" },
+        "name": { "type": "string" },
+        "userDid": { "type": "string", "description": "DID of the shelf owner" },
+        "itemUri": { "type": "string", "description": "AT-URI of the shelf's book-list item" }
+      }
+    },
     "main": {
       "type": "query",
       "description": "Get a book's info. Does not require authentication.",
@@ -86,6 +106,17 @@
               "description": "History of prior reads of this book by the user (most recent first)",
               "items": { "type": "ref", "ref": "buzz.bookhive.defs#previousRead" },
               "maxLength": 50
+            },
+            "progressHistory": {
+              "type": "array",
+              "description": "The authenticated viewer's latest 20 progress entries for this book, newest first. Omitted when signed out; unknown page/count/percent values are omitted.",
+              "items": { "type": "ref", "ref": "#progressHistoryEntry" },
+              "maxLength": 20
+            },
+            "shelves": {
+              "type": "array",
+              "description": "Public catalogue shelves containing this book, including the viewer's and other readers' shelves. Omitted when signed out. Never includes private ebook shelves.",
+              "items": { "type": "ref", "ref": "#shelfMembership" }
             },
             "book": {
               "description": "The hive book's info",

@@ -1,12 +1,12 @@
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
-import { PanResponder, View, ViewStyle } from "react-native";
+import React from "react";
+import { Pressable, View, type ViewStyle } from "react-native";
 import { ThemedText } from "./ThemedText";
 
 interface StarRatingProps {
-  /** rating (0-10, supports half steps like 1, 3, 5...) */
+  /** Wire rating: 0 clears; integers 1–10 represent 0.5–5 stars. */
   rating: number | undefined;
   onRate?: (rating: number) => void;
   disabled?: boolean;
@@ -21,132 +21,65 @@ export const StarRating: React.FC<StarRatingProps> = ({
   starSize = 48,
   style,
 }) => {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
-  // Internal state represents 0-5 stars (including halves) based on 0-10 rating prop
-  const [currentRating, setCurrentRating] = useState(rating !== undefined ? rating / 2 : 0);
-  const containerRef = useRef<View>(null);
-  const containerLayoutRef = useRef<{ x: number; width: number } | null>(null);
-
-  useEffect(() => {
-    // Update internal state if the prop changes (e.g., after successful fetch/mutation)
-    setCurrentRating(rating !== undefined ? rating / 2 : 0);
-  }, [rating]);
-
-  const calculateRating = (gestureX: number): number => {
-    const containerLayout = containerLayoutRef.current;
-    if (!containerLayout) return currentRating;
-
-    // gestureX is now pageX (absolute screen position)
-    // We need to calculate relative position within the container
-    const relativeX = Math.max(
-      0,
-      Math.min(1, (gestureX - containerLayout.x) / containerLayout.width),
-    );
-
-    // Convert to rating: 0-1 maps to 0-5.0 stars in 0.5 increments
-    const rating = relativeX * 5;
-
-    // Round to nearest 0.5 increment
-    return Math.round(rating * 2) / 2;
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onPanResponderGrant: (evt) => {
-        const newRating = calculateRating(evt.nativeEvent.pageX);
-        setCurrentRating(newRating);
-      },
-      onPanResponderMove: (evt) => {
-        const newRating = calculateRating(evt.nativeEvent.pageX);
-        setCurrentRating(newRating);
-      },
-      onPanResponderRelease: (evt) => {
-        const newRating = calculateRating(evt.nativeEvent.pageX);
-        // Call the onRate callback only when the gesture ends
-        onRate?.(newRating * 2); // Convert 0-5 (half steps) back to 0-10
-      },
-    }),
-  ).current;
+  const colors = Colors[useColorScheme() ?? "light"];
+  const inactive = disabled || !onRate;
 
   return (
-    <View
-      ref={containerRef}
-      style={[
-        {
-          alignItems: "center",
-          paddingVertical: 8,
-          paddingHorizontal: 16,
-        },
-        style,
-      ]}
-      onLayout={(event) => {
-        // Track the container's position and width for accurate touch calculations
-        const { width, x } = event.nativeEvent.layout;
-        containerLayoutRef.current = { width, x };
-      }}
-      {...panResponder.panHandlers} // Attach gesture handlers to full container
-    >
-      {/* Rating display text */}
-      <ThemedText
-        style={{
-          textAlign: "center",
-          marginBottom: 8,
-          fontSize: 16,
-          fontWeight: "600",
-          color: colors.primary,
-        }}
-      >
-        {currentRating > 0 ? `${currentRating.toFixed(1)} / 5.0` : "0.0 / 5.0"}
+    <View style={[{ alignItems: "center", gap: 8 }, style]}>
+      <ThemedText style={{ color: colors.primary, fontWeight: "600" }}>
+        {((rating ?? 0) / 2).toFixed(1)} / 5.0
       </ThemedText>
-
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: starSize + 16, // Ensure adequate touch area
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "100%", // Ensure full width for better touch sensitivity
-          }}
-        >
-          {[0, 1, 2, 3, 4].map((index) => {
-            const starValue = index + 1;
-            let iconName: React.ComponentProps<typeof Ionicons>["name"] = "star-outline";
-            let starColor = colors.tertiaryText;
-
-            if (currentRating >= starValue) {
-              iconName = "star";
-              starColor = colors.primary;
-            } else if (currentRating > index && currentRating < starValue) {
-              // Handle half stars
-              iconName = "star-half-sharp";
-              starColor = colors.primary;
-            }
-
+      {/* Explicit targets avoid mixing screen-space gestures with parent-relative layout.
+          Two rows keep all ten half-star choices tappable on narrow screens. */}
+      {[0, 5].map((offset) => (
+        <View key={offset} style={{ flexDirection: "row", gap: 4 }}>
+          {[1, 2, 3, 4, 5].map((step) => {
+            const value = offset + step;
+            const selected = rating === value;
             return (
-              <View
-                key={index}
-                style={{
-                  marginHorizontal: 6,
-                  padding: 4,
-                  flex: 1, // Distribute stars evenly across the container width
-                  alignItems: "center",
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityLabel={`Rate ${value / 2} out of 5 stars`}
+                accessibilityState={{ selected, disabled: inactive }}
+                disabled={inactive}
+                onPress={() => {
+                  if (!inactive) onRate?.(value);
                 }}
+                style={({ pressed }) => ({
+                  minWidth: 40,
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  backgroundColor: selected ? colors.activeBackground : "transparent",
+                  opacity: inactive ? 0.6 : 1,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
               >
-                <Ionicons name={iconName} size={starSize} color={starColor} />
-              </View>
+                <Ionicons
+                  name={value % 2 ? "star-half-sharp" : "star"}
+                  size={Math.min(starSize, 24)}
+                  color={selected ? colors.primary : colors.tertiaryText}
+                />
+                <ThemedText type="caption">{value / 2}</ThemedText>
+              </Pressable>
             );
           })}
         </View>
-      </View>
+      ))}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Clear rating"
+        accessibilityState={{ disabled: inactive || !rating }}
+        disabled={inactive || !rating}
+        onPress={() => {
+          if (!inactive) onRate?.(0);
+        }}
+        style={{ minHeight: 40, justifyContent: "center", opacity: inactive || !rating ? 0.5 : 1 }}
+      >
+        <ThemedText type="caption">Clear rating</ThemedText>
+      </Pressable>
     </View>
   );
 };

@@ -22,12 +22,15 @@ import { BookSearchModal } from "@/components/BookSearchModal";
 import { PersonalBookCard } from "@/components/PersonalBookCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter";
 import { StorageMeter } from "@/components/StorageMeter";
 import { TextPromptModal } from "@/components/TextPromptModal";
 import { ThemedText } from "@/components/ThemedText";
+import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
+import { authSession } from "@/context/auth";
 import {
   useAddToPersonalShelf,
   useCreatePersonalShelf,
@@ -59,6 +62,8 @@ import {
   progressFraction,
 } from "@/utils/personalLibrary";
 import type { HiveBook } from "../../../../src/types";
+import type { PersonalLibrarySort } from "@/utils/personalLibraryQuery";
+import { sharePersonalBook } from "@/utils/sharePersonalBook";
 
 /** Mirrors the formats the upload route accepts (`ACCEPTED_EXTENSIONS`). */
 const ACCEPTED_EXTENSIONS = ["epub", "mobi", "azw", "azw3", "fb2", "cbz"];
@@ -83,6 +88,7 @@ function documentTitle(doc: SyncDoc): string {
 }
 
 export default function LibraryScreen() {
+  const session = authSession.capture();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
@@ -90,6 +96,10 @@ export default function LibraryScreen() {
   const { top } = useSafeAreaInsets();
 
   const [activeShelfId, setActiveShelfId] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<PersonalLibrarySort>("recent");
+  const [exporting, setExporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadName, setUploadName] = useState<string | null>(null);
@@ -104,7 +114,7 @@ export default function LibraryScreen() {
   // The unfiltered query backs the "All books" count; when no shelf is active
   // it shares a cache key with the grid query, so it costs nothing extra.
   const allBooksQuery = usePersonalLibrary(undefined);
-  const libraryQuery = usePersonalLibrary(activeShelfId ?? undefined);
+  const libraryQuery = usePersonalLibrary({ shelfId: activeShelfId ?? undefined, q: search, sort });
   const shelvesQuery = usePersonalShelves();
   const documentsQuery = useSyncDocuments();
 
@@ -122,13 +132,46 @@ export default function LibraryScreen() {
   const renameDocument = useRenameSyncDocument();
   const deleteDocument = useDeleteSyncDocument();
 
+  const exportBook = useCallback(
+    async (book: PersonalBook) => {
+      setBookSheet(null);
+      setExporting(true);
+      try {
+        await sharePersonalBook(book, session);
+      } catch (error) {
+        Alert.alert(
+          "Couldn't open or save ebook",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+      } finally {
+        setExporting(false);
+      }
+    },
+    [session],
+  );
+
+  const actionError = [
+    deleteBook,
+    linkBook,
+    unlinkBook,
+    createShelf,
+    updateShelf,
+    deleteShelf,
+    addToShelf,
+    removeFromShelf,
+    linkDocument,
+    dismissDocument,
+    renameDocument,
+    deleteDocument,
+  ].find((mutation) => mutation.error)?.error;
+
   const books = useMemo(
     () => libraryQuery.data?.pages.flatMap((page) => page.books) ?? [],
     [libraryQuery.data],
   );
   const totalBooks = allBooksQuery.data?.pages[0]?.total ?? 0;
-  const shelves = shelvesQuery.data ?? [];
-  const documents = documentsQuery.data ?? [];
+  const shelves = useMemo(() => shelvesQuery.data ?? [], [shelvesQuery.data]);
+  const documents = useMemo(() => documentsQuery.data ?? [], [documentsQuery.data]);
 
   // `quotaBytes <= 0` means the deployment has the quota switched off — treat
   // that as "no ceiling", never as "full".
@@ -148,15 +191,19 @@ export default function LibraryScreen() {
     [looseDocuments],
   );
 
+  const refetchLibrary = libraryQuery.refetch;
+  const refetchAllBooks = allBooksQuery.refetch;
+  const refetchShelves = shelvesQuery.refetch;
+  const refetchDocuments = documentsQuery.refetch;
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
     void Promise.all([
-      libraryQuery.refetch(),
-      allBooksQuery.refetch(),
-      shelvesQuery.refetch(),
-      documentsQuery.refetch(),
+      refetchLibrary(),
+      refetchAllBooks(),
+      refetchShelves(),
+      refetchDocuments(),
     ]).finally(() => setIsRefreshing(false));
-  }, [libraryQuery.refetch, allBooksQuery.refetch, shelvesQuery.refetch, documentsQuery.refetch]);
+  }, [refetchLibrary, refetchAllBooks, refetchShelves, refetchDocuments]);
 
   // ── Upload ──
 
@@ -266,6 +313,16 @@ export default function LibraryScreen() {
     const book = bookSheet;
     if (!book) return [];
     const actions: SheetAction[] = [];
+    actions.push({
+      key: "export",
+      label: "Open or save ebook…",
+      description: "Download the file to share, save, or open in another app",
+      icon: "download-outline",
+      busy: exporting,
+      onPress: () => {
+        if (!exporting) void exportBook(book);
+      },
+    });
     // Whether the file is linked to a catalog entry and whether an e-reader has
     // reported progress for it are independent, and the labels keep them apart.
     const percent = book.progress
@@ -291,8 +348,8 @@ export default function LibraryScreen() {
       // when there is progress to move.
       description:
         percent !== null
-          ? `Uses the catalog's details and moves your ${percent}% onto that book`
-          : "Uses the catalog's title, author and cover",
+          ? `Links your ${percent}% progress; keeps the file's title, author and cover`
+          : "Keeps the file's title, author and own cover",
       onPress: () => {
         setBookSheet(null);
         setMatchTarget({ kind: "book", book });
@@ -306,7 +363,7 @@ export default function LibraryScreen() {
         description:
           percent !== null
             ? "Keeps the file and its e-reader progress"
-            : "Keeps the file, drops the catalog details",
+            : "Keeps the file and its own metadata",
         busy: unlinkBook.isPending,
         onPress: () => {
           setBookSheet(null);
@@ -337,7 +394,7 @@ export default function LibraryScreen() {
       },
     });
     return actions;
-  }, [bookSheet, unlinkBook, confirmDeleteBook]);
+  }, [bookSheet, unlinkBook, confirmDeleteBook, exporting, exportBook]);
 
   const shelfPickerActions = useMemo((): SheetAction[] => {
     const book = shelfPickerFor;
@@ -593,6 +650,13 @@ export default function LibraryScreen() {
     !libraryQuery.isLoading &&
     !shelvesQuery.isLoading &&
     !documentsQuery.isLoading &&
+    !allBooksQuery.isLoading &&
+    !libraryQuery.error &&
+    !allBooksQuery.error &&
+    !shelvesQuery.error &&
+    !documentsQuery.error &&
+    !search &&
+    activeShelfId === null &&
     totalBooks === 0 &&
     shelves.length === 0 &&
     documents.length === 0;
@@ -640,6 +704,98 @@ export default function LibraryScreen() {
       <StorageMeter storage={storage} />
 
       {renderShelfTabs()}
+
+      <View style={{ gap: 8, marginBottom: 16 }}>
+        <ThemedTextInput
+          accessibilityLabel="Search your ebooks by title or author"
+          placeholder="Search title or author"
+          value={searchText}
+          maxLength={256}
+          onChangeText={(value) => {
+            setSearchText(value);
+            if (!value.trim()) setSearch("");
+          }}
+          onSubmitEditing={() => setSearch(searchText.trim())}
+          returnKeyType="search"
+          autoCapitalize="none"
+          style={{
+            borderWidth: 1,
+            borderColor: colors.cardBorder,
+            borderRadius: 12,
+            padding: 12,
+            minHeight: 44,
+          }}
+        />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setSearch(searchText.trim())}
+            style={[styles.pill, { borderColor: colors.cardBorder, minHeight: 40 }]}
+          >
+            <ThemedText type="label">Search</ThemedText>
+          </Pressable>
+          {searchText || search ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setSearchText("");
+                setSearch("");
+              }}
+              style={[styles.pill, { borderColor: colors.cardBorder, minHeight: 40 }]}
+            >
+              <ThemedText type="label">Clear</ThemedText>
+            </Pressable>
+          ) : null}
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8 }}
+        >
+          {(
+            [
+              ["recent", "Newest"],
+              ["title", "Title A–Z"],
+              ["author", "Author A–Z"],
+            ] as const
+          ).map(([value, label]) => (
+            <Pressable
+              key={value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sort === value }}
+              onPress={() => setSort(value)}
+              style={[
+                styles.pill,
+                {
+                  minHeight: 40,
+                  borderColor: sort === value ? colors.primary : colors.cardBorder,
+                  backgroundColor: sort === value ? colors.activeBackground : colors.cardBackground,
+                },
+              ]}
+            >
+              <ThemedText type="label">{label}</ThemedText>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+          {libraryQuery.data?.pages[0]?.total ?? books.length} matching ebooks
+        </ThemedText>
+      </View>
+
+      {[shelvesQuery, documentsQuery, allBooksQuery].map((query, index) =>
+        query.error ? (
+          <QueryErrorHandler
+            key={index}
+            error={query.error}
+            onRetry={() => query.refetch()}
+            showRetryButton
+            showGoBackButton={false}
+          />
+        ) : null,
+      )}
+      {libraryQuery.isLoading ? (
+        <ActivityIndicator color={colors.primary} style={{ padding: 16 }} />
+      ) : null}
 
       {needsTriage.length > 0 ? (
         <View
@@ -697,12 +853,14 @@ export default function LibraryScreen() {
         </View>
       ) : null}
 
-      {books.length > 0 || libraryQuery.isLoading ? null : (
+      {books.length > 0 || libraryQuery.isLoading || libraryQuery.error ? null : (
         <View style={styles.shelfEmpty}>
           <ThemedText type="body" style={{ color: colors.secondaryText, textAlign: "center" }}>
-            {activeShelfId === null
-              ? "No files uploaded yet."
-              : "Nothing on this shelf yet. Open a book's actions to add it."}
+            {search
+              ? "No ebooks match this search. Try another title or author."
+              : activeShelfId === null
+                ? "No files uploaded yet."
+                : "Nothing on this shelf yet. Open a book's actions to add it."}
           </ThemedText>
         </View>
       )}
@@ -711,21 +869,7 @@ export default function LibraryScreen() {
 
   const renderFooter = () => (
     <View>
-      {libraryQuery.hasNextPage ? (
-        <Pressable
-          onPress={() => libraryQuery.fetchNextPage()}
-          disabled={libraryQuery.isFetchingNextPage}
-          style={[styles.loadMore, { borderColor: colors.cardBorder }]}
-        >
-          {libraryQuery.isFetchingNextPage ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <ThemedText type="label" style={{ color: colors.primary }}>
-              Load more
-            </ThemedText>
-          )}
-        </Pressable>
-      ) : null}
+      <InfinitePaginationFooter {...libraryQuery} />
 
       {tracked.length > 0 ? (
         <View style={styles.trackedSection}>
@@ -816,6 +960,18 @@ export default function LibraryScreen() {
         }
       />
 
+      {exporting ? (
+        <View style={{ padding: 12, flexDirection: "row", gap: 8 }}>
+          <ActivityIndicator color={colors.primary} />
+          <ThemedText>Preparing ebook…</ThemedText>
+        </View>
+      ) : null}
+      {actionError ? (
+        <View accessibilityRole="alert" style={{ padding: 12 }}>
+          <ThemedText style={{ color: colors.error }}>{actionError.message}</ThemedText>
+        </View>
+      ) : null}
+
       {uploadProgress !== null ? (
         <View
           style={[
@@ -835,18 +991,7 @@ export default function LibraryScreen() {
         </View>
       ) : null}
 
-      {libraryQuery.isLoading && books.length === 0 && !isRefreshing ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : libraryQuery.error && books.length === 0 ? (
-        <QueryErrorHandler
-          error={libraryQuery.error}
-          onRetry={() => libraryQuery.refetch()}
-          showRetryButton
-          showGoBackButton={false}
-        />
-      ) : isEmpty ? (
+      {isEmpty ? (
         <ScrollView
           contentContainerStyle={[styles.emptyState, { paddingBottom: 32 + bottom }]}
           refreshControl={
@@ -899,7 +1044,11 @@ export default function LibraryScreen() {
           ListFooterComponent={renderFooter()}
           onEndReachedThreshold={0.5}
           onEndReached={() => {
-            if (libraryQuery.hasNextPage && !libraryQuery.isFetchingNextPage) {
+            if (
+              libraryQuery.hasNextPage &&
+              !libraryQuery.isFetching &&
+              !libraryQuery.isFetchNextPageError
+            ) {
               void libraryQuery.fetchNextPage();
             }
           }}
@@ -932,6 +1081,7 @@ export default function LibraryScreen() {
         subtitle={
           bookSheet
             ? [
+                bookSheet.filename,
                 formatAuthors(bookSheet.authors),
                 bookSheet.progress
                   ? `${Math.round(progressFraction(bookSheet.progress.percentage) * 100)}% read${
@@ -1148,15 +1298,6 @@ const styles = StyleSheet.create({
   shelfEmpty: {
     paddingVertical: 40,
     paddingHorizontal: 24,
-  },
-  loadMore: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    marginBottom: 24,
   },
   trackedSection: {
     marginTop: 8,
