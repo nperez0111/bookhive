@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { SectionHeader } from "@/components/SectionHeader";
+import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { ThemedCard } from "@/components/ThemedCard";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -48,7 +49,7 @@ export default function SyncScreen() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [stepsOpen, setStepsOpen] = useState(true);
 
-  const documents = documentsQuery.data ?? [];
+  const documents = useMemo(() => documentsQuery.data ?? [], [documentsQuery.data]);
   const lastSync = useMemo(() => {
     if (documents.length === 0) return null;
     const newest = documents.reduce(
@@ -67,10 +68,14 @@ export default function SyncScreen() {
   );
 
   const copy = useCallback(async (key: string, value: string) => {
-    await Clipboard.setStringAsync(value);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1600);
+    try {
+      await Clipboard.setStringAsync(value);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1600);
+    } catch (error) {
+      Alert.alert("Couldn't copy", error instanceof Error ? error.message : "Please try again.");
+    }
   }, []);
 
   const handleReset = useCallback(() => {
@@ -98,7 +103,7 @@ export default function SyncScreen() {
   }, [rotatePassword]);
 
   const password = passwordQuery.data;
-  const isConnected = documents.length > 0;
+  const hasHistory = documents.length > 0 && !documentsQuery.error;
 
   const renderRow = (opts: {
     key: string;
@@ -174,12 +179,12 @@ export default function SyncScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 + bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Connection status — answers "is this working?" before anything else. */}
+        {/* Historical progress is not a live connection/health check. */}
         <ThemedCard
           variant="outlined"
           style={[
             styles.statusCard,
-            isConnected && {
+            hasHistory && {
               borderColor: colors.primary,
               backgroundColor: colors.activeBackground,
             },
@@ -189,36 +194,53 @@ export default function SyncScreen() {
             style={[
               styles.statusIcon,
               {
-                backgroundColor: isConnected ? colors.primary : colors.inactiveBackground,
+                backgroundColor: hasHistory ? colors.primary : colors.inactiveBackground,
               },
             ]}
           >
             <Ionicons
-              name={isConnected ? "sync" : "sync-outline"}
+              name={hasHistory ? "sync" : "sync-outline"}
               size={20}
-              color={isConnected ? "#fff" : colors.tertiaryText}
+              color={hasHistory ? "#fff" : colors.tertiaryText}
             />
           </View>
           <View style={styles.statusText}>
             <ThemedText type="label" style={{ color: colors.primaryText }}>
               {documentsQuery.isLoading
-                ? "Checking…"
-                : isConnected
-                  ? `Syncing ${documents.length} ${documents.length === 1 ? "book" : "books"}`
-                  : "No device connected yet"}
+                ? "Loading sync history…"
+                : documentsQuery.error
+                  ? "Couldn't load sync history"
+                  : hasHistory
+                    ? `${documents.length} ${documents.length === 1 ? "document" : "documents"} previously synced`
+                    : "No sync history yet"}
             </ThemedText>
             <ThemedText type="caption" style={{ color: colors.secondaryText }}>
-              {isConnected
-                ? [
-                    devices.length ? devices.join(", ") : null,
-                    lastSync ? `updated ${lastSync}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")
-                : "Set up KOReader with the details below and your progress will appear here."}
+              {documentsQuery.error
+                ? "Try again below. This does not tell us whether your device is connected."
+                : hasHistory
+                  ? [
+                      devices.length ? devices.join(", ") : null,
+                      lastSync ? `last recorded ${lastSync}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : documentsQuery.isLoading
+                    ? "Fetching previously reported progress."
+                    : "Set up KOReader with the details below and your progress will appear here."}
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+              This is saved progress, not a live device connection check.
             </ThemedText>
           </View>
         </ThemedCard>
+        {documentsQuery.error ? (
+          <QueryErrorHandler
+            error={documentsQuery.error}
+            onRetry={() => documentsQuery.refetch()}
+            showRetryButton
+            showGoBackButton={false}
+          />
+        ) : null}
 
         {/* Credentials */}
         <ThemedCard variant="outlined" style={styles.card}>
@@ -251,6 +273,14 @@ export default function SyncScreen() {
             secret: true,
             loading: passwordQuery.isLoading,
           })}
+          {passwordQuery.error ? (
+            <QueryErrorHandler
+              error={passwordQuery.error}
+              onRetry={() => passwordQuery.refetch()}
+              showRetryButton
+              showGoBackButton={false}
+            />
+          ) : null}
 
           <Pressable
             onPress={handleReset}

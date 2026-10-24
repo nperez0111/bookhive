@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -22,7 +22,13 @@ import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
-import { useDeleteList, useListDetails, useRemoveFromList } from "@/hooks/useBookhiveQuery";
+import {
+  useDeleteList,
+  useListDetails,
+  useRemoveFromList,
+  useReorderList,
+} from "@/hooks/useBookhiveQuery";
+import { catalogueListUri, moveListItem } from "@/utils/catalogueLists";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
@@ -36,17 +42,32 @@ export default function ListDetailScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
-  const decodedUri = decodeURIComponent(uri as string);
+  const decodedUri = catalogueListUri(uri);
   const listQuery = useListDetails(decodedUri);
   const removeFromList = useRemoveFromList();
   const deleteList = useDeleteList();
+  const reorderList = useReorderList();
+  const isWriting = removeFromList.isPending || deleteList.isPending || reorderList.isPending;
+  const writing = useRef(false);
+  const runWrite = useCallback(async (action: () => Promise<unknown>, failureTitle: string) => {
+    if (writing.current) return;
+    writing.current = true;
+    try {
+      await action();
+    } catch (error) {
+      Alert.alert(failureTitle, error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      writing.current = false;
+    }
+  }, []);
 
+  const { refetch } = listQuery;
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    void listQuery.refetch().finally(() => setIsRefreshing(false));
-  }, [listQuery.refetch]);
+    void refetch().finally(() => setIsRefreshing(false));
+  }, [refetch]);
 
-  const isOwner = listQuery.data?.list.userDid === authState?.did;
+  const isOwner = Boolean(authState?.did && listQuery.data?.list.userDid === authState.did);
 
   const handleRemoveItem = useCallback(
     (itemUri: string, title?: string) => {
@@ -55,11 +76,16 @@ export default function ListDetailScreen() {
         {
           text: "Remove",
           style: "destructive",
-          onPress: () => removeFromList.mutate({ itemUri, listUri: decodedUri }),
+          onPress: () => {
+            void runWrite(
+              () => removeFromList.mutateAsync({ itemUri, listUri: decodedUri }),
+              "Couldn't remove book",
+            );
+          },
         },
       ]);
     },
-    [removeFromList],
+    [removeFromList, decodedUri, runWrite],
   );
 
   if (listQuery.isLoading && !isRefreshing) {
@@ -73,14 +99,14 @@ export default function ListDetailScreen() {
     );
   }
 
-  if (listQuery.error) {
+  if (!decodedUri || listQuery.error) {
     return (
       <ThemedView style={[styles.container, { backgroundColor }]}>
         <BackNavigationHeader title="List" />
         <QueryErrorHandler
-          error={listQuery.error}
+          error={listQuery.error ?? new Error("Invalid public list link.")}
           onRetry={() => listQuery.refetch()}
-          showRetryButton
+          showRetryButton={Boolean(decodedUri)}
           showGoBackButton
           onGoBack={() => router.back()}
         />
@@ -98,25 +124,27 @@ export default function ListDetailScreen() {
         rightElement={
           isOwner ? (
             <Pressable
+              disabled={isWriting}
+              accessibilityLabel="Manage public list"
               onPress={() => {
-                const options = ["Edit", "Delete Shelf", "Cancel"];
+                const options = ["Edit", "Delete List", "Cancel"];
                 const handleAction = (index: number) => {
                   if (index === 0) {
                     setEditModalVisible(true);
                   } else if (index === 1) {
                     Alert.alert(
-                      "Delete Shelf",
-                      `Delete "${list?.name ?? "this shelf"}" and all its books?`,
+                      "Delete List",
+                      `Delete "${list?.name ?? "this list"}"? Books themselves will not be deleted.`,
                       [
                         { text: "Cancel", style: "cancel" },
                         {
                           text: "Delete",
                           style: "destructive",
                           onPress: () => {
-                            deleteList.mutate(
-                              { uri: decodedUri },
-                              { onSuccess: () => router.back() },
-                            );
+                            void runWrite(async () => {
+                              await deleteList.mutateAsync({ uri: decodedUri });
+                              router.back();
+                            }, "Couldn't delete list");
                           },
                         },
                       ],
@@ -129,7 +157,7 @@ export default function ListDetailScreen() {
                     handleAction,
                   );
                 } else {
-                  Alert.alert("Manage Shelf", undefined, [
+                  Alert.alert("Manage List", undefined, [
                     { text: "Edit", onPress: () => handleAction(0) },
                     { text: "Delete", style: "destructive", onPress: () => handleAction(1) },
                     { text: "Cancel", style: "cancel" },
@@ -144,15 +172,34 @@ export default function ListDetailScreen() {
         }
       />
 
-      {list?.description ? (
+      {list ? (
         <View style={styles.descriptionContainer}>
-          <ThemedText style={{ color: colors.secondaryText }} type="body">
-            {list.description}
-          </ThemedText>
+          {list.description ? (
+            <ThemedText style={{ color: colors.secondaryText }} type="body">
+              {list.description}
+            </ThemedText>
+          ) : null}
           <ThemedText style={{ color: colors.tertiaryText, marginTop: 4 }} type="caption">
             {items.length} {items.length === 1 ? "book" : "books"}
             {list.userHandle ? ` · by @${list.userHandle}` : ""}
+            {list.ordered ? " · Ordered" : ""}
           </ThemedText>
+          {list.tags?.length ? (
+            <ThemedText type="caption" style={{ color: colors.secondaryText, marginTop: 4 }}>
+              {list.tags.join(" · ")}
+            </ThemedText>
+          ) : null}
+          <Pressable
+            accessibilityLabel="View list owner's public lists"
+            onPress={() =>
+              router.push({ pathname: "/lists", params: { did: list.userDid } } as any)
+            }
+            style={{ minHeight: 40, justifyContent: "center" }}
+          >
+            <ThemedText style={{ color: colors.primary }} type="caption">
+              More public lists from this reader
+            </ThemedText>
+          </Pressable>
         </View>
       ) : null}
 
@@ -163,7 +210,7 @@ export default function ListDetailScreen() {
             No books yet
           </ThemedText>
           <ThemedText style={{ color: colors.secondaryText, textAlign: "center" }} type="body">
-            Add books from book detail pages
+            {isOwner ? "Add books from book detail pages" : "This public list has no books yet"}
           </ThemedText>
         </View>
       ) : (
@@ -180,23 +227,71 @@ export default function ListDetailScreen() {
               colors={[colors.primary]}
             />
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <BookCard
               title={item.title ?? "Unknown Title"}
               authors={item.authors ?? "Unknown Author"}
-              imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`}
+              imageUri={
+                item.cover || item.thumbnail
+                  ? `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${item.cover || item.thumbnail}`
+                  : ""
+              }
               onPress={() => (item.hiveId ? router.push(`/book/${item.hiveId}` as any) : undefined)}
               variant="row"
               rowSize="small"
             >
               {isOwner ? (
-                <Pressable
-                  onPress={() => handleRemoveItem(item.uri, item.title)}
-                  hitSlop={8}
-                  style={styles.removeButton}
-                >
-                  <Ionicons name="trash-outline" size={18} color={colors.error} />
-                </Pressable>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {list?.ordered &&
+                    ([-1, 1] as const).map((direction) => (
+                      <Pressable
+                        key={direction}
+                        accessibilityLabel={`Move ${item.title ?? "book"} ${direction === -1 ? "up" : "down"}`}
+                        accessibilityRole="button"
+                        disabled={
+                          isWriting || (direction === -1 ? index === 0 : index === items.length - 1)
+                        }
+                        style={{
+                          minHeight: 40,
+                          minWidth: 40,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          opacity:
+                            isWriting ||
+                            (direction === -1 ? index === 0 : index === items.length - 1)
+                              ? 0.35
+                              : 1,
+                        }}
+                        onPress={() => {
+                          if (isWriting) return;
+                          const next = moveListItem(items, item.uri, direction);
+                          void runWrite(
+                            () =>
+                              reorderList.mutateAsync({
+                                listUri: decodedUri,
+                                itemUris: next.map((entry) => entry.uri),
+                              }),
+                            "Couldn't reorder list",
+                          );
+                        }}
+                      >
+                        <Ionicons
+                          name={direction === -1 ? "arrow-up" : "arrow-down"}
+                          size={18}
+                          color={colors.primary}
+                        />
+                      </Pressable>
+                    ))}
+                  <Pressable
+                    accessibilityLabel={`Remove ${item.title ?? "book"} from list`}
+                    disabled={isWriting}
+                    onPress={() => handleRemoveItem(item.uri, item.title)}
+                    hitSlop={8}
+                    style={styles.removeButton}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                  </Pressable>
+                </View>
               ) : null}
             </BookCard>
           )}
@@ -211,6 +306,8 @@ export default function ListDetailScreen() {
             uri: list.uri,
             name: list.name,
             description: list.description,
+            ordered: list.ordered,
+            tags: list.tags,
           }}
         />
       )}
@@ -246,6 +343,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   removeButton: {
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
     alignSelf: "flex-start",
   },

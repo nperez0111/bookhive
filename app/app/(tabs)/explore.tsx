@@ -2,18 +2,22 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "reac
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState } from "react";
 
 import { FadeInImage } from "@/components/FadeInImage";
 import { GradientView } from "@/components/GradientView";
 import { LanguageFilter } from "@/components/LanguageFilter";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ThemedText } from "@/components/ThemedText";
+import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useLanguage } from "@/context/language";
 import { useExplore } from "@/hooks/useBookhiveQuery";
+import { useAuthorDirectory } from "@/hooks/useAuthorDirectory";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
@@ -31,7 +35,11 @@ export default function ExploreScreen() {
   const bottom = useBottomTabOverflow();
   const { top } = useSafeAreaInsets();
   const { preferredLanguage } = useLanguage();
-  const explore = useExplore(preferredLanguage);
+  const [showAllGenres, setShowAllGenres] = useState(false);
+  const explore = useExplore(preferredLanguage, showAllGenres);
+  const [showAuthorDirectory, setShowAuthorDirectory] = useState(false);
+  const [authorQuery, setAuthorQuery] = useState("");
+  const authorDirectory = useAuthorDirectory(authorQuery, preferredLanguage, showAuthorDirectory);
 
   if (explore.isLoading) {
     return (
@@ -52,8 +60,12 @@ export default function ExploreScreen() {
     );
   }
 
-  const genres = explore.data?.genres ?? [];
-  const topAuthors = explore.data?.topAuthors ?? [];
+  const directory = explore.genreDirectory;
+  const genres = showAllGenres
+    ? (directory.data?.pages.flatMap((page) => page.genres) ?? [])
+    : (explore.data?.genres ?? []);
+  const authors: { author: string; bookCount: number; avgRating?: number; thumbnail?: string }[] =
+    showAuthorDirectory ? authorDirectory.authors : (explore.data?.topAuthors ?? []);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
@@ -85,7 +97,25 @@ export default function ExploreScreen() {
 
         {/* Top Genres */}
         <View style={styles.section}>
-          <SectionHeader icon={"bookmark" as any} title="Top Genres" style={{ marginBottom: 16 }} />
+          <SectionHeader
+            icon={"bookmark" as any}
+            title={showAllGenres ? "All Genres" : "Top Genres"}
+            style={{ marginBottom: 16 }}
+          />
+          <Pressable
+            onPress={() => setShowAllGenres((value) => !value)}
+            style={{ minHeight: 44, justifyContent: "center" }}
+          >
+            <ThemedText style={{ color: colors.primary }}>
+              {showAllGenres ? "Show featured genres" : "Browse all genres"}
+            </ThemedText>
+          </Pressable>
+          {showAllGenres && (
+            <ThemedText type="caption" style={{ marginBottom: 12 }}>
+              Directory counts include all languages. Book results use your selected language.
+            </ThemedText>
+          )}
+          {showAllGenres && directory.isLoading && <ActivityIndicator color={colors.primary} />}
           <View style={styles.genreGrid}>
             {genres.map((item) => (
               <Pressable
@@ -115,11 +145,67 @@ export default function ExploreScreen() {
               </Pressable>
             ))}
           </View>
+          {showAllGenres && (
+            <InfinitePaginationFooter {...directory} loadMoreLabel="Load more genres" />
+          )}
         </View>
 
         {/* Top Authors */}
         <View style={styles.section}>
-          <SectionHeader icon={"person" as any} title="Top Authors" style={{ marginBottom: 16 }} />
+          <SectionHeader
+            icon={"person" as any}
+            title={showAuthorDirectory ? "Author Directory" : "Top Authors"}
+            style={{ marginBottom: 16 }}
+          />
+          <Pressable
+            onPress={() => setShowAuthorDirectory((value) => !value)}
+            style={{ minHeight: 44, justifyContent: "center" }}
+          >
+            <ThemedText style={{ color: colors.primary }}>
+              {showAuthorDirectory ? "Show featured authors" : "Browse author directory"}
+            </ThemedText>
+          </Pressable>
+          {showAuthorDirectory && (
+            <View style={{ gap: 12, marginBottom: 16 }}>
+              <ThemedText type="caption">
+                Browse the top 500 eligible authors by total ratings in your selected language,
+                matching the web directory. Search filters this directory, not the whole catalogue.
+              </ThemedText>
+              <ThemedTextInput
+                accessibilityLabel="Search author directory"
+                placeholder="Search directory authors…"
+                placeholderTextColor={colors.placeholderText}
+                value={authorQuery}
+                onChangeText={setAuthorQuery}
+                maxLength={200}
+                autoCorrect={false}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+                style={{
+                  minHeight: 44,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                  borderRadius: 12,
+                }}
+              />
+              {authorDirectory.isLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : authorDirectory.total != null ? (
+                <ThemedText type="caption">
+                  {authorDirectory.total} authors in this directory
+                  {authorQuery.trim() ? " match your search" : ""}
+                </ThemedText>
+              ) : null}
+              {!authorDirectory.isLoading &&
+                !authorDirectory.error &&
+                authorDirectory.total === 0 && (
+                  <ThemedText>
+                    No authors match in this directory. Try another name or language.
+                  </ThemedText>
+                )}
+            </View>
+          )}
           <View
             style={[
               styles.authorsCard,
@@ -129,7 +215,7 @@ export default function ExploreScreen() {
               },
             ]}
           >
-            {topAuthors.map((author, index) => (
+            {authors.map((author, index) => (
               <Pressable
                 key={author.author}
                 onPress={() =>
@@ -137,7 +223,7 @@ export default function ExploreScreen() {
                 }
                 style={({ pressed }) => [
                   styles.authorRow,
-                  index < topAuthors.length - 1 && {
+                  index < authors.length - 1 && {
                     borderBottomWidth: 1,
                     borderBottomColor: colors.cardBorder,
                   },
@@ -178,6 +264,9 @@ export default function ExploreScreen() {
               </Pressable>
             ))}
           </View>
+          {showAuthorDirectory && !authorDirectory.isDebouncing && (
+            <InfinitePaginationFooter {...authorDirectory} loadMoreLabel="Load more authors" />
+          )}
         </View>
       </ScrollView>
     </ThemedView>

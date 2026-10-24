@@ -273,15 +273,16 @@ export default function HomeScreen() {
   const listsQuery = useUserLists(authState?.did);
   const personalLibraryQuery = usePersonalLibrary();
   const personalBookCount = personalLibraryQuery.data?.pages[0]?.total ?? 0;
+  const { refetch: refetchProfile } = profile;
+  const { refetch: refetchLists } = listsQuery;
+  const { refetch: refetchPersonalLibrary } = personalLibraryQuery;
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    void Promise.all([
-      profile.refetch(),
-      listsQuery.refetch(),
-      personalLibraryQuery.refetch(),
-    ]).finally(() => setIsRefreshing(false));
-  }, [profile.refetch, listsQuery.refetch, personalLibraryQuery.refetch]);
+    void Promise.all([refetchProfile(), refetchLists(), refetchPersonalLibrary()]).finally(() =>
+      setIsRefreshing(false),
+    );
+  }, [refetchProfile, refetchLists, refetchPersonalLibrary]);
 
   const stats = useMemo(() => {
     if (!profile.data) return { totalRead: 0, thisMonth: 0, thisYear: 0 };
@@ -374,9 +375,9 @@ export default function HomeScreen() {
           <View style={styles.quickActionsRow}>
             <QuickAction icon="search" label="Search" onPress={() => router.push("/search")} />
             <QuickAction
-              icon="compass"
-              label="Explore"
-              onPress={() => router.push("/explore" as any)}
+              icon="book"
+              label="My Books"
+              onPress={() => router.push("/my-books" as any)}
             />
             <QuickAction
               icon="library"

@@ -120,16 +120,15 @@ export async function searchBooks({
           // Backfill from the local DB to reach up to 20 results, via the FTS5
           // index (migration 019) rather than a `LIKE` scan.
           const localStarted = performance.now();
-          const localIds = await searchLocalCatalog({ db: ctx.db, q: query });
+          const localIds = await searchLocalCatalog({
+            db: ctx.db,
+            q: query,
+            limit: Math.max(0, 20 - goodreadsIds.length),
+            exclude: goodreadsIds,
+          });
 
           ctx.addWideEventContext({ search_local_ms: performance.now() - localStarted });
-          const combined = [...goodreadsIds];
-          for (const id of localIds) {
-            if (combined.length >= 20) break;
-            if (!combined.includes(id)) combined.push(id);
-          }
-
-          return combined;
+          return [...goodreadsIds, ...localIds];
         })
         .catch((error) => {
           ctx.addWideEventContext({

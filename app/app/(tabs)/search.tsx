@@ -8,8 +8,6 @@ import {
   Animated,
 } from "react-native";
 
-// Create animated FlatList for scroll events
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<HiveBook>);
 import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -21,13 +19,17 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { useLanguage } from "@/context/language";
 import { router } from "expo-router";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { getBaseUrl } from "@/context/auth";
 import type { HiveBook } from "../../../src/types";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
+import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter";
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { FadeInImage } from "@/components/FadeInImage";
 import { SectionHeader } from "@/components/SectionHeader";
+
+// Create animated FlatList for scroll events
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<HiveBook>);
 
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
@@ -37,10 +39,11 @@ export default function SearchScreen() {
   const bottom = useBottomTabOverflow();
 
   const { preferredLanguage } = useLanguage();
-  const { data: searchResults, isLoading, error } = useSearchBooks(query, preferredLanguage);
+  const search = useSearchBooks(query, preferredLanguage);
+  const { data: searchResults, isLoading, isDebouncing, error } = search;
 
   // Animation values for collapsible header
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [scrollY] = useState(() => new Animated.Value(0));
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 80],
@@ -113,7 +116,7 @@ export default function SearchScreen() {
     </AnimatedListItem>
   );
 
-  const hasSearchResults = query.length > 0 && searchResults && searchResults.length > 0;
+  const hasSearchResults = query.trim().length > 0 && searchResults && searchResults.length > 0;
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
@@ -184,7 +187,7 @@ export default function SearchScreen() {
       </Animated.View>
 
       {/* Content based on search state */}
-      {query.length === 0 ? (
+      {query.trim().length === 0 ? (
         // No search query - show default content
         <View style={styles.emptySearchState}>
           <View style={[styles.emptyIconContainer, { backgroundColor: colors.inactiveBackground }]}>
@@ -206,22 +209,23 @@ export default function SearchScreen() {
       ) : (
         // Has search query - show search results
         <View style={styles.searchResultsSection}>
-          {isLoading ? (
+          {isLoading || isDebouncing ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
               <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]} type="body">
                 Searching for books...
               </ThemedText>
             </View>
-          ) : error ? (
+          ) : error && !searchResults?.length ? (
             <QueryErrorHandler
               error={error}
-              onRetry={() => {}} // Search will retry automatically
-              showRetryButton={false}
+              onRetry={() => search.refetch()}
+              showRetryButton
               showGoBackButton={false}
             />
           ) : searchResults && searchResults.length > 0 ? (
             <AnimatedFlatList
+              key={`${query.trim()}:${preferredLanguage ?? ""}`}
               data={searchResults}
               keyExtractor={(item) => item.id}
               renderItem={renderSearchResultItem}
@@ -231,6 +235,7 @@ export default function SearchScreen() {
                 useNativeDriver: true,
               })}
               scrollEventThrottle={16}
+              ListFooterComponent={<InfinitePaginationFooter {...search} />}
             />
           ) : (
             <View style={styles.emptyState}>

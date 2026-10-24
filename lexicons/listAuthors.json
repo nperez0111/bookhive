@@ -1,0 +1,68 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.listAuthors",
+  "defs": {
+    "author": {
+      "type": "object",
+      "required": ["author", "bookCount", "totalRatings"],
+      "properties": {
+        "author": { "type": "string" },
+        "bookCount": { "type": "integer", "minimum": 0 },
+        "totalRatings": { "type": "integer", "minimum": 0 },
+        "avgRating": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Average catalogue rating on a 0-5 scale multiplied by 10, matching getExplore."
+        }
+      }
+    },
+    "main": {
+      "type": "query",
+      "description": "Browse the web author directory: up to 500 first authors ranked by summed ratings, with at least two books and positive total ratings. Search filters this bounded directory, not the entire catalogue. Does not require authentication.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
+          "offset": { "type": "integer", "minimum": 0, "maximum": 500, "default": 0 },
+          "language": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Restrict directory statistics to a supported catalogue language, matching the web directory. Unsupported languages fall back to all languages."
+          },
+          "q": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Case-insensitive substring of author name, trimmed and applied before pagination."
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["authors", "offset", "total", "hasMore", "directoryLimit"],
+          "properties": {
+            "authors": { "type": "array", "items": { "type": "ref", "ref": "#author" } },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Next offset into the filtered directory."
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500,
+              "description": "Number matching q within the bounded directory, not a whole-catalogue author count."
+            },
+            "hasMore": { "type": "boolean" },
+            "directoryLimit": {
+              "type": "integer",
+              "description": "Maximum directory size before the optional name filter (500)."
+            }
+          }
+        }
+      }
+    }
+  }
+}

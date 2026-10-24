@@ -1,5 +1,14 @@
 import React, { useCallback } from "react";
-import { Animated, Pressable, StyleSheet, View, ViewStyle } from "react-native";
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  View,
+  ViewStyle,
+  type ImageStyle,
+  type StyleProp,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
@@ -8,7 +17,7 @@ import { FadeInImage } from "@/components/FadeInImage";
 const PRESS_SCALE = 0.96;
 
 function useScalePress() {
-  const scale = React.useRef(new Animated.Value(1)).current;
+  const [scale] = React.useState(() => new Animated.Value(1));
 
   const onPressIn = useCallback(() => {
     Animated.spring(scale, {
@@ -38,6 +47,7 @@ export type BookCardProps = {
   authors: string;
   imageUri: string;
   onPress?: () => void;
+  accessibilityLabel?: string;
   /** Card variant: dense (cover grid), list (cover + children slot), row (horizontal) */
   variant?: BookCardVariant;
   /** @deprecated Use variant instead. "horizontal" → "dense", "vertical" → "row" */
@@ -45,7 +55,7 @@ export type BookCardProps = {
   style?: ViewStyle;
   /** Optional extra line of metadata to show under authors, e.g., "@handle" */
   meta?: string;
-  /** Children rendered below the cover in "list" variant */
+  /** Extra content below the cover (list), authors (dense), or row metadata. */
   children?: React.ReactNode;
   /** Row variant size */
   rowSize?: "compact" | "small" | "medium";
@@ -65,6 +75,26 @@ const ROW_SIZES = {
   small: { cover: { width: 60, height: 90 }, gap: 10 },
   medium: { cover: { width: 72, height: 108 }, gap: 12 },
 } as const;
+
+function CoverImage({ uri, style }: { uri: string; style: StyleProp<ImageStyle> }) {
+  const colors = Colors[useColorScheme() ?? "light"];
+  return uri ? (
+    <FadeInImage source={{ uri }} style={style} resizeMode="cover" />
+  ) : (
+    <View
+      style={[
+        style,
+        {
+          backgroundColor: colors.inactiveBackground,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+      ]}
+    >
+      <Ionicons name="book-outline" size={32} color={colors.tertiaryText} />
+    </View>
+  );
+}
 
 /** Inset outline overlay that gives book covers consistent edge definition against any background. */
 function CoverOutline({ borderRadius }: { borderRadius: number }) {
@@ -88,6 +118,7 @@ export function BookCard({
   authors,
   imageUri,
   onPress,
+  accessibilityLabel = `Open ${title}, by ${authors}`,
   variant: variantProp,
   orientation,
   style,
@@ -103,9 +134,15 @@ export function BookCard({
   if (variant === "dense") {
     return (
       <Animated.View style={[styles.denseContainer, { transform: [{ scale }] }, style]}>
-        <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          onPress={onPress}
+          onPressIn={onPressIn}
+          onPressOut={onPressOut}
+        >
           <View style={styles.denseCoverWrap}>
-            <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+            <CoverImage uri={imageUri} style={styles.denseCover} />
             <CoverOutline borderRadius={12} />
           </View>
           <View style={styles.denseInfo}>
@@ -119,6 +156,12 @@ export function BookCard({
             <ThemedText style={{ color: colors.secondaryText }} numberOfLines={1} type="caption">
               {authors}
             </ThemedText>
+            {meta ? (
+              <ThemedText type="caption" style={{ color: colors.tertiaryText }}>
+                {meta}
+              </ThemedText>
+            ) : null}
+            {children}
           </View>
         </Pressable>
       </Animated.View>
@@ -128,9 +171,15 @@ export function BookCard({
   if (variant === "list") {
     return (
       <Animated.View style={[styles.listContainer, { transform: [{ scale }] }, style]}>
-        <Pressable onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          onPress={onPress}
+          onPressIn={onPressIn}
+          onPressOut={onPressOut}
+        >
           <View style={styles.denseCoverWrap}>
-            <FadeInImage source={{ uri: imageUri }} style={styles.denseCover} resizeMode="cover" />
+            <CoverImage uri={imageUri} style={styles.denseCover} />
             <CoverOutline borderRadius={12} />
           </View>
           {children && <View style={styles.listChildren}>{children}</View>}
@@ -144,6 +193,8 @@ export function BookCard({
   return (
     <Animated.View style={[{ transform: [{ scale }] }, style]}>
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
@@ -157,11 +208,7 @@ export function BookCard({
         ]}
       >
         <View style={styles.rowCoverWrap}>
-          <FadeInImage
-            source={{ uri: imageUri }}
-            style={[styles.rowCover, rowConfig.cover]}
-            resizeMode="cover"
-          />
+          <CoverImage uri={imageUri} style={[styles.rowCover, rowConfig.cover]} />
           <CoverOutline borderRadius={8} />
         </View>
         <View style={styles.rowInfo}>

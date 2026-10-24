@@ -55,7 +55,7 @@ export default function ReadingStatsScreen() {
     did: string;
     handle?: string;
   }>();
-  const currentYear = new Date().getFullYear();
+  const currentYear = new Date().getUTCFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -64,7 +64,8 @@ export default function ReadingStatsScreen() {
   const statsHandle = handle ?? did ?? "";
   const { data, isLoading, error, refetch } = useReadingStats(statsHandle, selectedYear);
 
-  const stats = data?.stats;
+  const allTime = data?.showYearInBooks === false && !!data.allTimeStats;
+  const stats = allTime ? (data?.allTimeStats ?? data?.stats) : data?.stats;
   const availableYears = data?.availableYears ?? [currentYear];
 
   const ratingBuckets = stats
@@ -95,6 +96,8 @@ export default function ReadingStatsScreen() {
           <Pressable
             key={year}
             onPress={() => setSelectedYear(year)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: year === selectedYear }}
             style={[
               styles.yearChip,
               {
@@ -131,10 +134,10 @@ export default function ReadingStatsScreen() {
             <Ionicons name="book-outline" size={40} color={colors.tertiaryText} />
           </View>
           <ThemedText type="heading" style={[styles.emptyTitle, { color: colors.primaryText }]}>
-            No books finished in {selectedYear}
+            {allTime ? "No finished books yet" : `No books finished in ${selectedYear}`}
           </ThemedText>
           <ThemedText type="body" style={{ color: colors.secondaryText, textAlign: "center" }}>
-            Finish at least 3 books to see your Year in Books.
+            Mark a book as finished to start building your reading stats.
           </ThemedText>
         </View>
       ) : (
@@ -142,6 +145,11 @@ export default function ReadingStatsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          {allTime ? (
+            <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+              Your all-time reading stats are shown until you finish 3 books in {selectedYear}.
+            </ThemedText>
+          ) : null}
           {/* Hero Stats */}
           <View
             style={[
@@ -153,7 +161,7 @@ export default function ReadingStatsScreen() {
             ]}
           >
             <ThemedText type="overline" style={[styles.heroYear, { color: colors.primary }]}>
-              {selectedYear} Year in Books
+              {allTime ? "All-Time Reading" : `${selectedYear} Year in Books`}
             </ThemedText>
             <View style={styles.heroStats}>
               <View style={styles.heroStat}>
@@ -167,7 +175,7 @@ export default function ReadingStatsScreen() {
               <View style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.heroStat}>
                 <ThemedText type="title" style={{ color: colors.primaryText }}>
-                  {stats.pagesRead > 0 ? stats.pagesRead.toLocaleString() : "—"}
+                  {(stats.pagesRead ?? 0) > 0 ? stats.pagesRead!.toLocaleString() : "—"}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                   Pages
@@ -176,7 +184,7 @@ export default function ReadingStatsScreen() {
               <View style={[styles.heroDivider, { backgroundColor: colors.cardBorder }]} />
               <View style={styles.heroStat}>
                 <ThemedText type="title" style={{ color: colors.primaryText }}>
-                  {stats.averageRating ? (stats.averageRating / 10).toFixed(1) : "—"}
+                  {stats.averageRating != null ? (stats.averageRating / 10).toFixed(1) : "—"}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.secondaryText }}>
                   Avg ★
@@ -354,6 +362,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   yearChip: {
+    minHeight: 40,
+    justifyContent: "center",
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,

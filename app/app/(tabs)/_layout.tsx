@@ -106,6 +106,9 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen name="my-books" options={{ href: null }} />
+      <Tabs.Screen name="account" options={{ href: null }} />
+      <Tabs.Screen name="import" options={{ href: null }} />
       <Tabs.Screen
         name="books/[status]"
         options={{

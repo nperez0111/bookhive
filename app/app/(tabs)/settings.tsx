@@ -6,8 +6,9 @@ import { ThemedCard } from "@/components/ThemedCard";
 import { ThemedButton } from "@/components/ThemedButton";
 import { GradientView } from "@/components/GradientView";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguagePicker } from "@/components/LanguagePicker";
 
-import { StyleSheet, Image, ScrollView, View, Alert } from "react-native";
+import { StyleSheet, Image, ScrollView, View, Alert, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Updates from "expo-updates";
 import { useState, useCallback } from "react";
@@ -30,6 +31,7 @@ export default function ProfileScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const { preferredLanguage, setPreferredLanguage } = useLanguage();
   const { data: languages = [] } = useLanguages();
 
@@ -66,6 +68,13 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
+      <LanguagePicker
+        visible={languagePickerOpen}
+        languages={languages}
+        selected={preferredLanguage}
+        onSelect={setPreferredLanguage}
+        onClose={() => setLanguagePickerOpen(false)}
+      />
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header Section with Gradient */}
         <GradientView variant="warm" style={styles.headerSection}>
@@ -184,25 +193,18 @@ export default function ProfileScreen() {
               style={{ marginHorizontal: -4, marginBottom: 12 }}
             />
             <View style={styles.settingsList}>
+              <ListItem
+                icon="book"
+                title="My Books"
+                subtitle="Search and manage every tracked book"
+                onPress={() => router.push("/my-books" as any)}
+              />
               <ThemeToggle style={styles.settingItem} />
               <ListItem
                 icon="language"
                 title="Book Language"
                 subtitle={preferredLanguage || "All Languages"}
-                onPress={() => {
-                  const options = ["All Languages", ...languages];
-                  Alert.alert(
-                    "Preferred Language",
-                    "Filter books by language across search, explore, and browse pages.",
-                    [
-                      ...options.map((opt) => ({
-                        text: opt,
-                        onPress: () => setPreferredLanguage(opt === "All Languages" ? null : opt),
-                      })),
-                      { text: "Cancel", style: "cancel" as const },
-                    ],
-                  );
-                }}
+                onPress={() => setLanguagePickerOpen(true)}
               />
               <ListItem
                 icon="library"
@@ -228,21 +230,51 @@ export default function ProfileScreen() {
                 title={isCheckingUpdate ? "Checking..." : "Check for Updates"}
                 onPress={checkForUpdate}
               />
-              {/* <ListItem
+              <ListItem
+                icon="document-text"
+                title="Import Books"
+                subtitle="Goodreads, StoryGraph or Hardcover CSV"
+                onPress={() => router.push("/import" as any)}
+              />
+              <ListItem
+                icon="settings"
+                title="Account Management"
+                subtitle="Re-sync your books or delete your BookHive account"
+                onPress={() => router.push("/account" as any)}
+              />
+              <ListItem
                 icon="document-text"
                 title="Terms of Service"
-                onPress={() => {}}
+                onPress={() => {
+                  void Linking.openURL("https://bookhive.buzz/legal").catch(() =>
+                    Alert.alert("Unable to open link", "Please visit bookhive.buzz/legal."),
+                  );
+                }}
               />
               <ListItem
                 icon="shield-checkmark"
                 title="Privacy Policy"
-                onPress={() => {}}
+                onPress={() => {
+                  void Linking.openURL("https://bookhive.buzz/privacy-policy").catch(() =>
+                    Alert.alert(
+                      "Unable to open link",
+                      "Please visit bookhive.buzz/privacy-policy.",
+                    ),
+                  );
+                }}
               />
               <ListItem
                 icon="bug-outline"
                 title="Report a Bug"
-                onPress={() => {}}
-              /> */}
+                onPress={() => {
+                  void Linking.openURL("https://github.com/nperez0111/bookhive/issues").catch(() =>
+                    Alert.alert(
+                      "Unable to open link",
+                      "Please report your issue through the BookHive website.",
+                    ),
+                  );
+                }}
+              />
             </View>
           </ThemedCard>
         </View>
