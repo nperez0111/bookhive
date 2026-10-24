@@ -15,7 +15,9 @@ call site is a chance for the copies to disagree, and in every case below they a
   did-not-finish — to want-to-read.
 - **Three rating scales** → `core/rating.ts`. `user_book.stars` is 1–10, `hive_book.rating` is
   ×1000, display is 0–5 — three orders of magnitude apart, so confusing the latter two is not a
-  rounding error. `StarDisplay` takes a _display_ rating.
+  rounding error. `StarDisplay` takes a _display_ rating. Stats' domain average is
+  already 0–5, but `getReadingStats` encodes `averageRating` as fixed-point ×10
+  (`42 = 4.2 stars`); native stats decode `/ 10`, whereas user `stars` decode `/ 2`.
 - **A `HiveId` from the wire must be narrowed, not cast** → `core/hiveId.ts`. `as HiveId` asserts
   the fact without checking it; that's how `/books/null` reached the database.
 - **`resolveActorDid`** (`services/actor.ts`) is the one handle→DID. `isDid(x) ? x : resolve(x)`
@@ -246,3 +248,21 @@ edits until it completes. A pending delete leaves the latest confirmed row and d
 failed delete keeps both available for retry, while only a successful response removes the row. Progress payloads
 assert only progress, letting the shared lifecycle infer Reading/Finished; resending the row's
 old status suppressed that inference. `PageInput` follows replaced progress props for rollback.
+
+## Native clients and account maintenance
+
+The Expo app follows the same canonical book-write contract as the web islands:
+serialize writes/deletion per book, send boolean ownership, do not resend stale
+status with a progress-only save, require `success:true` plus `userBook`, and
+reconcile that response rather than treating HTTP 200 as confirmation. Explicit
+empty review/status/date values clear fields; absent values leave them alone.
+See `mobile-feature-parity.md` for the audit and native session/cancellation tests.
+
+`services/deleteAccount.ts` is shared by the web form and the `deleteAccount` XRPC
+procedure. Account XRPC procedures require live OAuth (`pdsWrite`), not just a DID.
+The service deletes the four BookHive book/buzz/list/listItem collections on the PDS first,
+then local rows in one SQLite transaction (including `progress_history`), then
+uploaded files. Failed PDS listing/deletion or filesystem cleanup is not success.
+There is no atomic transaction across PDS/SQLite/filesystem; partial completion
+can happen and retries resume cleanup. Concurrent writes are not fenced. Do not
+describe this action as deleting the user's Bluesky account or unrelated posts.

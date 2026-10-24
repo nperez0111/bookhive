@@ -82,6 +82,17 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
         );
       },
       /**
+       * The authenticated viewer's latest 20 progress entries for this book, newest first. Omitted when signed out; unknown page/count/percent values are omitted.
+       * @maxLength 20
+       */
+      get progressHistory() {
+        return /*#__PURE__*/ v.optional(
+          /*#__PURE__*/ v.constrain(/*#__PURE__*/ v.array(progressHistoryEntrySchema), [
+            /*#__PURE__*/ v.arrayLength(0, 20),
+          ]),
+        );
+      },
+      /**
        * The book's review
        * @maxGraphemes 15000
        */
@@ -95,6 +106,12 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
        */
       get reviews() {
         return /*#__PURE__*/ v.array(BuzzBookhiveDefs.reviewSchema);
+      },
+      /**
+       * Public catalogue shelves containing this book, including the viewer's and other readers' shelves. Omitted when signed out. Never includes private ebook shelves.
+       */
+      get shelves() {
+        return /*#__PURE__*/ v.optional(/*#__PURE__*/ v.array(shelfMembershipSchema));
       },
       /**
        * Number of stars given to the book (1-10) which will be mapped to 1-5 stars
@@ -120,10 +137,47 @@ const _mainSchema = /*#__PURE__*/ v.query("buzz.bookhive.getBook", {
     }),
   },
 });
+const _progressHistoryEntrySchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(
+    /*#__PURE__*/ v.literal("buzz.bookhive.getBook#progressHistoryEntry"),
+  ),
+  createdAt: /*#__PURE__*/ v.datetimeString(),
+  currentPage: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+  percent: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+  totalPages: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.integer()),
+});
+const _shelfMembershipSchema = /*#__PURE__*/ v.object({
+  $type: /*#__PURE__*/ v.optional(/*#__PURE__*/ v.literal("buzz.bookhive.getBook#shelfMembership")),
+  /**
+   * AT-URI of the shelf's book-list item
+   */
+  itemUri: /*#__PURE__*/ v.string(),
+  name: /*#__PURE__*/ v.string(),
+  /**
+   * AT-URI of the public catalogue shelf
+   */
+  uri: /*#__PURE__*/ v.string(),
+  /**
+   * DID of the shelf owner
+   */
+  userDid: /*#__PURE__*/ v.string(),
+});
 type main$schematype = typeof _mainSchema;
+type progressHistoryEntry$schematype = typeof _progressHistoryEntrySchema;
+type shelfMembership$schematype = typeof _shelfMembershipSchema;
 
 export interface mainSchema extends main$schematype {}
+
+export interface progressHistoryEntrySchema extends progressHistoryEntry$schematype {}
+
+export interface shelfMembershipSchema extends shelfMembership$schematype {}
 export const mainSchema = _mainSchema as mainSchema;
+export const progressHistoryEntrySchema = _progressHistoryEntrySchema as progressHistoryEntrySchema;
+export const shelfMembershipSchema = _shelfMembershipSchema as shelfMembershipSchema;
+
+export interface ProgressHistoryEntry extends v.InferInput<typeof progressHistoryEntrySchema> {}
+
+export interface ShelfMembership extends v.InferInput<typeof shelfMembershipSchema> {}
 
 export interface $params extends v.InferInput<mainSchema["params"]> {}
 

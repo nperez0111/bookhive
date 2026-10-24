@@ -3,6 +3,11 @@
  * Uses @atcute/xrpc-server; context is passed via AsyncLocalStorage from Hono.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { getIronSession } from "iron-session";
+import type { AppContext, Session } from "../context";
+import { evictCachedSessionClient, getSessionConfig } from "../auth/session";
+import { refetchBooks } from "../routes/lib";
+import { deleteAccountData } from "../services/deleteAccount";
 import {
   XRPCRouter,
   json,
@@ -13,6 +18,7 @@ import {
 import {
   BuzzBookhiveSearchBooks,
   BuzzBookhiveListGenres,
+  BuzzBookhiveListAuthors,
   BuzzBookhiveGetBookIdentifiers,
   BuzzBookhiveGetBook,
   BuzzBookhiveGetProfile,
@@ -46,6 +52,8 @@ import {
   BuzzBookhiveGetSyncProgress,
   BuzzBookhivePutSyncProgress,
   BuzzBookhiveListSyncDocuments,
+  BuzzBookhiveResyncAccount,
+  BuzzBookhiveDeleteAccount,
 } from "../bsky/lexicon/generated/index.js";
 import type {
   GetBookIdentifiersOutputSchema,
@@ -64,9 +72,14 @@ import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../core/bookProgress";
 import { loadGenresForHiveBook, loadGenresMapForHiveBooks } from "../data/hiveBookGenres.js";
-import { listBookActivity, listBookDiscussion } from "../data/bookDetail";
+import {
+  listBookActivity,
+  listBookDiscussion,
+  listProgressHistory,
+  listShelvesHoldingBook,
+} from "../data/bookDetail";
 import { resolveActorDid } from "../services/actor";
-import { getFeaturedAuthors } from "../data/authorStats";
+import { AUTHOR_DIRECTORY_LIMIT, getAuthorStats, getFeaturedAuthors } from "../data/authorStats";
 import {
   DEFAULT_FEED_LIMIT,
   FEED_TABS,
@@ -77,13 +90,13 @@ import {
 import { getTopGenres } from "../data/exploreGenres";
 import { resolveLanguage } from "../data/getLanguages";
 import { getAvailableLanguages } from "../data/getLanguages";
-import { getReadingStatsForYear } from "../data/readingStats";
+import { getReadingStatsForYear, type ReadingStats } from "../data/readingStats";
 import { errorMessage, toErrorPayload } from "../lib/errors";
 import {
-  hydrateSearchResults,
   listBooksByAuthor,
   listBooksByGenre,
-  searchLocalCatalog,
+  listSearchBooks,
+  MAX_SEARCH_CANDIDATES,
 } from "../data/catalogBooks";
 import {
   getPersonalBookRow,
@@ -124,8 +137,8 @@ import {
   streamPersonalBook,
 } from "../data/personalLibrary";
 import { uploadPersonalBook, type UploadPersonalBookResult } from "../services/uploadPersonalBook";
-import { resolveXrpcAuth, type AuthMode, type XrpcAuth, type XrpcAuthContext } from "./auth";
-import type { Nsid } from "@atcute/lexicons";
+import { resolveXrpcAuth, type AuthMode, type XrpcAuth } from "./auth";
+import type { Did, Nsid } from "@atcute/lexicons";
 import type { ServiceJwtVerifier } from "@atcute/xrpc-server/auth";
 import { recordSyncProgress } from "../data/syncBridge";
 
@@ -189,6 +202,8 @@ export type XrpcContext = {
     resolveDidsToHandles: (dids: string[]) => Promise<Record<string, string>>;
   };
   getSessionAgent: () => Promise<SessionClient | null>;
+  getProfile: AppContext["getProfile"];
+  oauthClient: Pick<AppContext["oauthClient"], "revoke">;
   baseIdResolver: {
     handle: { resolve: (handle: string) => Promise<string | undefined> };
   };
@@ -198,6 +213,9 @@ export type XrpcContext = {
 };
 
 export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
+  /** Injectable account cores; production uses the same implementations as the web adapters. */
+  refetchBooks?: typeof refetchBooks;
+  deleteAccountData?: typeof deleteAccountData;
   searchBooks: (opts: {
     query: string;
     ctx: Pick<E, "db" | "kv" | "addWideEventContext">;
@@ -205,14 +223,6 @@ export type XrpcDeps<E extends XrpcContext = XrpcContext> = {
   ensureBookIdentifiersCurrent: (opts: { ctx: E; book: HiveBook }) => Promise<void>;
   getProfile: (opts: { ctx: E; did: string }) => Promise<ProfileViewDetailed | null>;
 };
-
-const xrpcContextStorage = new AsyncLocalStorage<XrpcContext>();
-
-function getCtx(): XrpcContext {
-  const ctx = xrpcContextStorage.getStore();
-  if (!ctx) throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
-  return ctx;
-}
 
 // Same AsyncLocalStorage idiom as the context — atcute handlers only receive `{request, params, input, signal}`.
 const xrpcAuthStorage = new AsyncLocalStorage<XrpcAuth>();
@@ -233,11 +243,26 @@ function requireAgent(): SessionClient {
   return auth.agent;
 }
 
-export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = { ctx: E }>(
-  app: import("hono").Hono<{ Variables: V }>,
-  deps: XrpcDeps<E>,
-): void {
+export function createXrpcRouter<
+  E extends XrpcContext,
+  V extends { ctx: E; requestError?: unknown } = { ctx: E; requestError?: unknown },
+>(app: import("hono").Hono<{ Variables: V }>, deps: XrpcDeps<E>): void {
   const router = new XRPCRouter();
+  // Keep the generic application context, but expose only the response-side
+  // capabilities handlers need rather than the entire Hono context.
+  const requestStorage = new AsyncLocalStorage<{
+    ctx: E;
+    setRequestError: (error: unknown) => void;
+    destroySession: () => Promise<void>;
+  }>();
+  function getRequest() {
+    const request = requestStorage.getStore();
+    if (!request) throw new Error("XRPC context not set (missing AsyncLocalStorage.run)");
+    return request;
+  }
+  function getCtx(): E {
+    return getRequest().ctx;
+  }
 
   // Two things are patched onto every registration here rather than repeated per handler:
   // 1. Error observability — XRPCRouter swallows handler throws into a 500 before Hono's error-capture middleware sees them.
@@ -259,19 +284,19 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
           try {
             if (mode === undefined) return await handler(input);
 
-            const ctx = xrpcContextStorage.getStore();
-            const auth = await resolveXrpcAuth(ctx as XrpcAuthContext, input.request, {
+            const ctx = getCtx();
+            const auth = await resolveXrpcAuth(ctx, input.request, {
               lxm: nsid,
               mode,
             });
-            ctx?.addWideEventContext({ userDid: auth.did, xrpc_auth: auth.method });
+            ctx.addWideEventContext({ userDid: auth.did, xrpc_auth: auth.method });
             // Auth failures land inside this try, so a 401 is recorded as intentional control flow, same as a hand-thrown one.
             return await xrpcAuthStorage.run(auth, () => handler(input));
           } catch (err) {
             // Deliberate 4xx (AuthRequiredError, InvalidRequest, …) are control flow, not defects — record without a stack.
             const status = (err as { status?: unknown } | null)?.status;
             const isIntentional = typeof status === "number" && status < 500;
-            xrpcContextStorage.getStore()?.addWideEventContext({
+            requestStorage.getStore()?.ctx.addWideEventContext({
               xrpc_handler: "threw",
               error: toErrorPayload(err, { stack: !isIntentional }),
             });
@@ -281,6 +306,67 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       });
     };
   }
+
+  router.addProcedure(BuzzBookhiveResyncAccount, {
+    auth: "pdsWrite",
+    async handler({ input }) {
+      if (Object.keys(input).length !== 0) {
+        throw new InvalidRequestError({ message: "Expected an empty JSON object" });
+      }
+      const ctx = getCtx();
+      const agent = requireAgent();
+      try {
+        // The legacy shared resync helper still declares the full AppContext.
+        await (deps.refetchBooks ?? refetchBooks)({ agent, ctx: ctx as unknown as AppContext });
+      } catch (error) {
+        getRequest().setRequestError(error);
+        ctx.addWideEventContext({ account_resync: "failed", error: toErrorPayload(error) });
+        throw new XRPCError({
+          status: 500,
+          error: "ResyncFailed",
+          message: "Could not re-sync your books. Please try again.",
+        });
+      }
+      return json({ success: true });
+    },
+  });
+
+  router.addProcedure(BuzzBookhiveDeleteAccount, {
+    auth: "pdsWrite",
+    async handler({ input }) {
+      if (Object.keys(input).some((key) => key !== "confirmHandle")) {
+        throw new InvalidRequestError({ message: "Only confirmHandle is accepted" });
+      }
+      const ctx = getCtx();
+      const agent = requireAgent();
+      const profile = await ctx.getProfile();
+      if (input.confirmHandle !== (profile?.handle ?? agent.did)) {
+        throw new InvalidRequestError({ message: "Type your handle exactly to confirm deletion." });
+      }
+      try {
+        ctx.addWideEventContext({ account_delete: "started", userDid: agent.did });
+        await (deps.deleteAccountData ?? deleteAccountData)({ agent, db: ctx.db });
+        ctx.addWideEventContext({ account_delete: "completed" });
+      } catch (error) {
+        getRequest().setRequestError(error);
+        ctx.addWideEventContext({ account_delete: "failed", error: toErrorPayload(error) });
+        throw new XRPCError({
+          status: 500,
+          error: "DeleteFailed",
+          message: "Could not delete your data. Please try again.",
+        });
+      }
+      try {
+        await ctx.oauthClient.revoke(agent.did as Did);
+      } catch {
+        // Cleanup succeeded; a failed upstream revocation must not claim otherwise.
+        ctx.addWideEventContext({ account_revoke: "failed" });
+      }
+      evictCachedSessionClient(agent.did);
+      await getRequest().destroySession();
+      return json({ success: true });
+    },
+  });
 
   router.addQuery(BuzzBookhiveSearchBooks, {
     async handler({ params: _params }) {
@@ -339,28 +425,20 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         return json({ books: [] });
       }
 
-      const bookIds = await deps.searchBooks({ query: q, ctx });
-
-      // Backfill from the local catalogue beyond the cached 20 — it searches a different column set than the FTS index.
-      let allIds = bookIds;
-      if (limit > 20 && bookIds.length < limit) {
-        const extra = await searchLocalCatalog({
-          db: ctx.db,
-          q,
-          limit: limit - bookIds.length,
-          exclude: bookIds,
-        });
-        allIds = [...bookIds, ...extra];
-      }
-
-      if (!allIds.length) {
-        return json({ books: [] });
-      }
-
-      // Same core as `/search` — hydrate before truncating, or the language sort could disagree with page one on iOS vs web.
-      const books = await hydrateSearchResults({ db: ctx.db, ids: allIds, language });
-
-      const slice = books.slice(off, off + limit);
+      // One cached seed search, then bounded local-only pagination. Do not
+      // search or warm the cache for an empty query or past the discovery cap.
+      const seedIds =
+        off >= MAX_SEARCH_CANDIDATES || !q.trim() || limit <= 0
+          ? []
+          : await deps.searchBooks({ query: q, ctx });
+      const { books: slice, offset: nextOffset } = await listSearchBooks({
+        db: ctx.db,
+        q,
+        seedIds,
+        offset: off,
+        limit,
+        language,
+      });
       const genreMap = await loadGenresMapForHiveBooks(
         ctx.db,
         slice.map((b) => b.id),
@@ -386,9 +464,38 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       return json({
         books: slice.map((b) => transformBookWithIdentifiers(b, genreMap.get(b.id))),
-        offset: off + slice.length,
+        offset: nextOffset,
         userStatuses,
       });
+    },
+  });
+
+  router.addQuery(BuzzBookhiveListAuthors, {
+    async handler({ params }) {
+      const ctx = getCtx();
+      const { limit, offset, language: languageParam, q = "" } = params;
+      const language = await resolveLanguage(ctx.db, ctx.kv, languageParam);
+      // Reuse the web directory's SWR aggregate and ordering. Neither q nor
+      // pagination may create a new aggregate/cache key or widen the top 500.
+      const all = await getAuthorStats(ctx.db, ctx.kv, language);
+      const needle = q.toLowerCase().trim();
+      const matching = needle
+        ? all.filter((row) => row.author.toLowerCase().includes(needle))
+        : all;
+      const authors = matching.slice(offset, offset + limit);
+      const nextOffset = offset + authors.length;
+      return json({
+        authors: authors.map((row) => ({
+          author: row.author,
+          bookCount: row.bookCount,
+          totalRatings: row.totalRatings,
+          avgRating: row.avgRating == null ? undefined : Math.round(row.avgRating * 10),
+        })),
+        offset: nextOffset,
+        total: matching.length,
+        hasMore: nextOffset < matching.length,
+        directoryLimit: AUTHOR_DIRECTORY_LIMIT,
+      } satisfies BuzzBookhiveListAuthors.$output);
     },
   });
 
@@ -467,7 +574,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       if (hiveBook) {
         await deps.ensureBookIdentifiersCurrent({
-          ctx: ctx as unknown as E,
+          ctx,
           book: hiveBook,
         });
         bookIdentifiersRow = await ctx.db
@@ -540,10 +647,13 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       }
 
       // Includes the `uri` keyset tiebreaker, without which two identical `getBook` calls could return different `peerBooks` sets.
-      const [{ reviews: topLevelReviews, buzzes: comments }, bookGenres] = await Promise.all([
-        listBookDiscussion({ db: ctx.db, hiveId: book.id }),
-        loadGenresForHiveBook(ctx.db, book.id),
-      ]);
+      const [{ reviews: topLevelReviews, buzzes: comments }, bookGenres, progressHistory, shelves] =
+        await Promise.all([
+          listBookDiscussion({ db: ctx.db, hiveId: book.id }),
+          loadGenresForHiveBook(ctx.db, book.id),
+          listProgressHistory({ db: ctx.db, hiveId: book.id, userDid: agent?.did ?? null }),
+          listShelvesHoldingBook({ db: ctx.db, hiveId: book.id, userDid: agent?.did ?? null }),
+        ]);
 
       const rawUserBook = agent
         ? await ctx.db
@@ -595,6 +705,15 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         review: userBook?.review ?? undefined,
         bookProgress: userBook?.bookProgress ?? undefined,
         previousReads: userBook?.previousReads ?? undefined,
+        progressHistory: agent
+          ? progressHistory.map((entry) => ({
+              createdAt: entry.createdAt,
+              currentPage: entry.currentPage ?? undefined,
+              totalPages: entry.totalPages ?? undefined,
+              percent: entry.percent ?? undefined,
+            }))
+          : undefined,
+        shelves: agent ? shelves : undefined,
         userBookUri: userBook?.uri ?? undefined,
         userBookCid: userBook?.cid ?? undefined,
         book: toHiveBookOutput(book, bookIdentifiers, bookGenres),
@@ -670,7 +789,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         .limit(10_000)
         .execute();
       const profile = await deps.getProfile({
-        ctx: ctx as unknown as E,
+        ctx,
         did,
       });
       // Same key (`indexedAt`) — here it decides which 50 rows you see, not just their order.
@@ -1000,13 +1119,13 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const parsedBooks = books.map((b) => hydrateUserBook(b));
 
       // Shares the year filter, genre aggregate and available-years window with the web page and OG card.
-      // NOTE: `getReadingStatsForYear` also returns an all-time fallback this lexicon has no field for, so
-      // the app shows a near-empty year where the website falls back to all-time — needs a lexicon field plus an app release.
-      const { stats, availableYears } = await getReadingStatsForYear({
-        db: ctx.db,
-        books: parsedBooks,
-        year,
-      });
+      const { stats, allTimeStats, showYearInBooks, availableYears } = await getReadingStatsForYear(
+        {
+          db: ctx.db,
+          books: parsedBooks,
+          year,
+        },
+      );
 
       const toBookSummary = (
         b: {
@@ -1031,28 +1150,32 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         };
       };
 
-      return json({
-        stats: {
-          booksCount: stats.booksCount,
-          pagesRead: stats.pagesRead,
-          averageRating:
-            stats.averageRating != null ? Math.round(stats.averageRating * 10) : undefined,
-          averagePageCount: stats.averagePageCount ?? undefined,
-          ratingDistribution: {
-            one: stats.ratingDistribution[1],
-            two: stats.ratingDistribution[2],
-            three: stats.ratingDistribution[3],
-            four: stats.ratingDistribution[4],
-            five: stats.ratingDistribution[5],
-          },
-          topGenres: stats.topGenres.slice(0, 5),
-          shortestBook: toBookSummary(stats.shortestBook),
-          longestBook: toBookSummary(stats.longestBook),
-          firstBookOfYear: toBookSummary(stats.firstBookOfYear),
-          lastBookOfYear: toBookSummary(stats.lastBookOfYear),
-          mostPopularBook: toBookSummary(stats.mostPopularBook),
-          leastPopularBook: toBookSummary(stats.leastPopularBook),
+      const toStatsOutput = (stats: ReadingStats) => ({
+        booksCount: stats.booksCount,
+        pagesRead: stats.pagesRead,
+        averageRating:
+          stats.averageRating != null ? Math.round(stats.averageRating * 10) : undefined,
+        averagePageCount: stats.averagePageCount ?? undefined,
+        ratingDistribution: {
+          one: stats.ratingDistribution[1],
+          two: stats.ratingDistribution[2],
+          three: stats.ratingDistribution[3],
+          four: stats.ratingDistribution[4],
+          five: stats.ratingDistribution[5],
         },
+        topGenres: stats.topGenres.slice(0, 5),
+        shortestBook: toBookSummary(stats.shortestBook),
+        longestBook: toBookSummary(stats.longestBook),
+        firstBookOfYear: toBookSummary(stats.firstBookOfYear),
+        lastBookOfYear: toBookSummary(stats.lastBookOfYear),
+        mostPopularBook: toBookSummary(stats.mostPopularBook),
+        leastPopularBook: toBookSummary(stats.leastPopularBook),
+      });
+
+      return json({
+        stats: toStatsOutput(stats),
+        allTimeStats: allTimeStats ? toStatsOutput(allTimeStats) : undefined,
+        showYearInBooks,
         availableYears,
         year,
       });
@@ -1904,5 +2027,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
     },
   });
 
-  app.all("/xrpc/*", (c) => xrpcContextStorage.run(c.get("ctx"), () => router.fetch(c.req.raw)));
+  app.all("/xrpc/*", (c) =>
+    requestStorage.run(
+      {
+        ctx: c.get("ctx"),
+        setRequestError: (error) => c.set("requestError", error),
+        destroySession: async () => {
+          const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+          session.destroy();
+        },
+      },
+      () => router.fetch(c.req.raw),
+    ),
+  );
 }

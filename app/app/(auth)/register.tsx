@@ -1,13 +1,12 @@
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { Colors } from "@/constants/Colors";
-import { useAuth } from "@/context/auth";
-import { getBaseUrl } from "@/context/auth";
+import { useAuth, getBaseUrl } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { ofetch } from "ofetch";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
@@ -30,11 +29,11 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Animation refs
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const spinValue = useRef(new Animated.Value(0)).current;
+  // Stable animation handles, initialized once for this screen.
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [slideAnim] = useState(() => new Animated.Value(30));
+  const [scaleAnim] = useState(() => new Animated.Value(0.9));
+  const [spinValue] = useState(() => new Animated.Value(0));
 
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
@@ -60,7 +59,7 @@ export default function RegisterScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, scaleAnim, slideAnim]);
 
   const validate = (): string | null => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -103,6 +102,8 @@ export default function RegisterScreen() {
         {
           baseURL: getBaseUrl(),
           method: "POST",
+          retry: 0,
+          timeout: 30_000,
           body: { email, handle: handle.toLowerCase(), password },
         },
       );
@@ -113,15 +114,14 @@ export default function RegisterScreen() {
       }
 
       // Account created — kick off OAuth sign-in with the new handle
-      await signIn({ handle: result.handle! });
-
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        router.replace("/(tabs)");
-      });
+      if (!result.handle) throw new Error("Signup response is missing the account handle");
+      try {
+        const signInResult = await signIn({ handle: result.handle });
+        if (signInResult === "success") return;
+      } catch {
+        // The account exists even if opening/finishing OAuth failed.
+      }
+      router.replace({ pathname: "/(auth)/login", params: { handle: result.handle } });
     } catch (err: unknown) {
       const message =
         err && typeof err === "object" && "data" in err
@@ -129,6 +129,8 @@ export default function RegisterScreen() {
           : undefined;
       setError(message ?? "Something went wrong. Please try again.");
     } finally {
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
       setIsLoading(false);
     }
   };
@@ -337,8 +339,8 @@ export default function RegisterScreen() {
                 ]}
               >
                 <ThemedText style={[styles.infoText, { color: colors.secondaryText }]}>
-                  After your account is created, you'll sign in with the password you just chose to
-                  complete setup.
+                  After your account is created, you&apos;ll sign in with the password you just
+                  chose to complete setup.
                 </ThemedText>
               </View>
 

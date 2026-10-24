@@ -1,6 +1,6 @@
 /**
- * Author aggregates for `/explore`, `/explore/authors` and XRPC `getExplore`.
- * Caching lives *inside* these functions so the three consumers can't drift
+ * Author aggregates for `/explore`, `/explore/authors` and XRPC `getExplore`/`listAuthors`.
+ * Caching lives *inside* these functions so their consumers can't drift
  * into separate cache policies again.
  *
  * Two things here are load-bearing and easy to undo by accident:
