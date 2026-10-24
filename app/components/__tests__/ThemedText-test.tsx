@@ -1,11 +1,23 @@
 /// <reference types="jest" />
-import * as React from "react";
-import renderer from "react-test-renderer";
-
+import { render, screen } from "@testing-library/react-native";
 import { ThemedText } from "../ThemedText";
 
-it(`renders correctly`, () => {
-  const tree = renderer.create(<ThemedText>Snapshot test!</ThemedText>).toJSON();
+jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "#123456" }));
 
-  expect(tree).toMatchSnapshot();
+it("renders text with the theme color", () => {
+  render(<ThemedText>Hello reader!</ThemedText>);
+  expect(screen.getByText("Hello reader!")).toHaveStyle({ color: "#123456", fontSize: 16 });
+});
+
+it("supports typography and caller style overrides", () => {
+  render(
+    <ThemedText type="title" style={{ color: "red" }}>
+      BookHive
+    </ThemedText>,
+  );
+  expect(screen.getByText("BookHive")).toHaveStyle({
+    color: "red",
+    fontSize: 32,
+    fontWeight: "700",
+  });
 });

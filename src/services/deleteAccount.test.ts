@@ -179,6 +179,74 @@ describe("account deletion", () => {
     expect(counts()).toEqual(TABLES.map(() => ({ count: 2 })));
   });
 
+  it("preserves local data and partial collection results when a later page fails", async () => {
+    const get = mock(async () => emptyPage())
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          records: [{ uri: `at://${USER}/${ids.SocialPopfeedFeedListItem}/first` }],
+          cursor: "next",
+        },
+      })
+      .mockResolvedValueOnce({ ok: false, data: { records: [] } });
+    const post = mock(async () => ({ ok: true }));
+    expect(deleteAccountData({ agent: agentWith(get, post), db: fixture.db, kv })).rejects.toThrow(
+      "Failed to list",
+    );
+    expect(post).not.toHaveBeenCalled();
+    expect(counts()).toEqual(TABLES.map(() => ({ count: 2 })));
+  });
+
+  it("batches PDS deletions at 200 and visits only BookHive collections child-first", async () => {
+    const collections = [
+      ids.SocialPopfeedFeedListItem,
+      ids.SocialPopfeedFeedList,
+      ids.BuzzBookhiveBuzz,
+      ids.BuzzBookhiveBook,
+    ];
+    const records = (collection: string, start: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ uri: `at://${USER}/${collection}/${start + i}` }));
+    const get = mock(async () => emptyPage())
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { records: records(collections[0]!, 0, 100), cursor: "a" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { records: records(collections[0]!, 100, 100), cursor: "b" },
+      })
+      .mockResolvedValueOnce({ ok: true, data: { records: records(collections[0]!, 200, 1) } });
+    for (const collection of collections.slice(1)) {
+      get.mockResolvedValueOnce({ ok: true, data: { records: records(collection, 0, 1) } });
+    }
+    const post = mock(async () => ({ ok: true }));
+    await deleteAccountData({ agent: agentWith(get, post), db: fixture.db, kv });
+    expect(
+      get.mock.calls.map(
+        (call) =>
+          (call as unknown as [string, { params: { collection: string } }])[1].params.collection,
+      ),
+    ).toEqual([collections[0]!, collections[0]!, ...collections]);
+    expect(
+      post.mock.calls.map(
+        (call) =>
+          (call as unknown as [string, { input: { writes: unknown[] } }])[1].input.writes.length,
+      ),
+    ).toEqual([200, 1, 1, 1, 1]);
+  });
+
+  it("rejects a refused PDS deletion before local cleanup", async () => {
+    const get = mock(async () => ({
+      ok: true,
+      data: { records: [{ uri: `at://${USER}/${ids.SocialPopfeedFeedListItem}/one` }] },
+    }));
+    const post = mock(async () => ({ ok: false }));
+    expect(deleteAccountData({ agent: agentWith(get, post), db: fixture.db, kv })).rejects.toThrow(
+      "Failed to delete",
+    );
+    expect(counts()).toEqual(TABLES.map(() => ({ count: 2 })));
+  });
+
   it("bounds a scan to 500 pages and preserves local data", async () => {
     let page = 0;
     const get = mock(async () => ({ ok: true, data: { records: [], cursor: String(++page) } }));

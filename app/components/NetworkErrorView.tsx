@@ -4,7 +4,7 @@ import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { useRouter } from "expo-router";
+import { useAuth } from "@/context/auth";
 
 export interface NetworkError {
   type: "network" | "server" | "timeout" | "unauthorized" | "not_found" | "unknown";
@@ -30,10 +30,17 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
 }) => {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
-  const router = useRouter();
+  const { signOut } = useAuth();
 
-  const handleSignIn = () => {
-    router.push("/(auth)/login");
+  const handleSignIn = async () => {
+    // The auth stack is protected while credentials exist. Clear the session
+    // explicitly and let the root guard open login, rather than pushing a blocked route.
+    try {
+      await signOut();
+    } catch (error) {
+      // signOut clears the live session before attempting persistent storage cleanup.
+      console.error("Failed to clear saved session:", error);
+    }
   };
 
   const getErrorIcon = () => {

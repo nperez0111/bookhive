@@ -124,6 +124,16 @@ remaining whole-file/report allocations are documented in `docs/notes/memory-and
 
 ## Modules with a note worth keeping
 
+Native clients may import platform-neutral `core`/`lib` modules, never server dependency
+graphs. The deliberate byte-identical quota formatter copy remains in the app.
+`data/authorStats.ts` also owns the shared bounded XRPC `listAuthors` directory.
+`data/catalogBooks.ts` owns `listSearchBooks`: cached seeds plus bounded local pagination
+(1,000-result cap, at most 100 full books hydrated per request). XRPC calls the ordinary
+concurrency-limited `services/searchBooks.ts` seed lookup, never scrape-per-page fan-out.
+`services/deleteAccount.ts` is shared by web and XRPC: PDS records, transactional local
+rows (including progress history and sync cleanup), then files; partial failures propagate.
+Book discussion orderings end on `uri` for stable pagination.
+
 The layer table above lists every file. These are the ones whose _why_ isn't guessable from the
 name — full stories in the linked `docs/notes/*.md`.
 

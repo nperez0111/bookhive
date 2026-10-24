@@ -1,6 +1,7 @@
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
-import { FadeInImage } from "@/components/FadeInImage";
+import { BookCard } from "@/components/BookCard";
+import { StarDisplay } from "@/components/StarDisplay";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -11,6 +12,7 @@ import { getBaseUrl } from "@/context/auth";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { displayAuthors } from "@/utils/trackedBooks";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -117,14 +119,16 @@ function FilteredBooksContent({ status, did }: { status: string; did?: string })
 
   const profile = useProfile(did);
 
-  const config = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
+  const config = Object.hasOwn(STATUS_CONFIG, status)
+    ? STATUS_CONFIG[status as keyof typeof STATUS_CONFIG]
+    : undefined;
 
   const statusBooks = useMemo(() => {
-    if (!profile.data) return [];
+    if (!profile.data || !config) return [];
     return config.status === "owned"
       ? profile.data.books.filter((book: any) => book.owned)
       : profile.data.books.filter((book) => book.status === config.status);
-  }, [profile.data, config.status]);
+  }, [profile.data, config]);
 
   const availableGenres = useMemo(() => {
     const counts = new Map<string, number>();
@@ -150,8 +154,8 @@ function FilteredBooksContent({ status, did }: { status: string; did?: string })
           return genres?.includes(activeGenre);
         })
       : statusBooks;
-    return sortBooks(genreFiltered, sortBy, sortOrder, config.status);
-  }, [statusBooks, activeGenre, sortBy, sortOrder, config.status]);
+    return config ? sortBooks(genreFiltered, sortBy, sortOrder, config.status) : [];
+  }, [statusBooks, activeGenre, sortBy, sortOrder, config]);
 
   if (profile.isLoading) {
     return (
@@ -224,54 +228,28 @@ function FilteredBooksContent({ status, did }: { status: string; did?: string })
 
   const renderBook = ({ item: book, index }: { item: UserBook; index: number }) => (
     <AnimatedListItem index={index}>
-      <Pressable
+      <BookCard
+        title={book.title}
+        authors={displayAuthors(book.authors)}
+        imageUri={
+          book.cover || book.thumbnail
+            ? `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`
+            : ""
+        }
         onPress={() => router.push(`/book/${book.hiveId}?status=${status}`)}
-        style={[
-          styles.bookItem,
-          {
-            backgroundColor: colors.cardBackground,
-            borderColor: colors.cardBorder,
-            shadowColor: colors.shadowLight,
-          },
-        ]}
+        variant="row"
+        rowSize="small"
+        style={{ marginBottom: 12 }}
       >
-        <View style={styles.coverContainer}>
-          <FadeInImage
-            source={{
-              uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-            }}
-            style={styles.bookCover}
-            resizeMode="cover"
-          />
-        </View>
-        <View style={styles.bookInfo}>
-          <ThemedText
-            style={[styles.bookTitle, { color: colors.primaryText }]}
-            numberOfLines={2}
-            type="label"
-          >
-            {book.title}
-          </ThemedText>
-          <ThemedText
-            style={[styles.bookAuthor, { color: colors.secondaryText }]}
-            numberOfLines={1}
-            type="caption"
-          >
-            {book.authors}
-          </ThemedText>
-          {book.stars != null && book.stars > 0 && (
-            <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={14} color={colors.primary} />
-              <ThemedText
-                style={[styles.ratingText, { color: colors.secondaryText }]}
-                type="caption"
-              >
-                {book.stars / 10}
-              </ThemedText>
-            </View>
-          )}
-        </View>
-      </Pressable>
+        {book.stars != null && book.stars > 0 && (
+          <View style={styles.ratingContainer}>
+            <StarDisplay rating={book.stars} />
+            <ThemedText style={[styles.ratingText, { color: colors.secondaryText }]} type="caption">
+              {book.stars / 2}
+            </ThemedText>
+          </View>
+        )}
+      </BookCard>
     </AnimatedListItem>
   );
 
@@ -568,42 +546,6 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: 16,
     paddingBottom: 16,
-  },
-  bookItem: {
-    flexDirection: "row",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    minHeight: 100,
-  },
-  coverContainer: {
-    marginRight: 12,
-    justifyContent: "center",
-  },
-  bookCover: {
-    width: 65,
-    height: 95,
-    borderRadius: 10,
-  },
-  bookInfo: {
-    flex: 1,
-    justifyContent: "center",
-    paddingVertical: 2,
-  },
-  bookTitle: {
-    marginBottom: 4,
-    lineHeight: 18,
-    fontSize: 15,
-  },
-  bookAuthor: {
-    marginBottom: 6,
-    lineHeight: 16,
-    fontSize: 13,
   },
   ratingContainer: {
     flexDirection: "row",

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -49,9 +49,11 @@ export function TextPromptModal({
   const colors = Colors[colorScheme ?? "light"];
   const [value, setValue] = useState(initialValue);
 
-  useEffect(() => {
+  const [previous, setPrevious] = useState({ visible, initialValue });
+  if (previous.visible !== visible || previous.initialValue !== initialValue) {
+    setPrevious({ visible, initialValue });
     if (visible) setValue(initialValue);
-  }, [visible, initialValue]);
+  }
 
   const trimmed = value.trim();
 
