@@ -1,5 +1,4 @@
 import type { HiveId, ProfileViewDetailed } from "./types";
-import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import type { Did } from "@atcute/lexicons";
 import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
@@ -54,7 +53,7 @@ import sqliteKv, {
 } from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./data/enrichQueue";
 import { lazy } from "./lib/lazy";
-import { readThroughCache } from "./lib/readThroughCache";
+import { createProfileCache, getProfile } from "./services/getProfile";
 import { updateBookRecord } from "./services/getBook";
 import type { PendingWrite } from "./data/syncBridge";
 import { errorMessage } from "./lib/errors";
@@ -219,7 +218,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   if (env.isProd) {
     kv.mount("search:", lruCacheDriver({ max: 1000 }));
   }
-  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
+  kv.mount("profile:", createProfileCache());
   kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
   kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
 
@@ -651,8 +650,7 @@ export function createContextMiddleware(deps: AppDeps) {
       }),
     );
 
-    // getProfile uses the fast DID path for cache lookups.
-    // The expensive OAuth restore only happens on profile cache miss.
+    // Cache hits use only the cookie DID. OAuth restore is deferred to misses/refreshes.
     const profileLazy = lazy(async () => {
       startTime(c, "get_profile_did");
       const did = await didLazy.value;
@@ -663,30 +661,7 @@ export function createContextMiddleware(deps: AppDeps) {
       ctx.addWideEventContext({ userDid: did });
 
       startTime(c, "get_profile_cache");
-      const result = await readThroughCache<ProfileViewDetailed | null>(
-        deps.kv,
-        "profile:" + did,
-        async () => {
-          // Cache miss — need a full session to call the Bluesky AppView via PDS proxy.
-          startTime(c, "get_profile_session");
-          const client = await sessionLazy.value;
-          endTime(c, "get_profile_session");
-          if (!client) throw new Error("session_unavailable");
-          startTime(c, "get_profile_network");
-          try {
-            const res = await client.get("app.bsky.actor.getProfile", {
-              params: { actor: client.did as ActorIdentifier },
-              headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
-            });
-            if (!res.ok) return null;
-            return res.data as ProfileViewDetailed | null;
-          } finally {
-            endTime(c, "get_profile_network");
-          }
-        },
-        undefined,
-        { revalidateAfter: 24 * 60 * 60 * 1000, ttl: 30 * 24 * 60 * 60 * 1000 },
-      );
+      const result = await getProfile({ ctx, did });
       endTime(c, "get_profile_cache");
 
       // Fire off session restore in the background so it's warm for subsequent API calls,

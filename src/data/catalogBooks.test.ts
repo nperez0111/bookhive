@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { createTestDb } from "../test/db";
 
 import type { Database } from "../db";
-import type { HiveId } from "../types";
+import type { HiveBook, HiveId } from "../types";
 import {
+  buildGenreBookIdsQuery,
   hydrateSearchResults,
   listBooksByAuthor,
   listBooksByGenre,
@@ -137,6 +138,128 @@ describe("listBooksByAuthor", () => {
 });
 
 describe("listBooksByGenre", () => {
+  it("selects the page using covering indexes for every unfiltered sort/language", () => {
+    for (const sort of ["popularity", "reviews", "relevance"] as const) {
+      for (const language of [undefined, "French"]) {
+        const query = buildGenreBookIdsQuery({
+          genre: "Fiction",
+          sort,
+          language,
+          limit: 100,
+          offset: 13,
+        }).compile(db);
+        const detail = (
+          sqlite.query(`EXPLAIN QUERY PLAN ${query.sql}`).all(...(query.parameters as never[])) as {
+            detail: string;
+          }[]
+        )
+          .map(({ detail }) => detail)
+          .join("\n");
+        expect(detail).toContain("COVERING INDEX idx_hive_book_genre_genre");
+        expect(detail).toContain("COVERING INDEX idx_hive_book_stats");
+        expect(detail).not.toContain("sqlite_autoindex_hive_book_1");
+        expect(query.sql).not.toContain("SELECT hive_book.*");
+        expect(query.sql).toContain("hive_book.id ASC");
+      }
+    }
+  });
+
+  it("allows normal row lookups when a substring predicate needs non-indexed columns", () => {
+    const query = buildGenreBookIdsQuery({
+      genre: "Fiction",
+      sort: "popularity",
+      q: "Needle",
+      limit: 100,
+      offset: 0,
+    }).compile(db);
+    expect(query.sql).not.toContain("INDEXED BY");
+    expect(query.sql).toContain("hive_book.rawTitle LIKE");
+    expect(query.sql).toContain("hive_book.authors LIKE");
+    expect(query.sql).toContain("SELECT hive_book.id");
+  });
+
+  it("preserves full rows, substring filters, every sort and raw-offset semantics", async () => {
+    // Deliberately disagree on id, insertion/relevance, popularity and language
+    // order. Include ties and NULLs (SQLite sorts NULL last in DESC order).
+    const ids = ["bk_z", "bk_f", "bk_b", "bk_a", "bk_x", "bk_c", "bk_y", "bk_d"];
+    for (const [i, id] of ids.entries()) {
+      insertBook({
+        id,
+        title: i % 2 ? "Needle in raw title" : "Other title",
+        authors: `Author ${i % 3}`,
+        language: i % 3 === 0 ? null : i % 3 === 1 ? "French" : "English",
+        ratingsCount: i % 3 === 0 ? 500 : 100,
+        rating: i % 4 === 0 ? 4500 : 3000,
+      });
+      // Only rawTitle and authors are searchable on this endpoint, not title.
+      sqlite.exec("UPDATE hive_book SET title = ?, description = ?, meta = ? WHERE id = ?", [
+        "Needle in display title only",
+        `Complete description for ${id}`,
+        JSON.stringify({ pages: i + 100 }),
+        id,
+      ]);
+      if (i === 2 || i === 5) {
+        sqlite.exec("UPDATE hive_book SET rating = NULL, ratingsCount = NULL WHERE id = ?", [id]);
+      }
+      addGenre(id, "Fiction");
+      addGenre(id, "Another genre");
+    }
+    insertBook({ id: "bk_excluded", title: "Needle", authors: "Author 1", ratingsCount: 9999 });
+    addGenre("bk_excluded", "Another genre");
+
+    for (const sort of ["popularity", "reviews", "relevance"] as const) {
+      for (const language of [undefined, "French", "Missing language"]) {
+        for (const q of [undefined, "", "nEEdle", "Author 1", "%", "_", "'", "absent"]) {
+          const pattern = q ? `%${q}%` : null;
+          const predicate = pattern ? "AND (b.rawTitle LIKE ? OR b.authors LIKE ?)" : "";
+          const parameters = ["Fiction", ...(pattern ? [pattern, pattern] : [])];
+          const order = [
+            ...(language ? ["CASE WHEN b.language = ? THEN 0 ELSE 1 END ASC"] : []),
+            sort === "relevance"
+              ? "g.rowid ASC"
+              : sort === "reviews"
+                ? "b.rating DESC, b.ratingsCount DESC"
+                : "b.ratingsCount DESC, b.rating DESC",
+            "b.id ASC",
+          ].join(", ");
+          const from = `FROM hive_book b JOIN hive_book_genre g ON b.id = g.hiveId
+            WHERE g.genre = ? ${predicate}`;
+          const count = sqlite.query(`SELECT COUNT(*) AS count ${from}`).get(...parameters) as {
+            count: number;
+          };
+          for (const paging of [
+            { page: 1 },
+            { page: 2 },
+            { page: 99 },
+            { page: 3, offset: 1 },
+            { page: 2, offset: 0 },
+            { page: 1, offset: 99 },
+          ]) {
+            const offset = paging.offset ?? (paging.page - 1) * 3;
+            const expected = sqlite
+              .query(`SELECT b.* ${from} ORDER BY ${order} LIMIT 3 OFFSET ?`)
+              .all(...parameters, ...(language ? [language] : []), offset) as HiveBook[];
+            const result = await listBooksByGenre({
+              db,
+              genre: "Fiction",
+              pageSize: 3,
+              sort,
+              language,
+              q,
+              ...paging,
+            });
+            expect(result.books).toEqual(expected);
+            expect(result.totalBooks).toBe(count.count);
+            expect(result.totalPages).toBe(Math.max(1, Math.ceil(count.count / 3)));
+            expect(result.currentPage).toBe(
+              Math.min(paging.page, Math.max(1, Math.ceil(count.count / 3))),
+            );
+          }
+        }
+      }
+    }
+  });
+
   it("pages without repeating or dropping a book when every sort key ties", async () => {
     for (let i = 0; i < 7; i++) {
       const id = `bk_g${i}`;

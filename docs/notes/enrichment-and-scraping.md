@@ -51,9 +51,26 @@ elsewhere: solve cost by single-flight + one attempt per token lifetime
 enrichment queue's concurrency/interval above; memory by at most one solver Worker per process,
 terminated on every path. Full account in `src/scrapers/waf/README.md`.
 
+October's outer-envelope protocol correction, bounded validation, and secret-safe diagnostics
+are documented in the WAF README. Offline tests cover the correction; live token acceptance
+remains unverified.
+
 `google.ts` and `isbndb.ts` are tracked but **not wired up** — nothing imports them and
 `findBookDetails` has no fallback branch reaching them. Treat as reference material for a future
 Goodreads-WAF fallback, not live code.
+
+## Goodreads cover filenames are normalized on ingestion and read
+
+The October 25 log audit found historical filenames such as `51256920SY75_.jpg` returning 403,
+while `51256920._SY75_.jpg` and the full-size `51256920.jpg` returned images. The source of the
+corruption was not established; the current scraper's old suffix-removal expression was correctly
+escaped. This is not an imgproxy signature failure.
+
+`core/goodreadsCoverUrl.ts` repairs only recognized numeric book-cover paths on `i.gr-assets.com`
+with `SX`/`SY`/`UX`/`UY` sizing suffixes. Scraper covers request full size; thumbnails keep their
+dimensions. `routes/imageProxy.ts` validates the original source against its allowlist before
+normalizing, redirecting, or signing it. This repairs reads of historical rows without a database
+rewrite. Query strings/fragments and unrelated URLs are preserved; arbitrary 403s are not retried.
 
 ## `searchBooks` owns its own concurrency ceiling
 

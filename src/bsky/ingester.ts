@@ -58,12 +58,8 @@ const COLLECTION_TABLES = {
   [ids.SocialPopfeedFeedListItem]: "book_list_item",
 } as const satisfies Record<CollectionType, keyof DatabaseSchema>;
 const WANTED_COLLECTIONS = Object.keys(COLLECTION_TABLES);
-const JETSTREAM_URL = [
-  "wss://jetstream1.us-east.bsky.network",
-  "wss://jetstream2.us-east.bsky.network",
-  "wss://jetstream1.us-west.bsky.network",
-  "wss://jetstream2.us-west.bsky.network",
-];
+// V2 sequence cursors are instance-specific: reconnect to this host, not a random pool.
+const JETSTREAM_SERVICE = "wss://jetstream2.us-east.bsky.network";
 
 export type IngesterEvent = {
   event: "create" | "update" | "delete";
@@ -645,12 +641,12 @@ export function createIngester(
       stopStream = startJetstream({
         kv,
         options: {
-          url: JETSTREAM_URL,
-          wantedCollections: WANTED_COLLECTIONS,
+          service: JETSTREAM_SERVICE,
+          collections: WANTED_COLLECTIONS,
           ws: { connectionTimeout: 20_000 },
         },
         handleEvent: async (event) => {
-          if (event.kind === "commit") await handleEvent(commitToEvent(event.did, event.commit));
+          await handleEvent(commitToEvent(event.did, event));
         },
         emit: emitWideEvent,
       });

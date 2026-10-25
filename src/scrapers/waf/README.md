@@ -7,12 +7,12 @@ the page, and solves the challenge without a browser when one shows up.
 
 ## Two operations, deliberately kept apart
 
-|                            | Fetch the page                    | Solve a challenge                              |
-| -------------------------- | --------------------------------- | ---------------------------------------------- |
-| Cost                       | 1 request, ~200 ms                | ~4 requests, 1.3 MB script, a Worker, PoW      |
-| Where                      | main thread (`solver.ts`)         | Bun Worker (`solver-worker.ts`)                |
-| Success rate in production | ~98%                              | 0% since 2026-08-01 (see below)                |
-| Bounded by                 | the enrich drain (36 fetches/min) | single-flight + one attempt per token lifetime |
+|                                  | Fetch the page                    | Solve a challenge                              |
+| -------------------------------- | --------------------------------- | ---------------------------------------------- |
+| Cost                             | 1 request, ~200 ms                | ~4 requests, 1.3 MB script, a Worker, PoW      |
+| Where                            | main thread (`solver.ts`)         | Bun Worker (`solver-worker.ts`)                |
+| Historical success rate (August) | ~98%                              | 0% since 2026-08-01 in that investigation      |
+| Bounded by                       | the enrich drain (36 fetches/min) | single-flight + one attempt per token lifetime |
 
 Keeping them separate buys one property, and the file is arranged around it:
 
@@ -41,7 +41,7 @@ better somewhere else:
   every solve failing is 15 attempts/hour. The breaker, open 70% of the time,
   allowed 16.
 - **Hammering Goodreads** — `ENRICH_CONCURRENCY`/`DRAIN_INTERVAL_MS` in
-  `utils/enrichQueue.ts` already cap us at 36 fetches/min whether Goodreads is
+  `data/enrichQueue.ts` already cap us at 36 fetches/min whether Goodreads is
   healthy or dead, since a failing fetch is faster than a succeeding one. The
   breaker was a second limiter on an already-bounded path; all it changed was
   which books got destroyed.
@@ -76,8 +76,12 @@ A breaker is right when refusing is cheaper than failing — see
 4. **Encrypt signals** — AES-256-GCM with the extracted key. Format:
    `base64(nonce)::hex(tag)::hex(ciphertext)`.
 
-5. **Solve proof-of-work** — Goodreads currently uses `NetworkBandwidth`
-   difficulty 1, which just requires POSTing a 1 KB zeroed buffer. Other WAF
+5. **Read the inputs envelope and solve proof-of-work** — `challenge_type`,
+   `difficulty` and optional `memory` are **outer `/inputs` fields**. The nested
+   `challenge.input` is opaque signed data; never base64-decode it as JSON.
+   `protocol.ts` validates the envelope and resolves only known exact type IDs.
+   The October read-only probe returned the retained script's `NetworkBandwidth`
+   type at difficulty 1, which requires POSTing a 1 KB zeroed buffer. Other WAF
    configurations may use `HashcashScrypt` or `SHA256` (brute-force nonce
    search); those paths are implemented but untested against Goodreads. Because
    the solve runs in the worker, even an expensive brute-force never blocks the
@@ -117,7 +121,8 @@ call; the worker returns updated values to fold back in.
 | File               | Purpose                                                               |
 | ------------------ | --------------------------------------------------------------------- |
 | `solver.ts`        | Page fetch, token cache, the solve decision. `fetchGoodreadsViaWaf()` |
-| `solver-worker.ts` | Bun Worker: challenge → token only (crypto, PoW, signals)             |
+| `solver-worker.ts` | Bun Worker: challenge → token, injectable fetch for offline tests     |
+| `protocol.ts`      | Validated outer inputs envelope, exact dispatch IDs, bounded JSON     |
 | `classify.ts`      | `classifyFetch()` — what a fetch actually told us                     |
 | `http.ts`          | UA, headers and `boundedText` shared by both sides                    |
 | `deobfuscate.ts`   | Deobfuscates challenge.js (imported by worker; CLI for testing)       |
@@ -155,13 +160,13 @@ without the action header, inferring "dead" from the fetch alone would tombstone
 the entire 356k-book catalogue in four days. The classifier has no `dead` case at
 all, by construction.
 
-## Why solves fail from production right now
+## Historical production failures (August 2026)
 
 Solving worked from this host until 2026-07-29 — 5–30 successes/day, no token
 failures. On **2026-07-30** volume spiked ~20× (284 solves + 1,150 cached-token
 fetches) and `waf_token_ineffective` appeared the same day (2,430, then 14,397 on
-07-31). Since **2026-08-01 there have been zero solve successes**. This predates
-the code changes in #196/#197, so it is not a regression.
+07-31). The August investigation found **zero solve successes since 2026-08-01**.
+That failure predates the code changes in #196/#197.
 
 A/B on 2026-08-03, identical code, challenge forced via the `ua` seam, 4/4 each:
 
@@ -170,17 +175,53 @@ A/B on 2026-08-03, identical code, challenge forced via the `ua` seam, 4/4 each:
 | Hetzner (production) | 202 challenge | **202 + `x-amzn-waf-action: challenge`** — token refused                |
 | Residential IP       | 202 challenge | **403, no waf-action** — token accepted; origin refused the headless UA |
 
-Both hosts get an identical challenge (`NetworkBandwidth`, difficulty 1) and both
-download `challenge.js` fine. Earlier, from a residential IP over ~450 requests:
+Both hosts got an identical challenge (`NetworkBandwidth`, difficulty 1) and both
+downloaded `challenge.js` fine. Earlier, from a residential IP over ~450 requests:
 sequential fetches were never challenged (0/40), challenges appeared only under
 concurrency (4/12 at C=4, 10/20 at C=10, 7/24 at C=12), and **all 21 solved
 successfully**.
 
-So the crypto path is sound and the egress IP's standing with AWS WAF is not.
-Plain fetches from the same box remain healthy (12/12 at C=12 on 2026-08-03,
-97.9% in production), which is exactly why the two paths must not share a fate.
+That experiment supported a sound crypto path and an egress reputation problem
+**at that time**, not a permanent guarantee that the protocol decoder is correct.
+Plain fetches from the same box were healthy (12/12 at C=12 on 2026-08-03,
+97.9% in that production window), which is why the paths must not share a fate.
 Reputation may recover, so the solver stays and keeps making one cheap attempt
 per token lifetime.
+
+## October 2026: opaque input was incorrectly parsed as JSON
+
+The October 25 audit contained 30 `scrape_solve` entries with a JSON parse error
+on `\u05fd` (single-flight can repeat one attempt across multiple book events).
+Those older events did not record a stage, so they cannot prove the precise
+parse site. A read-only `/inputs?client=browser` GET returned HTTP 200 JSON with
+outer `challenge_type`/`difficulty` and nested `challenge.input`/`region`.
+Base64-decoding that input produced non-JSON bytes. The previous worker tried
+to parse those bytes as JSON before doing any proof-of-work or verification.
+
+The returned type ID,
+`ha9faaffd31b4d5ede2a2e19d2d7fd525f66fee61911511960dcbb52d3c48ce25`,
+also appears in the checked-in challenge script's dispatch table. Its solver
+allocates a zeroed buffer using the bandwidth difficulty map (1 KiB through
+10 MiB), then strips the FileReader data-URL prefix and returns raw base64,
+establishing this **exact ID's** algorithm without assuming all opaque or hashed
+types are bandwidth. The same fixture identifies the two hashcash
+aliases in `protocol.ts`. Unknown IDs now return
+`waf_unsupported_challenge_type`, not a guessed scrypt solution.
+
+`/inputs` and verification responses have HTTP checks and a 64 KiB body limit.
+Malformed JSON/shape, unsupported types and HTTP failures have separate stable
+codes. `scrape_solve_diagnostics` carries stage/round, HTTP status, sanitized MIME,
+body byte count, allowlisted type identifier and input length where available.
+It never includes response bodies, challenge input, keys, tokens, signals or
+gokuProps. Every solver failure still **defers** enrichment without charging a
+book attempt, and the page-fetch-first and four-minute single-flight policies
+are unchanged.
+
+Offline tests validate dispatch, unchanged opaque-input submission and multipart
+construction using synthetic fixtures. **No live verification POST or successful
+token/page recovery was tested for this fix**; signal compatibility and current
+egress reputation remain unproven. Do not attribute a decoder-stage failure to
+the historical IP-reputation incident.
 
 ## If Goodreads changes challenge.js
 
@@ -191,9 +232,10 @@ The most likely breakage scenarios and how to fix them:
    `deobfuscate.ts`. Capture the new `challenge.js` into
    `__fixtures__/challenge-script.js` for offline testing.
 
-2. **Different challenge type** — If Goodreads switches from `NetworkBandwidth`
-   to `HashcashScrypt` or `SHA256`, the solver already handles those. Check logs
-   for `challenge_type` to confirm.
+2. **Different challenge type** — Check `scrape_solve_diagnostics.challengeType`.
+   The named algorithms and exact fixture-backed aliases are supported; a new
+   opaque ID must be traced to its script's solver before adding a mapping.
+   Never guess an algorithm from the ID's appearance or decode signed input.
 
 3. **New signal fields** — AWS WAF may require additional fingerprint signals.
    Compare `buildSignals()` in `solver-worker.ts` against what the real

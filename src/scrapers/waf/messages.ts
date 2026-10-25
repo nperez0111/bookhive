@@ -33,6 +33,26 @@ export interface WafRequest {
   ua: string;
 }
 
+/** Bounded, non-secret metadata only: never include response bodies, inputs,
+ *  fingerprints, gokuProps, crypto keys or tokens in diagnostics. */
+export interface SolveDiagnostics {
+  stage:
+    | "discovery"
+    | "challenge_script"
+    | "crypto_config"
+    | "signals"
+    | "inputs"
+    | "challenge"
+    | "proof_of_work"
+    | "verify";
+  round?: number;
+  status?: number;
+  contentType?: string;
+  bodyBytes?: number;
+  challengeType?: string;
+  inputChars?: number;
+}
+
 export interface WafResult {
   /** Echoes `WafRequest.id`. */
   id: string;
@@ -46,4 +66,5 @@ export interface WafResult {
   failure?: string;
   /** Unexpected error message (thrown inside the worker). */
   error?: string;
+  diagnostics?: SolveDiagnostics;
 }

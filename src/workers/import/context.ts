@@ -6,6 +6,7 @@ import type { Did } from "@atcute/lexicons";
 import type { StoredSession, SessionStore, StateStore } from "@atcute/oauth-node-client";
 import { createStorage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
+import { createProfileCache } from "../../services/getProfile";
 
 import {
   createOAuthClient,
@@ -68,7 +69,7 @@ export async function createWorkerContext({
     driver: sqliteKv({ table: "kv", db: kvDb }),
   });
   kv.mount("search:", lruCacheDriver({ max: 1000 }));
-  kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
+  kv.mount("profile:", createProfileCache());
   kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
   kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
   // Shared with the HTTP worker processes so locks are visible across the fleet.

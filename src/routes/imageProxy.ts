@@ -8,6 +8,7 @@
  */
 import { env } from "../env";
 import { errorMessage } from "../lib/errors";
+import { normalizeGoodreadsCoverUrl } from "../core/goodreadsCoverUrl";
 
 /** Remote hosts we are willing to proxy. */
 // images.isbndb.com stays allowlisted even though that scraper is no longer wired up — old rows still carry those cover URLs.
@@ -228,13 +229,17 @@ export async function proxyImageResponse(opts: ProxyImageOptions): Promise<Respo
     return svgFallbackResponse(kind, requestId);
   }
 
+  // Repair known historical Goodreads cover filenames without changing the DB
+  // or retrying arbitrary upstream failures. Validate before normalizing.
+  const normalizedSource = normalizeGoodreadsCoverUrl(source);
+
   // No imgproxy configured (e.g. local dev) → redirect to the source.
   if (!env.IMGPROXY_URL) {
-    return Response.redirect(source, 302);
+    return Response.redirect(normalizedSource, 302);
   }
 
   try {
-    const imgproxyUrl = buildImgproxyUrl(source, modifiers);
+    const imgproxyUrl = buildImgproxyUrl(normalizedSource, modifiers);
     const upstream = await fetch(imgproxyUrl, {
       headers: ifNoneMatch ? { "If-None-Match": ifNoneMatch } : undefined,
       // Without this an imgproxy stall pins the request indefinitely.

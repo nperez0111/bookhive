@@ -70,7 +70,7 @@ Worker threads (bundled to .output/server/workers/):
 
 - Server components (`src/pages/`) render full HTML. Only 6 islands hydrate client-side (`src/client/`); most interactivity is CSS-only (peer/checked selectors) or inline `<Script>` vanilla JS.
 - **Production is multi-process**: `server/cluster.ts` spawns `WEB_CONCURRENCY` workers sharing port 8080 via SO_REUSEPORT — defaults to 4, but the deployed container sets **3**. Worker 0 is the **primary** (`isPrimaryWorker`): only it runs migrations, VACUUM, the Jetstream ingester, and the enrichment drain.
-- **Exited ingestion workers restart automatically and resume the saved Jetstream cursor.** The parent also terminates/restarts a worker after 12 hours without ingestion events; there is no periodic PDS scan. Discovery backfill and manual sync repair mirrors; iterator-close and concurrent-write gotchas: `docs/notes/ingestion-and-reconciliation.md`.
+- **Exited ingestion workers restart automatically and resume the saved Jetstream v2 sequence.** The service is pinned because sequences are instance-specific; the first v2 connection deliberately starts at the live tip, ignoring the old v1 timestamp. The parent also terminates/restarts a worker after 12 hours without ingestion events; there is no periodic PDS scan. Cutover, iterator-close and discovery-backfill gotchas: `docs/notes/ingestion-and-reconciliation.md`.
 - **Enrichment is queued, never inline** (`src/data/enrichQueue.ts`), drained by the primary worker every 5s at concurrency 3 — the only rate limit on Goodreads requests (36/min; don't add a second one). `enrich_queue.attempts` counts _answers from Goodreads_, not failures — the `retry`/`defer`/`dead` verdict (`core/enrichVerdict.ts`) defaults to `defer`. See `docs/notes/enrichment-and-scraping.md`.
 - Author lookups use the `hive_book_author` join (mig 020), not `LIKE` — exact identity, not text search.
 - `bun:sqlite` is synchronous, so a slow query stalls a whole worker (a third of prod traffic). Expensive aggregates (`/explore*`, `getAvailableLanguages`, `/`'s `landingHighlights` and `communityStats` queries) are SWR-cached rather than plain-TTL, and the `/explore` aggregates rely on an `INDEXED BY` hint because this DB has never been `ANALYZE`d. See `docs/notes/data-and-caching.md`.
@@ -261,7 +261,7 @@ VACUUM and FTS-rebuild scheduling (`src/context.ts`) is gated on freelist ratio,
 
 ### KV Cache (`src/sqlite-kv.ts`)
 
-SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep.
+Unstorage mounts: `search:` (in-memory LRU), `profile:` (per-process LRU, 10,000 entries / 30d TTL), `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). All other mounts use SQLite (`src/sqlite-kv.ts`), VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep. Profile value/freshness share one entry, not separate metadata; see `docs/notes/data-and-caching.md`.
 
 ### Module layers (`src/lib`, `src/core`, `src/data`, `src/services`)
 
@@ -274,16 +274,16 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 ## AT Protocol / Bluesky
 
-| File                      | Purpose                                                       |
-| ------------------------- | ------------------------------------------------------------- |
-| `src/bsky/ingester.ts`    | Book/buzz/list/item mirror + discovery backfill (worker)      |
-| `src/bsky/jetstream.ts`   | Jetstream lifecycle, ordered cursor checkpoints and reconnect |
-| `src/bsky/id-resolver.ts` | DID/handle resolution with caching                            |
-| `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                       |
-| `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas             |
-| `src/xrpc/router.ts`      | All `/xrpc/*` methods                                         |
-| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                    |
-| `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                     |
+| File                      | Purpose                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `src/bsky/ingester.ts`    | Book/buzz/list/item mirror + discovery backfill (worker)                |
+| `src/bsky/jetstream.ts`   | Jetstream v2 lifecycle, per-instance sequence checkpoints and reconnect |
+| `src/bsky/id-resolver.ts` | DID/handle resolution with caching                                      |
+| `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                                 |
+| `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas                       |
+| `src/xrpc/router.ts`      | All `/xrpc/*` methods                                                   |
+| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                              |
+| `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                               |
 
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
 
@@ -456,4 +456,4 @@ Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging
 
 Hono context vars (`c.get`): `ctx`, `assetUrls`, `requestId`, `wideEventBag`, `appLogger`, `requestError`.
 
-`createAppDeps()` builds deps and (primary only) spawns the ingester + enrichment drain. Sessions use `iron-session` (180-day cookie) with an in-memory `SessionClient` cache. `getProfile` is read-through cached (24h revalidate / 30d TTL).
+`createAppDeps()` builds deps and (primary only) spawns the ingester + enrichment drain. Sessions use `iron-session` (180-day cookie) with an in-memory `SessionClient` cache. Self-profile and `getProfile`/`getProfiles` share viewer-isolated LRU + SWR (24h fresh / up to 30d usable) with bounded fetches; cache hits use the cookie DID without waiting for OAuth. The public PDS directory is SWR-cached too; policies and deadline gotchas: `docs/notes/data-and-caching.md`.

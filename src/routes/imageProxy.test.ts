@@ -1,4 +1,5 @@
-import { describe, it, expect } from "bun:test";
+import { afterEach, describe, it, expect, mock } from "bun:test";
+import { env } from "../env";
 import {
   coverImageUrl,
   avatarImageUrl,
@@ -13,7 +14,13 @@ import {
   signImgproxyPath,
   buildImgproxyUrl,
   queryToModifiers,
+  proxyImageResponse,
 } from "./imageProxy";
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 describe("parseImagePath", () => {
   it("splits modifiers from the source URL", () => {
@@ -329,5 +336,91 @@ describe("queryToModifiers", () => {
 
   it("supports s/h overrides", () => {
     expect(queryToModifiers({ s: "300x500", h: "600" })).toEqual({ s: "300x500", h: "600" });
+  });
+});
+
+describe("proxyImageResponse Goodreads repair", () => {
+  const base = "https://i.gr-assets.com/images/S/compressed.photo.goodreads.com/books/1562663148l/";
+  const modifiers = { w: "440" };
+
+  const sources: [string, string][] = [
+    [`${base}51256920SY75_.jpg`, `${base}51256920._SY75_.jpg`],
+    [`${base}51256920SY75_.jpg?v=%2f#cover`, `${base}51256920._SY75_.jpg?v=%2f#cover`],
+    [`${base}51256920._SY75_.jpg`, `${base}51256920._SY75_.jpg`],
+    [`${base}51256920.jpg`, `${base}51256920.jpg`],
+    ["https://cdn.bsky.app/51256920SY75_.jpg", "https://cdn.bsky.app/51256920SY75_.jpg"],
+    ["https://images.isbndb.com/51256920SY75_.jpg", "https://images.isbndb.com/51256920SY75_.jpg"],
+    [
+      "https://i.gr-assets.com/authors/51256920SY75_.jpg",
+      "https://i.gr-assets.com/authors/51256920SY75_.jpg",
+    ],
+  ];
+
+  for (const [source, expected] of sources) {
+    it(`normalizes only recognized covers before signing or redirecting: ${source}`, async () => {
+      const fetchMock = mock(
+        async () =>
+          new Response("image", { headers: { "Content-Type": "image/webp", ETag: '"cover"' } }),
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const response = await proxyImageResponse({
+        source,
+        modifiers,
+        kind: "book",
+        requestId: "test-cover",
+        ifNoneMatch: '"previous"',
+      });
+      if (env.IMGPROXY_URL) {
+        expect(fetchMock).toHaveBeenCalledWith(buildImgproxyUrl(expected, modifiers), {
+          headers: { "If-None-Match": '"previous"' },
+          signal: expect.any(AbortSignal),
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("ETag")).toBe('"cover"');
+        expect(await response.text()).toBe("image");
+      } else {
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(response.status).toBe(302);
+        expect(response.headers.get("Location")).toBe(expected);
+      }
+    });
+  }
+
+  for (const source of [
+    `${base}51256920SY75_.jpg`.replace("i.gr-assets.com", "i.gr-assets.com.evil.example"),
+    `${base}51256920SY75_.jpg`.replace("i.gr-assets.com", "i.gr-assets.com@evil.example"),
+    `${base}51256920SY75_.jpg`.replace("https:", "ftp:"),
+    "/books/51256920SY75_.jpg",
+  ]) {
+    it(`still rejects forbidden sources without fetching: ${source}`, async () => {
+      const fetchMock = mock(async () => new Response("unexpected"));
+      const warn = mock(() => {});
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const response = await proxyImageResponse({
+        source,
+        modifiers,
+        kind: "book",
+        requestId: "test-forbidden",
+        warn,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
+      expect(warn).toHaveBeenCalledWith({ msg: "image_proxy_forbidden_source", image_id: source });
+    });
+  }
+
+  it.skipIf(!env.IMGPROXY_URL)("does not retry an upstream 403", async () => {
+    const fetchMock = mock(async () => new Response("Forbidden", { status: 403 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const response = await proxyImageResponse({
+      source: `${base}51256920SY75_.jpg`,
+      modifiers,
+      kind: "book",
+      requestId: "test-upstream-error",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60");
   });
 });

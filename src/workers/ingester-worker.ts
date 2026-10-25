@@ -11,6 +11,7 @@ import { createServiceAccountAgent } from "../services/catalogBookService";
 import { env } from "../env";
 import { createStorage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
+import { createProfileCache } from "../services/getProfile";
 
 // Open own DB connections (workers can't share DatabaseSync across threads)
 const { db } = createDb(env.DB_PATH);
@@ -23,7 +24,7 @@ const kv = createStorage({
 if (env.isProd) {
   kv.mount("search:", lruCacheDriver({ max: 1000 }));
 }
-kv.mount("profile:", sqliteKv({ table: "profile", db: kvDb }));
+kv.mount("profile:", createProfileCache());
 kv.mount("identity:", sqliteKv({ table: "identity", db: kvDb }));
 kv.mount("follows_sync:", sqliteKv({ table: "follows_sync", db: kvDb }));
 // Shared with the HTTP worker processes so locks are visible across the fleet.

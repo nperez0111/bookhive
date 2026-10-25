@@ -155,6 +155,40 @@ describe("fetchGoodreadsViaWaf", () => {
     expect(ctx["enrich_retry"]).toBe("defer");
   });
 
+  test("protocol failures forward safe diagnostics and still defer without gating fetches", async () => {
+    const ctx: Record<string, unknown> = {};
+    const fetchImpl = stubFetch(challenge);
+    const solveImpl: SolveFn = async () => ({
+      id: "test",
+      token: null,
+      config: null,
+      challengeJsUrl: null,
+      failure: "waf_inputs_invalid_json",
+      diagnostics: {
+        stage: "inputs",
+        round: 1,
+        status: 200,
+        contentType: "text/html",
+        bodyBytes: 12,
+      },
+    });
+    await fetchGoodreadsViaWaf(URL_A, (c) => Object.assign(ctx, c), {
+      fetchImpl: fetchImpl.impl,
+      solveImpl,
+    });
+    expect(ctx["scrape_solve"]).toBe("waf_inputs_invalid_json");
+    expect(ctx["scrape_solve_diagnostics"]).toEqual({
+      stage: "inputs",
+      round: 1,
+      status: 200,
+      contentType: "text/html",
+      bodyBytes: 12,
+    });
+    expect(ctx["enrich_retry"]).toBe("defer");
+    await fetchGoodreadsViaWaf(URL_A, () => {}, { fetchImpl: fetchImpl.impl, solveImpl });
+    expect(fetchImpl.calls()).toBe(2);
+  });
+
   test("a solved token that works caches for the next fetch", async () => {
     const fetchImpl = stubFetch((call) => (call === 0 ? challenge() : page()));
     const solveImpl = stubSolve("a-token");
