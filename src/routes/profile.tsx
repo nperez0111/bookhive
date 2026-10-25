@@ -22,7 +22,7 @@ import {
 } from "../data/profileSummary";
 import { listAllUserBooks } from "../data/userShelves";
 import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
-import { refetchBooks } from "./lib";
+import { refetchBooks, refetchLists } from "./lib";
 import { getUserLists } from "../services/lists";
 
 const app = new Hono<AppEnv>()
@@ -40,8 +40,13 @@ const app = new Hono<AppEnv>()
       );
     }
     startTime(c, "refetch_books");
-    await refetchBooks({ agent, ctx: c.get("ctx") });
+    const results = await Promise.allSettled([
+      refetchBooks({ agent, ctx: c.get("ctx") }),
+      refetchLists({ agent, ctx: c.get("ctx") }),
+    ]);
     endTime(c, "refetch_books");
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed) throw failed.reason;
     if (c.req.header()["accept"] === "application/json") {
       // A confirmation payload for the re-sync, not a library listing.
       const books = await listAllUserBooks({

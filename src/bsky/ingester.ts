@@ -1,6 +1,13 @@
-import { JetstreamSubscription } from "@atcute/jetstream";
 import type { Storage } from "unstorage";
-import { buzzUpsertSet, userBookUpsertSet, type Database } from "../db";
+import {
+  bookListItemUpsertSet,
+  bookListUpsertSet,
+  buzzUpsertSet,
+  userBookUpsertSet,
+  type Database,
+  type DatabaseSchema,
+} from "../db";
+import { listRecordFields } from "../core/listRecord";
 import { env } from "../env";
 import {
   ingesterEventDuration,
@@ -22,6 +29,7 @@ import {
 } from "./id-resolver";
 import { ids, Book, Buzz, List, ListItem } from "./lexicon";
 import { errorMessage } from "../lib/errors";
+import { startJetstream } from "./jetstream";
 
 // Pre-compute label keys for ingester metrics to avoid JSON.stringify per event
 const ingesterLabelCache = new Map<string, string>();
@@ -37,12 +45,19 @@ function getIngesterLabel(labels: Record<string, string>): string {
 
 export type EmitWideEvent = (event: Record<string, unknown>) => void;
 
-const WANTED_COLLECTIONS = [
-  ids.BuzzBookhiveBook,
-  ids.BuzzBookhiveBuzz,
-  ids.SocialPopfeedFeedList,
-  ids.SocialPopfeedFeedListItem,
-];
+type CollectionType =
+  | typeof ids.BuzzBookhiveBook
+  | typeof ids.BuzzBookhiveBuzz
+  | typeof ids.SocialPopfeedFeedList
+  | typeof ids.SocialPopfeedFeedListItem;
+
+const COLLECTION_TABLES = {
+  [ids.BuzzBookhiveBook]: "user_book",
+  [ids.BuzzBookhiveBuzz]: "buzz",
+  [ids.SocialPopfeedFeedList]: "book_list",
+  [ids.SocialPopfeedFeedListItem]: "book_list_item",
+} as const satisfies Record<CollectionType, keyof DatabaseSchema>;
+const WANTED_COLLECTIONS = Object.keys(COLLECTION_TABLES);
 const JETSTREAM_URL = [
   "wss://jetstream1.us-east.bsky.network",
   "wss://jetstream2.us-east.bsky.network",
@@ -91,43 +106,49 @@ export type Ingester = {
 };
 
 const BACKFILL_DONE_PREFIX = "backfill_done:";
-const JETSTREAM_CURSOR_KEY = "jetstream:cursor";
 
-async function backfillUserRepo(
+export async function backfillUserRepo(
   did: string,
   db: Database,
   kv: Storage,
   emitWideEvent: EmitWideEvent,
+  resolvePds = async (did: string) =>
+    (
+      await createActorResolver().resolve(
+        did as Parameters<ReturnType<typeof createActorResolver>["resolve"]>[0],
+      )
+    ).pds,
+  fetchRecords: (url: URL, init: RequestInit) => Promise<Response> = fetch,
 ): Promise<void> {
   try {
-    const actor = await createActorResolver().resolve(
-      did as Parameters<ReturnType<typeof createActorResolver>["resolve"]>[0],
-    );
-    const pds = actor.pds;
+    const pds = await resolvePds(did);
 
-    for (const collection of [
-      ids.BuzzBookhiveBook,
-      ids.BuzzBookhiveBuzz,
-      ids.SocialPopfeedFeedList,
-      ids.SocialPopfeedFeedListItem,
-    ]) {
+    for (const [collection, table] of Object.entries(COLLECTION_TABLES)) {
       let cursor: string | undefined;
+      let pages = 0;
       do {
+        if (++pages > 500) throw new Error(`Backfill page limit reached: ${collection}`);
         const url = new URL(`${pds}/xrpc/com.atproto.repo.listRecords`);
         url.searchParams.set("repo", did);
         url.searchParams.set("collection", collection);
         url.searchParams.set("limit", "100");
         if (cursor) url.searchParams.set("cursor", cursor);
 
-        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-        if (!res.ok) break;
+        const res = await fetchRecords(url, { signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) throw new Error(`listRecords ${collection}: HTTP ${res.status}`);
         const data = (await res.json()) as {
           records: Array<{ uri: string; cid: string; value: unknown }>;
           cursor?: string;
         };
 
+        if (!Array.isArray(data.records) || (data.cursor && data.cursor === cursor)) {
+          throw new Error(`Invalid listRecords page: ${collection}`);
+        }
+        data.records = data.records.filter((record) =>
+          record.uri.startsWith(`at://${did}/${collection}/`),
+        );
         const now = new Date();
-        if (collection === ids.BuzzBookhiveBook) {
+        if (table === "user_book") {
           const validBooks = data.records.flatMap((record) => {
             const parsed = Book.validateRecord(record.value);
             return parsed.success ? [{ record, book: parsed.value }] : [];
@@ -173,7 +194,7 @@ async function backfillUserRepo(
                 .execute();
             }
           }
-        } else if (collection === ids.BuzzBookhiveBuzz) {
+        } else if (table === "buzz") {
           const validBuzzes = data.records.flatMap((record) => {
             const parsed = Buzz.validateRecord(record.value);
             return parsed.success ? [{ record, buzz: parsed.value }] : [];
@@ -214,7 +235,7 @@ async function backfillUserRepo(
                 .execute();
             }
           }
-        } else if (collection === ids.SocialPopfeedFeedList) {
+        } else if (table === "book_list") {
           for (const record of data.records) {
             const asList = List.validateRecord(record.value);
             if (!asList.success) continue;
@@ -225,17 +246,13 @@ async function backfillUserRepo(
                 uri: record.uri,
                 cid: record.cid,
                 userDid: did,
-                name: list.name,
-                description: list.description ?? null,
-                ordered: list.ordered ? 1 : 0,
-                tags: list.tags ? JSON.stringify(list.tags) : null,
-                createdAt: list.createdAt,
+                ...listRecordFields(list),
                 indexedAt: now.toISOString(),
               })
-              .onConflict((oc) => oc.column("uri").doNothing())
+              .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
               .execute();
           }
-        } else if (collection === ids.SocialPopfeedFeedListItem) {
+        } else if (table === "book_list_item") {
           for (const record of data.records) {
             const asItem = ListItem.validateRecord(record.value);
             if (!asItem.success) continue;
@@ -316,8 +333,7 @@ export function createIngester(
     createBidirectionalResolverAtcute(),
   );
   const backfilledDids = new Set<string>();
-  let subscription: JetstreamSubscription | null = null;
-  let abortController: AbortController | null = null;
+  let stopStream: (() => Promise<void>) | undefined;
   let destroyed = false;
 
   const BACKFILL_CONCURRENCY = 3;
@@ -329,9 +345,9 @@ export function createIngester(
     },
   });
 
-  function enqueueBackfill(did: string) {
-    if (destroyed) return;
-    backfillSemaphore.run(() => backfillUserRepo(did, db, kv, emitWideEvent)).catch(() => {});
+  async function enqueueBackfill(did: string) {
+    if (destroyed || (await kv.get(BACKFILL_DONE_PREFIX + did))) return;
+    await backfillSemaphore.run(() => backfillUserRepo(did, db, kv, emitWideEvent));
   }
 
   // Log errors from fire-and-forget background operations
@@ -433,11 +449,7 @@ export function createIngester(
           // Proactively backfill full repo for newly-discovered DIDs
           if (isNewDid) {
             backfilledDids.add(evt.did);
-            void kv.get(BACKFILL_DONE_PREFIX + evt.did).then((done) => {
-              if (!done) {
-                enqueueBackfill(evt.did);
-              }
-            });
+            tracked("backfill", evt.did, () => enqueueBackfill(evt.did));
           }
 
           wideEvent["outcome"] = "success";
@@ -518,23 +530,10 @@ export function createIngester(
               uri: evt.uri.toString(),
               cid: evt.cid.toString(),
               userDid: evt.did,
-              name: list.name,
-              description: list.description ?? null,
-              ordered: list.ordered ? 1 : 0,
-              tags: list.tags ? JSON.stringify(list.tags) : null,
-              createdAt: list.createdAt,
+              ...listRecordFields(list),
               indexedAt: now.toISOString(),
             })
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                cid: c.ref("excluded.cid"),
-                name: c.ref("excluded.name"),
-                description: c.ref("excluded.description"),
-                ordered: c.ref("excluded.ordered"),
-                tags: c.ref("excluded.tags"),
-                indexedAt: c.ref("excluded.indexedAt"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
             .execute();
           wideEvent["outcome"] = "success";
           return;
@@ -590,20 +589,7 @@ export function createIngester(
               embeddedCoverUrl: item.posterUrl ?? null,
               identifiers: item.identifiers ? JSON.stringify(item.identifiers) : null,
             })
-            .onConflict((oc) =>
-              oc.column("uri").doUpdateSet((c) => ({
-                cid: c.ref("excluded.cid"),
-                listUri: c.ref("excluded.listUri"),
-                hiveId: c.ref("excluded.hiveId"),
-                description: c.ref("excluded.description"),
-                position: c.ref("excluded.position"),
-                indexedAt: c.ref("excluded.indexedAt"),
-                embeddedTitle: c.ref("excluded.embeddedTitle"),
-                embeddedAuthor: c.ref("excluded.embeddedAuthor"),
-                embeddedCoverUrl: c.ref("excluded.embeddedCoverUrl"),
-                identifiers: c.ref("excluded.identifiers"),
-              })),
-            )
+            .onConflict((oc) => oc.column("uri").doUpdateSet(bookListItemUpsertSet))
             .execute();
           wideEvent["outcome"] = hiveId ? "success" : "success_unresolved";
           return;
@@ -653,82 +639,26 @@ export function createIngester(
     }
   };
 
-  const run = async () => {
-    if (!subscription) return;
-    try {
-      for await (const event of subscription) {
-        if (event.kind !== "commit") continue;
-        const evt = commitToEvent(event.did, event.commit);
-        await handleEvent(evt);
-        // Persist cursor after each processed event
-        void kv.set(JETSTREAM_CURSOR_KEY, String(event.time_us));
-      }
-    } catch (err) {
-      if (err instanceof Error && (err.name === "AbortError" || abortController?.signal.aborted))
-        return;
-      emitWideEvent({
-        msg: "ingester",
-        outcome: "error",
-        error: {
-          message: errorMessage(err),
-          type: err instanceof Error ? err.name : "Error",
-        },
-        timestamp: new Date().toISOString(),
-        env: { node_env: env.NODE_ENV },
-      });
-      setTimeout(() => {
-        if (abortController?.signal.aborted) return;
-        start().catch(() => {});
-      }, 3000);
-    }
-  };
-
-  async function start() {
-    abortController = new AbortController();
-    const storedCursor = await kv.get<string>(JETSTREAM_CURSOR_KEY);
-    const cursor = storedCursor ? Number(storedCursor) : undefined;
-    subscription = new JetstreamSubscription({
-      url: JETSTREAM_URL,
-      wantedCollections: WANTED_COLLECTIONS,
-      cursor,
-      ws: {
-        connectionTimeout: 20_000,
-      },
-      onConnectionError(event) {
-        emitWideEvent({
-          msg: "ingester",
-          outcome: "connection_error",
-          error: {
-            message: event.error instanceof Error ? event.error.message : String(event.error),
-            type: event.error instanceof Error ? event.error.name : "Error",
-          },
-          timestamp: new Date().toISOString(),
-          env: { node_env: env.NODE_ENV },
-        });
-      },
-    });
-    run().catch((err) => {
-      emitWideEvent({
-        msg: "ingester",
-        outcome: "error",
-        error: {
-          message: errorMessage(err),
-          type: err instanceof Error ? err.name : "Error",
-        },
-        timestamp: new Date().toISOString(),
-        env: { node_env: env.NODE_ENV },
-      });
-    });
-  }
-
   return {
-    start: () => void start().catch(() => {}),
+    start() {
+      if (destroyed || stopStream) return;
+      stopStream = startJetstream({
+        kv,
+        options: {
+          url: JETSTREAM_URL,
+          wantedCollections: WANTED_COLLECTIONS,
+          ws: { connectionTimeout: 20_000 },
+        },
+        handleEvent: async (event) => {
+          if (event.kind === "commit") await handleEvent(commitToEvent(event.did, event.commit));
+        },
+        emit: emitWideEvent,
+      });
+    },
     async destroy() {
       destroyed = true;
-      abortController?.abort();
       backfillSemaphore.clearPending("ingester destroyed");
-      subscription = null;
-      abortController = null;
+      await stopStream?.();
     },
   };
 }

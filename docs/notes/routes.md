@@ -55,7 +55,8 @@ OAuth handle resolution.
 
 ### `src/routes/profile.tsx` (mounted at `/`)
 
-- `/refresh-books` → re-sync books from PDS (auth), linked from Settings → Book sync
+- `/refresh-books` → re-sync books and Popfeed shelves/items from PDS (auth), linked from Settings → Book sync. This repairs missed shelf Jetstream events without deleting/recreating the shelf.
+  Both sync operations settle before responding, including on failure; rejected syncs still produce a 500.
 - `/profile` → redirects to `/profile/:handle`
 - `/profile/:handle` → `src/pages/profile.tsx` — profile, shelves, follow counts, lists, genre stats
 - `/profile/:handle/image` → redirect to avatar
@@ -82,6 +83,9 @@ User book lists ("shelves"). Uses **popfeed** lexicons (`social.popfeed.feed.lis
 - GET `/:handle` → user's shelves; GET `/:handle/:rkey` → single shelf
 - GET/POST `/:handle/:rkey/edit`, POST `/:handle/:rkey/delete`
 - POST `/add`, POST `/:handle/:rkey/add`, POST `/:handle/:rkey/remove`
+- POST `/:handle/:rkey/reorder` → validated JSON `{ itemUris }`, owner-only; calls the same
+  `reorderListItems` core as XRPC. Ranked shelves expose inline-JS earlier/later controls with
+  explicit Save/Cancel; failed saves retain the draft and report an inline error.
 
 ### `src/routes/settings.tsx` (mounted at `/settings`)
 

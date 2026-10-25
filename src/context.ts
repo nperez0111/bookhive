@@ -283,20 +283,51 @@ export async function createAppDeps(): Promise<AppDeps> {
     const workerUrl = isBundled
       ? new URL("./workers/ingester-worker.js", import.meta.url).href
       : new URL("./workers/ingester-worker.ts", import.meta.url).href;
-    const ingesterWorker = new Worker(workerUrl);
-    ingesterWorker.onmessage = (event: MessageEvent) => {
-      if (event.data.type === "wideEvent") {
-        logger.info(event.data.payload);
-      } else if (event.data.type === "ready") {
-        logger.info("ingester worker ready");
-      }
+    let stopped = false;
+    let restartTimer: ReturnType<typeof setTimeout> | undefined;
+    let idleTimer: ReturnType<typeof setInterval> | undefined;
+    let ingesterWorker: Worker;
+    const spawnIngester = () => {
+      const worker = new Worker(workerUrl);
+      ingesterWorker = worker;
+      let lastEventAt = Date.now();
+      // Watch from the parent: a wedged worker cannot reliably supervise itself.
+      idleTimer = setInterval(() => {
+        const idleMs = Date.now() - lastEventAt;
+        if (idleMs < 12 * 60 * 60_000) return;
+        clearInterval(idleTimer);
+        logger.error({ idle_ms: idleMs }, "ingester silent for 12 hours; terminating worker");
+        worker.terminate(); // The close handler restarts it with the persisted Jetstream cursor.
+      }, 60_000);
+      worker.onmessage = (event: MessageEvent) => {
+        if (event.data.type === "wideEvent") {
+          // Only actual ingestion events count, not connection/reconciliation log chatter.
+          if (event.data.payload.msg === "ingester" && event.data.payload.event) {
+            lastEventAt = Date.now();
+          }
+          logger.info(event.data.payload);
+        } else if (event.data.type === "ready") {
+          logger.info("ingester worker ready");
+        }
+      };
+      worker.onerror = (event) => {
+        logger.error({ error: event.message }, "ingester worker error");
+        worker.terminate();
+      };
+      worker.addEventListener("close", () => {
+        clearInterval(idleTimer);
+        if (stopped) return;
+        logger.error("ingester worker exited; restarting in 3s");
+        restartTimer = setTimeout(spawnIngester, 3_000);
+      });
     };
-    ingesterWorker.onerror = (event) => {
-      logger.error({ error: event.message }, "ingester worker error");
-    };
+    spawnIngester();
     ingester = {
       start() {},
       destroy() {
+        stopped = true;
+        clearTimeout(restartTimer);
+        clearInterval(idleTimer);
         ingesterWorker.terminate();
         return Promise.resolve();
       },
