@@ -1,65 +1,50 @@
 import { Client } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import lruCacheDriver from "unstorage/drivers/lru-cache";
 import { setIdentityCache } from "../bsky/id-resolver";
 import type { ProfileViewDetailed } from "../types";
-import { readThroughCache } from "../lib/readThroughCache";
 import type { AppContext } from "../context";
-
-/** Public fetch handler for unauthenticated XRPC (e.g. appview). 10s timeout. */
-const publicHandler = {
-  handle: (path: string, init?: RequestInit) =>
-    fetch(new URL(path, "https://public.api.bsky.app").toString(), {
-      ...init,
-      signal: AbortSignal.timeout(10_000),
-    }),
-};
+import { Semaphore, withTimeout } from "../lib/semaphore";
 
 const REVALIDATE_AFTER = 24 * 60 * 60 * 1000;
-const PROFILE_TTL = 30 * 24 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT = 2_500;
+const BATCH_SIZE = 25;
+
+export function createProfileCache() {
+  return lruCacheDriver({ max: 10_000, ttl: 30 * REVALIDATE_AFTER });
+}
+
+type CachedProfile = { profile: ProfileViewDetailed; fetchedAt: number };
+
+// Shared across viewers and requests, not one limiter per batch/page. Hold slots
+// until the actual request settles, even if the caller's deadline wins first.
+const requests = new Semaphore(3, {
+  label: "profile fetch",
+  maxPending: 12,
+  acquireTimeoutMs: 500,
+});
+const inFlight = new WeakMap<AppContext["kv"], Map<string, Promise<ProfileViewDetailed | null>>>();
+const publicClient = new Client({
+  handler: (path, init) => fetch(new URL(path, "https://public.api.bsky.app"), init),
+});
 
 function profileCacheKey(targetDid: string, viewerDid: string | null): string {
   return viewerDid ? "profile:" + viewerDid + ":" + targetDid : "profile:pub:" + targetDid;
 }
+
+type ProfileContext = Pick<AppContext, "kv" | "getSessionAgent"> &
+  Partial<Pick<AppContext, "getSessionDid">>;
 
 export async function getProfile({
   ctx,
   did,
   publicOnly,
 }: {
-  ctx: AppContext;
+  ctx: ProfileContext;
   did: string;
   publicOnly?: boolean;
 }): Promise<ProfileViewDetailed | null> {
-  const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
-  const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
-  const cacheKey = profileCacheKey(did, sessionClient?.did ?? null);
-  const profile = await readThroughCache<ProfileViewDetailed | null>(
-    ctx.kv,
-    cacheKey,
-    async () => {
-      try {
-        const actorParam = did as ActorIdentifier;
-        const res = sessionClient
-          ? await sessionClient.get("app.bsky.actor.getProfile", {
-              params: { actor: actorParam },
-              headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
-            })
-          : await client.get("app.bsky.actor.getProfile", {
-              params: { actor: actorParam },
-            });
-        const profile = res.ok ? (res.data as ProfileViewDetailed) : null;
-        if (profile?.did && profile?.handle) {
-          await setIdentityCache(ctx.kv, profile.did, profile.handle);
-        }
-        return profile;
-      } catch {
-        return null;
-      }
-    },
-    undefined,
-    { revalidateAfter: REVALIDATE_AFTER, ttl: PROFILE_TTL },
-  );
-  return profile;
+  return (await getProfiles({ ctx, dids: [did], publicOnly }))[0] ?? null;
 }
 
 export async function getProfiles({
@@ -67,82 +52,104 @@ export async function getProfiles({
   dids,
   publicOnly,
 }: {
-  // Narrowed so callers holding a partial context can pass it directly rather than casting.
-  ctx: Pick<AppContext, "kv" | "getSessionAgent">;
+  ctx: ProfileContext;
   dids: string[];
   publicOnly?: boolean;
 }): Promise<ProfileViewDetailed[]> {
   dids = Array.from(new Set(dids));
-  const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
-  const client = sessionClient ? sessionClient : new Client({ handler: publicHandler });
-  const viewerDid = sessionClient?.did ?? null;
-
-  const now = Date.now();
+  if (dids.length === 0) return [];
+  // Request contexts can identify the viewer from the cookie without restoring OAuth.
+  const viewerDid = publicOnly
+    ? null
+    : ctx.getSessionDid
+      ? await ctx.getSessionDid()
+      : ((await ctx.getSessionAgent())?.did ?? null);
+  let pending = inFlight.get(ctx.kv);
+  if (!pending) {
+    pending = new Map();
+    inFlight.set(ctx.kv, pending);
+  }
   const entries = await Promise.all(
     dids.map(async (did) => {
       const key = profileCacheKey(did, viewerDid);
-      const [value, meta] = await Promise.all([
-        ctx.kv.get<ProfileViewDetailed | null>(key),
-        ctx.kv.getMeta(key),
-      ]);
-      const timestamp = meta && typeof meta["timestamp"] === "number" ? meta["timestamp"] : null;
-      const age = timestamp !== null ? now - timestamp : Infinity;
-      const isFresh = value !== null && timestamp !== null && age < REVALIDATE_AFTER;
-      const isStale =
-        value !== null && timestamp !== null && age >= REVALIDATE_AFTER && age < PROFILE_TTL;
-      return { did, key, value, isFresh, isStale };
+      const cached = await ctx.kv.get<CachedProfile>(key);
+      return {
+        did,
+        key,
+        value: cached?.profile ?? null,
+        refresh: !cached || Date.now() - cached.fetchedAt >= REVALIDATE_AFTER,
+      };
     }),
   );
 
-  const fetchDids = entries.filter((e) => !e.isFresh).map((e) => e.did);
-
-  if (fetchDids.length > 0) {
-    try {
-      const BATCH_SIZE = 25;
-      const batches: ActorIdentifier[][] = [];
-      for (let i = 0; i < fetchDids.length; i += BATCH_SIZE) {
-        batches.push(fetchDids.slice(i, i + BATCH_SIZE) as ActorIdentifier[]);
-      }
-      const results = await Promise.all(
-        batches.map((batch) =>
-          sessionClient
-            ? sessionClient.get("app.bsky.actor.getProfiles", {
-                params: { actors: batch },
-                headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
-              })
-            : client.get("app.bsky.actor.getProfiles", {
-                params: { actors: batch },
-              }),
-        ),
-      );
-      const fetchedProfiles = results.flatMap((res) =>
-        res.ok ? (res.data as { profiles: ProfileViewDetailed[] }).profiles : [],
-      );
-
-      for (const entry of entries) {
-        if (!entry.isFresh && entry.value === null) {
-          entry.value = fetchedProfiles.find((f) => f.did === entry.did) ?? null;
+  const refresh = entries.filter((entry) => entry.refresh && !pending.has(entry.key));
+  for (let i = 0; i < refresh.length; i += BATCH_SIZE) {
+    const batch = refresh.slice(i, i + BATCH_SIZE);
+    const work = (async () => {
+      try {
+        const sessionClient = publicOnly ? null : await ctx.getSessionAgent();
+        // A stale cookie/failed restore must never populate the viewer's cache
+        // with a public response (or another viewer's relationship state).
+        if ((sessionClient?.did ?? null) !== viewerDid) {
+          const profiles = await getProfiles({
+            ctx,
+            dids: batch.map((entry) => entry.did),
+            publicOnly: true,
+          });
+          return new Map(profiles.map((profile) => [profile.did, profile]));
         }
+        const client = sessionClient ?? publicClient;
+        const response = await withTimeout(
+          requests.run(() =>
+            client.get("app.bsky.actor.getProfiles", {
+              params: { actors: batch.map((entry) => entry.did) as ActorIdentifier[] },
+              ...(sessionClient
+                ? { headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" } }
+                : {}),
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+            }),
+          ),
+          REQUEST_TIMEOUT + 500,
+          "profile fetch",
+        );
+        if (!response.ok) throw new Error("Profile request failed");
+        const profiles = new Map<string, ProfileViewDetailed>(
+          (response.data as { profiles: ProfileViewDetailed[] }).profiles.map((profile) => [
+            profile.did,
+            profile,
+          ]),
+        );
+        await Promise.all(
+          batch.map(async (entry) => {
+            const profile = profiles.get(entry.did) ?? null;
+            if (!profile) {
+              await ctx.kv.remove(entry.key);
+              return;
+            }
+            // Value and freshness share one LRU entry, not independently evictable metadata.
+            await ctx.kv.set(entry.key, { profile, fetchedAt: Date.now() });
+            if (profile?.did && profile.handle) {
+              await setIdentityCache(ctx.kv, profile.did, profile.handle).catch(() => {});
+            }
+          }),
+        );
+        return profiles;
+      } catch {
+        return new Map<string, ProfileViewDetailed>();
       }
-
-      const writeTimestamp = Date.now();
-      Promise.all(
-        fetchedProfiles.flatMap((p) => {
-          const key = profileCacheKey(p.did, viewerDid);
-          return [ctx.kv.set(key, p), ctx.kv.setMeta(key, { timestamp: writeTimestamp })];
-        }),
-      ).catch(() => {});
-      await Promise.all(
-        fetchedProfiles
-          .filter((p) => p.did && p.handle)
-          .map((p) => setIdentityCache(ctx.kv, p.did!, p.handle!)),
-      );
-    } catch {
-      // Timeout or network failure — return whatever we had cached.
+    })();
+    for (const entry of batch) {
+      const result = work
+        .then((profiles) => profiles.get(entry.did) ?? null)
+        .finally(() => pending.delete(entry.key));
+      pending.set(entry.key, result);
     }
   }
 
-  return entries
-    .filter((e): e is typeof e & { value: ProfileViewDetailed } => e.value !== null)
-    .map((e) => e.value);
+  // Stale readers never join the refresh promise, including one started by a
+  // simultaneous cold/single-profile reader. Only genuine misses wait.
+  const values = await Promise.all(
+    entries.map(async (entry) => entry.value ?? pending.get(entry.key) ?? null),
+  );
+  return values.filter((value): value is ProfileViewDetailed => value !== null);
 }

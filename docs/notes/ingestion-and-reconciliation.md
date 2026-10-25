@@ -18,14 +18,24 @@ replacement and cursor replay. This is a best-effort mirror, not a durable event
 
 - Errors and unexpected iterator completion reconnect after 3 seconds. Socket reconnects are also
   handled by the subscription library. Short quiet periods on the filtered stream are left alone.
-- Checkpoints are awaited, in order, after commit handling. Reconnection reads the saved KV
-  `jetstream:cursor`, never the subscription's receive cursor (which can be ahead of DB writes).
-- **Returning the installed EventIterator closes its socket but leaves a pending `next()`
-  unresolved.** Explicitly cancel the pending read on close; `return()` alone leaves shutdown
-  stuck forever. Tests deliberately reproduce that behavior.
-- Existing structured logs carry `reconnecting`, `connecting` (`cursor`, `resume_lag_ms`), and
-  connection/stream errors. Cursor age is context, not a failure threshold; no separate health
-  endpoint or heartbeat protocol is introduced.
+- `@atcute/jetstream@2.2.0` uses the v2 `subscribeEvents` API with `kinds: ["commit"]` and the
+  four BookHive/Popfeed collection filters. Flat commit payloads feed the existing mirror handler.
+- `CursorStore.save` awaits the KV checkpoint with `cursorSaveInterval: 0` (every handled event).
+  The library acknowledges a yielded event only when the consumer requests the next event, after
+  the awaited handler succeeds. Returning the iterator after a handler failure skips that
+  acknowledgement; shutdown during handling can conservatively replay the last handled event.
+  Both outer retries and library-managed socket reconnects load KV `jetstream:v2:<host>:cursor`,
+  never the socket's ahead-of-DB receive cursor. Delivery remains at-least-once; replayed sequence
+  overlap is deduplicated by the client.
+- V2 sequences are instance-specific, so the service is pinned to
+  `wss://jetstream2.us-east.bsky.network`, not a randomized host pool. Changing the host starts
+  fresh unless that host already has its own saved sequence.
+- **Abort the subscription before returning its iterator.** `return()` alone cannot interrupt
+  a pending async-generator `next()`; its AbortSignal closes the socket and settles that read.
+  The lifecycle also explicitly cancels its pending read, with regression tests for quiet shutdown.
+- Existing structured logs carry `reconnecting`, `connecting` (`service`, sequence `cursor`),
+  stream advisories (`stream_info`) and connection/stream errors. Sequences are not timestamps;
+  there is no `resume_lag_ms` calculation or new heartbeat protocol.
 - `src/context.ts` restarts an exited/errored ingester worker after 3 seconds. Shutdown cancels
   that restart. Only the primary web process owns this worker.
 - The parent checks once per minute for **12 hours without an ingestion event**, measured from
@@ -33,6 +43,26 @@ replacement and cursor replay. This is a best-effort mirror, not a durable event
   and backfill logs do not count. It logs `idle_ms`, terminates the worker and lets the same
   close/restart path replace it. Watching from the parent also covers a blocked worker event loop.
   Restart resumes the persisted cursor through normal Jetstream replay, not a PDS scan.
+
+## V1 → V2 cutover: deliberately start at the live tip
+
+The October 25 audit counted 4,281 `invalid_event` messages for missing `identity.handle`.
+Jetstream permits that field to be omitted, but the legacy `@atcute/jetstream` schema required it
+(upstream issue: https://github.com/mary-ext/atcute/issues/91). V2 uses its own lexicon schemas and
+requests only commits; the temporary v1 Bun patch is removed. Envelope validation remains enabled,
+and BookHive records still pass their separate book/buzz/list/item lexicon validation.
+
+The old `jetstream:cursor` timestamp is left untouched and **never passed to the v2 client**.
+With no saved v2 sequence, omit the wire cursor and start at the live tip, not historical replay.
+The user explicitly accepted the possible one-time gap between the final v1 checkpoint and the
+first v2 connection. There is no timestamp-to-sequence bootstrap or automatic history backfill.
+After that, reconnects resume the saved v2 sequence. Settings → Book sync remains the repair path.
+
+Do not try to reuse a timestamp with `subscribeEvents@2.2.0`: the server can translate it, but the
+client also uses it as its local sequence floor and silently skips smaller real sequence numbers.
+`src/bsky/jetstream.test.ts` also drives the installed v2 client over a local WebSocket,
+checking the JSON subprotocol, filters, malformed-event rejection, separate record validation,
+durable sequence replay and socket reconnects independently of the lifecycle unit tests.
 
 ## One-time discovery backfill (`src/bsky/ingester.ts`)
 

@@ -38,7 +38,7 @@ routes │ xrpc │ pages │ client │ middleware        (transports & view)
 | Layer           | May import                              | Contents                                                                                                                                                                                                                                                                                                                                         |
 | --------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/lib/`      | nothing of ours                         | `semaphore` `circuitBreaker` `readThroughCache` `batchTransform` `lazy` `pagination` `dateInput` `xml` `htmlToText` `formatBytes` `formatCount` `viewTransitionName` `buildUrl` `contentDisposition` `errors` `manifest`                                                                                                                         |
-| `src/core/`     | `lib`, `types`, `constants`             | `authors` `rating` `hiveId` `bookProgress` `bookMeta` `userBookView` `imageUrl` `filenameMatching` `bookMatching` `downloadFilename` `importBook` `csv` `ftsQuery` `cacheHeaders` `generateInitialsAvatar` `bookLifecycle` `readingYear` `enrichVerdict` `bookMetadata/` `listRecord`                                                            |
+| `src/core/`     | `lib`, `types`, `constants`             | `authors` `rating` `hiveId` `bookProgress` `bookMeta` `userBookView` `imageUrl` `goodreadsCoverUrl` `filenameMatching` `bookMatching` `downloadFilename` `importBook` `csv` `ftsQuery` `cacheHeaders` `generateInitialsAvatar` `bookLifecycle` `readingYear` `enrichVerdict` `bookMetadata/` `listRecord`                                        |
 | `src/data/`     | `core`, `lib`, `db`                     | `activityFeed` `activeUsers` `authorStats` `communityStats` `exploreGenres` `readingStats` `catalogBooks` `personalBooks` `personalLibrary` `syncDocuments` `syncMatching` `syncBridge` `bookIdentifiers` `enrichQueue` `hiveBookGenres` `getLanguages` `dbExport` `bookDetail` `profileSummary` `socialCards` `landingHighlights` `userShelves` |
 | `src/services/` | all of the above + workers/scrapers/PDS | `getBook` `userBookStore` `bookRecordWrite` `userBookFollowUp` `buzzWrite` `followGraph` `lists` `getFollows` `getProfile` `deleteAccount` `catalogBookService` `ensureBookCataloged` `uploadImageBlob` `uploadPersonalBook` `convertToEpub` `enrichBookData` `searchBooks`                                                                      |
 
@@ -49,7 +49,9 @@ filesystem (splitting "where the file is" from "which bytes we serve" would undo
 
 `imageProxy` is the shape to copy when splitting a file like this: URL builders live in
 `core/imageUrl.ts`, the `Response`-building proxy in `routes/imageProxy.ts` next to its only caller
-— most importers only ever wanted the URL builders.
+— most importers only ever wanted the URL builders. `core/goodreadsCoverUrl.ts` owns the narrow
+Goodreads source-filename repair shared by scraper ingestion and proxy reads; it has no signing
+keys, network access, or database writes. See `docs/notes/enrichment-and-scraping.md`.
 
 **`mock.module()` paths are strings, so a directory move doesn't update them** — grep for stale
 `mock.module("../../utils/...")` paths after any move; failures surface in unrelated files that
@@ -91,7 +93,11 @@ name — full stories in the linked `docs/notes/*.md`.
 | File                             | Note                                                                                                                          |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `services/getBook.ts`            | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
-| `bsky/jetstream.ts`              | Stream lifecycle and saved-cursor replay — `ingestion-and-reconciliation.md`                                                  |
+| `bsky/jetstream.ts`              | Jetstream v2 lifecycle, per-instance sequence replay and live-tip cutover — `ingestion-and-reconciliation.md`                 |
+| `services/getProfile.ts`         | Single/batch/self-profile unstorage LRU + viewer-isolated SWR; cookie-only hits and bounded refresh — `data-and-caching.md`   |
+| `pds/repoCache.ts`               | Public repository directory SWR, whole-traversal deadline and singleton transport guard — `data-and-caching.md`               |
+| `data/catalogBooks.ts`           | Genre pages select ordered IDs using the covering stats index before hydration — `data-and-caching.md`                        |
+| `scrapers/waf/solver-worker.ts`  | Worker solve logic; `protocol.ts` validates envelopes — `src/scrapers/waf/README.md`                                          |
 | `services/userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
 | `services/bookRecordWrite.ts`    | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
 | `services/userBookFollowUp.ts`   | Deferred cover-blob upload + `hiveBookUri` patch after the response; CAS'd, 3 re-apply attempts on conflict                   |

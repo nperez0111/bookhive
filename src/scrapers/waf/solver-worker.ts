@@ -7,10 +7,11 @@
 /// `solver.ts`). The CPU-bound proof-of-work is why this is a Worker at all.
 
 import { createCipheriv, randomBytes, createHash, scryptSync } from "crypto";
+import { isMainThread } from "node:worker_threads";
 import { doExtract } from "./deobfuscate";
 import { apiHeaders, boundedText, MAX_CHALLENGE_SCRIPT_BYTES } from "./http";
-import type { SerializedConfig, WafRequest, WafResult } from "./messages";
-import { errorMessage } from "../../lib/errors";
+import type { SerializedConfig, SolveDiagnostics, WafRequest, WafResult } from "./messages";
+import { parseInputs, parseToken, readProtocolJson, WafProtocolError } from "./protocol";
 
 declare var self: Worker;
 
@@ -47,12 +48,6 @@ interface CryptoConfig {
 
 const RE_CHAL_SRC = /src="(https:\/\/[^"]+)\/challenge\.js[^"]*"/;
 const RE_GOKU = /window\.gokuProps\s*=\s*(\{[^}]+\})/;
-
-const ENDPOINT: Record<string, string> = {
-  HashcashScrypt: "verify",
-  SHA256: "verify",
-  NetworkBandwidth: "mp_verify",
-};
 
 const BWDTH_SIZES: Record<number, number> = {
   1: 1024,
@@ -165,7 +160,7 @@ function solveScrypt(
 }
 
 function solveBandwidth(difficulty: number): string {
-  const sz = BWDTH_SIZES[difficulty] ?? 1024;
+  const sz = BWDTH_SIZES[difficulty]!;
   return Buffer.alloc(sz, 0).toString("base64");
 }
 
@@ -389,8 +384,10 @@ async function fetchChallengeScript(
   challengeBaseUrl: string,
   site: string,
   ua: string,
+  fetchImpl: typeof fetch,
+  diagnostics: SolveDiagnostics,
 ): Promise<string> {
-  const resp = await fetch(`${challengeBaseUrl}/challenge.js`, {
+  const resp = await fetchImpl(`${challengeBaseUrl}/challenge.js`, {
     headers: {
       ...apiHeaders(site, ua, false),
       "sec-fetch-dest": "script",
@@ -398,7 +395,11 @@ async function fetchChallengeScript(
     },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!resp.ok) throw new Error(`Failed to fetch challenge.js: ${resp.status}`);
+  diagnostics.status = resp.status;
+  if (!resp.ok) {
+    await resp.body?.cancel().catch(() => {});
+    throw new WafProtocolError("waf_challenge_script_http_error", { ...diagnostics });
+  }
   return boundedText(resp, MAX_CHALLENGE_SCRIPT_BYTES, "challenge_js");
 }
 
@@ -411,7 +412,10 @@ async function solveRound(
   goku: Record<string, any> | null,
   hasToken: boolean,
   ua: string,
+  fetchImpl: typeof fetch,
+  diagnostics: SolveDiagnostics,
 ): Promise<string | null> {
+  diagnostics.stage = "signals";
   const hdrs = apiHeaders(site, ua, false);
 
   const signals = buildSignals(ua, config.signalVersion);
@@ -420,76 +424,69 @@ async function solveRound(
   const encrypted = encryptSignals(encoded, config.key);
   const metrics = buildMetrics(hasToken);
 
-  const inputsResp = await fetch(`${config.challengeBaseUrl}/inputs?client=browser`, {
+  diagnostics.stage = "inputs";
+  const inputsResp = await fetchImpl(`${config.challengeBaseUrl}/inputs?client=browser`, {
     headers: hdrs,
     signal: AbortSignal.timeout(10_000),
   });
-  const inputs = (await inputsResp.json()) as any;
-  const challenge = inputs.challenge;
-  const decoded = JSON.parse(Buffer.from(challenge.input, "base64").toString());
-  const ctype = decoded.challenge_type ?? "";
-  const difficulty = decoded.difficulty ?? 1;
-  const memory = decoded.memory ?? 128;
+  const inputs = await readProtocolJson(inputsResp, diagnostics);
+  diagnostics.stage = "challenge";
+  const { challenge, type: ctype, difficulty, memory, endpoint } = parseInputs(inputs, diagnostics);
+  diagnostics.stage = "proof_of_work";
 
-  const endpoint = ENDPOINT[ctype] ?? "verify";
-
-  let solution: string;
+  const bandwidth = ctype === "NetworkBandwidth";
+  const solution = bandwidth
+    ? solveBandwidth(difficulty)
+    : ctype === "SHA256"
+      ? solveSHA256(challenge.input, checksum, difficulty)
+      : solveScrypt(challenge.input, checksum, difficulty, memory);
+  const metadata = {
+    challenge,
+    solution: bandwidth ? null : solution,
+    signals: [{ name: config.identifier, value: { Present: encrypted } }],
+    checksum,
+    existing_token: null,
+    client: "Browser",
+    domain,
+    metrics,
+    ...(goku ? { goku_props: goku } : {}),
+  };
   let body: string;
   let contentType: string;
 
-  if (ctype === "NetworkBandwidth") {
-    solution = solveBandwidth(difficulty);
+  if (bandwidth) {
     const boundary = "----WebKitFormBoundary" + randomBytes(8).toString("hex");
-    const meta = {
-      challenge,
-      solution: null,
-      signals: [{ name: config.identifier, value: { Present: encrypted } }],
-      checksum,
-      existing_token: null,
-      client: "Browser",
-      domain,
-      metrics,
-      ...(goku ? { goku_props: goku } : {}),
-    };
     body = [
       `--${boundary}\r\nContent-Disposition: form-data; name="solution_data"\r\n\r\n${solution}`,
-      `--${boundary}\r\nContent-Disposition: form-data; name="solution_metadata"\r\n\r\n${JSON.stringify(meta)}`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="solution_metadata"\r\n\r\n${JSON.stringify(metadata)}`,
       `--${boundary}--\r\n`,
     ].join("\r\n");
     contentType = `multipart/form-data; boundary=${boundary}`;
   } else {
-    solution =
-      ctype === "SHA256"
-        ? solveSHA256(challenge.input, checksum, difficulty)
-        : solveScrypt(challenge.input, checksum, difficulty, memory);
-    body = JSON.stringify({
-      challenge,
-      solution,
-      signals: [{ name: config.identifier, value: { Present: encrypted } }],
-      checksum,
-      existing_token: null,
-      client: "Browser",
-      domain,
-      metrics,
-      ...(goku ? { goku_props: goku } : {}),
-    });
+    body = JSON.stringify(metadata);
     contentType = "text/plain;charset=UTF-8";
   }
 
-  const postResp = await fetch(`${config.challengeBaseUrl}/${endpoint}`, {
+  diagnostics.stage = "verify";
+  delete diagnostics.status;
+  delete diagnostics.contentType;
+  delete diagnostics.bodyBytes;
+  const postResp = await fetchImpl(`${config.challengeBaseUrl}/${endpoint}`, {
     method: "POST",
     headers: { ...hdrs, "content-type": contentType },
     body,
     signal: AbortSignal.timeout(15_000),
   });
 
-  const result = (await postResp.json()) as any;
-  return result.token ?? result.response?.token ?? null;
+  return parseToken(await readProtocolJson(postResp, diagnostics), diagnostics);
 }
 
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
-async function handle(req: WafRequest): Promise<Omit<WafResult, "id">> {
+export async function solveChallenge(
+  req: WafRequest,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Omit<WafResult, "id">> {
   const { challengeHtml, site, domain, ua } = req;
   let config: CryptoConfig | null = req.config ? deserializeConfig(req.config) : null;
   let challengeJsUrl = req.challengeJsUrl;
@@ -497,41 +494,60 @@ async function handle(req: WafRequest): Promise<Omit<WafResult, "id">> {
     config: config ? serializeConfig(config) : null,
     challengeJsUrl,
   });
+  let diagnostics: SolveDiagnostics = { stage: "discovery" };
+  try {
+    // 1. The main thread already has the challenge interstitial, so parse it
+    //    directly rather than re-requesting the page just to see it again.
+    const { challengeBaseUrl, goku } = parseChallengePage(challengeHtml);
 
-  // 1. The main thread already has the challenge interstitial, so parse it
-  //    directly rather than re-requesting the page just to see it again.
-  const { challengeBaseUrl, goku } = parseChallengePage(challengeHtml);
+    // 2. Ensure crypto config (re-extract only when challenge.js changes).
+    if (!config || challengeJsUrl !== challengeBaseUrl) {
+      diagnostics.stage = "challenge_script";
+      const script = await fetchChallengeScript(challengeBaseUrl, site, ua, fetchImpl, diagnostics);
+      diagnostics.stage = "crypto_config";
+      config = extractCryptoConfig(script, challengeBaseUrl);
+      challengeJsUrl = challengeBaseUrl;
+    }
 
-  // 2. Ensure crypto config (re-extract only when challenge.js changes).
-  if (!config || challengeJsUrl !== challengeBaseUrl) {
-    const script = await fetchChallengeScript(challengeBaseUrl, site, ua);
-    config = extractCryptoConfig(script, challengeBaseUrl);
-    challengeJsUrl = challengeBaseUrl;
+    // 3. Solve. Two rounds: the WAF sometimes withholds a token on a first,
+    //    tokenless attempt and issues one on the retry.
+    for (let round = 0; round < 2; round++) {
+      // Each round gets fresh transport metadata; do not attribute a failed GET
+      // to the previous round's successful POST.
+      diagnostics = { stage: "signals", round: round + 1 };
+      const token = await solveRound(
+        config,
+        domain,
+        site,
+        goku,
+        round > 0,
+        ua,
+        fetchImpl,
+        diagnostics,
+      );
+      if (token) return { token, ...cached(), diagnostics };
+    }
+
+    return { token: null, ...cached(), failure: "waf_solve_failed", diagnostics };
+  } catch (error) {
+    return {
+      token: null,
+      ...cached(),
+      failure:
+        error instanceof WafProtocolError ? error.failure : `waf_${diagnostics.stage}_failed`,
+      diagnostics: error instanceof WafProtocolError ? error.diagnostics : { ...diagnostics },
+    };
   }
-
-  // 3. Solve. Two rounds: the WAF sometimes withholds a token on a first,
-  //    tokenless attempt and issues one on the retry.
-  for (let round = 0; round < 2; round++) {
-    const token = await solveRound(config, domain, site, goku, round > 0, ua);
-    if (token) return { token, ...cached() };
-  }
-
-  return { token: null, ...cached(), failure: "waf_solve_failed" };
 }
 
-// Every reply carries the request id so a late reply from a worker the caller
-// already gave up on can never be mistaken for the answer to a new request.
-self.onmessage = async (event: MessageEvent<WafRequest>) => {
-  const req = event.data;
-  try {
-    self.postMessage({ ...(await handle(req)), id: req.id } satisfies WafResult);
-  } catch (error) {
+// Bun defines `self` on the main thread too. Register only in the worker so
+// tests can import the injectable solver without installing a global handler.
+if (!isMainThread) {
+  // Every reply carries the request id so late replies cannot answer a new solve.
+  self.onmessage = async (event: MessageEvent<WafRequest>) => {
     self.postMessage({
-      id: req.id,
-      token: null,
-      config: req.config,
-      challengeJsUrl: req.challengeJsUrl,
-      error: errorMessage(error),
+      ...(await solveChallenge(event.data)),
+      id: event.data.id,
     } satisfies WafResult);
-  }
-};
+  };
+}

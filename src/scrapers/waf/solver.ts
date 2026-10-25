@@ -16,15 +16,14 @@
 /// No circuit breaker here — one existed before and caused an incident by
 /// refusing traffic that still worked; do not re-add it. See `README.md`.
 ///
-/// Solving is *currently* futile from this host: AWS WAF refuses every token
-/// minted from our egress IP, while the identical code from a residential IP
-/// gets through. That is a reputation problem, not a crypto problem, and it may
-/// recover — hence a cheap periodic attempt rather than deleting the solver.
+/// Historical IP-reputation failures and newer protocol-decoder failures are
+/// distinct; stage diagnostics distinguish them. See README.md. Neither can
+/// justify gating the plain page fetch.
 
 import { classifyFetch, WAF_ACTION_HEADER, type FetchOutcome } from "./classify";
 import { boundedText, MAX_PAGE_BYTES, navHeaders, UA } from "./http";
 import { NEXT_DATA_MARKER } from "./pageMarker";
-import type { SerializedConfig, WafRequest, WafResult } from "./messages";
+import type { SerializedConfig, SolveDiagnostics, WafRequest, WafResult } from "./messages";
 import { errorMessage } from "../../lib/errors";
 import { deferVerdict, verdictFields } from "../../core/enrichVerdict";
 
@@ -56,7 +55,9 @@ let lastSolveAttemptAt = 0;
 let lastSolveOutcome: string | null = null;
 
 /** Why we don't have a token for this challenge — or that we do. */
-type SolveResult = { token: string; reason: "solved" } | { token: null; reason: string };
+type SolveResult = ({ token: string; reason: "solved" } | { token: null; reason: string }) & {
+  diagnostics?: SolveDiagnostics;
+};
 
 /** The one and only in-flight solve. Concurrent challenged fetches await this
  *  rather than each spawning a Worker — which is also the memory bound that
@@ -177,8 +178,13 @@ function ensureWafToken(
         cachedConfig = result.config;
         cachedChallengeJsUrl = result.challengeJsUrl;
       }
-      if (result.token) return { token: result.token, reason: "solved" };
-      return { token: null, reason: result.failure ?? result.error ?? "no_token" };
+      if (result.token)
+        return { token: result.token, reason: "solved", diagnostics: result.diagnostics };
+      return {
+        token: null,
+        reason: result.failure ?? result.error ?? "no_token",
+        diagnostics: result.diagnostics,
+      };
     })
     .catch(
       (error): SolveResult => ({
@@ -275,6 +281,7 @@ export async function fetchGoodreadsViaWaf(
     options.ua ?? UA,
     options.solveImpl ?? runSolveWorker,
   );
+  if (solve.diagnostics) addCtx({ scrape_solve_diagnostics: solve.diagnostics });
   if (!solve.token) {
     addCtx({
       ...verdictFields(deferVerdict("waf_challenged")),

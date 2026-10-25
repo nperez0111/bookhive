@@ -87,6 +87,51 @@ export async function listBooksByAuthor({
   return finish(books, count?.count, page, pageSize);
 }
 
+/** ID-only page selection, exported so plan tests exercise the live SQL. */
+export function buildGenreBookIdsQuery({
+  genre,
+  sort,
+  language,
+  q,
+  limit,
+  offset,
+}: {
+  genre: string;
+  sort: CatalogSort;
+  language?: string | undefined;
+  q?: string | undefined;
+  limit: number;
+  offset: number;
+}) {
+  const pattern = q ? `%${q}%` : null;
+  // With no substring predicate, all referenced book columns are in migration
+  // 024's small covering index. The no-ANALYZE planner otherwise chooses the
+  // UNIQUE id index and reads a wide table row for every genre candidate.
+  // q needs rawTitle/authors, so let that path use the normal table lookup.
+  const index = pattern ? sql`` : sql`INDEXED BY idx_hive_book_stats`;
+  const filter = pattern
+    ? sql`AND (hive_book.rawTitle LIKE ${pattern} OR hive_book.authors LIKE ${pattern})`
+    : sql``;
+  const preferredLanguage = language ? sql`${languagePreference(language)} ASC, ` : sql``;
+  // Lower genre rowid means earlier scrape insertion. UNIQUE (hiveId, genre)
+  // guarantees one row per book; keep ASC, even when a language is preferred.
+  const ordering =
+    sort === "relevance"
+      ? sql`hive_book_genre.rowid ASC`
+      : sort === "reviews"
+        ? sql`hive_book.rating DESC, hive_book.ratingsCount DESC`
+        : sql`hive_book.ratingsCount DESC, hive_book.rating DESC`;
+
+  return sql<{ id: HiveId }>`
+    SELECT hive_book.id
+    FROM hive_book ${index}
+    JOIN hive_book_genre ON hive_book.id = hive_book_genre.hiveId
+    WHERE hive_book_genre.genre = ${genre} ${filter}
+    ORDER BY ${preferredLanguage}${ordering}, hive_book.id ASC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+}
+
 export async function listBooksByGenre({
   db,
   genre,
@@ -119,33 +164,6 @@ export async function listBooksByGenre({
   }) =>
     eb.or([eb("hive_book.rawTitle", "like", pattern!), eb("hive_book.authors", "like", pattern!)]);
 
-  let dataQuery = db
-    .selectFrom("hive_book")
-    .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
-    .where("hive_book_genre.genre", "=", genre)
-    .selectAll("hive_book")
-    .$if(Boolean(pattern), (qb) => qb.where(matchesQ))
-    .$if(Boolean(language), (qb) => qb.orderBy(languagePreference(language!), "asc"));
-
-  switch (sort) {
-    case "relevance":
-      // Lower rowid ≈ earlier in the scraped genre list (syncHiveBookGenres
-      // insert order). The UNIQUE (hiveId, genre) index guarantees exactly one
-      // joined row per book, so the joined row's rowid is the ordering key —
-      // no correlated subquery needed.
-      dataQuery = dataQuery.orderBy(sql`hive_book_genre.rowid`, "asc");
-      break;
-    case "reviews":
-      dataQuery = dataQuery
-        .orderBy("hive_book.rating", "desc")
-        .orderBy("hive_book.ratingsCount", "desc");
-      break;
-    default:
-      dataQuery = dataQuery
-        .orderBy("hive_book.ratingsCount", "desc")
-        .orderBy("hive_book.rating", "desc");
-  }
-
   // Without `q` the count is index-only on `hive_book_genre`. With it the
   // filter names `hive_book` columns, so the count has to join — but it must
   // match the data query's predicate exactly or the pager lies about the last
@@ -162,10 +180,20 @@ export async function listBooksByGenre({
         .select(sql<number>`COUNT(*)`.as("count"))
         .where("hive_book_genre.genre", "=", genre);
 
-  const [count, books] = await Promise.all([
+  const [count, selected] = await Promise.all([
     countQuery.executeTakeFirst(),
-    dataQuery.orderBy("hive_book.id", "asc").limit(pageSize).offset(queryOffset).execute(),
+    buildGenreBookIdsQuery({
+      genre,
+      sort,
+      language,
+      q,
+      limit: pageSize,
+      offset: queryOffset,
+    }).execute(db),
   ]);
+  // Never sort/hydrate wide descriptions and metadata for the entire genre.
+  // Language preference was applied before LIMIT, so only preserve this order.
+  const books = await hydrateSearchResults({ db, ids: selected.rows.map(({ id }) => id) });
 
   return finish(books, count?.count, page, pageSize);
 }

@@ -43,6 +43,63 @@ Don't "clean up" the hint, and don't reach for `ANALYZE` instead — it would re
 an app whose indexes were all tuned against the no-stats planner. `src/data/authorStats.test.ts`
 asserts the plans.
 
+## Genre pages select IDs before hydrating full rows
+
+`data/catalogBooks.ts`'s `listBooksByGenre` first selects ordered page IDs and then hydrates only
+that page. Without a substring `q`, the ID query explicitly uses `idx_hive_book_stats` for a
+covering lookup: simply selecting IDs without the hint still reads wide table rows on the
+no-`ANALYZE` planner. With `q`, `rawTitle`/`authors` require a table lookup, so that path keeps
+the normal planner but still avoids sorting full descriptions/metadata. The count predicate
+must match the selected IDs. Preserve language preference before LIMIT, the final unique ID
+tie-breaker, and relevance's genre-rowid **ascending** order (earlier ingestion, not newest).
+
+One-off audit experiment (not a checked-in benchmark): 350k synthetic books, 1,683MiB migrated
+SQLite DB, 8MiB SQLite cache, mmap off,
+no `ANALYZE`, warm OS cache, median of three SQLite-cache-reset runs. Old popularity query versus
+the complete new helper (count, IDs, hydration): Fiction 1507ms → 70ms, Fantasy 300ms → 30ms,
+Contemporary 220ms → 22ms. These are local measurements, not verified production latency gains.
+No new index or query-result cache is required; scheduling synchronous SQL in the background
+would still block the same worker.
+
+## Profile and PDS directory refresh must not block stale readers
+
+The October 25 audit found profile and `/pds` requests taking roughly 10–12s. The batch profile
+reader awaited stale refreshes and then returned the old cached values anyway. The logs did not
+identify the exact stage responsible for each slow request, but the stale-cache blocking was real.
+
+`services/getProfile.ts` shares one single/batch implementation, including the navbar's own
+profile (`context.ts`). The `profile:` mount uses unstorage's existing LRU driver: at most 10,000
+entries per process, with a native 30d TTL. Each entry stores `{ profile, fetchedAt }` atomically;
+do not use `setMeta` here, since unstorage stores metadata as a second, independently evictable
+LRU entry. Profiles are fresh for 24h; retained stale values return immediately while refresh
+runs in the background. In-flight work is deduplicated per KV instance and viewer/public key:
+never share authenticated profile state across viewers. Cookie-only `getSessionDid()` identifies
+the viewer before the lookup, so fresh hits never wait for OAuth and stale refreshes restore the
+session in the background. If restoration fails, public fallback uses only the public cache,
+never populating a viewer key. Contexts without the cookie helper must restore before lookup.
+
+Requests batch 25 actors under a process-wide concurrency of 3, with at most 12 queued batches
+and a 500ms queue deadline. Each request gets a 2.5s abort signal; the fetch wait is bounded at
+3s (not including session restoration or cache reads). Slots remain held until the underlying
+request settles; responses arriving after that deadline cannot populate the cache.
+
+The LRU deliberately replaces SQLite persistence, separate freshness metadata, negative caching,
+and failure backoff. Missing actors remove old entries; transport failures leave stale values
+and their original freshness untouched. Failures/absences may therefore be retried on the next
+read (subject to in-flight deduplication and the shared limiter). Entries can be evicted before
+30d, workers do not share warm profiles, and a restart starts cold. Existing SQLite profile rows
+are no longer read or written; no destructive cleanup/migration is needed.
+
+`pds/repoCache.ts`, used by `pds/client.ts`'s `listRepos`, caches the public repository directory
+in-process: 5min fresh, 24h stale, one in-flight traversal, 30s failure backoff. A single 2.5s
+deadline covers all pages, with cancellation, repeating-cursor detection and a 10-page ceiling
+(1,000 repos per page). Never publish a partial traversal as a complete directory. On failure,
+return a usable stale snapshot or an empty directory; admin credentials and viewer state never
+enter this cache. If a transport ignores cancellation, its traversal keeps the singleton guard
+until it actually settles, even after the caller's timeout/backoff expires. Both caches are per
+web process, not distributed locks. The PDS directory retains its independent policy; it does
+not use the profile LRU.
+
 ## Anonymous page cache (`src/middleware/anon-page-cache.ts`)
 
 Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV

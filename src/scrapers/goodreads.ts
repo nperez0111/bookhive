@@ -3,6 +3,7 @@ import { getHiveId } from "./getHiveId";
 import { normalizeGoodreadsId } from "../data/bookIdentifiers";
 import { apiHeaders, UA } from "./waf/http";
 import { displayRatingToHiveRating } from "../core/rating";
+import { normalizeGoodreadsCoverUrl } from "../core/goodreadsCoverUrl";
 
 interface GoodreadsAuthor {
   id: number;
@@ -102,7 +103,7 @@ class Goodreads {
       sourceUrl: `${Goodreads.BOOK_URL}${result.bookId}`,
       sourceId: result.bookId,
       cover: this.parseCover(result, genericCover),
-      thumbnail: result.imageUrl,
+      thumbnail: normalizeGoodreadsCoverUrl(result.imageUrl),
       description: this.parseDescription(result.description),
       rating: displayRatingToHiveRating(parseFloat(result.avgRating)),
       ratingsCount: parseInt(result.ratingsCount.toString()),
@@ -125,7 +126,7 @@ class Goodreads {
   private parseCover(result: GoodreadsBook, genericCover: string): string {
     if (result.imageUrl) {
       // Convert thumbnail URL to full-size image URL
-      return result.imageUrl.replace(/\._[A-Z][A-Z]\d+_/, "");
+      return normalizeGoodreadsCoverUrl(result.imageUrl, { fullSize: true });
     }
     return genericCover;
   }

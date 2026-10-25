@@ -22,13 +22,17 @@ you're touching.
 
 - `/privacy-policy` → `src/pages/privacy-policy.tsx`
 - `/legal` → `src/pages/terms.tsx`
-- `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled)
+- `/pds` → `src/pages/pds.tsx` (redirects to `/` if PDS disabled); repository enumeration and profile reads use bounded SWR caches — `data-and-caching.md`
 - `/` → `src/pages/marketing.tsx` — landing for signed-out visitors; loads SWR-cached highlights (`src/data/landingHighlights.ts`) and community totals (`src/data/communityStats.ts`); **302s to `/home` when the `sid` cookie is present**, which is why `Vary: Cookie` matters on this route
 - `/images/*` → signing reverse-proxy to **imgproxy** (`src/routes/imageProxy.ts`). Three route shapes:
   - `/images/books/:hiveId?w=N` — ID-keyed canonical (preferred). Helpers: `coverImageUrl`, `avatarImageUrl`
   - `/images/avatars/:did?s=N` — ID-keyed avatar
   - `/images/{modifiers}/{source}` — source-embedded catch-all (used by OG render, iOS app). Helpers: `sourceCoverImageUrl`, `sourceAvatarImageUrl`
 - `/login`, `/logout`, `/oauth/callback` → `src/auth/router.tsx`
+
+The image proxy allowlist is checked before the narrow Goodreads cover-filename repair shared
+with ingestion; historical malformed sources are repaired without DB writes or arbitrary retries.
+See `enrichment-and-scraping.md`.
 
 The login handle suggestions use `public/js/actor-typeahead.js`, calling
 `https://typeahead.waow.tech/xrpc/tech.waow.typeahead.searchActors` directly from the browser

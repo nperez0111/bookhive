@@ -4,6 +4,7 @@ import type { FetchHandler } from "@atcute/client";
 import "@atcute/atproto";
 import type { Did, Handle } from "@atcute/lexicons";
 import { env } from "../env";
+import { createRepoLister } from "./repoCache";
 
 export function isPdsEnabled(): boolean {
   return env.PDS_URL !== "" && env.PDS_ADMIN_PASSWORD !== "";
@@ -23,26 +24,15 @@ function makePdsClient(auth?: string): Client {
   return new Client({ handler });
 }
 
-export async function listRepos(): Promise<string[]> {
+export const listRepos = createRepoLister(async (cursor, signal) => {
   const client = makePdsClient();
-  const dids: string[] = [];
-  let cursor: string | undefined;
-
-  do {
-    const res = await client.get("com.atproto.sync.listRepos", {
-      params: { limit: 1000, cursor },
-    });
-    if (!res.ok) break;
-    for (const repo of res.data.repos) {
-      if (repo.active !== false) {
-        dids.push(repo.did);
-      }
-    }
-    cursor = res.data.cursor;
-  } while (cursor);
-
-  return dids;
-}
+  const res = await client.get("com.atproto.sync.listRepos", {
+    params: { limit: 1000, cursor },
+    signal,
+  });
+  if (!res.ok) throw new Error("Failed to list PDS repositories");
+  return res.data;
+});
 
 export async function mintInviteCode(): Promise<string> {
   const client = makePdsClient(`Basic ${btoa(`admin:${env.PDS_ADMIN_PASSWORD}`)}`);
