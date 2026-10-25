@@ -274,15 +274,16 @@ SQLite-backed unstorage. Mounts: `search:` (in-memory LRU), `profile:`, `identit
 
 ## AT Protocol / Bluesky
 
-| File                      | Purpose                                                          |
-| ------------------------- | ---------------------------------------------------------------- |
-| `src/bsky/ingester.ts`    | Jetstream firehose — ingests book/buzz records (ingester-worker) |
-| `src/bsky/id-resolver.ts` | DID/handle resolution with caching                               |
-| `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                          |
-| `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas                |
-| `src/xrpc/router.ts`      | All `/xrpc/*` methods                                            |
-| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                       |
-| `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                        |
+| File                      | Purpose                                                       |
+| ------------------------- | ------------------------------------------------------------- |
+| `src/bsky/ingester.ts`    | Book/buzz/list/item mirror + discovery backfill (worker)      |
+| `src/bsky/jetstream.ts`   | Jetstream lifecycle, ordered cursor checkpoints and reconnect |
+| `src/bsky/id-resolver.ts` | DID/handle resolution with caching                            |
+| `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                       |
+| `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas             |
+| `src/xrpc/router.ts`      | All `/xrpc/*` methods                                         |
+| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                    |
+| `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                     |
 
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
 

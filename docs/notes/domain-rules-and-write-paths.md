@@ -139,6 +139,7 @@ limits are described in `ingestion-and-reconciliation.md`; there are no periodic
 Login re-syncs shelves; Settings → Book sync (`/refresh-books`) also re-syncs lists and
 items to repair missed creates, updates and deletes. Follow the PDS cursor even when a page
 has fewer than 100 records, and only prune a collection after all its pages succeed.
+Reject repeated cursors and cap each collection scan at 500 pages before pruning.
 This is a recovery path for stream gaps, not proof that a particular Jetstream outage caused one.
 
 ## Listing order — every paginated listing ends on a unique key

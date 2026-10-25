@@ -396,7 +396,9 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
   // 1. Sync lists
   const listUris: string[] = [];
   let listCursor: string | undefined;
+  let listPages = 0;
   do {
+    if (++listPages > 500) throw new Error("refetchLists: list page limit reached");
     const res = await agent.get("com.atproto.repo.listRecords", {
       params: {
         repo: agent.did,
@@ -407,6 +409,9 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
     });
     if (!res.ok) return;
     const data = res.data as ListRecordsOut;
+    if (data.cursor && data.cursor === listCursor) {
+      throw new Error("refetchLists: PDS returned a repeated list cursor");
+    }
 
     for (const record of data.records) {
       if (!ListRecord.validateRecord(record.value).success) continue;
@@ -443,7 +448,9 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
   // 2. Sync list items
   const itemUris: string[] = [];
   let itemCursor: string | undefined;
+  let itemPages = 0;
   do {
+    if (++itemPages > 500) throw new Error("refetchLists: list-item page limit reached");
     const res = await agent.get("com.atproto.repo.listRecords", {
       params: {
         repo: agent.did,
@@ -454,6 +461,9 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
     });
     if (!res.ok) return;
     const data = res.data as ListRecordsOut;
+    if (data.cursor && data.cursor === itemCursor) {
+      throw new Error("refetchLists: PDS returned a repeated list-item cursor");
+    }
 
     for (const record of data.records) {
       if (!ListItemRecord.validateRecord(record.value).success) continue;

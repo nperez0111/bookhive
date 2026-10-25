@@ -56,6 +56,7 @@ OAuth handle resolution.
 ### `src/routes/profile.tsx` (mounted at `/`)
 
 - `/refresh-books` → re-sync books and Popfeed shelves/items from PDS (auth), linked from Settings → Book sync. This repairs missed shelf Jetstream events without deleting/recreating the shelf.
+  Both sync operations settle before responding, including on failure; rejected syncs still produce a 500.
 - `/profile` → redirects to `/profile/:handle`
 - `/profile/:handle` → `src/pages/profile.tsx` — profile, shelves, follow counts, lists, genre stats
 - `/profile/:handle/image` → redirect to avatar

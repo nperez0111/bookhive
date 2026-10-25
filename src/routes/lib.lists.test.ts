@@ -129,4 +129,43 @@ describe("Popfeed shelf recovery", () => {
       (await db.selectFrom("book_list").selectAll().executeTakeFirstOrThrow()).itemOrder,
     ).toBeNull();
   });
+
+  for (const target of [collection, "social.popfeed.feed.listItem"]) {
+    for (const repeated of [true, false]) {
+      it(`rejects ${repeated ? "repeated cursors" : "cursor cycles after 500 pages"} for ${target} without pruning`, async () => {
+        await seed();
+        await db
+          .insertInto("book_list_item")
+          .values({
+            uri: itemUri,
+            cid: "old-item-cid",
+            userDid: did,
+            listUri: uri,
+            addedAt: "2025-11-04T20:49:53.339Z",
+            indexedAt: "2025-11-04T20:49:53.339Z",
+          })
+          .execute();
+        let pages = 0;
+        const agent = agentWith(async (_method, { params }) => {
+          if (params.collection !== target) {
+            return { ok: true, data: { records: [listRecord()] } };
+          }
+          pages++;
+          return {
+            ok: true,
+            data: { records: [], cursor: repeated || pages % 2 ? "a" : "b" },
+          };
+        });
+        const failure = await refetchLists({ agent, ctx: ctx() }).catch((error: unknown) => error);
+        expect(failure).toMatchObject({
+          message: expect.stringContaining(repeated ? "repeated" : "page limit"),
+        });
+        expect(pages).toBe(repeated ? 2 : 500);
+        expect(await db.selectFrom("book_list").select("uri").execute()).toEqual([{ uri }]);
+        expect(await db.selectFrom("book_list_item").select("uri").execute()).toEqual([
+          { uri: itemUri },
+        ]);
+      });
+    }
+  }
 });
