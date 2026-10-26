@@ -4,6 +4,10 @@ module.exports = {
   // against the mobile workspace rather than the server's dependency graph.
   modulePaths: ["<rootDir>/node_modules"],
   moduleNameMapper: {
+    // Bun can install multiple Expo peer instances. The preset's jest.mock only
+    // covers its own instance, so map the dev socket before resolving any copy.
+    "^(?:expo/src/|\\./)async-require/messageSocket(?:\\.native)?$":
+      "<rootDir>/test/mocks/expoMessageSocket.cjs",
     "^@/(.*)$": "<rootDir>/$1",
     "^react$": require.resolve("react"),
     "^react/jsx-runtime$": require.resolve("react/jsx-runtime"),
