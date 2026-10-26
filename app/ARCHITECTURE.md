@@ -296,6 +296,9 @@ transient server/network failures. The navigation regression uses the real root
 guards and AuthProvider with a restored account, and checks that stale navigation
 cannot send the signed-out viewer back into tabs. Jest transforms the router's
 ESM `standard-navigation` dependency for this integration test.
+The Jest module mapper also replaces Expo's development message socket for every
+Bun peer instance. The preset's instance-local mock can miss the router's Expo
+copy on CI, causing it to read a null native bundle URL before tests even run.
 
 Account deletion removes BookHive PDS records as well as local indexes/personal
 files; it does **not** delete a Bluesky account or unrelated posts. The native
