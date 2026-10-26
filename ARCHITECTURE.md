@@ -67,17 +67,17 @@ re-derive and eventually disagree with.
 The rule: if two transports show the same thing, the query and the row→wire shaping belong here;
 only pagination, status codes, and wire field names stay in the adapter.
 
-| File                   | Owns                                                                                                                                                                                                           |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bookDetail.ts`        | `getViewerBook`, `listBookActivity`, `countBookReviews`, `listOtherBooksByAuthor`, `listProgressHistory`, `listShelvesHoldingBook`, `listBookDiscussion` — `/books/:id`, `/books/:id/comments`, XRPC `getBook` |
-| `profileSummary.ts`    | `isBuzzer`, `isFollowing`, `getFollowCounts`, `getFollowDids`, `getGenreCounts`, `listRecentProgress` — `/profile/:handle`, the stats page, XRPC `getProfile`                                                  |
-| `socialCards.ts`       | `getBookCardStats`, `getProfileCardStats`, `getAuthorCardStats`, `getGenreCardStats` — the five `/og/*` cards                                                                                                  |
-| `landingHighlights.ts` | `getLandingHighlights` — `/`'s trending + recent lists, SWR-cached inside the helper                                                                                                                           |
-| `communityStats.ts`    | `getCommunityStats` — `/`'s reader, tracked-book and recently-finished totals, SWR-cached inside the helper                                                                                                    |
-| `userShelves.ts`       | `listShelf`, `listAllUserBooks`, `getReadingCounts` — `/home`, `/my-books` and the profile shelf tabs                                                                                                          |
-| `catalogBooks.ts`      | `listBooksByAuthor`, `listBooksByGenre`, `hydrateSearchResults` — `/authors/:author`, `/explore/genres/:genre`, XRPC `getAuthorBooks`, the genre branch of XRPC `searchBooks`, `/search`                       |
-| `personalBooks.ts`     | `listPersonalBooks`, `getPersonalBookRow`, `personalBookView`, `shelfIdsForBooks` — the three OPDS acquisition feeds and four XRPC methods                                                                     |
-| `syncDocuments.ts`     | `listSyncDocuments`, `getSyncDocument`, `syncProgressView`, `parseSyncProgress` — both KOSync REST routes, both XRPC methods, `/library/sync/documents`                                                        |
+| File                   | Owns                                                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bookDetail.ts`        | `getViewerBook`, `listBookActivity`, `countBookReviews`, `listOtherBooksByAuthor`, `listProgressHistory`, `listShelvesHoldingBook`, `listBookDiscussion` — `/books/:id`, `/books/:id/comments`, XRPC `getBook`   |
+| `profileSummary.ts`    | `isBuzzer`, `isFollowing`, `getFollowCounts`, `getFollowDids`, `getGenreCounts`, `listRecentProgress` — `/profile/:handle`, the stats page, XRPC `getProfile`                                                    |
+| `socialCards.ts`       | `getBookCardStats`, `getProfileCardStats`, `getAuthorCardStats`, `getGenreCardStats` — the five `/og/*` cards                                                                                                    |
+| `landingHighlights.ts` | `getLandingHighlights` — `/`'s trending + recent lists, SWR-cached inside the helper                                                                                                                             |
+| `communityStats.ts`    | `getCommunityStats` — `/`'s reader, tracked-book and recently-finished totals, SWR-cached inside the helper                                                                                                      |
+| `userShelves.ts`       | `listShelf`, `listAllUserBooks`, `getReadingCounts` — `/home`, `/my-books` and the profile shelf tabs                                                                                                            |
+| `catalogBooks.ts`      | `listBooksByAuthor`, `listBooksByGenre`, `hydrateSearchResults`, `listSearchBooks` — author/genre browsing, `/search`, bounded XRPC search pages (1,000-result cap; at most 100 full books hydrated per request) |
+| `personalBooks.ts`     | `listPersonalBooks`, `getPersonalBookRow`, `personalBookView`, `shelfIdsForBooks` — the three OPDS acquisition feeds and four XRPC methods                                                                       |
+| `syncDocuments.ts`     | `listSyncDocuments`, `getSyncDocument`, `syncProgressView`, `parseSyncProgress` — both KOSync REST routes, both XRPC methods, `/library/sync/documents`                                                          |
 
 No SQL lives in `src/pages/` — a query inside a JSX component is structurally unreachable by
 XRPC/OPDS/RSS. `listShelf` takes its sort key as a parameter rather than unifying it: **Currently
@@ -105,7 +105,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `lib/circuitBreaker.ts`          | Three-state breaker, **`auth/restore-guard.ts` only** — wrong for scraping — `enrichment-and-scraping.md`                     |
 | `lib/readThroughCache.ts`        | KV read-through, TTL + optional SWR `revalidateAfter`; prefer SWR for anything expensive                                      |
 | `data/activityFeed.ts`           | The one activity-feed implementation — `activity-feed.md`                                                                     |
-| `data/authorStats.ts`            | `/explore` author aggregates, SWR-cached, `INDEXED BY idx_hive_book_stats` — `data-and-caching.md`                            |
+| `data/authorStats.ts`            | Shared web/XRPC author aggregates and bounded `listAuthors` directory, SWR-cached, `INDEXED BY idx_hive_book_stats` — `data-and-caching.md`                                                                           |
 | `data/activeUsers.ts`            | Distinct readers with a shelfed book, SWR-cached for the landing-page community totals — `data-and-caching.md`                |
 | `data/communityStats.ts`         | The landing page's aggregate totals; composes `activeUsers` and degrades to `null` on a cold failure — `data-and-caching.md`  |
 | `services/uploadPersonalBook.ts` | The one "put this ebook in this user's library" — both upload adapters call it                                                |
@@ -123,7 +123,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `services/actor.ts`              | `resolveActorDid` — the one handle→DID, returns `null` rather than throwing                                                   |
 | `data/repoMirror.ts`             | `pruneMirroredRecords` — re-sync cleanup; handles the empty-keep-list case — `domain-rules-and-write-paths.md`                |
 | `routes/authResponse.ts`         | The one JSON 401 body — `domain-rules-and-write-paths.md`                                                                     |
-| `services/searchBooks.ts`        | The one catalogue-ensure + concurrency ceiling — `enrichment-and-scraping.md`                                                 |
+| `services/searchBooks.ts`        | The one catalogue-ensure + concurrency ceiling. XRPC orchestrates one cached seed then `data/catalogBooks.listSearchBooks` for bounded local pagination, never scrape-per-page fan-out — `enrichment-and-scraping.md` |
 | `data/bookDetail.ts`             | `/books/:id`, comments, XRPC `getBook`; every ordering ends on `uri`                                                          |
 | `core/hiveId.ts`                 | `HIVE_ID_PATTERN`/`isHiveId`/`asHiveId` — narrow the wire value, don't cast it                                                |
 | `core/cacheHeaders.ts`           | The one caching rule (signed-in vs signed-out)                                                                                |
@@ -133,7 +133,8 @@ name — full stories in the linked `docs/notes/*.md`.
 | `data/personalLibrary.ts`        | Library paths, `streamPersonalBook` — `e-reader-and-sync.md`                                                                  |
 | `services/buzzWrite.ts`          | The one buzz create/update — `domain-rules-and-write-paths.md`                                                                |
 | `services/followGraph.ts`        | The one follow/unfollow — PDS write first, `user_follows` mirrored only on success                                            |
-| `lib/formatBytes.ts`             | Quota byte formatting; `app/utils/personalLibrary.ts` holds a deliberate byte-identical copy (Metro can't import from `src/`) |
+| `lib/formatBytes.ts`             | Quota byte formatting; `app/utils/personalLibrary.ts` retains a deliberate byte-identical copy. Native code may import platform-neutral `core`/`lib` modules, never server dependency graphs.                         |
+| `services/deleteAccount.ts`      | Shared web/mobile deletion: BookHive PDS records, transactional local rows (including progress history), then personal files; cross-system partial failures propagate                                                 |
 
 ## Reading navigation
 

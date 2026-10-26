@@ -5,8 +5,6 @@
  * warming and it cannot be called unbounded, which is what protects against
  * the unbounded per-book fan-out that once caused OOM kills.
  */
-import { sql } from "kysely";
-
 import type { AppContext } from "../context";
 import type { HiveId } from "../types";
 import { readThroughCache } from "../lib/readThroughCache";
@@ -14,7 +12,7 @@ import { findBookDetails } from "../scrapers";
 import { enqueueEnrichmentBatch } from "../data/enrichQueue";
 import { upsertBookIdentifiersBatch } from "../data/bookIdentifiers";
 import { Semaphore } from "../lib/semaphore";
-import { ftsMatchQuery, isUsefulFtsQuery } from "../core/ftsQuery";
+import { searchLocalCatalog } from "../data/catalogBooks";
 import { errorMessage } from "../lib/errors";
 
 export type SearchBooksContext = Pick<AppContext, "db" | "kv" | "addWideEventContext"> & {
@@ -97,27 +95,13 @@ export async function searchBooks({
 
       // Backfill from the local DB to reach up to 20 results, via the FTS5
       // index (migration 019) rather than a `LIKE` scan.
-      const match = isUsefulFtsQuery(query) ? ftsMatchQuery(query) : null;
-      const dbRows = match
-        ? (
-            await sql<{ id: HiveId }>`
-              SELECT b.id
-              FROM hive_book_fts f
-              JOIN hive_book b ON b.rowid = f.rowid
-              WHERE hive_book_fts MATCH ${match}
-              ORDER BY b.ratingsCount DESC, b.rating DESC
-              LIMIT 20
-            `.execute(ctx.db)
-          ).rows
-        : [];
-
-      const combined = [...goodreadsIds];
-      for (const { id } of dbRows) {
-        if (combined.length >= 20) break;
-        if (!combined.includes(id)) combined.push(id);
-      }
-
-      return combined;
+      const localIds = await searchLocalCatalog({
+        db: ctx.db,
+        q: query,
+        limit: Math.max(0, 20 - goodreadsIds.length),
+        exclude: goodreadsIds,
+      });
+      return [...goodreadsIds, ...localIds];
     },
     [] as HiveId[],
     {

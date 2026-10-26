@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -18,37 +19,51 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
-import { getBaseUrl } from "@/context/auth";
-import { useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
+import { getBaseUrl, useAuth } from "@/context/auth";
+import { useFollow, useUnfollow, useProfile, useUserLists } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { router } from "expo-router";
 import { useCallback, useState } from "react";
-import { useFollow } from "@/hooks/useBookhiveQuery";
 import { ListItem } from "@/components/ListItem";
+import { formatAuthors } from "@/utils/personalLibrary";
+import { BookCard } from "@/components/BookCard";
+import { StarDisplay } from "@/components/StarDisplay";
 
-function FollowButton({ targetDid }: { targetDid: string }) {
+function FollowButton({ targetDid, isFollowing }: { targetDid: string; isFollowing: boolean }) {
   const follow = useFollow();
+  const unfollow = useUnfollow();
+  const colors = Colors[useColorScheme() ?? "light"];
+  const pending = follow.isPending || unfollow.isPending;
   const onPress = () => {
-    if (!follow.isPending) follow.mutate({ did: targetDid });
+    if (pending) return;
+    const mutation = isFollowing ? unfollow : follow;
+    mutation.mutate(
+      { did: targetDid },
+      {
+        onError: (error) => Alert.alert("Unable to update follow", error.message),
+      },
+    );
   };
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={isFollowing ? "Unfollow reader" : "Follow reader"}
+      disabled={pending}
       onPress={onPress}
       style={{
-        backgroundColor: "#2563eb",
+        backgroundColor: isFollowing ? colors.inactiveBackground : colors.primary,
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingVertical: 10,
+        minHeight: 44,
         borderRadius: 9999,
-        opacity: follow.isPending ? 0.7 : 1,
+        opacity: pending ? 0.7 : 1,
       }}
     >
-      {follow.isPending ? (
+      {pending ? (
         <ActivityIndicator size="small" color="#ffffff" />
       ) : (
-        <ThemedText type="caption" style={{ color: "#ffffff" }}>
-          Follow
+        <ThemedText type="caption" style={{ color: isFollowing ? colors.primaryText : "#ffffff" }}>
+          {isFollowing ? "Unfollow" : "Follow"}
         </ThemedText>
       )}
     </Pressable>
@@ -56,6 +71,7 @@ function FollowButton({ targetDid }: { targetDid: string }) {
 }
 
 export default function ProfileScreen() {
+  const { authState } = useAuth();
   const { did } = useLocalSearchParams<{ did: string }>();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const colorScheme = useColorScheme();
@@ -65,12 +81,12 @@ export default function ProfileScreen() {
   const profile = useProfile(did);
   const listsQuery = useUserLists(did);
   const userLists = listsQuery.data?.lists ?? [];
-  const [_userReviewText, _setUserReviewText] = useState("");
+  const refetchProfile = profile.refetch;
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    void profile.refetch().finally(() => setIsRefreshing(false));
-  }, [profile.refetch]);
+    void refetchProfile().finally(() => setIsRefreshing(false));
+  }, [refetchProfile]);
 
   if (profile.isLoading && !isRefreshing && !profile.data) {
     return (
@@ -133,51 +149,28 @@ export default function ProfileScreen() {
   );
 
   const renderBookItem = ({ item: book }: { item: any }) => (
-    <Pressable
+    <BookCard
+      title={book.title}
+      authors={formatAuthors(book.authors)}
+      imageUri={
+        book.cover || book.thumbnail
+          ? `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`
+          : ""
+      }
       onPress={() => router.push(`/book/${book.hiveId}`)}
-      style={[
-        styles.bookItem,
-        {
-          backgroundColor: colors.cardBackground,
-          borderColor: colors.cardBorder,
-          shadowColor: colors.shadowLight,
-        },
-      ]}
+      variant="row"
+      rowSize="small"
+      style={{ width: 280, marginRight: 12 }}
     >
-      <View style={styles.coverContainer}>
-        <Image
-          source={{
-            uri: `${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`,
-          }}
-          style={styles.bookCover}
-          resizeMode="cover"
-        />
-      </View>
-      <View style={styles.bookInfo}>
-        <ThemedText
-          style={[styles.bookTitle, { color: colors.primaryText }]}
-          numberOfLines={2}
-          type="label"
-        >
-          {book.title}
-        </ThemedText>
-        <ThemedText
-          style={[styles.bookAuthor, { color: colors.secondaryText }]}
-          numberOfLines={1}
-          type="caption"
-        >
-          {book.authors}
-        </ThemedText>
-        {book.stars && (
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={14} color={colors.primary} />
-            <ThemedText style={[styles.ratingText, { color: colors.secondaryText }]} type="caption">
-              {book.stars / 10}
-            </ThemedText>
-          </View>
-        )}
-      </View>
-    </Pressable>
+      {book.stars != null && book.stars > 0 && (
+        <View style={styles.ratingContainer}>
+          <StarDisplay rating={book.stars} />
+          <ThemedText style={[styles.ratingText, { color: colors.secondaryText }]} type="caption">
+            {book.stars / 2}
+          </ThemedText>
+        </View>
+      )}
+    </BookCard>
   );
 
   return (
@@ -210,21 +203,10 @@ export default function ProfileScreen() {
                 >
                   {profile.data.profile.displayName || "User"}
                 </ThemedText>
-                {profile.data.profile.isFollowing === true ? (
-                  <View
-                    style={{
-                      backgroundColor: "#dcfce7",
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 9999,
-                    }}
-                  >
-                    <ThemedText type="caption" style={{ color: "#166534" }}>
-                      Following
-                    </ThemedText>
-                  </View>
-                ) : profile.data.profile.isFollowing === false ? (
-                  <FollowButton targetDid={did!} />
+                {did &&
+                did !== authState?.did &&
+                typeof profile.data.profile.isFollowing === "boolean" ? (
+                  <FollowButton targetDid={did} isFollowing={profile.data.profile.isFollowing} />
                 ) : null}
               </View>
               <ThemedText
@@ -445,7 +427,7 @@ export default function ProfileScreen() {
               No Books Yet
             </ThemedText>
             <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
-              This user hasn't added any books to their library yet.
+              This user hasn&apos;t added any books to their library yet.
             </ThemedText>
           </View>
         )}
@@ -592,41 +574,6 @@ const styles = StyleSheet.create({
   },
   horizontalListContent: {
     paddingHorizontal: 20,
-  },
-  bookItem: {
-    flexDirection: "row",
-    borderRadius: 16,
-    padding: 16,
-    marginRight: 12,
-    borderWidth: 1,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    width: 280,
-  },
-  coverContainer: {
-    marginRight: 16,
-  },
-  bookCover: {
-    width: 60,
-    height: 90,
-    borderRadius: 8,
-  },
-  bookInfo: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  bookTitle: {
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  bookAuthor: {
-    marginBottom: 8,
-    lineHeight: 16,
   },
   ratingContainer: {
     flexDirection: "row",
