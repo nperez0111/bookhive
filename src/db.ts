@@ -1281,6 +1281,18 @@ migrations["029"] = {
   },
 };
 
+migrations["030"] = {
+  async up(db: Kysely<unknown>) {
+    // Keep the primary worker's minute heartbeat off the wide catalogue table.
+    // Never-exhausted books (NULL) need no entry in this covering index.
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_enrich_failed_at
+      ON hive_book(enrichFailedAt) WHERE enrichFailedAt IS NOT NULL`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_hive_book_enrich_failed_at`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

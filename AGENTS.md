@@ -234,7 +234,7 @@ Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/util
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–029) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
+SQLite via Kysely. Schema + all migrations (001–030) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

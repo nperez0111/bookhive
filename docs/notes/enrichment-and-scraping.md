@@ -35,6 +35,13 @@ bought the failure mode.
 always 0. `deferred` counts books parked on something that isn't their fault; it replaced
 `circuit_open` as the signal that fetching is in trouble.
 
+Migration 030's partial index `idx_hive_book_enrich_failed_at` keeps that minute heartbeat's
+count index-only, omitting never-exhausted (NULL) books. Without it, `SCAN hive_book` synchronously
+blocks the primary worker even though the count is awaited. The October 26 log audit found an
+8–9s burst of unrelated primary-worker requests completing immediately after a heartbeat while
+other workers kept serving. Local `EXPLAIN` changes to a covering-index range search without
+`ANALYZE` or a hint; production latency improvement still needs verification.
+
 ## WAF solver: no circuit breaker, and adding one back is a regression
 
 `waf/solver.ts` fetches the page on the main thread — always, with no gate of any kind — and only
