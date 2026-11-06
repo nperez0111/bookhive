@@ -6,7 +6,6 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { endTime, startTime, type TimingVariables } from "hono/timing";
 import { getIronSession, type IronSession } from "iron-session";
-import { sql } from "kysely";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
@@ -46,9 +45,10 @@ import { getLogger } from "./logger/index.ts";
 import { PAGE_CACHE_TTL_MS } from "./middleware/anon-page-cache";
 import sqliteKv, {
   createSharedKvDb,
-  incrementalVacuumKv,
+  initializePageCache,
   readPragma,
   vacuumKvIfBloated,
+  sweepPageCache,
   VACUUM_FREELIST_RATIO,
 } from "./sqlite-kv.ts";
 import { startEnrichmentDrain } from "./data/enrichQueue";
@@ -210,6 +210,7 @@ export async function createAppDeps(): Promise<AppDeps> {
     // unlike the main DB it does bloat. Runs before the siblings spawn, and
     // only when the file is actually bloated.
     vacuumKvIfBloated(kvSqlite, (fields, msg) => logger.info(fields, msg));
+    initializePageCache(kvSqlite);
   }
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
@@ -233,29 +234,25 @@ export async function createAppDeps(): Promise<AppDeps> {
   // Per-user KOSync token rotation counter (see src/middleware/sync-auth.ts).
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
-  kv.mount("page:", sqliteKv({ table: "page_cache", db: kvDb }));
+  // Optional HTML caching must not block the event loop for the auth/KV connection's 10s timeout.
+  const { db: pageKvDb, sqlite: pageSqlite } = createSharedKvDb(env.KV_DB_PATH, 50);
+  kv.mount("page:", sqliteKv({ table: "page_cache", db: pageKvDb, tableCreated: true }));
   if (isPrimaryWorker) {
     // Expire old cached pages so a bot sweep of the long tail can't grow the
     // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
     // overwrite instead of insert.
+    let sweeping = false;
     const pageCacheTimer = setInterval(
       () => {
+        if (sweeping) return;
+        sweeping = true;
         const cutoff = new Date(Date.now() - 2 * PAGE_CACHE_TTL_MS).toISOString();
-        void sql`DELETE FROM page_cache WHERE updated_at < ${cutoff}`
-          .execute(kvDb)
-          .then(() => {
-            // Awaited: this hands back the pages *that DELETE just freed*, and
-            // firing it alongside an un-awaited DELETE only ever reclaimed the
-            // previous cycle's. Bounded, so it can never become the
-            // multi-second stall a full VACUUM would be on this timer. The
-            // logger is passed so a SQLITE_BUSY or a full disk here is visible
-            // rather than swallowed on a 15-minute timer nobody watches.
-            incrementalVacuumKv(kvSqlite, 1000, (fields, msg) => logger.warn(fields, msg));
-          })
-          .catch((e: any) => {
-            if (String(e?.message).includes("no such table")) return;
-            logger.error({ err: e }, "page_cache cleanup failed");
-          });
+        void sweepPageCache(pageSqlite, cutoff, (fields, msg) => {
+          if (fields["outcome"] === "error") logger.warn(fields, msg);
+          else logger.info(fields, msg);
+        }).finally(() => {
+          sweeping = false;
+        });
       },
       15 * 60 * 1000,
     );

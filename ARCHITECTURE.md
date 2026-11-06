@@ -22,6 +22,9 @@ routes │ xrpc │ pages │ client │ middleware        (transports & view)
                                   types.ts, constants.ts, env.ts
 ```
 
+KV page-cache schema/short-timeout connection and batched maintenance live in `sqlite-kv.ts` /
+`context.ts`; optional cache failures preserve rendered responses. See `docs/notes/data-and-caching.md`.
+
 **Which bucket a new file goes in — answer the first question that is "yes":**
 
 1. Does it build a `Response`, read `c.req`, or choose a status code? → **not** a util; it belongs

@@ -54,9 +54,26 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
   if (res.status !== 200 || res.headers.has("set-cookie")) return null;
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) return null;
-  const body = await res.clone().text();
-  if (Buffer.byteLength(body) > MAX_BODY_BYTES) return null;
-  const gzipped = Bun.gzipSync(body);
+  const reader = res.clone().body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_BODY_BYTES) {
+        // Awaiting cancellation of a tee can wait for the live response to be consumed.
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const gzipped = Bun.gzipSync(Buffer.concat(chunks, bytes));
   if (gzipped.byteLength > MAX_STORED_BYTES) return null;
   return {
     bodyGzipB64: Buffer.from(gzipped).toString("base64"),
@@ -89,16 +106,29 @@ export function anonPageCache(kv: Storage) {
     // Percent-encoded into the key, never joined with a literal `?` — unstorage's normalizeKey discards everything after `?`, which would collapse every query variant of a path onto one cache entry.
     const key = `page:${url.pathname}${query ? `:q:${encodeURIComponent(query)}` : ""}`;
 
-    const meta = await kv.getMeta(key);
-    if (meta?.mtime && Date.now() - new Date(meta.mtime).getTime() < PAGE_CACHE_TTL_MS) {
-      const page = await kv.getItem<CachedPage>(key);
-      if (page?.bodyGzipB64) {
-        const cached = serveCached(page);
-        if (cached) {
-          c.res = cached;
-          return;
+    const cacheError = (operation: string, error: unknown) => {
+      const bag = c.get("wideEventBag") ?? {};
+      bag["page_cache_error"] = operation;
+      delete bag["page_cache_error_code"];
+      if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+        bag["page_cache_error_code"] = error.code.slice(0, 64);
+      }
+      c.set("wideEventBag", bag);
+    };
+    try {
+      const meta = await kv.getMeta(key);
+      if (meta?.mtime && Date.now() - new Date(meta.mtime).getTime() < PAGE_CACHE_TTL_MS) {
+        const page = await kv.getItem<CachedPage>(key);
+        if (page?.bodyGzipB64) {
+          const cached = serveCached(page);
+          if (cached) {
+            c.res = cached;
+            return;
+          }
         }
       }
+    } catch (error) {
+      cacheError("read", error);
     }
 
     // Someone in this process is already rendering this URL — wait for them.
@@ -120,11 +150,22 @@ export function anonPageCache(kv: Storage) {
 
     const render = (async () => {
       await next();
-      const page = await extractCacheable(c.res);
+      let page: CachedPage | null;
+      try {
+        page = await extractCacheable(c.res);
+      } catch (error) {
+        cacheError("extract", error);
+        return null;
+      }
       if (page) {
-        c.res.headers.set("x-page-cache", "miss");
         c.res.headers.set("cache-control", page.cacheControl);
-        await kv.setItem(key, page);
+        try {
+          await kv.setItem(key, page);
+          c.res.headers.set("x-page-cache", "miss");
+        } catch (error) {
+          cacheError("write", error);
+          // Keep the rendered page available to in-flight waiters even if persistence failed.
+        }
       }
       return page;
     })();
