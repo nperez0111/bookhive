@@ -448,7 +448,7 @@ Full notes on scopes, re-consent, and `atproto-proxy`'s current limits: `docs/no
 | `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                          |
 | `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `cache-headers.ts`    |
 
-Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them.
+Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them. Once-minute application/runtime and independent supervisor/cgroup samples, their retention limits, and the November 3 OOM evidence: `docs/notes/memory-and-runtime.md`.
 
 ## Context & Session (`src/context.ts`)
 

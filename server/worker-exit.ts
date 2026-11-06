@@ -59,7 +59,8 @@ export function classifyWorkerExit(args: {
     pid: args.pid ?? null,
     code: args.exitCode,
     signal,
-    // A cgroup OOM kill is SIGKILL with no exit code; a SIGKILL with one came from somewhere else and isn't an OOM.
+    // A possible OOM, not proof: manual SIGKILLs can look identical. Kernel logs
+    // distinguish host-wide pressure from a container-limit OOM.
     likely_oom: signal === "SIGKILL" && args.exitCode === null,
     uptime_ms: args.uptimeMs,
     ...(args.memory?.rss_kb !== undefined ? { rss_kb: args.memory.rss_kb } : {}),
@@ -95,4 +96,69 @@ export function readProcessMemoryKb(
 
 function defaultReadFile(path: string): string {
   return readFileSync(path, "utf8");
+}
+
+/** Host-visible procfs, not container usage; useful alongside cgroup samples. */
+export function readHostMemory(
+  readFile: (path: string) => string = defaultReadFile,
+): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  try {
+    for (const match of readFile("/proc/meminfo").matchAll(
+      /^(MemTotal|MemAvailable|SwapTotal|SwapFree):\s+(\d+) kB$/gm,
+    )) {
+      out[`${match[1]}_kb`] = Number(match[2]);
+    }
+  } catch {
+    /* Unsupported procfs layout. */
+  }
+  try {
+    for (const line of readFile("/proc/pressure/memory").trim().split("\n")) {
+      const [kind, ...fields] = line.split(/\s+/);
+      if (kind !== "some" && kind !== "full") continue;
+      for (const field of fields) {
+        const [key, raw] = field.split("=");
+        const value = Number(raw);
+        if (["avg10", "avg60", "avg300", "total"].includes(key ?? "") && Number.isFinite(value)) {
+          out[`pressure.${kind}.${key}`] = value;
+        }
+      }
+    }
+  } catch {
+    /* PSI is optional on older kernels. */
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** Docker's cgroup v2 mount; null on other layouts rather than publishing misleading zeros. */
+export function readCgroupMemory(
+  readFile: (path: string) => string = defaultReadFile,
+): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const file of ["memory.current", "memory.max", "memory.peak", "memory.swap.current"]) {
+    try {
+      const value = Number(readFile(`/sys/fs/cgroup/${file}`).trim());
+      if (Number.isFinite(value)) out[file] = value;
+    } catch {
+      /* Off Linux, older kernels, or cgroup v1. */
+    }
+  }
+  for (const file of ["memory.events", "memory.stat"]) {
+    try {
+      for (const line of readFile(`/sys/fs/cgroup/${file}`).split("\n")) {
+        const [key, value] = line.split(/\s+/);
+        if (
+          key &&
+          value &&
+          (file === "memory.events" || ["anon", "file", "kernel"].includes(key))
+        ) {
+          const count = Number(value);
+          if (Number.isFinite(count)) out[`${file}.${key}`] = count;
+        }
+      }
+    } catch {
+      /* Partial samples remain useful. */
+    }
+  }
+  return Object.keys(out).length ? out : null;
 }

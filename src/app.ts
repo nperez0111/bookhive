@@ -119,7 +119,9 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     });
   });
 
-  startRuntimeMetricsCollection();
+  startRuntimeMetricsCollection((fields) =>
+    deps.logger.info({ ...fields, build_sha: env.BUILD_SHA }, "runtime_sample"),
+  );
 
   app.route("/admin", adminRoutes);
   app.route("/debug", debugRoutes);

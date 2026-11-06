@@ -11,7 +11,12 @@
  * Not bundled — the Dockerfile copies this file and ./worker-exit.ts verbatim
  * and Bun runs the TS source directly.
  */
-import { classifyWorkerExit, readProcessMemoryKb } from "./worker-exit.ts";
+import {
+  classifyWorkerExit,
+  readCgroupMemory,
+  readHostMemory,
+  readProcessMemoryKb,
+} from "./worker-exit.ts";
 
 const concurrency = Math.max(1, Number(process.env["WEB_CONCURRENCY"]) || 4);
 const port = process.env["PORT"] ?? "8080";
@@ -28,11 +33,30 @@ function log(message: string) {
 /** Last memory sample per worker index — `/proc/<pid>` is gone by the time `onExit` fires. */
 const lastMemory = new Map<number, { rss_kb?: number; anon_kb?: number }>();
 const MEMORY_SAMPLE_MS = 15_000;
+let lastMemoryReport = 0;
 
 function sampleWorkerMemory() {
+  const workers = [];
   for (const [index, proc] of children) {
     const sample = readProcessMemoryKb(proc.pid);
     if (sample) lastMemory.set(index, sample);
+    workers.push({ worker_index: index, pid: proc.pid, ...sample });
+  }
+  const now = Date.now();
+  if (now - lastMemoryReport >= 60_000) {
+    // The supervisor still samples when a web worker's event loop is blocked.
+    console.error(
+      JSON.stringify({
+        level: 30,
+        time: now,
+        msg: "cluster_memory",
+        build_sha: process.env["BUILD_SHA"],
+        workers,
+        cgroup: readCgroupMemory(),
+        host: readHostMemory(),
+      }),
+    );
+    lastMemoryReport = now;
   }
 }
 
@@ -54,7 +78,14 @@ function logWorkerExit(
   });
   // Drop the sample once read — indices are reused by the restarted worker, so a stale entry would report the predecessor's memory.
   lastMemory.delete(index);
-  console.error(JSON.stringify({ time: Date.now(), ...event }));
+  console.error(
+    JSON.stringify({
+      time: Date.now(),
+      ...event,
+      cgroup: readCgroupMemory(),
+      host: readHostMemory(),
+    }),
+  );
   return event;
 }
 

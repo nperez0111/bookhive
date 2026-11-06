@@ -1,5 +1,11 @@
 import { describe, it, expect } from "bun:test";
-import { classifyWorkerExit, readProcessMemoryKb, signalName } from "./worker-exit.ts";
+import {
+  classifyWorkerExit,
+  readCgroupMemory,
+  readHostMemory,
+  readProcessMemoryKb,
+  signalName,
+} from "./worker-exit.ts";
 
 describe("signalName", () => {
   // The bug: Bun passes the signal *name*, its types claim a number, and the number-keyed lookup fell through to `SIG${code}`, producing "SIGSIGKILL".
@@ -141,5 +147,72 @@ describe("readProcessMemoryKb", () => {
 
   it("returns null for output with neither field", () => {
     expect(readProcessMemoryKb(1, () => "Pss: 12 kB")).toBeNull();
+  });
+});
+
+describe("readHostMemory", () => {
+  it("records host availability, swap and pressure without unrelated procfs fields", () => {
+    expect(
+      readHostMemory((path) =>
+        path === "/proc/meminfo"
+          ? "MemTotal: 8000 kB\nMemAvailable: 1000 kB\nSwapTotal: 4000 kB\nSwapFree: 500 kB\nCached: 900 kB\n"
+          : "some avg10=1.25 avg60=2.00 avg300=3.50 total=1234\nfull avg10=0.50 avg60=1.00 avg300=2.50 total=900\n",
+      ),
+    ).toEqual({
+      MemTotal_kb: 8000,
+      MemAvailable_kb: 1000,
+      SwapTotal_kb: 4000,
+      SwapFree_kb: 500,
+      "pressure.some.avg10": 1.25,
+      "pressure.some.avg60": 2,
+      "pressure.some.avg300": 3.5,
+      "pressure.some.total": 1234,
+      "pressure.full.avg10": 0.5,
+      "pressure.full.avg60": 1,
+      "pressure.full.avg300": 2.5,
+      "pressure.full.total": 900,
+    });
+  });
+  it("tolerates unavailable procfs", () => {
+    expect(
+      readHostMemory(() => {
+        throw new Error("ENOENT");
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("readCgroupMemory", () => {
+  it("records OOM counters and anonymous versus file memory, tolerating unlimited/missing fields", () => {
+    const files: Record<string, string> = {
+      "memory.current": "5000\n",
+      "memory.max": "max\n",
+      "memory.peak": "6000\n",
+      "memory.events": "oom 3\noom_kill 2\nmax 4820\n",
+      "memory.stat": "anon 4000\nfile 1000\nkernel 100\npgfault 99999\n",
+    };
+    expect(
+      readCgroupMemory((path) => {
+        const value = files[path.split("/").at(-1)!];
+        if (value === undefined) throw new Error("ENOENT");
+        return value;
+      }),
+    ).toEqual({
+      "memory.current": 5000,
+      "memory.peak": 6000,
+      "memory.events.oom": 3,
+      "memory.events.oom_kill": 2,
+      "memory.events.max": 4820,
+      "memory.stat.anon": 4000,
+      "memory.stat.file": 1000,
+      "memory.stat.kernel": 100,
+    });
+  });
+  it("does not invent zero-valued samples when procfs is unavailable", () => {
+    expect(
+      readCgroupMemory(() => {
+        throw new Error("ENOENT");
+      }),
+    ).toBeNull();
   });
 });

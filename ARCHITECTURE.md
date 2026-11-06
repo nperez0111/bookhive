@@ -24,6 +24,8 @@ routes │ xrpc │ pages │ client │ middleware        (transports & view)
 
 KV page-cache schema/short-timeout connection and batched maintenance live in `sqlite-kv.ts` /
 `context.ts`; optional cache failures preserve rendered responses. See `docs/notes/data-and-caching.md`.
+Runtime/active-request samples (`metrics.ts`, wide-event middleware) complement independent
+supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for diagnostic boundaries.
 
 **Which bucket a new file goes in — answer the first question that is "yes":**
 
