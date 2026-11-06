@@ -282,10 +282,11 @@ export const ProfilePage: FC<{
                     {followingProfiles.map((user) => (
                       <a
                         key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
+                        href={`/profile/${user.did}`}
                         class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
+                          did={user.did}
                           handle={user.handle ?? user.did}
                           avatar={user.avatar ?? null}
                           displayName={null}
@@ -309,10 +310,11 @@ export const ProfilePage: FC<{
                     {followersProfiles.map((user) => (
                       <a
                         key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
+                        href={`/profile/${user.did}`}
                         class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
+                          did={user.did}
                           handle={user.handle ?? user.did}
                           avatar={user.avatar ?? null}
                           displayName={null}

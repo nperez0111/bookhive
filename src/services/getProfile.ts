@@ -1,7 +1,7 @@
 import { Client } from "@atcute/client";
 import type { ActorIdentifier } from "@atcute/lexicons/syntax";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
-import { setIdentityCache } from "../bsky/id-resolver";
+import { isUsableHandle, setIdentityCache } from "../bsky/id-resolver";
 import type { ProfileViewDetailed } from "../types";
 import type { AppContext } from "../context";
 import { Semaphore, withTimeout } from "../lib/semaphore";
@@ -33,7 +33,7 @@ function profileCacheKey(targetDid: string, viewerDid: string | null): string {
 }
 
 type ProfileContext = Pick<AppContext, "kv" | "getSessionAgent"> &
-  Partial<Pick<AppContext, "getSessionDid">>;
+  Partial<Pick<AppContext, "getSessionDid">> & { resolver?: Partial<AppContext["resolver"]> };
 
 export async function getProfile({
   ctx,
@@ -76,8 +76,11 @@ export async function getProfiles({
       return {
         did,
         key,
-        value: cached?.profile ?? null,
-        refresh: !cached || Date.now() - cached.fetchedAt >= REVALIDATE_AFTER,
+        value: cached && isUsableHandle(cached.profile.handle) ? cached.profile : null,
+        refresh:
+          !cached ||
+          !isUsableHandle(cached.profile.handle) ||
+          Date.now() - cached.fetchedAt >= REVALIDATE_AFTER,
       };
     }),
   );
@@ -114,10 +117,21 @@ export async function getProfiles({
         );
         if (!response.ok) throw new Error("Profile request failed");
         const profiles = new Map<string, ProfileViewDetailed>(
-          (response.data as { profiles: ProfileViewDetailed[] }).profiles.map((profile) => [
-            profile.did,
-            profile,
-          ]),
+          await Promise.all(
+            (response.data as { profiles: ProfileViewDetailed[] }).profiles.map(
+              async (profile): Promise<[string, ProfileViewDetailed]> => {
+                if (!isUsableHandle(profile.handle) && ctx.resolver?.resolveDidToHandle) {
+                  const handle = await withTimeout(
+                    ctx.resolver.resolveDidToHandle(profile.did),
+                    REQUEST_TIMEOUT,
+                    "profile identity",
+                  ).catch(() => profile.did);
+                  if (isUsableHandle(handle)) profile = { ...profile, handle };
+                }
+                return [profile.did, profile];
+              },
+            ),
+          ),
         );
         await Promise.all(
           batch.map(async (entry) => {

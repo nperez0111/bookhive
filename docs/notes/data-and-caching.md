@@ -100,6 +100,22 @@ until it actually settles, even after the caller's timeout/backoff expires. Both
 web process, not distributed locks. The PDS directory retains its independent policy; it does
 not use the profile LRU.
 
+## Invalid AppView handles are not identities
+
+On November 6, Bluesky returned `handle.invalid` for a migrated account even though its
+handle endpoint and PLC document agreed on its current handle. Profile fetches previously
+wrote that placeholder into both identity-cache directions: unrelated accounts overwrote
+the shared `handle.invalid` reverse lookup. `bsky/id-resolver.ts` now rejects placeholder
+writes/resolution, and uses `identity:v2:` keys to ignore existing poisoned entries without
+deleting production data. Old persisted keys remain unused; no destructive cleanup is required.
+
+`services/getProfile.ts` repairs placeholder profiles (including fresh LRU entries) through
+the bidirectionally verified resolver, with a bounded wait. Viewer-specific profile fields
+are preserved; failed verification never invents a handle. Profile links use the stable DID
+where available, independently of the displayed handle, so an AppView identity outage or
+handle change cannot redirect them to another account. DID profile/stat routes display the
+usable fetched handle rather than the DID when available.
+
 ## Anonymous page cache (`src/middleware/anon-page-cache.ts`)
 
 Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV

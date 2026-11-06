@@ -52,7 +52,7 @@ export const PdsLanding: FC<{
             {profiles.map((profile) => (
               <a
                 key={profile.did}
-                href={`${publicUrl}/profile/${profile.handle}`}
+                href={`${publicUrl}/profile/${profile.did}`}
                 class="card transition-[box-shadow,transform] duration-150 hover:shadow-md active:scale-[0.96]"
               >
                 <div class="card-body flex items-center gap-3">

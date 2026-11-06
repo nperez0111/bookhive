@@ -34,7 +34,7 @@ export const ProfileHeader: FC<{
       ? formatDistanceToNow(new Date(books.map((b) => b.createdAt).sort()[0]!), { addSuffix: true })
       : null;
 
-  const bskyShareHref = `https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out @${handle}'s reading profile on BookHive! https://bookhive.buzz/profile/${handle}`)}`;
+  const bskyShareHref = `https://bsky.app/intent/compose?text=${encodeURIComponent(`Check out @${handle}'s reading profile on BookHive! https://bookhive.buzz/profile/${did}`)}`;
 
   return (
     <div class="card">
@@ -56,7 +56,7 @@ export const ProfileHeader: FC<{
           <h1 class="text-2xl font-bold text-foreground">{profile?.displayName || handle}</h1>
           {!isOwnProfile && (
             <a
-              href={`https://bsky.app/profile/${handle}`}
+              href={`https://bsky.app/profile/${did}`}
               class="text-muted-foreground hover:text-foreground mt-0.5 block text-sm"
             >
               @{handle}
@@ -92,8 +92,8 @@ export const ProfileHeader: FC<{
           {/* Share dropdown */}
           <ShareMenu
             blueskyHref={bskyShareHref}
-            copyPath={`/profile/${handle}`}
-            rssPath={`/rss/user/${handle}`}
+            copyPath={`/profile/${did}`}
+            rssPath={`/rss/user/${did}`}
           />
           {isOwnProfile ? (
             <a href="/settings" class="btn btn-ghost min-h-10 items-center flex">

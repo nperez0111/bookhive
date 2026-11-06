@@ -4,6 +4,15 @@ import { expect, test } from "bun:test";
 import { ProfilePage } from "./profile";
 import { BOOK_STATUS } from "../constants";
 import type { Book } from "../types";
+import { UserBlock } from "./components/cards/UserBlock";
+
+test("user links use the stable DID even when AppView reports an invalid handle", async () => {
+  const app = new Hono();
+  app.get("/", (c) => c.html(<UserBlock did="did:plc:fixture" handle="handle.invalid" />));
+  const html = await (await app.request("/")).text();
+  expect(html).toContain('href="/profile/did:plc:fixture"');
+  expect(html).not.toContain('href="/profile/handle.invalid"');
+});
 
 function book(status: string, pages: number | string | null, totalPages?: number): Book {
   return {

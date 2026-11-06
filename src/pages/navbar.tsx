@@ -102,13 +102,13 @@ export const Navbar: FC<{
                 aria-label="Account"
               >
                 <a
-                  href={`/profile/${profile.handle}`}
+                  href={`/profile/${profile.did}`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
                   Public profile
                 </a>
                 <a
-                  href={`/profile/${profile.handle}/stats`}
+                  href={`/profile/${profile.did}/stats`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
                   Reading Stats

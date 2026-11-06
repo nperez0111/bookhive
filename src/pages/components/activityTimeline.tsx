@@ -28,7 +28,7 @@ const Avatar: FC<{ did: string; ctx: Ctx }> = ({ did, ctx }) => {
   const handle = handleFor(did, ctx);
   const avatar = ctx.profileByDid[did]?.avatar;
   return (
-    <a href={`/profile/${handle}`} class="focus-ring shrink-0 rounded-full" tabindex={-1}>
+    <a href={`/profile/${did}`} class="focus-ring shrink-0 rounded-full" tabindex={-1}>
       {avatar ? (
         <img
           src={avatarImageUrl(did, { size: 80 })}
@@ -71,7 +71,7 @@ const SingleRow: FC<{ item: FeedItem; ctx: Ctx }> = ({ item, ctx }) => {
       <div class="min-w-0 flex-1">
         <p class="text-sm leading-snug">
           <a
-            href={`/profile/${handle}`}
+            href={`/profile/${item.actorDid}`}
             class="focus-ring text-foreground font-semibold hover:underline"
           >
             @{handle}
@@ -118,7 +118,7 @@ const BurstRow: FC<{
       <div class="min-w-0 flex-1">
         <p class="text-sm leading-snug">
           <a
-            href={`/profile/${handle}`}
+            href={`/profile/${group.actorDid}`}
             class="focus-ring text-foreground font-semibold hover:underline"
           >
             @{handle}

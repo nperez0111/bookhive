@@ -1,5 +1,6 @@
 import type { Storage } from "unstorage";
-import type { ActorIdentifier } from "@atcute/lexicons/syntax";
+import type { ActorIdentifier, Handle } from "@atcute/lexicons/syntax";
+import { isHandle } from "@atcute/lexicons/syntax";
 import type { ActorResolver, DidDocumentResolver } from "@atcute/identity-resolver";
 import {
   CompositeDidDocumentResolver,
@@ -67,7 +68,12 @@ export type CachingBaseIdResolverOptions = {
   ttl?: number;
 };
 
-const IDENTITY_CACHE_PREFIX = "identity:";
+// v2 ignores identities polluted by AppView's shared handle.invalid placeholder.
+const IDENTITY_CACHE_PREFIX = "identity:v2:";
+
+export function isUsableHandle(handle: unknown): handle is Handle {
+  return isHandle(handle) && handle !== "handle.invalid";
+}
 
 /** Build cache keys only via these helpers — a bare DID key silently misses the `identity:` KV mount and is never read. */
 function identityDidKey(did: string): string {
@@ -85,6 +91,7 @@ function identityCacheValue(entry: IdentityCacheEntry): string {
 
 /** Writes both cache keys; awaits so the next request can hit the cache. */
 export async function setIdentityCache(kv: Storage, did: string, handle: string): Promise<void> {
+  if (!isUsableHandle(handle)) return;
   const value = identityCacheValue({ did, handle });
   const now = Date.now();
   const didKey = identityDidKey(did);
@@ -128,6 +135,7 @@ export function createCachingBaseIdResolver(
   return {
     handle: {
       resolve: async (handle: string): Promise<string> => {
+        if (!isUsableHandle(handle)) return "";
         const key = identityHandleKey(handle);
         const raw = await readThroughCache(
           kv as Storage<string>,
@@ -216,8 +224,10 @@ export function createCachingBidirectionalResolver(
           const handle = await inner
             .resolveDidToHandle(did)
             .then((v) => normalizeDidResolutionToHandle(v, did));
+          // Resolution failures are transient, not identities to retain for seven days.
+          if (!isUsableHandle(handle)) throw new Error("Handle unavailable");
           // Write both directions so a DID->handle miss also warms the handle->DID side.
-          if (handle && handle !== did) await setIdentityCache(kv, did, handle);
+          await setIdentityCache(kv, did, handle);
           return identityCacheValue({ did, handle });
         },
         "",

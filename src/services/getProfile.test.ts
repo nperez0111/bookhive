@@ -54,6 +54,30 @@ async function eventually(check: () => Promise<boolean>) {
 }
 
 describe("profile cache", () => {
+  it("repairs an invalid cached/AppView handle using verified identity without losing viewer state", async () => {
+    const invalid = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    const get = mock(async () => ({ ok: true as const, data: { profiles: [invalid] } }));
+    const ctx = {
+      ...context(get),
+      resolver: {
+        resolveDidToHandle: mock(async () => "alice.test"),
+        resolveDidsToHandles: async () => ({}),
+      },
+    };
+    await seed(ctx, invalid);
+    const result = await getProfile({ ctx, did: invalid.did });
+    expect(result?.handle).toBe("alice.test");
+    expect(result?.viewer).toEqual(invalid.viewer);
+    expect(ctx.resolver.resolveDidToHandle).toHaveBeenCalledWith(invalid.did);
+    expect(await ctx.kv.get("identity:v2:handle:handle.invalid")).toBeNull();
+    expect((await getProfile({ ctx, did: invalid.did }))?.handle).toBe("alice.test");
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it("returns fresh cached profiles without a network request", async () => {
     const get = mock(async () => {
       throw new Error("must not fetch");

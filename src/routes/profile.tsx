@@ -3,6 +3,7 @@
  * Mount at / so paths are /profile, /profile/:handle, /profile/:handle/image, /refresh-books.
  */
 import { resolveActorDid } from "../services/actor";
+import { isUsableHandle } from "../bsky/id-resolver";
 import { renderError } from "./errorPage";
 import { Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
@@ -98,7 +99,7 @@ const app = new Hono<AppEnv>()
     return c.redirect(`/profile/${handle}/stats/${year}`);
   })
   .get("/profile/:handle/stats/:year", async (c) => {
-    const handle = c.req.param("handle");
+    let handle = c.req.param("handle");
     const yearParam = c.req.param("year");
     const year = parseInt(yearParam, 10);
     if (!isValidStatsYear(year)) {
@@ -136,6 +137,7 @@ const app = new Hono<AppEnv>()
       listAllUserBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" }),
     ]);
     endTime(c, "isBuzzer+profile+books");
+    if (profile && isUsableHandle(profile.handle)) handle = profile.handle;
 
     if (!isBuzzer) {
       c.status(404);
@@ -188,7 +190,7 @@ const app = new Hono<AppEnv>()
     );
   })
   .get("/profile/:handle", async (c) => {
-    const handle = c.req.param("handle");
+    let handle = c.req.param("handle");
     const forceRefresh = c.req.query("force-refresh") === "true";
 
     startTime(c, "resolveDid");
@@ -222,6 +224,7 @@ const app = new Hono<AppEnv>()
       getProfile({ ctx: c.get("ctx"), did }),
     ]);
     endTime(c, "isBuzzer+profile");
+    if (profile && isUsableHandle(profile.handle)) handle = profile.handle;
 
     startTime(c, "books+session");
     const [parsedBooks, sessionAgent] = await Promise.all([

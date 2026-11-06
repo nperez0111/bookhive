@@ -113,7 +113,7 @@ export const Home: FC = async () => {
         <div class="card-header flex items-center justify-between">
           <h2 class="card-title">Reading at a glance</h2>
           <a
-            href={`/profile/${profile.handle}/stats`}
+            href={`/profile/${profile.did}/stats`}
             class="focus-ring text-primary min-h-10 inline-flex items-center text-sm hover:underline active:scale-[0.96] transition-[transform] duration-150"
           >
             See full stats →

@@ -86,6 +86,7 @@ function Comment({
           {/* The timestamp belongs to the meta row below, next to "Copy link" — passing it as a
               UserBlock suffix too rendered "1 day ago" twice in every review card. */}
           <UserBlock
+            did={comment.userDid}
             handle={handle}
             displayName={profile?.displayName ?? null}
             avatar={profile?.avatar ?? null}
