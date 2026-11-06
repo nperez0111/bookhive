@@ -6,6 +6,12 @@ you're touching.
 
 `src/app.ts` mounts infra/admin routes, then `/` → `src/routes/main.tsx` (`mainRouter`). `mainRouter` registers standalone pages, the image proxy, feature route modules, and the XRPC router.
 
+`src/pages/layout.tsx` normalizes same-host crawler URLs to the scheme/port in `PUBLIC_URL`.
+TLS termination can leave `c.req.url` as HTTP: using it verbatim advertised HTTP OG/Twitter
+images, logos and page URLs on HTTPS pages. Both relative and absolute same-site images are
+normalized; external images and distinct PDS hosts keep their own origins. OAuth query secrets
+remain stripped from page metadata. Local HTTP origins remain HTTP when configured that way.
+
 ### Mounted in `src/app.ts` (infra/admin, before `mainRouter`)
 
 - `/healthcheck` → JSON status + git sha
@@ -61,7 +67,7 @@ OAuth handle resolution.
 
 - `/refresh-books` → re-sync books and Popfeed shelves/items from PDS (auth), linked from Settings → Book sync. This repairs missed shelf Jetstream events without deleting/recreating the shelf.
   Both sync operations settle before responding, including on failure; rejected syncs still produce a 500.
-- `/profile` → redirects to `/profile/:handle`
+- `/profile` → redirects to the resolved usable handle, with DID fallback on invalid/unavailable identity
 - `/profile/:handle` → `src/pages/profile.tsx` — profile, shelves, follow counts, lists, genre stats
 - `/profile/:handle/image` → redirect to avatar
 - `/profile/:handle/stats` → redirect to current year; `/profile/:handle/stats/:year` → `src/pages/readingStats.tsx`
@@ -82,6 +88,8 @@ OAuth handle resolution.
 ### `src/routes/shelves.tsx` (mounted at `/shelves`)
 
 User book lists ("shelves"). Uses **popfeed** lexicons (`social.popfeed.feed.list`/`.listItem`). Delegates to `src/services/lists.ts`.
+Profile/shelf parameters accept handles or DIDs; generated navigation and forms prefer a usable
+handle for readability, falling back to the owner's DID when invalid or unavailable.
 
 - GET/POST `/new` → create list
 - GET `/:handle` → user's shelves; GET `/:handle/:rkey` → single shelf

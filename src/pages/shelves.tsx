@@ -4,6 +4,7 @@ import { BookCard, type BookCardData } from "./components/BookCard";
 import { hiveRatingToDisplayRating } from "../core/rating";
 import { Script } from "./utils/script";
 import { shelfOrdering } from "./utils/shelfOrdering";
+import { actorLinkId } from "./utils/actorLinkId";
 
 type ShelfItem = {
   uri: string;
@@ -31,21 +32,22 @@ export const ShelfViewPage: FC<{
   profile: ProfileViewDetailed | null;
   searchQuery?: string;
   searchResults?: HiveBook[];
-}> = ({ list, items, handle, isOwner, searchQuery = "", searchResults = [] }) => {
+}> = ({ list, items, handle, profile, isOwner, searchQuery = "", searchResults = [] }) => {
   const rkey = list.uri.split("/").at(-1)!;
+  const actor = actorLinkId(list.userDid, profile?.handle, handle);
 
   return (
     <div
       class="space-y-6 px-4 lg:px-8"
       data-shelf-ordering
-      data-reorder-url={`/shelves/${handle}/${rkey}/reorder`}
+      data-reorder-url={`/shelves/${actor}/${rkey}/reorder`}
     >
       {/* Header */}
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <a
-              href={`/shelves/${handle}`}
+              href={`/shelves/${actor}`}
               class="inline-flex min-h-10 items-center text-sm text-muted-foreground hover:text-primary"
             >
               Shelves
@@ -56,7 +58,7 @@ export const ShelfViewPage: FC<{
           {list.description && <p class="mt-2 text-muted-foreground">{list.description}</p>}
           <div class="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
             <a
-              href={`/profile/${handle}`}
+              href={`/profile/${actor}`}
               class="inline-flex min-h-10 items-center hover:text-primary"
             >
               @{handle}
@@ -70,11 +72,11 @@ export const ShelfViewPage: FC<{
 
         {isOwner && (
           <div class="flex shrink-0 gap-2">
-            <a href={`/shelves/${handle}/${rkey}/edit`} class="btn btn-ghost btn-sm">
+            <a href={`/shelves/${actor}/${rkey}/edit`} class="btn btn-ghost btn-sm">
               Edit
             </a>
             <form
-              action={`/shelves/${handle}/${rkey}/delete`}
+              action={`/shelves/${actor}/${rkey}/delete`}
               method="post"
               onsubmit="return confirm('Delete this shelf and all its items?')"
             >
@@ -90,7 +92,7 @@ export const ShelfViewPage: FC<{
       {isOwner && (
         <div class="card">
           <div class="card-body space-y-3">
-            <form action={`/shelves/${handle}/${rkey}`} method="get" class="flex gap-2">
+            <form action={`/shelves/${actor}/${rkey}`} method="get" class="flex gap-2">
               <div class="relative flex-1">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -131,7 +133,7 @@ export const ShelfViewPage: FC<{
                     {searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
                   </p>
                   <a
-                    href={`/shelves/${handle}/${rkey}`}
+                    href={`/shelves/${actor}/${rkey}`}
                     class="text-xs text-muted-foreground hover:text-foreground"
                   >
                     Clear
@@ -155,7 +157,7 @@ export const ShelfViewPage: FC<{
                         rating: hiveRatingToDisplayRating(book.rating) ?? 0,
                       }}
                     />
-                    <form action={`/shelves/${handle}/${rkey}/add`} method="post" class="shrink-0">
+                    <form action={`/shelves/${actor}/${rkey}/add`} method="post" class="shrink-0">
                       <input type="hidden" name="hiveId" value={book.id} />
                       <input type="hidden" name="q" value={searchQuery} />
                       <button type="submit" class="btn btn-primary btn-sm">
@@ -265,7 +267,7 @@ export const ShelfViewPage: FC<{
                       )}
                       {isOwner && (
                         <form
-                          action={`/shelves/${handle}/${rkey}/remove`}
+                          action={`/shelves/${actor}/${rkey}/remove`}
                           method="post"
                           class="mt-1.5"
                           data-order-remove
@@ -383,12 +385,13 @@ export const ShelfEditPage: FC<{
   handle: string;
 }> = ({ list, handle }) => {
   const rkey = list.uri.split("/").at(-1)!;
+  const actor = actorLinkId(list.userDid, handle);
 
   return (
     <div class="mx-auto max-w-lg space-y-6 px-4 lg:px-8">
       <h1 class="text-2xl font-bold text-foreground">Edit Shelf</h1>
 
-      <form action={`/shelves/${handle}/${rkey}/edit`} method="post" class="card space-y-4 p-6">
+      <form action={`/shelves/${actor}/${rkey}/edit`} method="post" class="card space-y-4 p-6">
         <div>
           <label for="shelf-name" class="mb-1 block text-sm font-medium text-foreground">
             Name
@@ -437,7 +440,7 @@ export const ShelfEditPage: FC<{
           <button type="submit" class="btn btn-primary">
             Save Changes
           </button>
-          <a href={`/shelves/${handle}/${rkey}`} class="btn btn-ghost">
+          <a href={`/shelves/${actor}/${rkey}`} class="btn btn-ghost">
             Cancel
           </a>
         </div>

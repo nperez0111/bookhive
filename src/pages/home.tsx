@@ -5,6 +5,7 @@ import type { Book } from "../types";
 import { BOOK_STATUS } from "../constants";
 import { BookCard, normalizeBookData } from "./components/BookCard";
 import { getReadingCounts, listShelf } from "../data/userShelves";
+import { actorLinkId } from "./utils/actorLinkId";
 
 function BookGrid({ books }: { books: Book[] }) {
   return (
@@ -113,7 +114,7 @@ export const Home: FC = async () => {
         <div class="card-header flex items-center justify-between">
           <h2 class="card-title">Reading at a glance</h2>
           <a
-            href={`/profile/${profile.did}/stats`}
+            href={`/profile/${actorLinkId(profile.did, profile.handle)}/stats`}
             class="focus-ring text-primary min-h-10 inline-flex items-center text-sm hover:underline active:scale-[0.96] transition-[transform] duration-150"
           >
             See full stats →

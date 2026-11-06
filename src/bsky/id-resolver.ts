@@ -13,6 +13,7 @@ import {
 import { NodeDnsHandleResolver } from "@atcute/identity-resolver-node";
 
 import { readThroughCache } from "../lib/readThroughCache";
+import { Semaphore, withTimeout } from "../lib/semaphore";
 
 let sharedDidDocumentResolver: DidDocumentResolver | undefined;
 
@@ -150,7 +151,6 @@ export function createCachingBaseIdResolver(
         );
         const entry = identityFromCache(raw);
         if (entry) return entry.did;
-        if (typeof raw === "string" && raw) return raw;
         return "";
       },
     },
@@ -162,29 +162,30 @@ export interface BidirectionalResolver {
   resolveDidsToHandles(dids: string[]): Promise<Record<string, string>>;
 }
 
-/** Handles legacy cache entries that stored the raw DID resolution object instead of a handle string. */
-function normalizeDidResolutionToHandle(value: unknown, did: string): string {
-  if (typeof value === "string" && value.length > 0) {
-    return value;
-  }
-  if (value && typeof value === "object" && "doc" in value) {
-    const doc = (value as { doc?: { alsoKnownAs?: string[] } }).doc;
-    const aka = doc?.alsoKnownAs?.[0];
-    if (typeof aka === "string" && aka.startsWith("at://")) {
-      return aka.slice(5); // "at://handle" -> "handle"
-    }
-  }
-  return did;
-}
+// Shared across resolver instances and profile batches. Never release a slot on
+// caller timeout: even an abort-ignoring transport must settle before it is reused.
+// The upstream DNS/HTTP race can still leave uncancellable DNS losers after the
+// actor promise settles; see docs/notes/data-and-caching.md.
+const identityRequests = new Semaphore(3, {
+  label: "identity resolution",
+  maxPending: 12,
+  acquireTimeoutMs: 500,
+});
 
-export function createBidirectionalResolverAtcute(): BidirectionalResolver {
-  const actorResolver = createActorResolver();
-
+export function createBidirectionalResolverAtcute(
+  actorResolver: ActorResolver = createActorResolver(),
+): BidirectionalResolver {
   return {
     async resolveDidToHandle(did: string): Promise<string> {
       try {
-        const actor = await actorResolver.resolve(did as ActorIdentifier);
-        return actor.handle;
+        const actor = await withTimeout(
+          identityRequests.run(() =>
+            actorResolver.resolve(did as ActorIdentifier, { signal: AbortSignal.timeout(2500) }),
+          ),
+          3000,
+          "identity resolution",
+        );
+        return isUsableHandle(actor.handle) ? actor.handle : did;
       } catch {
         return did;
       }
@@ -221,9 +222,7 @@ export function createCachingBidirectionalResolver(
         kv as Storage<string>,
         identityDidKey(did),
         async () => {
-          const handle = await inner
-            .resolveDidToHandle(did)
-            .then((v) => normalizeDidResolutionToHandle(v, did));
+          const handle = await inner.resolveDidToHandle(did);
           // Resolution failures are transient, not identities to retain for seven days.
           if (!isUsableHandle(handle)) throw new Error("Handle unavailable");
           // Write both directions so a DID->handle miss also warms the handle->DID side.

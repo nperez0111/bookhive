@@ -4,7 +4,7 @@ import type { AppEnv } from "../context";
 import type { SessionClient } from "../auth/client";
 import { createTestDb, testContext } from "../test/db";
 import { getListWithItems, updateList } from "../services/lists";
-import { ShelfViewPage } from "../pages/shelves";
+import { ShelfEditPage, ShelfViewPage } from "../pages/shelves";
 import shelves from "./shelves";
 
 const did = "did:plc:shelfowner";
@@ -207,13 +207,13 @@ describe("ranked shelf ordering", () => {
   });
   it("renders owner controls only for populated ranked shelves, hidden until JS initializes", async () => {
     const result = (await getListWithItems({ db: testDb.db, listUri }))!;
-    const render = async (isOwner: boolean, ordered: number) => {
+    const render = async (isOwner: boolean, ordered: number, handle = "handle.invalid") => {
       const page = new Hono().get("/", (c) =>
         c.html(
           <ShelfViewPage
             {...result}
             list={{ ...result.list, ordered }}
-            handle={did}
+            handle={handle}
             isOwner={isOwner}
             profile={null}
           />,
@@ -225,6 +225,22 @@ describe("ranked shelf ordering", () => {
     expect(html).toContain("Reorder books");
     expect(html).toContain('data-order-toolbar="true" hidden=""');
     expect(html).toContain("Enable JavaScript");
+    for (const suffix of ["", "/edit", "/delete", "/remove"]) {
+      expect(html).toContain(`="/shelves/${did}/test${suffix}"`);
+    }
+    expect(html).toContain(`data-reorder-url="/shelves/${did}/test/reorder"`);
+    expect(html).toContain(`href="/profile/${did}"`);
+    expect(html).not.toMatch(/(?:href|action|data-reorder-url)="[^"]*handle\.invalid/);
+    const readable = await render(true, 1, "shelfowner.test");
+    expect(readable).toContain('href="/shelves/shelfowner.test/test/edit"');
+    expect(readable).toContain('action="/shelves/shelfowner.test/test/delete"');
+    expect(readable).toContain('href="/profile/shelfowner.test"');
+    const editApp = new Hono().get("/", (c) =>
+      c.html(<ShelfEditPage list={result.list} handle="handle.invalid" />),
+    );
+    const editHtml = await (await editApp.request("/")).text();
+    expect(editHtml).toContain(`action="/shelves/${did}/test/edit"`);
+    expect(editHtml).toContain(`href="/shelves/${did}/test"`);
     expect(await render(false, 1)).not.toContain("Reorder books");
     expect(await render(true, 0)).not.toContain("Reorder books");
   });

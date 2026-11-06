@@ -87,8 +87,8 @@ export const VACUUM_FREELIST_RATIO = 0.25;
  * Reclaim free pages in the KV file, and switch it to incremental auto-vacuum
  * so this stops being necessary.
  *
- * The KV is a delete-heavy workload — the page and OG caches churn constantly
- * and the primary worker sweeps both every 15 minutes — but nothing ever
+ * The KV is a delete-heavy workload — the page cache churns constantly
+ * and the primary worker sweeps it every 15 minutes — but nothing ever
  * VACUUMed it and `auto_vacuum` was never set. Measured on production
  * 2026-08-02: **1.94 GB on disk holding 34.7 MB of live data, 98.1% free
  * pages.** That is 1.9 GB of page-cache pressure inside a memory-limited
@@ -135,29 +135,6 @@ export function vacuumKvIfBloated(
   );
 }
 
-/**
- * Reclaim whatever the sweeps just freed. Bounded by `pages` so it can sit on a
- * periodic timer without ever becoming a long synchronous stall — unlike a full
- * VACUUM, which rewrites the file.
- */
-export function incrementalVacuumKv(
-  sqlite: DatabaseSync,
-  pages = 1000,
-  log?: (fields: Record<string, unknown>, msg: string) => void,
-): void {
-  // PRAGMA arguments cannot be bound, so this is string-interpolated — coerce
-  // to a whole number rather than trusting every present and future caller to
-  // pass one.
-  const count = Math.max(1, Math.floor(Number(pages) || 0));
-  try {
-    sqlite.exec(`PRAGMA incremental_vacuum(${count})`);
-  } catch (err) {
-    // Expected no-op when auto_vacuum isn't INCREMENTAL yet; anything else is
-    // worth a line, since this runs on a timer where silence is the default.
-    log?.({ err }, "kv incremental_vacuum failed");
-  }
-}
-
 export function readPragma(sqlite: DatabaseSync, name: string): number {
   const row = sqlite.query(`PRAGMA ${name}`).get() as Record<string, number> | null;
   return row ? (Object.values(row)[0] ?? 0) : 0;
@@ -185,15 +162,15 @@ export async function sweepPageCache(
   let remaining = false;
   let phase = "delete";
   let phaseStarted = started;
+  let outcome: Record<string, unknown> = { outcome: "success" };
   try {
     const statement = sqlite.query(`DELETE FROM page_cache WHERE id IN (
       SELECT id FROM page_cache WHERE updated_at < ? ORDER BY updated_at LIMIT 100
     )`);
     do {
-      const batchStart = performance.now();
-      phaseStarted = batchStart;
+      phaseStarted = performance.now();
       const { changes } = statement.run(cutoff);
-      deleteMs += performance.now() - batchStart;
+      deleteMs += performance.now() - phaseStarted;
       deleted += changes;
       batches++;
       remaining = changes === 100;
@@ -201,39 +178,25 @@ export async function sweepPageCache(
       await new Promise((resolve) => setTimeout(resolve, 0));
     } while (remaining);
     phase = "vacuum";
-    const vacuumStart = performance.now();
-    phaseStarted = vacuumStart;
+    phaseStarted = performance.now();
     // A page count is not a wall-clock bound. Keep the step small and time it separately.
     sqlite.exec("PRAGMA incremental_vacuum(100)");
-    vacuumMs = performance.now() - vacuumStart;
-    log(
-      {
-        outcome: "success",
-        deleted_rows: deleted,
-        batches,
-        delete_ms: deleteMs,
-        vacuum_ms: vacuumMs,
-        duration_ms: performance.now() - started,
-        budget_exhausted: remaining,
-      },
-      "page_cache_sweep",
-    );
+    vacuumMs = performance.now() - phaseStarted;
   } catch (err) {
-    log(
-      {
-        outcome: "error",
-        phase,
-        failed_phase_ms: performance.now() - phaseStarted,
-        err,
-        deleted_rows: deleted,
-        batches,
-        delete_ms: deleteMs,
-        vacuum_ms: vacuumMs,
-        duration_ms: performance.now() - started,
-      },
-      "page_cache_sweep",
-    );
+    outcome = { outcome: "error", phase, failed_phase_ms: performance.now() - phaseStarted, err };
   }
+  log(
+    {
+      ...outcome,
+      deleted_rows: deleted,
+      batches,
+      delete_ms: deleteMs,
+      vacuum_ms: vacuumMs,
+      duration_ms: performance.now() - started,
+      budget_exhausted: remaining,
+    },
+    "page_cache_sweep",
+  );
 }
 
 const DRIVER_NAME = "sqlite";

@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { actorLinkId } from "../../utils/actorLinkId";
 import { sourceAvatarImageUrl } from "../../../core/imageUrl";
 
 const sizeMap = {
@@ -29,6 +30,7 @@ export const UserBlock: FC<{
 }) => {
   const { avatar: avatarClass, showDisplayName } = sizeMap[size];
   const showName = showDisplayName && (displayName ?? null);
+  const actor = actorLinkId(did, handle);
 
   const avatarEl = avatar ? (
     <img
@@ -61,7 +63,7 @@ export const UserBlock: FC<{
       {noLink ? (
         <span class="shrink-0">{avatarEl}</span>
       ) : (
-        <a href={`/profile/${did}`} class="shrink-0">
+        <a href={`/profile/${actor}`} class="shrink-0">
           {avatarEl}
         </a>
       )}
@@ -71,7 +73,7 @@ export const UserBlock: FC<{
         ) : (
           <>
             <a
-              href={`/profile/${did}`}
+              href={`/profile/${actor}`}
               class="text-foreground hover:text-primary font-semibold truncate block"
               title={handle}
             >

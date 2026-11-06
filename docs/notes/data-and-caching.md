@@ -111,10 +111,22 @@ deleting production data. Old persisted keys remain unused; no destructive clean
 
 `services/getProfile.ts` repairs placeholder profiles (including fresh LRU entries) through
 the bidirectionally verified resolver, with a bounded wait. Viewer-specific profile fields
-are preserved; failed verification never invents a handle. Profile links use the stable DID
-where available, independently of the displayed handle, so an AppView identity outage or
-handle change cannot redirect them to another account. DID profile/stat routes display the
-usable fetched handle rather than the DID when available.
+are preserved; if AppView refresh fails, even a placeholder-bearing cached profile remains
+available with its original freshness. Successful missing-actor responses still remove it.
+Failed verification never invents or caches a handle; unresolved profiles can retry on the next
+read rather than gaining negative-cache/backoff policy. User-facing profile, stats, shelf and
+share URLs prefer a usable handle for readability, falling back to the DID only when it is
+invalid or unavailable. `pages/utils/actorLinkId.ts` owns that selection using the existing
+atcute-backed `isUsableHandle` guard; `handle.invalid` is never a routing identity.
+DID profile/stat routes display the usable fetched handle when available.
+
+Verified DID-to-handle traversal has its own process-wide limiter shared across resolver
+instances: 3 active, 12 queued, 500ms queue deadline, a 2.5s abort signal and a 3s caller wait.
+Identity-cache in-flight deduplication coalesces callers for the same DID. A caller timeout
+does not release capacity: the underlying actor-resolution promise must actually settle.
+This bounds observable traversals, not every transport inside the resolver. The upstream
+DNS/HTTP race can finish via HTTP while its uncancellable Node DNS loser is still running;
+abort is checked after DNS settles. We retain that resolver behavior, not a custom DNS stack.
 
 ## Anonymous page cache (`src/middleware/anon-page-cache.ts`)
 

@@ -8,7 +8,6 @@ import sqliteKv, {
   createSharedKvDb,
   initializePageCache,
   sweepPageCache,
-  incrementalVacuumKv,
   vacuumKvIfBloated,
 } from "./sqlite-kv";
 
@@ -154,10 +153,11 @@ describe("vacuumKvIfBloated", () => {
   });
 });
 
-describe("incrementalVacuumKv", () => {
-  it("reclaims pages freed since the last run", () => {
+describe("page cache incremental vacuum", () => {
+  it("reclaims pages freed since the last run", async () => {
     const db = makeBloated();
     vacuumKvIfBloated(db, noop);
+    initializePageCache(db);
 
     const insert = db.prepare("INSERT INTO kv (id, value) VALUES (?1, ?2)");
     for (let i = 0; i < 2_000; i++) insert.run(`n${i}`, "y".repeat(2_000));
@@ -165,13 +165,46 @@ describe("incrementalVacuumKv", () => {
     const bloated = pragma(db, "page_count");
     expect(pragma(db, "freelist_count")).toBeGreaterThan(0);
 
-    incrementalVacuumKv(db);
+    await sweepPageCache(db, "2026-01-15", noop);
     expect(pragma(db, "page_count")).toBeLessThan(bloated);
+    db.close();
   });
 
-  it("is a no-op — not an error — when auto_vacuum was never enabled", () => {
+  it("is a no-op — not an error — when auto_vacuum was never enabled", async () => {
     const db = new DatabaseSync(":memory:");
-    db.exec("CREATE TABLE kv (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    expect(() => incrementalVacuumKv(db)).not.toThrow();
+    initializePageCache(db);
+    const logs: Record<string, unknown>[] = [];
+    await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+    expect(pragma(db, "auto_vacuum")).toBe(0);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ outcome: "success", deleted_rows: 0, batches: 1 });
+    db.close();
+  });
+
+  it("reports a vacuum failure once with deletion counts and failure-phase timing", async () => {
+    const db = new DatabaseSync(":memory:");
+    initializePageCache(db);
+    db.exec("INSERT INTO page_cache VALUES ('expired', 'value', '', '2026-01-01')");
+    const exec = db.exec.bind(db);
+    db.exec = ((sql: string) => {
+      if (sql.includes("incremental_vacuum")) throw new Error("disk failure");
+      return exec(sql);
+    }) as typeof db.exec;
+    const logs: Record<string, unknown>[] = [];
+    await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      outcome: "error",
+      phase: "vacuum",
+      deleted_rows: 1,
+      batches: 1,
+      budget_exhausted: false,
+    });
+    expect(logs[0]?.["err"]).toBeInstanceOf(Error);
+    for (const field of ["delete_ms", "vacuum_ms", "duration_ms", "failed_phase_ms"]) {
+      expect(logs[0]?.[field]).toBeNumber();
+    }
+    expect(db.query("SELECT * FROM page_cache").all()).toEqual([]);
+    db.close();
   });
 });

@@ -4,6 +4,7 @@
  */
 import { resolveActorDid } from "../services/actor";
 import { isUsableHandle } from "../bsky/id-resolver";
+import { actorLinkId } from "../pages/utils/actorLinkId";
 import { renderError } from "./errorPage";
 import { Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
@@ -73,8 +74,11 @@ const app = new Hono<AppEnv>()
         { title: "Unauthorized" },
       );
     }
-    const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
-    return c.redirect(`/profile/${handle}`);
+    const handle = await c
+      .get("ctx")
+      .resolver.resolveDidToHandle(agent.did)
+      .catch(() => agent.did);
+    return c.redirect(`/profile/${actorLinkId(agent.did, handle)}`);
   })
   .get("/profile/:handle/image", async (c) => {
     const handle = c.req.param("handle");

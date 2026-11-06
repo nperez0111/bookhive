@@ -99,7 +99,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `services/getBook.ts`            | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
 | `bsky/jetstream.ts`              | Jetstream v2 lifecycle, per-instance sequence replay and live-tip cutover — `ingestion-and-reconciliation.md`                 |
-| `services/getProfile.ts`         | Single/batch/self-profile unstorage LRU + viewer-isolated SWR; cookie-only hits and bounded refresh — `data-and-caching.md`   |
+| `services/getProfile.ts`         | Viewer-isolated LRU/SWR, bounded refresh + verified identity repair, cached failure fallback — `data-and-caching.md`          |
 | `pds/repoCache.ts`               | Public repository directory SWR, whole-traversal deadline and singleton transport guard — `data-and-caching.md`               |
 | `data/catalogBooks.ts`           | Genre pages select ordered IDs using the covering stats index before hydration — `data-and-caching.md`                        |
 | `scrapers/waf/solver-worker.ts`  | Worker solve logic; `protocol.ts` validates envelopes — `src/scrapers/waf/README.md`                                          |

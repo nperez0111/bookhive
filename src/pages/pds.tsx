@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { actorLinkId } from "./utils/actorLinkId";
 import type { ProfileViewDetailed } from "../types";
 import { env } from "../env";
 import { avatarImageUrl } from "../core/imageUrl";
@@ -52,7 +53,7 @@ export const PdsLanding: FC<{
             {profiles.map((profile) => (
               <a
                 key={profile.did}
-                href={`${publicUrl}/profile/${profile.did}`}
+                href={`${publicUrl}/profile/${actorLinkId(profile.did, profile.handle)}`}
                 class="card transition-[box-shadow,transform] duration-150 hover:shadow-md active:scale-[0.96]"
               >
                 <div class="card-body flex items-center gap-3">

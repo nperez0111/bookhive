@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import { Users } from "./components/icons";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { actorLinkId } from "./utils/actorLinkId";
 
 interface SidebarProps {
   currentPath: string;
@@ -18,7 +19,7 @@ export const Sidebar: FC<SidebarProps> = async ({ currentPath, pdsEnabled, user 
     { href: user ? "/home" : "/", label: "Home", icon: "home", authRequired: false },
     { href: "/my-books", label: "My Books", icon: "book", authRequired: true },
     {
-      href: user ? `/shelves/${user.handle}` : "/shelves",
+      href: user ? `/shelves/${actorLinkId(user.did, user.handle)}` : "/shelves",
       label: "Shelves",
       icon: "shelf",
       authRequired: true,

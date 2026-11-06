@@ -76,7 +76,7 @@ export async function getProfiles({
       return {
         did,
         key,
-        value: cached && isUsableHandle(cached.profile.handle) ? cached.profile : null,
+        value: cached?.profile ?? null,
         refresh:
           !cached ||
           !isUsableHandle(cached.profile.handle) ||
@@ -149,7 +149,9 @@ export async function getProfiles({
         );
         return profiles;
       } catch {
-        return new Map<string, ProfileViewDetailed>();
+        return new Map(
+          batch.flatMap((entry) => (entry.value ? [[entry.did, entry.value] as const] : [])),
+        );
       }
     })();
     for (const entry of batch) {
@@ -160,10 +162,14 @@ export async function getProfiles({
     }
   }
 
-  // Stale readers never join the refresh promise, including one started by a
-  // simultaneous cold/single-profile reader. Only genuine misses wait.
+  // Usable stale profiles never wait. Invalid handles join verified repair, but
+  // a failed refresh must not discard the viewer-safe cached profile around it.
   const values = await Promise.all(
-    entries.map(async (entry) => entry.value ?? pending.get(entry.key) ?? null),
+    entries.map(async (entry) =>
+      entry.value && isUsableHandle(entry.value.handle)
+        ? entry.value
+        : (pending.get(entry.key) ?? entry.value),
+    ),
   );
   return values.filter((value): value is ProfileViewDetailed => value !== null);
 }
