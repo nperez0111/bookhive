@@ -9,6 +9,7 @@ import { getIronSession, type IronSession } from "iron-session";
 import type { Logger } from "pino";
 import { createStorage, type Storage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
+import nullDriver from "unstorage/drivers/null";
 
 import {
   createOAuthClient,
@@ -210,7 +211,11 @@ export async function createAppDeps(): Promise<AppDeps> {
     // unlike the main DB it does bloat. Runs before the siblings spawn, and
     // only when the file is actually bloated.
     vacuumKvIfBloated(kvSqlite, (fields, msg) => logger.info(fields, msg));
-    initializePageCache(kvSqlite);
+    try {
+      initializePageCache(kvSqlite);
+    } catch (err) {
+      logger.warn({ err }, "page cache schema initialization failed; continuing startup");
+    }
   }
   const kv = createStorage({
     driver: sqliteKv({ table: "kv", db: kvDb }),
@@ -235,9 +240,23 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   // Optional HTML caching must not block the event loop for the auth/KV connection's 10s timeout.
-  const { db: pageKvDb, sqlite: pageSqlite } = createSharedKvDb(env.KV_DB_PATH, 50);
-  kv.mount("page:", sqliteKv({ table: "page_cache", db: pageKvDb, tableCreated: true }));
-  if (isPrimaryWorker) {
+  kv.mount("page:", nullDriver());
+  let pageCache: ReturnType<typeof createSharedKvDb> | undefined;
+  try {
+    pageCache = createSharedKvDb(env.KV_DB_PATH, 50);
+    // Separate :memory: connections do not share the primary's schema.
+    initializePageCache(pageCache.sqlite);
+    kv.mount("page:", sqliteKv({ table: "page_cache", db: pageCache.db, tableCreated: true }));
+  } catch (err) {
+    await pageCache?.db.destroy().catch(() => {});
+    pageCache = undefined;
+    logger.warn(
+      { err },
+      "page cache unavailable; caching and maintenance disabled for this worker",
+    );
+  }
+  if (isPrimaryWorker && pageCache) {
+    const pageSqlite = pageCache.sqlite;
     // Expire old cached pages so a bot sweep of the long tail can't grow the
     // KV file unboundedly. 2x TTL keeps recently-stale rows around for cheap
     // overwrite instead of insert.

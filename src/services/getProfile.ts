@@ -165,11 +165,16 @@ export async function getProfiles({
   // Usable stale profiles never wait. Invalid handles join verified repair, but
   // a failed refresh must not discard the viewer-safe cached profile around it.
   const values = await Promise.all(
-    entries.map(async (entry) =>
-      entry.value && isUsableHandle(entry.value.handle)
-        ? entry.value
-        : (pending.get(entry.key) ?? entry.value),
-    ),
+    entries.map(async (entry) => {
+      if (entry.value && isUsableHandle(entry.value.handle)) return entry.value;
+      const work = pending.get(entry.key);
+      if (!work) return entry.value;
+      // Bound cached repair end-to-end, including OAuth restoration before the fetch.
+      // The shared work continues and owns its limiter slots until it actually settles.
+      return entry.value
+        ? withTimeout(work, REQUEST_TIMEOUT + 500, "cached profile repair").catch(() => entry.value)
+        : work;
+    }),
   );
   return values.filter((value): value is ProfileViewDetailed => value !== null);
 }

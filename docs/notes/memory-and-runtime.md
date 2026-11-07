@@ -36,6 +36,7 @@ initiated the pressure, and no host/container limits were changed during investi
   host, not BookHive's allocation; isolated procfs layouts may expose different visibility.
   Compare counter increases and PID changes; peak/counters are cumulative for
   the cgroup, not per-sample events. Unsupported layouts produce missing fields, not invented zeros.
+  An unlimited cgroup limit is recorded explicitly as `memory.max: "max"`, not as a missing field.
   **Supervisor logs go only to Docker stdout/stderr**, not the application OpenObserve shipper;
   collect/archive them before rotation when investigating an incident.
 

@@ -199,6 +199,7 @@ describe("readCgroupMemory", () => {
       }),
     ).toEqual({
       "memory.current": 5000,
+      "memory.max": "max",
       "memory.peak": 6000,
       "memory.events.oom": 3,
       "memory.events.oom_kill": 2,

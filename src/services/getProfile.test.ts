@@ -54,6 +54,32 @@ async function eventually(check: () => Promise<boolean>) {
 }
 
 describe("profile cache", () => {
+  it("bounds invalid cached-profile repair even while OAuth restoration is still pending", async () => {
+    const ctx = context(async () => ({ ok: true, data: { profiles: [profile("did:plc:alice")] } }));
+    const session = deferred<SessionClient>();
+    const agent = await ctx.getSessionAgent();
+    ctx.getSessionAgent = mock(() => session.promise);
+    const cached = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    await seed(ctx, cached);
+    try {
+      expect(
+        await withTimeout(getProfile({ ctx, did: cached.did }), 4000, "cached restore wait"),
+      ).toEqual(cached);
+      expect(ctx.getSessionAgent).toHaveBeenCalledTimes(1);
+    } finally {
+      session.resolve(agent);
+    }
+    await eventually(
+      async () =>
+        (await ctx.kv.get<{ profile: ProfileViewDetailed }>(key(cached.did)))?.profile.handle ===
+        "alice.test",
+    );
+  });
+
   it("repairs an invalid cached/AppView handle using verified identity without losing viewer state", async () => {
     const invalid = {
       ...profile("did:plc:alice"),

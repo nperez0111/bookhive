@@ -113,6 +113,8 @@ deleting production data. Old persisted keys remain unused; no destructive clean
 the bidirectionally verified resolver, with a bounded wait. Viewer-specific profile fields
 are preserved; if AppView refresh fails, even a placeholder-bearing cached profile remains
 available with its original freshness. Successful missing-actor responses still remove it.
+Waiting on a cached invalid profile has a 3s end-to-end limit, including OAuth restoration;
+on timeout the viewer-safe cached value is returned while the shared repair continues.
 Failed verification never invents or caches a handle; unresolved profiles can retry on the next
 read rather than gaining negative-cache/backoff policy. User-facing profile, stats, shelf and
 share URLs prefer a usable handle for readability, falling back to the DID only when it is
@@ -150,8 +152,11 @@ Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors
 - **`page:` has its own connection with a 50ms busy timeout; durable KV retains 10s.** On
   November 3, eight page-cache writes surfaced `SQLITE_BUSY` as HTTP 500 after ~10s, aligned with
   the primary's 15-minute cleanup. Production's expiry DELETE scanned the unindexed table.
-  The primary now initializes `idx_page_cache_updated_at` before siblings start; this is KV schema,
-  not a migration of the main database. The mount skips lazy schema creation on requests.
+  The primary attempts to initialize `idx_page_cache_updated_at` before siblings start; this is
+  KV schema, not a migration of the main database. Each page connection also initializes its own
+  schema (`:memory:` connections are independent). Initialization failure does not prevent startup:
+  that worker uses a no-op page mount and skips maintenance. The mount skips lazy schema creation
+  on requests.
 - **Cleanup releases the writer lock between 100-row batches**, yielding to requests, with
   at most 100 batches / 5s between batches per sweep. It retains the 2h expiry cutoff and 15-minute
   schedule, prevents overlapping sweeps, and reduces incremental vacuum from 1000 to 100 pages.

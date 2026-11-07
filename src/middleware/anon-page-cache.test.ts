@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { createStorage, type Storage } from "unstorage";
 
 import sqliteKv, { createSharedKvDb } from "../sqlite-kv";
+import { withTimeout } from "../lib/semaphore";
 import { anonPageCache } from "./anon-page-cache";
 
 let kv: Storage;
@@ -86,20 +87,32 @@ describe("anonPageCache storage", () => {
     const app = new Hono();
     app.use("/p/*", anonPageCache(kv) as any);
     const chunk = "x".repeat(1024 * 1024);
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
     app.get(
       "/p/large-stream",
       () =>
         new Response(
           new ReadableStream({
             start(controller) {
+              streamController = controller;
               for (let n = 0; n < 6; n++) controller.enqueue(new TextEncoder().encode(chunk));
-              controller.close();
             },
           }),
           { headers: { "content-type": "text/html" } },
         ),
     );
-    const res = await get(app, "/p/large-stream");
+    let res: Response;
+    try {
+      // Headers must be returned while the original stream remains open. Whole-body
+      // buffering or awaiting clone cancellation would both wait for close here.
+      res = await withTimeout(
+        Promise.resolve(get(app, "/p/large-stream")),
+        1000,
+        "oversized live stream",
+      );
+    } finally {
+      streamController.close();
+    }
     expect(res.status).toBe(200);
     expect(res.headers.get("x-page-cache")).toBeNull();
     expect((await res.text()).length).toBe(6 * chunk.length);

@@ -133,12 +133,13 @@ export function readHostMemory(
 /** Docker's cgroup v2 mount; null on other layouts rather than publishing misleading zeros. */
 export function readCgroupMemory(
   readFile: (path: string) => string = defaultReadFile,
-): Record<string, number> | null {
-  const out: Record<string, number> = {};
+): Record<string, number | "max"> | null {
+  const out: Record<string, number | "max"> = {};
   for (const file of ["memory.current", "memory.max", "memory.peak", "memory.swap.current"]) {
     try {
-      const value = Number(readFile(`/sys/fs/cgroup/${file}`).trim());
-      if (Number.isFinite(value)) out[file] = value;
+      const raw = readFile(`/sys/fs/cgroup/${file}`).trim();
+      if (file === "memory.max" && raw === "max") out[file] = "max";
+      else if (raw && Number.isFinite(Number(raw))) out[file] = Number(raw);
     } catch {
       /* Off Linux, older kernels, or cgroup v1. */
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, spyOn } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,6 +16,58 @@ const pragma = (db: DatabaseSync, name: string) =>
   Object.values((db.query(`PRAGMA ${name}`).get() ?? {}) as Record<string, number>)[0] ?? 0;
 
 describe("page cache maintenance", () => {
+  it("initializes independent in-memory page connections before mounting a pre-created driver", async () => {
+    const primary = createSharedKvDb(":memory:");
+    const page = createSharedKvDb(":memory:", 50);
+    try {
+      initializePageCache(primary.sqlite);
+      expect(
+        page.sqlite.query("SELECT name FROM sqlite_master WHERE name = 'page_cache'").get(),
+      ).toBeNull();
+      initializePageCache(page.sqlite);
+      const driver = sqliteKv({ table: "page_cache", db: page.db, tableCreated: true });
+      await driver.setItem!("test", "cached", {});
+      expect(await driver.getItem!("test", {})).toBe("cached");
+    } finally {
+      await page.db.destroy();
+      await primary.db.destroy();
+    }
+  });
+
+  it("stops at the batch budget and leaves remaining expired rows for the next sweep", async () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      initializePageCache(db);
+      const insert = db.prepare("INSERT INTO page_cache VALUES (?, 'value', '', '2026-01-01')");
+      db.transaction(() => {
+        for (let n = 0; n < 10_100; n++) insert.run(String(n));
+      })();
+      const logs: Record<string, unknown>[] = [];
+      await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+      expect(logs[0]).toMatchObject({ batches: 100, deleted_rows: 10_000, budget_exhausted: true });
+      expect(db.query("SELECT count(*) AS count FROM page_cache").get()).toEqual({ count: 100 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("stops at the time budget without deleting the remaining expired rows", async () => {
+    const db = new DatabaseSync(":memory:");
+    initializePageCache(db);
+    const insert = db.prepare("INSERT INTO page_cache VALUES (?, 'value', '', '2026-01-01')");
+    for (let n = 0; n < 200; n++) insert.run(String(n));
+    const clock = spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValue(5000);
+    try {
+      const logs: Record<string, unknown>[] = [];
+      await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+      expect(logs[0]).toMatchObject({ batches: 1, deleted_rows: 100, budget_exhausted: true });
+      expect(db.query("SELECT count(*) AS count FROM page_cache").get()).toEqual({ count: 100 });
+    } finally {
+      clock.mockRestore();
+      db.close();
+    }
+  });
+
   it("indexes expiry on existing tables and deletes only expired rows in multiple batches", async () => {
     const db = new DatabaseSync(":memory:");
     db.exec(
