@@ -154,6 +154,20 @@ export const BookInfo: FC<{
   const authors = parseAuthors(book.authors);
   const firstAuthor = authors[0] ?? "";
 
+  const recommendations = async () => {
+    startTime(c, "book_recommendations");
+    try {
+      return await listOtherBooksByAuthor({
+        db: c.get("ctx").db,
+        author: firstAuthor,
+        excludeHiveId: book.id,
+        language: book.language,
+      });
+    } finally {
+      endTime(c, "book_recommendations");
+    }
+  };
+
   // Run all independent queries in parallel
   startTime(c, "db_parallel_queries");
   const [
@@ -178,12 +192,7 @@ export const BookInfo: FC<{
           .resolver.resolveDidToHandle(did)
           .catch(() => did)
       : Promise.resolve(null),
-    listOtherBooksByAuthor({
-      db: c.get("ctx").db,
-      author: firstAuthor,
-      excludeHiveId: book.id,
-      language: book.language,
-    }),
+    recommendations(),
     loadGenresForHiveBook(c.get("ctx").db, book.id),
   ]);
   endTime(c, "db_parallel_queries");

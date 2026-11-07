@@ -358,17 +358,24 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       }
 
       // Same core as `/search` — hydrate before truncating, or the language sort could disagree with page one on iOS vs web.
+      const hydrateStarted = performance.now();
       const books = await hydrateSearchResults({ db: ctx.db, ids: allIds, language });
+      ctx.addWideEventContext({ search_hydrate_ms: performance.now() - hydrateStarted });
 
       const slice = books.slice(off, off + limit);
+      const genresStarted = performance.now();
       const genreMap = await loadGenresMapForHiveBooks(
         ctx.db,
         slice.map((b) => b.id),
       );
+      ctx.addWideEventContext({ search_genres_ms: performance.now() - genresStarted });
 
+      const sessionStarted = performance.now();
       const agent = await ctx.getSessionAgent();
+      ctx.addWideEventContext({ search_session_ms: performance.now() - sessionStarted });
       let userStatuses: Record<string, string> | undefined;
       if (agent && slice.length > 0) {
+        const statusesStarted = performance.now();
         const userBooks = await ctx.db
           .selectFrom("user_book")
           .select(["hiveId", "status"])
@@ -382,6 +389,7 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         userStatuses = Object.fromEntries(
           userBooks.filter((ub) => ub.status).map((ub) => [ub.hiveId, ub.status!]),
         );
+        ctx.addWideEventContext({ search_statuses_ms: performance.now() - statusesStarted });
       }
 
       return json({

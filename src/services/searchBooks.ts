@@ -45,13 +45,17 @@ export async function searchBooks({
     serviceAccountAgent?: AppContext["serviceAccountAgent"];
   };
 }) {
+  const lookupStarted = performance.now();
   const combinedIds = await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
     async () => {
       let goodreadsIds: HiveId[] = [];
 
+      const upstreamStarted = performance.now();
       const res = await findBookDetails(query);
+      ctx.addWideEventContext({ search_upstream_ms: performance.now() - upstreamStarted });
+      const persistStarted = performance.now();
       if (res.success) {
         goodreadsIds = await ctx.db
           .insertInto("hive_book")
@@ -95,8 +99,11 @@ export async function searchBooks({
         }
       }
 
+      ctx.addWideEventContext({ search_persist_ms: performance.now() - persistStarted });
+
       // Backfill from the local DB to reach up to 20 results, via the FTS5
       // index (migration 019) rather than a `LIKE` scan.
+      const localStarted = performance.now();
       const match = isUsefulFtsQuery(query) ? ftsMatchQuery(query) : null;
       const dbRows = match
         ? (
@@ -111,6 +118,7 @@ export async function searchBooks({
           ).rows
         : [];
 
+      ctx.addWideEventContext({ search_local_ms: performance.now() - localStarted });
       const combined = [...goodreadsIds];
       for (const { id } of dbRows) {
         if (combined.length >= 20) break;
@@ -125,6 +133,7 @@ export async function searchBooks({
     },
   );
 
+  ctx.addWideEventContext({ search_lookup_ms: performance.now() - lookupStarted });
   return combinedIds;
 }
 

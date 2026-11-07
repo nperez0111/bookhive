@@ -1,5 +1,6 @@
 // Wide-event logging: one context-rich event per request. Middleware captures timing/status/environment; handlers add business context via ctx.addWideEventContext().
 import type { MiddlewareHandler } from "hono";
+import { setMetric } from "hono/timing";
 import { env } from "../env";
 import type { AppEnv } from "../context";
 import { toErrorPayload } from "../lib/errors";
@@ -51,6 +52,37 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
         const bag = c.get("wideEventBag");
         if (bag && typeof bag === "object") {
           Object.assign(wideEvent, bag);
+        }
+
+        // Services/XRPC have no Hono dependency. Only these fixed numeric stages
+        // are promoted to headers; never export arbitrary business context.
+        const metric = c.get("metric");
+        if (metric) {
+          for (const stage of [
+            "search_upstream",
+            "search_persist",
+            "search_local",
+            "search_lookup",
+            "search_hydrate",
+            "search_genres",
+            "search_session",
+            "search_statuses",
+          ]) {
+            const ms = bag?.[`${stage}_ms`];
+            if (typeof ms === "number" && Number.isFinite(ms) && ms >= 0) {
+              setMetric(c, stage, ms);
+            }
+          }
+          // Outer timing() emits the header after this middleware unwinds. Read
+          // completed metrics, not cached response headers or descriptions.
+          const timings: Record<string, number> = {};
+          for (const header of metric.headers.slice(0, 64)) {
+            const match = /^([A-Za-z][A-Za-z0-9_+.-]{0,63});dur=(\d+(?:\.\d+)?)(?:;|$)/.exec(
+              header,
+            );
+            if (match && Number.isFinite(Number(match[2]))) timings[match[1]!] = Number(match[2]);
+          }
+          if (Object.keys(timings).length) wideEvent["server_timing_ms"] = timings;
         }
 
         // Ensure error is in the log for 5xx: from bag (string/object), c.error, or requestError.

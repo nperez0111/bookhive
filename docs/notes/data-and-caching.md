@@ -30,6 +30,25 @@ stamped **after** the fetch resolves, so a slow fetch isn't born stale.
   owned-only records do not inflate the count. Finished-last-week is a rolling seven-day window
   bounded at the current time, excluding future-dated rows.
 
+## Request-stage timings must survive into logs
+
+The wide-event middleware records completed Hono timings as `server_timing_ms`, reading the
+current request's metric buffer before outer `timing()` emits its header. It deliberately does
+not parse response headers (which may belong to an earlier cached render), descriptions, or
+unfinished timers; the outer `total` is still available as request `duration_ms`. At most 64
+completed metrics are inspected. Overlapping/parallel stages are elapsed waits, not additive
+CPU or SQLite execution times.
+
+Catalogue search records `search_upstream_ms` (Goodreads lookup), `search_persist_ms`
+(catalogue/identifier writes and enrichment enqueue), `search_local_ms` (local FTS), and
+`search_lookup_ms` (the entire cached/deduplicated lookup). XRPC additionally measures
+`search_hydrate_ms`, `search_genres_ms`, `search_session_ms`, and `search_statuses_ms` when
+those stages run. Only these fixed, finite, nonnegative numeric fields are promoted to
+`Server-Timing`; no query strings, identities, or arbitrary business context become headers.
+Cache hits/deduplicated waiters have lookup timing but no invented upstream timings. Book
+pages also time `book_recommendations` separately from the enclosing parallel query group.
+These measurements do not change search ordering, discovery, cache or timeout policy.
+
 ## The `/explore` aggregates: `INDEXED BY idx_hive_book_stats` is not decoration
 
 Migration 024 added `hive_book(id, ratingsCount, rating, language)` so the
