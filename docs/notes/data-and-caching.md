@@ -156,7 +156,8 @@ Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors
   KV schema, not a migration of the main database. Each page connection also initializes its own
   schema (`:memory:` connections are independent). Initialization failure does not prevent startup:
   that worker uses a no-op page mount and skips maintenance. The mount skips lazy schema creation
-  on requests.
+  on requests. Select the SQLite or no-op driver before mounting: unstorage rejects a second
+  mount at the same prefix rather than replacing the first one.
 - **Cleanup releases the writer lock between 100-row batches**, yielding to requests, with
   at most 100 batches / 5s between batches per sweep. It retains the 2h expiry cutoff and 15-minute
   schedule, prevents overlapping sweeps, and reduces incremental vacuum from 1000 to 100 pages.

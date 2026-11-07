@@ -240,7 +240,6 @@ export async function createAppDeps(): Promise<AppDeps> {
   kv.mount("sync_token:", sqliteKv({ table: "sync_token", db: kvDb }));
   // Anonymous full-page HTML cache (see src/middleware/anon-page-cache.ts).
   // Optional HTML caching must not block the event loop for the auth/KV connection's 10s timeout.
-  kv.mount("page:", nullDriver());
   let pageCache: ReturnType<typeof createSharedKvDb> | undefined;
   try {
     pageCache = createSharedKvDb(env.KV_DB_PATH, 50);
@@ -250,6 +249,7 @@ export async function createAppDeps(): Promise<AppDeps> {
   } catch (err) {
     await pageCache?.db.destroy().catch(() => {});
     pageCache = undefined;
+    kv.mount("page:", nullDriver());
     logger.warn(
       { err },
       "page cache unavailable; caching and maintenance disabled for this worker",
