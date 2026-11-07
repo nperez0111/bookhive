@@ -22,6 +22,11 @@ routes │ xrpc │ pages │ client │ middleware        (transports & view)
                                   types.ts, constants.ts, env.ts
 ```
 
+KV page-cache schema/short-timeout connection and batched maintenance live in `sqlite-kv.ts` /
+`context.ts`; optional cache failures preserve rendered responses. See `docs/notes/data-and-caching.md`.
+Runtime/active-request samples (`metrics.ts`, wide-event middleware) complement independent
+supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for diagnostic boundaries.
+
 **Which bucket a new file goes in — answer the first question that is "yes":**
 
 1. Does it build a `Response`, read `c.req`, or choose a status code? → **not** a util; it belongs
@@ -94,7 +99,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `services/getBook.ts`            | Book record CRUD against the PDS; `updateBookRecord` is the interactive write — `domain-rules-and-write-paths.md`             |
 | `bsky/jetstream.ts`              | Jetstream v2 lifecycle, per-instance sequence replay and live-tip cutover — `ingestion-and-reconciliation.md`                 |
-| `services/getProfile.ts`         | Single/batch/self-profile unstorage LRU + viewer-isolated SWR; cookie-only hits and bounded refresh — `data-and-caching.md`   |
+| `services/getProfile.ts`         | Viewer-isolated LRU/SWR, bounded refresh + verified identity repair, cached failure fallback — `data-and-caching.md`          |
 | `pds/repoCache.ts`               | Public repository directory SWR, whole-traversal deadline and singleton transport guard — `data-and-caching.md`               |
 | `data/catalogBooks.ts`           | Genre pages select ordered IDs using the covering stats index before hydration — `data-and-caching.md`                        |
 | `scrapers/waf/solver-worker.ts`  | Worker solve logic; `protocol.ts` validates envelopes — `src/scrapers/waf/README.md`                                          |

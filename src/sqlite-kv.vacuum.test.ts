@@ -1,11 +1,83 @@
 import { describe, it, expect } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { incrementalVacuumKv, vacuumKvIfBloated } from "./sqlite-kv";
+import sqliteKv, {
+  createSharedKvDb,
+  initializePageCache,
+  sweepPageCache,
+  vacuumKvIfBloated,
+} from "./sqlite-kv";
 
 const noop = () => {};
 const pragma = (db: DatabaseSync, name: string) =>
   Object.values((db.query(`PRAGMA ${name}`).get() ?? {}) as Record<string, number>)[0] ?? 0;
+
+describe("page cache maintenance", () => {
+  it("indexes expiry on existing tables and deletes only expired rows in multiple batches", async () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(
+      "CREATE TABLE page_cache (id TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+    );
+    initializePageCache(db);
+    initializePageCache(db);
+    const insert = db.prepare("INSERT INTO page_cache VALUES (?, 'value', '', ?)");
+    for (let n = 0; n < 250; n++) insert.run(`old${n}`, "2026-01-01");
+    insert.run("fresh", "2026-02-01");
+    const plan = JSON.stringify(
+      db
+        .query(
+          "EXPLAIN QUERY PLAN SELECT id FROM page_cache WHERE updated_at < ? ORDER BY updated_at LIMIT 100",
+        )
+        .all("2026-01-15"),
+    );
+    expect(plan).toContain("idx_page_cache_updated_at");
+    expect(plan).not.toContain("SCAN page_cache");
+    const logs: Record<string, unknown>[] = [];
+    await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+    expect(db.query("SELECT id FROM page_cache").all()).toEqual([{ id: "fresh" }]);
+    expect(logs[0]).toMatchObject({
+      outcome: "success",
+      deleted_rows: 250,
+      batches: 3,
+      budget_exhausted: false,
+    });
+    expect(typeof logs[0]?.["vacuum_ms"]).toBe("number");
+    db.close();
+  });
+
+  it("uses a short lock wait for optional page writes without changing the durable KV default", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bookhive-kv-contention-"));
+    const location = join(dir, "kv.sqlite");
+    const durable = createSharedKvDb(location);
+    initializePageCache(durable.sqlite);
+    const page = createSharedKvDb(location, 50);
+    const driver = sqliteKv({ table: "page_cache", db: page.db, tableCreated: true });
+    try {
+      await driver.hasItem!("initialize", {});
+      expect(pragma(durable.sqlite, "busy_timeout")).toBe(10000);
+      expect(pragma(page.sqlite, "busy_timeout")).toBe(50);
+      durable.sqlite.exec("BEGIN IMMEDIATE");
+      const started = performance.now();
+      const error = await Promise.resolve(driver.setItem!("key", "value", {})).catch(
+        (err: unknown) => err,
+      );
+      expect(String(error)).toContain("database is locked");
+      expect(performance.now() - started).toBeLessThan(1000);
+      const logs: Record<string, unknown>[] = [];
+      await sweepPageCache(page.sqlite, "2026-01-15", (fields) => logs.push(fields));
+      expect(logs[0]).toMatchObject({ outcome: "error", phase: "delete" });
+      expect(typeof logs[0]?.["failed_phase_ms"]).toBe("number");
+    } finally {
+      durable.sqlite.exec("ROLLBACK");
+      await page.db.destroy();
+      await durable.db.destroy();
+      rmSync(dir, { recursive: true });
+    }
+  });
+});
 
 /** Fill then delete, which is what leaves free pages behind. */
 function makeBloated(): DatabaseSync {
@@ -81,10 +153,11 @@ describe("vacuumKvIfBloated", () => {
   });
 });
 
-describe("incrementalVacuumKv", () => {
-  it("reclaims pages freed since the last run", () => {
+describe("page cache incremental vacuum", () => {
+  it("reclaims pages freed since the last run", async () => {
     const db = makeBloated();
     vacuumKvIfBloated(db, noop);
+    initializePageCache(db);
 
     const insert = db.prepare("INSERT INTO kv (id, value) VALUES (?1, ?2)");
     for (let i = 0; i < 2_000; i++) insert.run(`n${i}`, "y".repeat(2_000));
@@ -92,13 +165,46 @@ describe("incrementalVacuumKv", () => {
     const bloated = pragma(db, "page_count");
     expect(pragma(db, "freelist_count")).toBeGreaterThan(0);
 
-    incrementalVacuumKv(db);
+    await sweepPageCache(db, "2026-01-15", noop);
     expect(pragma(db, "page_count")).toBeLessThan(bloated);
+    db.close();
   });
 
-  it("is a no-op — not an error — when auto_vacuum was never enabled", () => {
+  it("is a no-op — not an error — when auto_vacuum was never enabled", async () => {
     const db = new DatabaseSync(":memory:");
-    db.exec("CREATE TABLE kv (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    expect(() => incrementalVacuumKv(db)).not.toThrow();
+    initializePageCache(db);
+    const logs: Record<string, unknown>[] = [];
+    await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+    expect(pragma(db, "auto_vacuum")).toBe(0);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ outcome: "success", deleted_rows: 0, batches: 1 });
+    db.close();
+  });
+
+  it("reports a vacuum failure once with deletion counts and failure-phase timing", async () => {
+    const db = new DatabaseSync(":memory:");
+    initializePageCache(db);
+    db.exec("INSERT INTO page_cache VALUES ('expired', 'value', '', '2026-01-01')");
+    const exec = db.exec.bind(db);
+    db.exec = ((sql: string) => {
+      if (sql.includes("incremental_vacuum")) throw new Error("disk failure");
+      return exec(sql);
+    }) as typeof db.exec;
+    const logs: Record<string, unknown>[] = [];
+    await sweepPageCache(db, "2026-01-15", (fields) => logs.push(fields));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      outcome: "error",
+      phase: "vacuum",
+      deleted_rows: 1,
+      batches: 1,
+      budget_exhausted: false,
+    });
+    expect(logs[0]?.["err"]).toBeInstanceOf(Error);
+    for (const field of ["delete_ms", "vacuum_ms", "duration_ms", "failed_phase_ms"]) {
+      expect(logs[0]?.[field]).toBeNumber();
+    }
+    expect(db.query("SELECT * FROM page_cache").all()).toEqual([]);
+    db.close();
   });
 });

@@ -1,6 +1,7 @@
 {
   "worktree": {
-    "setup": "bun i"
+    "setup": "bun i",
+    "teardown": "rm -rf node_modules"
   },
   "scripts": {
     "dev": {

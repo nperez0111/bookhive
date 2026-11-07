@@ -1,3 +1,4 @@
+import { actorLinkId } from "./utils/actorLinkId";
 import { viewTransitionName } from "../lib/viewTransitionName";
 import { format } from "date-fns";
 import { type FC, Fragment } from "hono/jsx";
@@ -88,7 +89,7 @@ async function Recommendations({ book, did }: { book: HiveBook; did: string | nu
           return (
             <a
               key={related.userDid}
-              href={`/profile/${handle}`}
+              href={`/profile/${actorLinkId(related.userDid, handle)}`}
               class="flex items-center gap-3 rounded-xl bg-card px-3 py-2 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] transition-[background-color] duration-150 hover:bg-muted"
             >
               {avatar ? (
@@ -1080,14 +1081,14 @@ export const BookInfo: FC<{
                       return (
                         <div key={shelf.uri} class="flex items-center gap-0.5">
                           <a
-                            href={`/shelves/${userHandle}/${rkey}`}
+                            href={`/shelves/${actorLinkId(shelf.userDid, userHandle)}/${rkey}`}
                             class="badge text-xs hover:bg-primary hover:text-primary-foreground"
                           >
                             {shelf.name}
                           </a>
                           <form
                             method="post"
-                            action={`/shelves/${userHandle}/${rkey}/remove`}
+                            action={`/shelves/${actorLinkId(shelf.userDid, userHandle)}/${rkey}/remove`}
                             class="inline"
                           >
                             <input type="hidden" name="itemUri" value={shelf.itemUri} />
@@ -1154,7 +1155,7 @@ export const BookInfo: FC<{
                                 type="submit"
                                 role="option"
                                 name="shelfPath"
-                                value={`${userHandle}/${rkey}`}
+                                value={`${actorLinkId(list.userDid, userHandle)}/${rkey}`}
                                 class="relative my-0.5 w-full cursor-pointer rounded-[4px] px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                               >
                                 {list.name}

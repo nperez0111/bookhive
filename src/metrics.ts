@@ -392,7 +392,13 @@ let runtimeInterval: ReturnType<typeof setInterval> | null = null;
 let lastCpuUser = 0;
 let lastCpuSystem = 0;
 
-export function startRuntimeMetricsCollection(): void {
+export const requestsInFlight = registry.register(
+  new Gauge("bookhive_requests_in_flight", "Requests currently executing in Hono"),
+);
+
+export function startRuntimeMetricsCollection(
+  report?: (fields: Record<string, unknown>) => void,
+): void {
   if (runtimeInterval) return;
 
   const initial = process.resourceUsage();
@@ -400,6 +406,9 @@ export function startRuntimeMetricsCollection(): void {
   lastCpuSystem = initial.systemCPUTime;
 
   let lastCheck = performance.now();
+  let lastReport = lastCheck;
+  let maxLag = 0;
+  let maxActive = 0;
 
   runtimeInterval = setInterval(() => {
     const mem = process.memoryUsage();
@@ -424,6 +433,26 @@ export function startRuntimeMetricsCollection(): void {
     const lag = Math.max(0, (now - lastCheck - 5000) / 1000);
     eventLoopLag.observe(lag, LABEL.worker);
     lastCheck = now;
+    maxLag = Math.max(maxLag, lag);
+    maxActive = Math.max(maxActive, requestsInFlight.getValue(LABEL.worker));
+    // Persist history through the normal logger, independently of /metrics scrape routing.
+    if (now - lastReport >= 60_000) {
+      report?.({
+        worker_index: WORKER_INDEX,
+        uptime_s: process.uptime(),
+        rss_bytes: mem.rss,
+        heap_used_bytes: mem.heapUsed,
+        external_bytes: mem.external,
+        array_buffer_bytes: mem.arrayBuffers,
+        active_requests: requestsInFlight.getValue(LABEL.worker),
+        sampled_max_active_requests: maxActive,
+        max_event_loop_lag_ms: maxLag * 1000,
+        sample_window_ms: now - lastReport,
+      });
+      lastReport = now;
+      maxLag = 0;
+      maxActive = 0;
+    }
   }, 5000);
 
   if (runtimeInterval.unref) {

@@ -54,6 +54,30 @@ async function eventually(check: () => Promise<boolean>) {
 }
 
 describe("profile cache", () => {
+  it("repairs an invalid cached/AppView handle using verified identity without losing viewer state", async () => {
+    const invalid = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    const get = mock(async () => ({ ok: true as const, data: { profiles: [invalid] } }));
+    const ctx = {
+      ...context(get),
+      resolver: {
+        resolveDidToHandle: mock(async () => "alice.test"),
+        resolveDidsToHandles: async () => ({}),
+      },
+    };
+    await seed(ctx, invalid);
+    const result = await getProfile({ ctx, did: invalid.did });
+    expect(result?.handle).toBe("alice.test");
+    expect(result?.viewer).toEqual(invalid.viewer);
+    expect(ctx.resolver.resolveDidToHandle).toHaveBeenCalledWith(invalid.did);
+    expect(await ctx.kv.get("identity:v2:handle:handle.invalid")).toBeNull();
+    expect((await getProfile({ ctx, did: invalid.did }))?.handle).toBe("alice.test");
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it("returns fresh cached profiles without a network request", async () => {
     const get = mock(async () => {
       throw new Error("must not fetch");
@@ -64,6 +88,75 @@ describe("profile cache", () => {
     expect(await getProfile({ ctx, did: cached.did })).toEqual(cached);
     expect(get).not.toHaveBeenCalled();
     expect(ctx.getSessionAgent).not.toHaveBeenCalled();
+  });
+
+  it("retains invalid-handle cached profile data and freshness when AppView fails", async () => {
+    const ctx = context(async () => {
+      throw new Error("offline");
+    });
+    const cached = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      avatar: "https://example.test/avatar.jpg",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    const fetchedAt = Date.now();
+    await ctx.kv.set(key(cached.did), { profile: cached, fetchedAt });
+    expect(await getProfile({ ctx, did: cached.did })).toEqual(cached);
+    expect(await ctx.kv.get(key(cached.did))).toEqual({ profile: cached, fetchedAt });
+    expect(await ctx.kv.get("identity:v2:did:" + cached.did)).toBeNull();
+    expect(await ctx.kv.get("identity:v2:handle:handle.invalid")).toBeNull();
+  });
+
+  it("preserves viewer fields when verification fails without poisoning identity caches", async () => {
+    const invalid = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    const ctx = {
+      ...context(async () => ({ ok: true, data: { profiles: [invalid] } })),
+      resolver: {
+        resolveDidToHandle: async () => {
+          throw new Error("unverified");
+        },
+      },
+    };
+    await seed(ctx, invalid);
+    expect(await getProfile({ ctx, did: invalid.did })).toEqual(invalid);
+    expect(await ctx.kv.get(key(invalid.did))).toMatchObject({ profile: invalid });
+    expect(await ctx.kv.get("identity:v2:did:" + invalid.did)).toBeNull();
+    expect(await ctx.kv.get("identity:v2:handle:handle.invalid")).toBeNull();
+  });
+
+  it("never uses another viewer's invalid cached profile as a failure fallback", async () => {
+    const kv = profileStorage();
+    const first = context(async () => {
+      throw new Error("offline");
+    }, kv);
+    const cached = {
+      ...profile("did:plc:alice"),
+      handle: "handle.invalid",
+      viewer: { muted: true },
+    } as ProfileViewDetailed;
+    await seed(first, cached);
+    const second = context(
+      async () => {
+        throw new Error("offline");
+      },
+      kv,
+      "did:plc:other",
+    );
+    expect(await getProfile({ ctx: second, did: cached.did })).toBeNull();
+    expect(await getProfile({ ctx: first, did: cached.did })).toEqual(cached);
+  });
+
+  it("removes an invalid cached profile when AppView successfully confirms its absence", async () => {
+    const ctx = context(async () => ({ ok: true, data: { profiles: [] } }));
+    const cached = { ...profile("did:plc:alice"), handle: "handle.invalid" } as ProfileViewDetailed;
+    await seed(ctx, cached);
+    expect(await getProfile({ ctx, did: cached.did })).toBeNull();
+    expect(await ctx.kv.get(key(cached.did))).toBeNull();
   });
 
   it("serves stale without waiting for OAuth or a shared single/batch refresh", async () => {

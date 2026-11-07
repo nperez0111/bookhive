@@ -1,0 +1,111 @@
+import { expect, mock, test } from "bun:test";
+import type { ActorResolver } from "@atcute/identity-resolver";
+import { createStorage } from "unstorage";
+import {
+  createCachingBaseIdResolver,
+  createCachingBidirectionalResolver,
+  createBidirectionalResolverAtcute,
+  setIdentityCache,
+} from "./id-resolver";
+
+test("failed verification falls back to the DID without caching a placeholder", async () => {
+  const kv = createStorage();
+  const did = "did:plc:unresolved";
+  let handle = "handle.invalid";
+  const resolver = createCachingBidirectionalResolver(kv, {
+    resolveDidToHandle: async () => handle,
+    resolveDidsToHandles: async () => ({}),
+  });
+  expect(await resolver.resolveDidToHandle(did)).toBe(did);
+  expect(await kv.get("identity:v2:did:" + did)).toBeNull();
+  handle = "recovered.test";
+  expect(await resolver.resolveDidToHandle(did)).toBe(handle);
+});
+
+test("identity traversal concurrency and queue are bounded across resolver instances, with abort", async () => {
+  let active = 0;
+  let peak = 0;
+  const signals: AbortSignal[] = [];
+  const resolve: ActorResolver["resolve"] = mock(async (_did, options) => {
+    const signal = options!.signal!;
+    signals.push(signal);
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await new Promise<never>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+      throw new Error("unreachable");
+    } finally {
+      active--;
+    }
+  });
+  const first = createBidirectionalResolverAtcute({ resolve });
+  const second = createBidirectionalResolverAtcute({ resolve });
+  const dids = Array.from({ length: 25 }, (_, i) => `did:plc:overload${i}`);
+  expect(
+    await Promise.all(dids.map((did, i) => (i % 2 ? first : second).resolveDidToHandle(did))),
+  ).toEqual(dids);
+  expect(peak).toBe(3);
+  expect(signals).toHaveLength(3);
+  expect(signals.every((signal) => signal.aborted)).toBe(true);
+  expect(active).toBe(0);
+}, 6000);
+
+test("timed-out identity traversals keep their slots until an abort-ignoring transport settles", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const resolve = mock<ActorResolver["resolve"]>(async (did) => {
+    if (resolve.mock.calls.length <= 3) await gate;
+    return { did: did as `did:plc:${string}`, handle: "verified.test", pds: "https://pds.test/" };
+  });
+  const kv = createStorage();
+  const resolver = createCachingBidirectionalResolver(
+    kv,
+    createBidirectionalResolverAtcute({ resolve }),
+  );
+  const dids = ["a", "b", "c"].map((id) => `did:plc:held${id}`);
+  try {
+    expect(await Promise.all(dids.map((did) => resolver.resolveDidToHandle(did)))).toEqual(dids);
+    expect(await resolver.resolveDidToHandle("did:plc:queued")).toBe("did:plc:queued");
+    expect(resolve).toHaveBeenCalledTimes(3);
+  } finally {
+    release();
+  }
+  await Bun.sleep(1);
+  expect(await resolver.resolveDidToHandle("did:plc:recovered")).toBe("verified.test");
+  expect(resolve).toHaveBeenCalledTimes(4);
+  for (const did of dids) expect(await kv.get("identity:v2:did:" + did)).toBeNull();
+}, 8000);
+
+test("placeholder handles cannot overwrite either identity direction", async () => {
+  const kv = createStorage();
+  const did = "did:plc:alice";
+  await setIdentityCache(kv, did, "alice.test");
+  await setIdentityCache(kv, did, "handle.invalid");
+  expect(await kv.get("identity:v2:handle:handle.invalid")).toBeNull();
+  expect(await kv.get("identity:v2:did:" + did)).toEqual({ did, handle: "alice.test" });
+});
+
+test("legacy poisoned entries are ignored and placeholder routes never resolve", async () => {
+  const kv = createStorage();
+  const did = "did:plc:alice";
+  await kv.set("identity:did:" + did, JSON.stringify({ did, handle: "handle.invalid" }));
+  await kv.set("identity:handle:handle.invalid", JSON.stringify({ did, handle: "handle.invalid" }));
+  const base = createCachingBaseIdResolver(kv, {
+    handle: {
+      resolve: async () => {
+        throw new Error("must not resolve placeholder");
+      },
+    },
+  });
+  expect(await base.handle.resolve("handle.invalid")).toBe("");
+  const resolver = createCachingBidirectionalResolver(kv, {
+    resolveDidToHandle: async () => "alice.test",
+    resolveDidsToHandles: async () => ({}),
+  });
+  expect(await resolver.resolveDidToHandle(did)).toBe("alice.test");
+  expect(await kv.get("identity:v2:handle:alice.test")).toEqual({ did, handle: "alice.test" });
+});

@@ -3,6 +3,7 @@
  * Handles shelf CRUD via form submissions and SSR pages.
  */
 import { resolveActorDid } from "../services/actor";
+import { actorLinkId } from "../pages/utils/actorLinkId";
 import { zValidator } from "@hono/zod-validator";
 import { Hono, type Context } from "hono";
 import { endTime, startTime } from "hono/timing";
@@ -124,8 +125,11 @@ const app = new Hono<AppEnv>()
         if (!created.ok) return renderListFailure(c, created);
         const uri = created.uri;
         const rkey = uri.split("/").at(-1)!;
-        const handle = await c.get("ctx").resolver.resolveDidToHandle(agent.did);
-        return c.redirect(`/shelves/${handle}/${rkey}`);
+        const handle = await c
+          .get("ctx")
+          .resolver.resolveDidToHandle(agent.did)
+          .catch(() => agent.did);
+        return c.redirect(`/shelves/${actorLinkId(agent.did, handle)}/${rkey}`);
       } catch (e) {
         c.set("requestError", e);
         return renderError(c, {
@@ -598,7 +602,7 @@ const ShelvesListPage: FC<{
   isOwnProfile: boolean;
   profile: ProfileViewDetailed | null;
   previewsByList: Map<string, ShelfPreviewItem[]>;
-}> = ({ handle, lists, isOwnProfile, previewsByList }) => {
+}> = ({ handle, lists, isOwnProfile, profile, previewsByList }) => {
   return (
     <div class="space-y-6 px-4 lg:px-8">
       <div class="flex items-center justify-between">
@@ -638,7 +642,7 @@ const ShelvesListPage: FC<{
                 name={list.name}
                 description={list.description}
                 itemCount={list.itemCount ?? 0}
-                href={`/shelves/${handle}/${rkey}`}
+                href={`/shelves/${actorLinkId(list.userDid, profile?.handle, handle)}/${rkey}`}
                 ordered={Boolean(list.ordered)}
                 previewCovers={previewsByList.get(list.uri) ?? []}
               />

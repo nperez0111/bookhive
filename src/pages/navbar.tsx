@@ -1,4 +1,5 @@
 import { type FC } from "hono/jsx";
+import { actorLinkId } from "./utils/actorLinkId";
 import { Script } from "./utils/script";
 import type { ProfileViewDetailed } from "../types";
 import { avatarImageUrl } from "../core/imageUrl";
@@ -102,13 +103,13 @@ export const Navbar: FC<{
                 aria-label="Account"
               >
                 <a
-                  href={`/profile/${profile.handle}`}
+                  href={`/profile/${actorLinkId(profile.did, profile.handle)}`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
                   Public profile
                 </a>
                 <a
-                  href={`/profile/${profile.handle}/stats`}
+                  href={`/profile/${actorLinkId(profile.did, profile.handle)}/stats`}
                   class="text-card-foreground hover:bg-muted block min-h-10 rounded-lg px-3 py-2 text-sm transition-[background-color] duration-150"
                 >
                   Reading Stats

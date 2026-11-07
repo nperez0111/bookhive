@@ -6,6 +6,7 @@ import { type FC, type PropsWithChildren } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 
 import { BOOKHIVE_DID } from "../constants";
+import { env } from "../env";
 import { AtTags, type AtTagsProps } from "./components/AtTags";
 
 type BundleAssetUrls = { css: string[]; js: string[]; inlineCss?: string } | null;
@@ -49,22 +50,27 @@ export const Layout: FC<
   }
   url ??= "https://bookhive.buzz";
   assetUrls ??= null;
-  // og:image/twitter:image must be absolute — crawlers do not resolve them against the page.
-  const absoluteImage = image.startsWith("http") ? image : new URL(image, url).toString();
-  // Never put the raw request URL in crawler-facing metadata — some Layout call sites pass `url={c.req.url}` directly, which can carry OAuth `code`/`state` query params.
-  const metaUrl = (() => {
-    try {
-      const u = new URL(url);
-      for (const k of ["code", "state", "redirect_uri", "iss", "error", "error_description"]) {
-        u.searchParams.delete(k);
-      }
-      return u.toString();
-    } catch {
-      return url;
+  // TLS terminates at the proxy: the internal request can say http even when
+  // PUBLIC_URL is https. Normalize our own URLs, not external image hosts or PDS domains.
+  const publicOrigin = new URL(env.PUBLIC_URL);
+  const publicUrl = (value: string) => {
+    const parsed = new URL(value, url);
+    if (parsed.hostname === publicOrigin.hostname) {
+      parsed.protocol = publicOrigin.protocol;
+      parsed.port = publicOrigin.port;
     }
-  })();
+    return parsed;
+  };
+  const pageUrl = publicUrl(url);
+  // og:image/twitter:image must be absolute — crawlers do not resolve them against the page.
+  const absoluteImage = publicUrl(image).toString();
+  // Never put the raw request URL in crawler-facing metadata — some Layout call sites pass `url={c.req.url}` directly, which can carry OAuth `code`/`state` query params.
+  for (const k of ["code", "state", "redirect_uri", "iss", "error", "error_description"]) {
+    pageUrl.searchParams.delete(k);
+  }
+  const metaUrl = pageUrl.toString();
   // The JSON-LD below describes the *site*, not this page, so the SearchAction target uses the origin rather than `url`.
-  const origin = new URL(metaUrl).origin;
+  const origin = pageUrl.origin;
 
   // Development needs a real stylesheet too: importing CSS from the client entry
   // applies it only after JavaScript loads, leaving SSR content unstyled at first paint.
@@ -123,7 +129,7 @@ export const Layout: FC<
         <meta property="og:site_name" content="BookHive" />
         <meta property="og:description" content="${description}" />
         <meta property="og:image" content="${absoluteImage}" />
-        <meta property="og:logo" content="${new URL("/icon.svg", url).toString()}" />
+        <meta property="og:logo" content="${new URL("/icon.svg", pageUrl).toString()}" />
         ${ogExtra}
         <meta name="at:me" content="${`at://${BOOKHIVE_DID}`}" />
         ${AtTags(atTags ?? {})}

@@ -5,6 +5,7 @@ import type { ReadingStats } from "../data/readingStats";
 import { coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
 import { FallbackCover } from "./components/fallbackCover";
 import { format } from "date-fns";
+import { actorLinkId } from "./utils/actorLinkId";
 
 export const ReadingStatsPage: FC<{
   handle: string;
@@ -17,15 +18,25 @@ export const ReadingStatsPage: FC<{
   books: Book[];
   allTimeStats?: ReadingStats;
   showYearInBooks: boolean;
-}> = ({ handle, year, stats, isOwnProfile, availableYears, allTimeStats, showYearInBooks }) => {
+}> = ({
+  handle,
+  did,
+  year,
+  stats,
+  isOwnProfile,
+  availableYears,
+  allTimeStats,
+  showYearInBooks,
+}) => {
   const title = year != null ? `Reading Stats · ${year}` : "Reading Stats";
+  const actor = actorLinkId(did, handle);
   const totalBooksForGenre = stats.topGenres.reduce((s, g) => s + g.count, 0);
   const maxRatingCount = Math.max(1, ...Object.values(stats.ratingDistribution));
 
   return (
     <div class="space-y-6 px-4 lg:px-8">
       <a
-        href={isOwnProfile ? "/my-books" : `/profile/${handle}`}
+        href={isOwnProfile ? "/my-books" : `/profile/${actor}`}
         class="text-primary inline-flex min-h-10 items-center text-sm hover:underline"
       >
         {isOwnProfile ? "← My Books" : `← @${handle}'s profile`}
@@ -38,7 +49,7 @@ export const ReadingStatsPage: FC<{
           <nav class="flex flex-wrap gap-1" aria-label="Choose year">
             {year != null && (
               <a
-                href={`/profile/${handle}/stats`}
+                href={`/profile/${actor}/stats`}
                 class={
                   "rounded-md px-3 py-2 text-sm min-h-10 min-w-10 inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                   (year === new Date().getFullYear()
@@ -54,7 +65,7 @@ export const ReadingStatsPage: FC<{
               .map((y) => (
                 <a
                   key={y}
-                  href={`/profile/${handle}/stats/${y}`}
+                  href={`/profile/${actor}/stats/${y}`}
                   class={
                     "rounded-md px-3 py-2 text-sm min-h-10 min-w-10 inline-flex items-center justify-center tabular-nums active:scale-[0.96] transition-[scale,background-color,color] duration-150 " +
                     (y === year

@@ -4,6 +4,31 @@ import { timing } from "hono/timing";
 import type { AppContext, AppEnv } from "../context";
 import profileRouter from "./profile";
 
+it.each(["alice.test", "handle.invalid", null])(
+  "profile redirect prefers a usable resolved handle, with DID fallback: %s",
+  async (handle) => {
+    const app = new Hono<AppEnv>();
+    app.use(async (c, next) => {
+      c.set("ctx", {
+        getSessionAgent: async () => ({ did: "did:plc:alice" }),
+        resolver: {
+          resolveDidToHandle: async () => {
+            if (!handle) throw new Error("resolution unavailable");
+            return handle;
+          },
+        },
+      } as unknown as AppContext);
+      await next();
+    });
+    app.route("/", profileRouter);
+    const response = await app.request("/profile");
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      `/profile/${handle === "alice.test" ? handle : "did:plc:alice"}`,
+    );
+  },
+);
+
 it("waits for book sync before returning a shelf-sync failure", async () => {
   let releaseBooks!: () => void;
   const booksPending = new Promise<void>((resolve) => {

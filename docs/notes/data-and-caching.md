@@ -100,6 +100,34 @@ until it actually settles, even after the caller's timeout/backoff expires. Both
 web process, not distributed locks. The PDS directory retains its independent policy; it does
 not use the profile LRU.
 
+## Invalid AppView handles are not identities
+
+On November 6, Bluesky returned `handle.invalid` for a migrated account even though its
+handle endpoint and PLC document agreed on its current handle. Profile fetches previously
+wrote that placeholder into both identity-cache directions: unrelated accounts overwrote
+the shared `handle.invalid` reverse lookup. `bsky/id-resolver.ts` now rejects placeholder
+writes/resolution, and uses `identity:v2:` keys to ignore existing poisoned entries without
+deleting production data. Old persisted keys remain unused; no destructive cleanup is required.
+
+`services/getProfile.ts` repairs placeholder profiles (including fresh LRU entries) through
+the bidirectionally verified resolver, with a bounded wait. Viewer-specific profile fields
+are preserved; if AppView refresh fails, even a placeholder-bearing cached profile remains
+available with its original freshness. Successful missing-actor responses still remove it.
+Failed verification never invents or caches a handle; unresolved profiles can retry on the next
+read rather than gaining negative-cache/backoff policy. User-facing profile, stats, shelf and
+share URLs prefer a usable handle for readability, falling back to the DID only when it is
+invalid or unavailable. `pages/utils/actorLinkId.ts` owns that selection using the existing
+atcute-backed `isUsableHandle` guard; `handle.invalid` is never a routing identity.
+DID profile/stat routes display the usable fetched handle when available.
+
+Verified DID-to-handle traversal has its own process-wide limiter shared across resolver
+instances: 3 active, 12 queued, 500ms queue deadline, a 2.5s abort signal and a 3s caller wait.
+Identity-cache in-flight deduplication coalesces callers for the same DID. A caller timeout
+does not release capacity: the underlying actor-resolution promise must actually settle.
+This bounds observable traversals, not every transport inside the resolver. The upstream
+DNS/HTTP race can finish via HTTP while its uncancellable Node DNS loser is still running;
+abort is checked after DNS settles. We retain that resolver behavior, not a custom DNS stack.
+
 ## Anonymous page cache (`src/middleware/anon-page-cache.ts`)
 
 Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV
@@ -114,6 +142,23 @@ Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors
   the uncompressed body instead rejected pages that would have cost ~25 KB of KV — production
   inlines the whole CSS bundle into `<head>` and `/explore/authors` renders 500 rows on top of it.
   A rejected page sets no `x-page-cache` header at all; `curl -sD- <url>` is the diagnostic.
+- **Read/extraction/write failures are optional-cache failures, not page failures.** A failed
+  persistence step keeps the rendered response (and coalesced waiters) successful, without marking
+  the writer's response as a cache miss. Request wide events record `page_cache_error` as
+  `read`, `extract`, or `write`. The clone is read incrementally and abandoned once it exceeds
+  4 MiB; buffering the entire clone before checking the limit doesn't bound memory.
+- **`page:` has its own connection with a 50ms busy timeout; durable KV retains 10s.** On
+  November 3, eight page-cache writes surfaced `SQLITE_BUSY` as HTTP 500 after ~10s, aligned with
+  the primary's 15-minute cleanup. Production's expiry DELETE scanned the unindexed table.
+  The primary now initializes `idx_page_cache_updated_at` before siblings start; this is KV schema,
+  not a migration of the main database. The mount skips lazy schema creation on requests.
+- **Cleanup releases the writer lock between 100-row batches**, yielding to requests, with
+  at most 100 batches / 5s between batches per sweep. It retains the 2h expiry cutoff and 15-minute
+  schedule, prevents overlapping sweeps, and reduces incremental vacuum from 1000 to 100 pages.
+  `page_cache_sweep` logs deleted rows, batches, delete/vacuum/total durations, errors and whether
+  the batch/time budget was exhausted. A SQLite page count is not a wall-clock guarantee; these
+  timings distinguish DELETE from vacuum before further tuning. Remaining expiry work waits for
+  the next sweep. A 50ms busy timeout bounds lock waiting, not query execution or disk latency.
 
 ## `?lang=` must be validated, everywhere
 

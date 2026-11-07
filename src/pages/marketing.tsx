@@ -1,4 +1,5 @@
 import type { FC } from "hono/jsx";
+import { actorLinkId } from "./utils/actorLinkId";
 import { formatDistanceToNow } from "date-fns";
 import type { ProfileViewDetailed } from "../types";
 import type { CommunityStats } from "../data/communityStats";
@@ -176,7 +177,7 @@ function RecentActivityCard({
             <>
               {i > 0 && <div class="h-px bg-border/60" />}
               <div class="flex gap-3" key={`${activity.userDid}-${activity.hiveId}`}>
-                <a href={`/profile/${handle}`} class="shrink-0">
+                <a href={`/profile/${actorLinkId(activity.userDid, handle)}`} class="shrink-0">
                   {prof?.avatar ? (
                     <img
                       src={avatarImageUrl(activity.userDid, { size: 72 })}
@@ -193,7 +194,7 @@ function RecentActivityCard({
                 <div class="min-w-0 flex-1">
                   <div class="text-sm">
                     <a
-                      href={`/profile/${handle}`}
+                      href={`/profile/${actorLinkId(activity.userDid, handle)}`}
                       class="text-foreground font-semibold hover:underline"
                     >
                       @{handle}

@@ -11,6 +11,7 @@ import { coverImageUrl } from "../core/imageUrl";
 import { computeReadingStats } from "../data/readingStats";
 import { ProgressMeter } from "./components/ProgressMeter";
 import { TimeAgo } from "./components/TimeAgo";
+import { actorLinkId } from "./utils/actorLinkId";
 
 export const ProfilePage: FC<{
   handle: string;
@@ -55,6 +56,7 @@ export const ProfilePage: FC<{
   progressHistory = [],
 }) => {
   const year = new Date().getUTCFullYear();
+  const actor = actorLinkId(did, handle);
   const booksThisYear = booksFinishedInYear(books, year);
   const finishedWithRating = books.filter(
     (b) => b.status === BOOK_STATUS.FINISHED && b.stars != null,
@@ -150,7 +152,7 @@ export const ProfilePage: FC<{
 
               <p class="mt-4">
                 <a
-                  href={`/profile/${handle}/stats/${year}`}
+                  href={`/profile/${actor}/stats/${year}`}
                   class="text-primary hover:underline text-sm font-medium min-h-10 inline-flex items-center"
                 >
                   Reading Stats →
@@ -222,7 +224,7 @@ export const ProfilePage: FC<{
               <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-2xl font-bold tracking-tight text-foreground">Shelves</h2>
                 <a
-                  href={`/shelves/${handle}`}
+                  href={`/shelves/${actor}`}
                   class="text-sm font-medium text-primary hover:underline"
                 >
                   View all →
@@ -234,7 +236,7 @@ export const ProfilePage: FC<{
                   return (
                     <a
                       key={list.uri}
-                      href={`/shelves/${handle}/${rkey}`}
+                      href={`/shelves/${actor}/${rkey}`}
                       class="card group flex flex-col gap-1 p-4 transition-[box-shadow,color] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                     >
                       <h3 class="font-semibold text-foreground group-hover:text-primary line-clamp-1">
@@ -282,10 +284,11 @@ export const ProfilePage: FC<{
                     {followingProfiles.map((user) => (
                       <a
                         key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
+                        href={`/profile/${actorLinkId(user.did, user.handle)}`}
                         class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
+                          did={user.did}
                           handle={user.handle ?? user.did}
                           avatar={user.avatar ?? null}
                           displayName={null}
@@ -309,10 +312,11 @@ export const ProfilePage: FC<{
                     {followersProfiles.map((user) => (
                       <a
                         key={user.did}
-                        href={`/profile/${user.handle ?? user.did}`}
+                        href={`/profile/${actorLinkId(user.did, user.handle)}`}
                         class="card flex items-center gap-2 p-2 transition-[box-shadow] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
                       >
                         <UserBlock
+                          did={user.did}
                           handle={user.handle ?? user.did}
                           avatar={user.avatar ?? null}
                           displayName={null}

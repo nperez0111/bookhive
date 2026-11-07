@@ -162,7 +162,7 @@ Each file exports a Hono JSX component rendered server-side.
 | `pds.tsx`             | PDS info page                                                                 |
 | `error.tsx`           | Error page                                                                    |
 
-Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/viewTransitions.ts` (snapshot name deduplication; see `docs/notes/styling.md`). URL building lives in `src/lib/buildUrl.ts`.
+Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/viewTransitions.ts` (snapshot name deduplication; see `docs/notes/styling.md`), `src/pages/utils/actorLinkId.ts` (readable usable-handle URLs, DID fallback for invalid/unavailable handles). URL building lives in `src/lib/buildUrl.ts`.
 
 **`Layout` always needs `url={c.req.url}`** passed explicitly. It falls back to `useRequestContext()`, which throws for the ~14 routes rendered via `c.html(<Layout …>)` instead of `c.render(…)`, silently defaulting `url` to `https://bookhive.buzz` — which broke `<link rel="canonical">`/`og:url` on `/privacy-policy` and `/legal` in production.
 
@@ -448,7 +448,7 @@ Full notes on scopes, re-consent, and `atproto-proxy`'s current limits: `docs/no
 | `server/entry.bun.mjs`               | Custom Nitro entry (SO_REUSEPORT)                          |
 | `server/plugins/`                    | `otel-sdk.ts`, `request-tracing.ts`, `cache-headers.ts`    |
 
-Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them.
+Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging: use `Anonymous` (not `Rss`) — RSS includes reclaimable SQLite mmap. `/debug/memory` separates them. Once-minute application/runtime and independent supervisor/cgroup samples, their retention limits, and the November 3 OOM evidence: `docs/notes/memory-and-runtime.md`.
 
 ## Context & Session (`src/context.ts`)
 
@@ -456,4 +456,4 @@ Per-process metrics carry a `worker` label from `WORKER_INDEX`. Memory debugging
 
 Hono context vars (`c.get`): `ctx`, `assetUrls`, `requestId`, `wideEventBag`, `appLogger`, `requestError`.
 
-`createAppDeps()` builds deps and (primary only) spawns the ingester + enrichment drain. Sessions use `iron-session` (180-day cookie) with an in-memory `SessionClient` cache. Self-profile and `getProfile`/`getProfiles` share viewer-isolated LRU + SWR (24h fresh / up to 30d usable) with bounded fetches; cache hits use the cookie DID without waiting for OAuth. The public PDS directory is SWR-cached too; policies and deadline gotchas: `docs/notes/data-and-caching.md`.
+`createAppDeps()` builds deps and (primary only) spawns the ingester + enrichment drain. Sessions use `iron-session` (180-day cookie) with an in-memory `SessionClient` cache. Self-profile and `getProfile`/`getProfiles` share viewer-isolated LRU + SWR (24h fresh / up to 30d usable) with bounded fetches; cache hits use the cookie DID without waiting for OAuth. Invalid handles trigger bounded verified identity repair, retaining viewer-safe cached profiles on refresh failure. The public PDS directory is SWR-cached too; policies, identity concurrency and cancellation limits: `docs/notes/data-and-caching.md`.

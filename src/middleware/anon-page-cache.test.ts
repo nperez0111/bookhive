@@ -1,5 +1,5 @@
 // The anon page cache is prod-only, so nothing else exercises it; the size guard fails silently, so this is the only coverage for it.
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, spyOn } from "bun:test";
 import { Hono } from "hono";
 import { createStorage, type Storage } from "unstorage";
 
@@ -31,6 +31,80 @@ const get = (app: Hono, path: string, headers?: Record<string, string>) =>
   app.request(new Request(`http://test.local${path}`, { headers }));
 
 describe("anonPageCache storage", () => {
+  it("serves the rendered page when persistence fails, and can recover on the next request", async () => {
+    const write = spyOn(kv, "setItem").mockRejectedValue(new Error("database is locked"));
+    const { app, renders } = appServing("<html>still available</html>");
+    const res = await get(app, "/p/locked");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<html>still available</html>");
+    expect(res.headers.get("x-page-cache")).toBeNull();
+    write.mockRestore();
+    expect((await get(app, "/p/locked")).headers.get("x-page-cache")).toBe("miss");
+    expect((await get(app, "/p/locked")).headers.get("x-page-cache")).toBe("hit");
+    expect(renders()).toBe(2);
+  });
+
+  it("treats a failed cache read as a miss", async () => {
+    const read = spyOn(kv, "getMeta").mockImplementation(() => {
+      throw new Error("cache unavailable");
+    });
+    const { app } = appServing("<html>fresh</html>");
+    const res = await get(app, "/p/read-failure");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<html>fresh</html>");
+    read.mockRestore();
+  });
+
+  it("does not fail coalesced waiters when a rendered page cannot be persisted", async () => {
+    const write = spyOn(kv, "setItem").mockRejectedValue(new Error("database is locked"));
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let renders = 0;
+    const app = new Hono();
+    app.use("/p/*", anonPageCache(kv) as any);
+    app.get("/p/waiters", async (c) => {
+      renders++;
+      started.resolve();
+      await release.promise;
+      return c.html("<html>shared render</html>");
+    });
+    const first = get(app, "/p/waiters");
+    await started.promise;
+    const second = get(app, "/p/waiters");
+    // Let the second request finish its asynchronous metadata lookup and join the render.
+    await Bun.sleep(0);
+    release.resolve();
+    for (const res of await Promise.all([first, second])) {
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("<html>shared render</html>");
+    }
+    expect(renders).toBe(1);
+    write.mockRestore();
+  });
+
+  it("stops caching an oversized stream without waiting for cancellation of the live tee", async () => {
+    const app = new Hono();
+    app.use("/p/*", anonPageCache(kv) as any);
+    const chunk = "x".repeat(1024 * 1024);
+    app.get(
+      "/p/large-stream",
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (let n = 0; n < 6; n++) controller.enqueue(new TextEncoder().encode(chunk));
+              controller.close();
+            },
+          }),
+          { headers: { "content-type": "text/html" } },
+        ),
+    );
+    const res = await get(app, "/p/large-stream");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-page-cache")).toBeNull();
+    expect((await res.text()).length).toBe(6 * chunk.length);
+  });
+
   it("stores and replays an anonymous page", async () => {
     const { app, renders } = appServing("<html>hello</html>");
 

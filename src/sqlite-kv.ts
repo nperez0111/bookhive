@@ -3,10 +3,10 @@ import { defineDriver } from "unstorage";
 import { Kysely, SqliteDialect } from "kysely";
 import { Database as DatabaseSync } from "bun:sqlite";
 
-function applyStandardPragmas(sqlite: DatabaseSync) {
+function applyStandardPragmas(sqlite: DatabaseSync, busyTimeoutMs = 10_000) {
   // 10s: four cluster processes share this file, and a write can queue behind
   // another process's checkpoint.
-  sqlite.exec("PRAGMA busy_timeout = 10000");
+  sqlite.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.floor(busyTimeoutMs))}`);
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL");
 }
@@ -66,9 +66,12 @@ export type KvDb = Kysely<TableSchema>;
  */
 /** Returns the raw handle alongside Kysely, matching `createDb` in src/db.ts —
  *  VACUUM and PRAGMA work needs the connection, not the query builder. */
-export function createSharedKvDb(location: string): { db: KvDb; sqlite: DatabaseSync } {
+export function createSharedKvDb(
+  location: string,
+  busyTimeoutMs = 10_000,
+): { db: KvDb; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(location);
-  applyStandardPragmas(sqlite);
+  applyStandardPragmas(sqlite, busyTimeoutMs);
   const db = new Kysely<TableSchema>({
     dialect: new SqliteDialect({
       database: wrapBunSqliteForKysely(sqlite),
@@ -84,8 +87,8 @@ export const VACUUM_FREELIST_RATIO = 0.25;
  * Reclaim free pages in the KV file, and switch it to incremental auto-vacuum
  * so this stops being necessary.
  *
- * The KV is a delete-heavy workload — the page and OG caches churn constantly
- * and the primary worker sweeps both every 15 minutes — but nothing ever
+ * The KV is a delete-heavy workload — the page cache churns constantly
+ * and the primary worker sweeps it every 15 minutes — but nothing ever
  * VACUUMed it and `auto_vacuum` was never set. Measured on production
  * 2026-08-02: **1.94 GB on disk holding 34.7 MB of live data, 98.1% free
  * pages.** That is 1.9 GB of page-cache pressure inside a memory-limited
@@ -132,32 +135,68 @@ export function vacuumKvIfBloated(
   );
 }
 
-/**
- * Reclaim whatever the sweeps just freed. Bounded by `pages` so it can sit on a
- * periodic timer without ever becoming a long synchronous stall — unlike a full
- * VACUUM, which rewrites the file.
- */
-export function incrementalVacuumKv(
-  sqlite: DatabaseSync,
-  pages = 1000,
-  log?: (fields: Record<string, unknown>, msg: string) => void,
-): void {
-  // PRAGMA arguments cannot be bound, so this is string-interpolated — coerce
-  // to a whole number rather than trusting every present and future caller to
-  // pass one.
-  const count = Math.max(1, Math.floor(Number(pages) || 0));
-  try {
-    sqlite.exec(`PRAGMA incremental_vacuum(${count})`);
-  } catch (err) {
-    // Expected no-op when auto_vacuum isn't INCREMENTAL yet; anything else is
-    // worth a line, since this runs on a timer where silence is the default.
-    log?.({ err }, "kv incremental_vacuum failed");
-  }
-}
-
 export function readPragma(sqlite: DatabaseSync, name: string): number {
   const row = sqlite.query(`PRAGMA ${name}`).get() as Record<string, number> | null;
   return row ? (Object.values(row)[0] ?? 0) : 0;
+}
+
+/** Run on the primary before sibling workers start; KV has its own schema, not main-DB migrations. */
+export function initializePageCache(sqlite: DatabaseSync): void {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS page_cache (
+    id TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`);
+  sqlite.exec("CREATE INDEX IF NOT EXISTS idx_page_cache_updated_at ON page_cache(updated_at)");
+}
+
+/** Release the writer lock and yield between batches; a page contains up to 256 KiB of gzip. */
+export async function sweepPageCache(
+  sqlite: DatabaseSync,
+  cutoff: string,
+  log: (fields: Record<string, unknown>, msg: string) => void,
+): Promise<void> {
+  const started = performance.now();
+  let deleted = 0;
+  let batches = 0;
+  let deleteMs = 0;
+  let vacuumMs = 0;
+  let remaining = false;
+  let phase = "delete";
+  let phaseStarted = started;
+  let outcome: Record<string, unknown> = { outcome: "success" };
+  try {
+    const statement = sqlite.query(`DELETE FROM page_cache WHERE id IN (
+      SELECT id FROM page_cache WHERE updated_at < ? ORDER BY updated_at LIMIT 100
+    )`);
+    do {
+      phaseStarted = performance.now();
+      const { changes } = statement.run(cutoff);
+      deleteMs += performance.now() - phaseStarted;
+      deleted += changes;
+      batches++;
+      remaining = changes === 100;
+      if (!remaining || batches >= 100 || performance.now() - started >= 5000) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } while (remaining);
+    phase = "vacuum";
+    phaseStarted = performance.now();
+    // A page count is not a wall-clock bound. Keep the step small and time it separately.
+    sqlite.exec("PRAGMA incremental_vacuum(100)");
+    vacuumMs = performance.now() - phaseStarted;
+  } catch (err) {
+    outcome = { outcome: "error", phase, failed_phase_ms: performance.now() - phaseStarted, err };
+  }
+  log(
+    {
+      ...outcome,
+      deleted_rows: deleted,
+      batches,
+      delete_ms: deleteMs,
+      vacuum_ms: vacuumMs,
+      duration_ms: performance.now() - started,
+      budget_exhausted: remaining,
+    },
+    "page_cache_sweep",
+  );
 }
 
 const DRIVER_NAME = "sqlite";
@@ -168,13 +207,15 @@ export default defineDriver<
     table: string;
     /** Pre-created shared KvDb connection. Use this when multiple drivers share the same SQLite file. */
     db?: KvDb;
+    /** Schema already initialized before serving requests (e.g. the optional page cache). */
+    tableCreated?: boolean;
   },
   KvDb
->(({ location, table, db: sharedDb }) => {
+>(({ location, table, db: sharedDb, tableCreated = false }) => {
   // _db is a per-driver-instance singleton — must live outside any function body
   // so it is not re-initialized on every getDb() call.
   let _db: KvDb | null = sharedDb ?? null;
-  let _tableCreated = false;
+  let _tableCreated = tableCreated;
 
   function getDb(): KvDb {
     if (!_db) {

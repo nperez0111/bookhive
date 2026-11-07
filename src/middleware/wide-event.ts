@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from "hono";
 import { env } from "../env";
 import type { AppEnv } from "../context";
 import { toErrorPayload } from "../lib/errors";
+import { LABEL, requestsInFlight } from "../metrics";
 
 const SKIP_PATHS = ["/healthcheck", "/metrics"];
 const SKIP_PREFIXES = ["/public", "/images"];
@@ -19,9 +20,11 @@ export function wideEventMiddleware(): MiddlewareHandler<AppEnv> {
     c.set("requestId", requestId);
     c.header("X-Request-Id", requestId);
 
+    requestsInFlight.inc(LABEL.worker);
     try {
       await next();
     } finally {
+      requestsInFlight.dec(LABEL.worker);
       if (shouldEmitForPath(c.req.path)) {
         const statusCode = c.res?.status ?? 500;
         const durationMs = Date.now() - start;
