@@ -1,6 +1,7 @@
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { BookActionCard } from "@/components/BookActionCard";
 import { CommentsSection } from "@/components/CommentsSection";
+import { ReadingHistory } from "@/components/ReadingHistory";
 import { DeleteConfirmationModal } from "@/components/DeleteConfirmationModal";
 import { FadeInImage } from "@/components/FadeInImage";
 import { ListItem } from "@/components/ListItem";
@@ -33,14 +34,39 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeInDown, FadeInUp, LinearTransition } from "react-native-reanimated";
-import type { HiveId } from "../../../../src/types";
+import type { BookProgress, HiveId } from "../../../../src/types";
 import { type BookStatus } from "../../../constants/index";
 
 import { AddToListSheet } from "@/components/AddToListSheet";
 import { HtmlToText } from "@/utils/htmlToText";
 import { formatDistanceToNow } from "date-fns";
-import type { BookProgress } from "../../../../src/types";
 import { calculatePercentFromProgressValues } from "@/utils/calculatePercentFromProgressValues";
+
+function progressToDraft(progress: BookProgress | undefined) {
+  return {
+    currentPageInput: progress?.currentPage?.toString() ?? "",
+    totalPagesInput: progress?.totalPages?.toString() ?? "",
+    currentChapterInput: progress?.currentChapter?.toString() ?? "",
+    totalChaptersInput: progress?.totalChapters?.toString() ?? "",
+    manualPercentInput: progress?.percent?.toString() ?? null,
+  };
+}
+
+type MetricField = Exclude<keyof ReturnType<typeof progressToDraft>, "manualPercentInput">;
+const metricRows = [
+  [
+    { field: "currentPageInput", label: "Pages read", placeholder: "Current" },
+    { field: "totalPagesInput", label: "Total pages", placeholder: "Total" },
+  ],
+  [
+    { field: "currentChapterInput", label: "Chapters read", placeholder: "Current" },
+    { field: "totalChaptersInput", label: "Total chapters", placeholder: "Total" },
+  ],
+] as const satisfies readonly (readonly {
+  field: MetricField;
+  label: string;
+  placeholder: string;
+}[])[];
 
 function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: string }) {
   const colorScheme = useColorScheme();
@@ -49,48 +75,42 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const [modalVisible, setModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [addToListVisible, setAddToListVisible] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState<BookStatus | null>(null);
-  const [userReviewText, setUserReviewText] = useState("");
+  // null is untouched; an empty string is an intentional review deletion.
+  const [userReviewText, setUserReviewText] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
   const bookData = bookQuery.data;
-  const [currentPageInput, setCurrentPageInput] = useState("");
-  const [totalPagesInput, setTotalPagesInput] = useState("");
-  const [currentChapterInput, setCurrentChapterInput] = useState("");
-  const [totalChaptersInput, setTotalChaptersInput] = useState("");
-  const [percentInput, setPercentInput] = useState("");
+  const storedProgress = bookData?.bookProgress;
   const [progressError, setProgressError] = useState<string | null>(null);
   const [progressSuccess, setProgressSuccess] = useState<string | null>(null);
   const [isProgressSaving, setIsProgressSaving] = useState(false);
-  const autoPercentRef = useRef(false);
+  const progressKey = JSON.stringify(storedProgress ?? null);
+  const [draft, setDraft] = useState(() => ({
+    sourceKey: progressKey,
+    fields: progressToDraft(storedProgress),
+  }));
+  const {
+    currentPageInput,
+    totalPagesInput,
+    currentChapterInput,
+    totalChaptersInput,
+    manualPercentInput,
+  } = draft.fields;
+
+  // Reconcile replaced server progress before painting, not in a cascading effect.
+  // Unrelated ownership/review changes must not erase an in-progress draft.
+  if (draft.sourceKey !== progressKey) {
+    setDraft({ sourceKey: progressKey, fields: progressToDraft(storedProgress) });
+  }
 
   useEffect(() => {
-    if (!bookData) {
-      return;
-    }
-    const storedProgress = bookData.bookProgress ?? null;
-
-    setCurrentPageInput(storedProgress?.currentPage?.toString() ?? "");
-    setCurrentChapterInput(storedProgress?.currentChapter?.toString() ?? "");
-    setTotalChaptersInput(storedProgress?.totalChapters?.toString() ?? "");
-    setTotalPagesInput(storedProgress?.totalPages?.toString() ?? "");
-
-    const autoPercent = calculatePercentFromProgressValues({
-      currentPage: storedProgress?.currentPage,
-      totalPages: storedProgress?.totalPages,
-      currentChapter: storedProgress?.currentChapter,
-      totalChapters: storedProgress?.totalChapters,
-    });
-    setPercentInput(
-      storedProgress?.percent !== undefined
-        ? String(storedProgress.percent)
-        : autoPercent !== null
-          ? String(autoPercent)
-          : "",
-    );
-  }, [bookData]);
+    if (!progressSuccess) return;
+    const timer = setTimeout(() => setProgressSuccess(null), 3000);
+    return () => clearTimeout(timer);
+  }, [progressSuccess]);
 
   const parseNumberInput = (value: string) => {
     const parsed = Number(value === "" ? undefined : value);
@@ -107,15 +127,12 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     totalChapters: totalChaptersValue,
   });
 
-  useEffect(() => {
-    if (!autoPercentRef.current) {
-      autoPercentRef.current = true;
-      return;
-    }
-    if (autoPercent !== null) {
-      setPercentInput(String(autoPercent));
-    }
-  }, [autoPercent]);
+  const percentInput = manualPercentInput ?? (autoPercent !== null ? String(autoPercent) : "");
+  const changeMetric = (field: MetricField, text: string) =>
+    setDraft((old) => ({
+      ...old,
+      fields: { ...old.fields, [field]: text, manualPercentInput: null },
+    }));
 
   // Combine comments and reviews from the API response
   const comments = bookQuery.data
@@ -132,59 +149,69 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     : [];
   const updateBook = useUpdateBook();
   const deleteBook = useDeleteBook();
+  const isBusy = updateBook.isPending || deleteBook.isPending;
+  const saveBook = async (updates: Parameters<typeof updateBook.mutateAsync>[0]) => {
+    if (deleteBook.isPending) return false;
+    setMutationError(null);
+    try {
+      await updateBook.mutateAsync(updates);
+      return true;
+    } catch (error) {
+      setMutationError(
+        error instanceof Error ? error.message : "Could not save changes. Please try again.",
+      );
+      return false;
+    }
+  };
 
   const handleOwnedToggle = async () => {
-    try {
-      await updateBook.mutateAsync({
-        hiveId: hiveId,
-        owned: bookData?.owned ? 0 : 1,
-      });
-    } catch {
-      // silently fail
-    }
+    await saveBook({ hiveId, owned: !bookData?.owned });
   };
 
   const handleStatusUpdate = async (status: BookStatus) => {
-    let currentStatus = selectedStatus;
-    setSelectedStatus(status);
-    try {
-      await updateBook.mutateAsync({
-        hiveId: hiveId,
-        status,
-      });
-    } catch (error) {
-      console.error("Failed to update status:", error);
-      setSelectedStatus(currentStatus);
-    } finally {
-      setModalVisible(false);
-    }
+    await saveBook({ hiveId, status: status ?? "" });
+    // The persistent error is on the page, so don't leave it hidden behind the picker.
+    setModalVisible(false);
   };
 
   const handleAddReview = async () => {
-    if (!userReviewText.trim()) {
-      return;
-    }
-    try {
-      await updateBook.mutateAsync({
-        hiveId: hiveId,
-        review: userReviewText,
-      });
-      setUserReviewText("");
-    } catch (e) {
-      console.error("Failed to add review:", e);
+    if (userReviewText === null) return;
+    if (await saveBook({ hiveId, review: userReviewText })) {
+      setUserReviewText(null);
     }
   };
 
   const handleRatingUpdate = async (newRating: number) => {
-    await updateBook.mutateAsync({
+    await saveBook({
       hiveId: hiveId,
       stars: newRating,
     });
   };
 
   const handleSaveProgress = async () => {
+    if (isBusy) return;
     setProgressError(null);
     setProgressSuccess(null);
+    for (const [label, value] of [
+      ["Pages read", currentPageInput],
+      ["Total pages", totalPagesInput],
+      ["Chapters read", currentChapterInput],
+      ["Total chapters", totalChaptersInput],
+    ]) {
+      if (value.trim() && (!Number.isInteger(Number(value)) || Number(value) < 1)) {
+        setProgressError(`${label} must be a positive whole number.`);
+        return;
+      }
+    }
+    if (
+      percentInput.trim() &&
+      (!Number.isFinite(Number(percentInput)) ||
+        Number(percentInput) < 0 ||
+        Number(percentInput) > 100)
+    ) {
+      setProgressError("Percent must be between 0 and 100.");
+      return;
+    }
     const payload: BookProgress = {
       updatedAt: new Date().toISOString(),
     };
@@ -207,7 +234,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       payload.totalChapters = totalChaptersValue;
     }
 
-    if (Object.keys(payload).length === 0) {
+    if (Object.keys(payload).length === 1) {
       setProgressError("Enter at least one progress metric before saving.");
       return;
     }
@@ -219,7 +246,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
         bookProgress: payload,
       });
       setProgressSuccess("Progress saved");
-      setTimeout(() => setProgressSuccess(null), 3000);
     } catch (error) {
       console.error("Failed to save progress:", error);
       setProgressError("Failed to save progress.");
@@ -229,27 +255,28 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   };
 
   const handleStartedAtUpdate = async (date: string | null) => {
-    await updateBook.mutateAsync({
+    await saveBook({
       hiveId: hiveId,
-      startedAt: date,
+      startedAt: date ?? "",
     });
   };
 
   const handleFinishedAtUpdate = async (date: string | null) => {
-    await updateBook.mutateAsync({
+    await saveBook({
       hiveId: hiveId,
-      finishedAt: date,
+      finishedAt: date ?? "",
     });
   };
 
   const handleDeleteBook = async () => {
+    if (isBusy) return;
+    setMutationError(null);
     try {
       await deleteBook.mutateAsync({ hiveId });
-      setSelectedStatus(null);
-      setUserReviewText("");
+      setUserReviewText(null);
       setDeleteModalVisible(false);
     } catch (e) {
-      console.error("Failed to delete book:", e);
+      setMutationError(e instanceof Error ? e.message : "Could not delete book. Please try again.");
     }
   };
 
@@ -337,8 +364,19 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const { book, reviews: _reviews, comments: _apiComments, ...userBook } = bookQuery.data!;
   const activity = bookQuery.data?.activity ?? [];
   const rating = book.rating ? book.rating / 1000 : 0;
-  const status = (userBook.status ?? selectedStatus) as BookStatus | null;
-  const review = userReviewText || userBook.review;
+  const status = (userBook.status ?? null) as BookStatus | null;
+  const review = userReviewText ?? userBook.review ?? "";
+  const hasTracking = Boolean(
+    userBook.createdAt ||
+    userBook.status ||
+    userBook.stars ||
+    userBook.review ||
+    userBook.owned ||
+    userBook.startedAt ||
+    userBook.finishedAt ||
+    userBook.bookProgress ||
+    userBook.previousReads?.length,
+  );
   const existingProgress = (userBook.bookProgress as BookProgress | undefined) ?? undefined;
   const percentDisplay =
     existingProgress?.percent ?? (autoPercent !== null ? autoPercent : undefined);
@@ -593,7 +631,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                   { color: colorScheme === "dark" ? "white" : colors.text },
                 ]}
               >
-                Who's Reading This ({activity.length})
+                Who&apos;s Reading This ({activity.length})
               </ThemedText>
               <ScrollView
                 horizontal
@@ -626,19 +664,38 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             entering={FadeInDown.delay(140).duration(220)}
             layout={LinearTransition.springify().damping(18).stiffness(180)}
           >
+            {mutationError && (
+              <ThemedText
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                style={styles.progressError}
+              >
+                {mutationError}
+              </ThemedText>
+            )}
             <BookActionCard
               type="status"
               title="Reading Status"
               icon="bookmark-outline"
               status={status}
-              onStatusPress={() => setModalVisible(true)}
+              onStatusPress={() => {
+                if (!isBusy) setModalVisible(true);
+              }}
+              isPending={isBusy}
               rightAccessory={
                 // Only show delete button if user has this book in their library
-                userBook.status || userBook.stars || userBook.review ? (
+                hasTracking ? (
                   <Pressable
                     onPress={() => setDeleteModalVisible(true)}
-                    hitSlop={8}
-                    style={{ padding: 4 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete book tracking"
+                    disabled={isBusy}
+                    style={{
+                      minWidth: 40,
+                      minHeight: 40,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
                   >
                     <Ionicons
                       name="trash-outline"
@@ -649,11 +706,24 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                 ) : null
               }
             />
+            {status && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={isBusy}
+                onPress={() => saveBook({ hiveId, status: "" })}
+                style={{ minHeight: 40, justifyContent: "center" }}
+              >
+                <ThemedText>Clear reading status</ThemedText>
+              </Pressable>
+            )}
 
             {/* Owned toggle */}
             <Pressable
               onPress={handleOwnedToggle}
-              disabled={updateBook.isPending}
+              accessibilityRole="switch"
+              accessibilityLabel="Own this book"
+              accessibilityState={{ checked: Boolean(userBook.owned), disabled: isBusy }}
+              disabled={isBusy}
               style={[
                 styles.ownedToggle,
                 {
@@ -662,7 +732,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                     : colorScheme === "dark"
                       ? "#1f2937"
                       : "#f3f4f6",
-                  opacity: updateBook.isPending ? 0.6 : 1,
+                  opacity: isBusy ? 0.6 : 1,
                 },
               ]}
             >
@@ -684,7 +754,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             </Pressable>
 
             {/* Only show dates card if user has this book in their library */}
-            {(userBook.status || userBook.stars || userBook.review) && (
+            {hasTracking && (
               <BookActionCard
                 type="dates"
                 title="Reading Dates"
@@ -693,7 +763,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                 finishedAt={userBook.finishedAt}
                 onStartedAtChange={handleStartedAtUpdate}
                 onFinishedAtChange={handleFinishedAtUpdate}
-                isPending={updateBook.isPending}
+                isPending={isBusy}
               />
             )}
 
@@ -703,7 +773,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               icon="star-outline"
               rating={userBook.stars}
               onRatingChange={handleRatingUpdate}
-              isPending={updateBook.isPending}
+              isPending={isBusy}
             />
 
             <BookActionCard
@@ -712,11 +782,39 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               icon="chatbubble-outline"
               review={userBook.review}
               onReviewSave={handleAddReview}
-              isPending={updateBook.isPending}
+              isPending={isBusy}
               reviewText={review}
               onReviewTextChange={setUserReviewText}
             />
           </Animated.View>
+
+          <ReadingHistory
+            previousReads={userBook.previousReads}
+            progressHistory={userBook.progressHistory}
+          />
+          {!!userBook.shelves?.length && (
+            <View style={{ gap: 8, marginBottom: 24 }}>
+              <ThemedText accessibilityRole="header" type="heading">
+                On public shelves
+              </ThemedText>
+              {userBook.shelves.map((shelf) => (
+                <Pressable
+                  key={shelf.uri}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View public shelf ${shelf.name}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/lists/[uri]",
+                      params: { uri: encodeURIComponent(shelf.uri) },
+                    })
+                  }
+                  style={{ minHeight: 44, justifyContent: "center" }}
+                >
+                  <ThemedText>{shelf.name}</ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <Animated.View
             style={[
@@ -739,71 +837,39 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             {progressSummary && (
               <ThemedText style={styles.progressSubtitle}>{progressSummary}</ThemedText>
             )}
-            <View style={styles.progressRow}>
-              <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>Pages read</ThemedText>
-                <TextInput
-                  value={currentPageInput}
-                  onChangeText={setCurrentPageInput}
-                  keyboardType="numeric"
-                  placeholder="Current"
-                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                  style={[
-                    styles.progressInput,
-                    { color: colorScheme === "dark" ? "#fff" : "#111" },
-                  ]}
-                />
+            {metricRows.map((row) => (
+              <View key={row[0].field} style={styles.progressRow}>
+                {row.map(({ field, label, placeholder }) => (
+                  <View key={field} style={styles.progressField}>
+                    <ThemedText style={styles.progressLabel}>{label}</ThemedText>
+                    <TextInput
+                      accessibilityLabel={label}
+                      value={draft.fields[field]}
+                      editable={!isBusy}
+                      onChangeText={(text) => changeMetric(field, text)}
+                      keyboardType="numeric"
+                      placeholder={placeholder}
+                      placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
+                      style={[
+                        styles.progressInput,
+                        { color: colorScheme === "dark" ? "#fff" : "#111" },
+                      ]}
+                    />
+                  </View>
+                ))}
               </View>
-              <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>Total pages</ThemedText>
-                <TextInput
-                  value={totalPagesInput}
-                  onChangeText={setTotalPagesInput}
-                  keyboardType="numeric"
-                  placeholder="Total"
-                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                  style={[
-                    styles.progressInput,
-                    { color: colorScheme === "dark" ? "#fff" : "#111" },
-                  ]}
-                />
-              </View>
-            </View>
-            <View style={styles.progressRow}>
-              <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>Chapters read</ThemedText>
-                <TextInput
-                  value={currentChapterInput}
-                  onChangeText={setCurrentChapterInput}
-                  keyboardType="numeric"
-                  placeholder="Current"
-                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                  style={[
-                    styles.progressInput,
-                    { color: colorScheme === "dark" ? "#fff" : "#111" },
-                  ]}
-                />
-              </View>
-              <View style={styles.progressField}>
-                <ThemedText style={styles.progressLabel}>Total chapters</ThemedText>
-                <TextInput
-                  value={totalChaptersInput}
-                  onChangeText={setTotalChaptersInput}
-                  keyboardType="numeric"
-                  placeholder="Total"
-                  placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
-                  style={[
-                    styles.progressInput,
-                    { color: colorScheme === "dark" ? "#fff" : "#111" },
-                  ]}
-                />
-              </View>
-            </View>
+            ))}
             <View style={styles.progressField}>
               <ThemedText style={styles.progressLabel}>Percent</ThemedText>
               <TextInput
                 value={percentInput}
-                onChangeText={setPercentInput}
+                editable={!isBusy}
+                onChangeText={(text) =>
+                  setDraft((old) => ({
+                    ...old,
+                    fields: { ...old.fields, manualPercentInput: text },
+                  }))
+                }
                 keyboardType="numeric"
                 placeholder="Auto-calculated"
                 placeholderTextColor={colorScheme === "dark" ? "#9CA3AF" : "#6B7280"}
@@ -821,7 +887,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
               <Pressable
                 style={[styles.progressButton, isProgressSaving && styles.progressButtonDisabled]}
                 onPress={handleSaveProgress}
-                disabled={isProgressSaving}
+                disabled={isProgressSaving || isBusy}
               >
                 {isProgressSaving ? (
                   <ActivityIndicator color="#fff" />
@@ -888,21 +954,28 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
 
           <StatusSelectionModal
             visible={modalVisible}
-            onClose={() => setModalVisible(false)}
+            onClose={() => {
+              if (!isBusy) setModalVisible(false);
+            }}
             currentStatus={status}
             onStatusSelect={handleStatusUpdate}
-            isPending={updateBook.isPending}
+            isPending={isBusy}
           />
 
           {/* Only render delete modal if user has the book in their library */}
-          {(userBook.status || userBook.stars || userBook.review) && (
+          {(hasTracking || deleteModalVisible) && (
             <DeleteConfirmationModal
               visible={deleteModalVisible}
-              onClose={() => setDeleteModalVisible(false)}
+              onClose={() => {
+                if (!deleteBook.isPending) setDeleteModalVisible(false);
+              }}
               onConfirm={handleDeleteBook}
               title="Delete Book"
-              message="Are you sure you want to delete this book? This action cannot be undone."
-              isPending={deleteBook.isPending}
+              message={
+                mutationError ??
+                "Are you sure you want to delete this book? This action cannot be undone."
+              }
+              isPending={isBusy}
             />
           )}
 

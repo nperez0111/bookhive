@@ -19,6 +19,8 @@ import {
   listBooksByAuthor,
   listBooksByGenre,
   searchLocalCatalog,
+  listSearchBooks,
+  MAX_SEARCH_CANDIDATES,
 } from "./catalogBooks";
 
 let db: Database;
@@ -425,5 +427,91 @@ describe("searchLocalCatalog", () => {
     expect(detail).toContain("VIRTUAL TABLE");
     expect(detail).toContain("SEARCH b USING INTEGER PRIMARY KEY");
     expect(detail).not.toContain("SCAN b");
+  });
+});
+
+describe("listSearchBooks", () => {
+  it("fills multiple pages beyond the cached 20 without overlap, including a short last page", async () => {
+    const ids = Array.from(
+      { length: 63 },
+      (_, i) => `bk_page${String(i).padStart(3, "0")}` as HiveId,
+    );
+    // Reverse insertion order makes the unique ranking tiebreaker load-bearing.
+    for (const id of [...ids].reverse())
+      insertBook({ id, title: "Dune", authors: "Frank Herbert" });
+    const args = { db, q: "Dune", seedIds: ids.slice(0, 20), limit: 25 };
+    const first = await listSearchBooks({ ...args, offset: 0 });
+    const second = await listSearchBooks({ ...args, offset: first.offset });
+    const third = await listSearchBooks({ ...args, offset: second.offset });
+    expect(first.books).toHaveLength(25);
+    expect(second.books).toHaveLength(25);
+    expect(third.books).toHaveLength(13);
+    expect([...first.books, ...second.books, ...third.books].map(({ id }) => id)).toEqual(ids);
+    expect(third.offset).toBe(63);
+    expect((await listSearchBooks({ ...args, offset: third.offset })).books).toEqual([]);
+  });
+
+  it("backfills when limit is below 20, and honours an arbitrary non-page-aligned offset", async () => {
+    for (let i = 0; i < 40; i++) {
+      insertBook({
+        id: `bk_small${String(i).padStart(2, "0")}`,
+        title: "Dune",
+        authors: "Herbert",
+      });
+    }
+    const page = await listSearchBooks({ db, q: "Dune", seedIds: [], offset: 23, limit: 3 });
+    expect(page.books.map(({ id }) => id)).toEqual(["bk_small23", "bk_small24", "bk_small25"]);
+    expect(page.offset).toBe(26);
+  });
+
+  it("keeps language-preferred pages stable as the local candidate prefix grows", async () => {
+    insertBook({ id: "bk_seed", title: "Dune", authors: "Herbert", language: "en" });
+    for (let i = 0; i < 8; i++) {
+      insertBook({
+        id: `bk_english${i}`,
+        title: "Dune",
+        authors: "Herbert",
+        language: "en",
+        ratingsCount: 100,
+      });
+      insertBook({ id: `bk_french${i}`, title: "Dune", authors: "Herbert", language: "fr" });
+    }
+    const args = { db, q: "Dune", seedIds: ["bk_seed"] as HiveId[], limit: 3, language: "fr" };
+    const pages = await Promise.all(
+      [0, 3, 6, 9, 12, 15].map((offset) => listSearchBooks({ ...args, offset })),
+    );
+    const combined = pages.flatMap(({ books }) => books.map(({ id }) => id));
+    const whole = await listSearchBooks({ ...args, offset: 0, limit: 100 });
+    expect(combined).toEqual(whole.books.map(({ id }) => id));
+    expect(combined.slice(0, 8)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `bk_french${i}` as HiveId),
+    );
+    expect(combined[8]).toBe("bk_seed");
+    expect(new Set(combined).size).toBe(17);
+  });
+
+  it("ignores duplicate and missing seeds without leaving holes in the page", async () => {
+    for (const id of ["bk_a", "bk_b", "bk_c"])
+      insertBook({ id, title: "Dune", authors: "Herbert" });
+    const page = await listSearchBooks({
+      db,
+      q: "Dune",
+      seedIds: ["bk_b", "bk_b", "bk_missing"] as HiveId[],
+      limit: 3,
+    });
+    expect(page.books.map(({ id }) => id)).toEqual(["bk_b", "bk_a", "bk_c"]);
+  });
+
+  it("caps discovery at 1000, page hydration at 100, and stops instead of scanning to an arbitrary offset", async () => {
+    for (let i = 0; i < MAX_SEARCH_CANDIDATES + 5; i++) {
+      insertBook({ id: `bk_cap${String(i).padStart(4, "0")}`, title: "Dune", authors: "Herbert" });
+    }
+    const args = { db, q: "Dune", seedIds: [] };
+    expect((await listSearchBooks({ ...args, limit: 10000 })).books).toHaveLength(100);
+    const last = await listSearchBooks({ ...args, offset: 995, limit: 100 });
+    expect(last.books).toHaveLength(5);
+    expect(last.offset).toBe(1000);
+    expect((await listSearchBooks({ ...args, offset: 1000 })).books).toEqual([]);
+    expect((await listSearchBooks({ ...args, offset: Number.MAX_SAFE_INTEGER })).books).toEqual([]);
   });
 });

@@ -1,161 +1,225 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import * as Linking from "expo-linking";
-import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { ofetch } from "ofetch";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ofetch, type FetchOptions } from "ofetch";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
+import {
+  createAuthSessionScope,
+  isTerminalRefreshStatus,
+  parseAuthState,
+  type AuthState,
+} from "./authSession";
 
-export type AuthState = {
-  /**
-   * User's did
-   */
-  did: string;
-  /**
-   * User's handle
-   */
-  handle: string;
-  /**
-   * User's session id
-   */
-  sid: string;
-};
+export type { AuthState } from "./authSession";
+export type SignInResult = "success" | "cancelled";
+export const getBaseUrl = () =>
+  (process.env.EXPO_PUBLIC_API_URL || "https://bookhive.buzz").replace(/\/$/, "");
 
-export const getBaseUrl = () => {
-  return process.env.NODE_ENV === "development" ? "http://127.0.0.1:8080" : "https://bookhive.buzz";
-};
+export const authSession = createAuthSessionScope();
+export const getAuthState = () => authSession.state;
 
-const AuthContext = createContext<
-  {
-    signIn: (ctx: { handle: string }) => Promise<void>;
-    signOut: () => Promise<void>;
-  } & (
-    | {
-        isAuthenticated: false;
-        authState: null;
-      }
-    | {
-        isAuthenticated: true;
-        authState: AuthState;
-      }
-  )
->({
-  isAuthenticated: false,
-  signIn: async () => {},
-  signOut: async () => {},
-  authState: null,
-});
-
-let currentAuthState: AuthState | null = null;
-
-export const getAuthState = (): AuthState | null => {
-  return currentAuthState;
-};
-
-export const authFetch = ofetch.create({
+const fetchClient = ofetch.create({
+  baseURL: getBaseUrl(),
+  credentials: "omit",
+  retry: 0,
+  timeout: 15_000,
   headers: {
     accept: "application/json",
-    ["x-bookhive-version"]:
-      Application.nativeApplicationVersion ??
-      (Constants.expoConfig?.version as string | undefined) ??
-      "unknown",
-    ["x-bookhive-platform"]: Platform.OS,
-    ["x-bookhive-platform-version"]: String(Platform.Version),
-  },
-  baseURL: getBaseUrl(),
-  onRequest({ options }) {
-    // Add the most recent session id to the headers
-    options.headers.append("cookie", `sid=${getAuthState()?.sid}`);
+    "x-bookhive-version":
+      Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "unknown",
+    "x-bookhive-platform": Platform.OS,
+    "x-bookhive-platform-version": String(Platform.Version),
   },
 });
 
-const initialAuthPromise = (async () => {
-  const authState = await AsyncStorage.getItem("authState");
-  try {
-    currentAuthState = authState ? JSON.parse(authState) : null;
-
-    // Try to refresh the token
-    if (authState) {
-      const response = await authFetch<{
-        success: true;
-        payload: { sid: string; did: string };
-      }>("/mobile/refresh-token");
-
-      if (response.success) {
-        const nextAuthState = {
-          sid: String(response.payload.sid),
-          did: String(response.payload.did),
-          handle: String(currentAuthState?.handle),
-        };
-        if (nextAuthState.did && nextAuthState.handle && nextAuthState.sid) {
-          currentAuthState = nextAuthState;
-        }
-        await AsyncStorage.setItem("authState", JSON.stringify(currentAuthState));
-      }
-    }
-  } catch {
-    await AsyncStorage.removeItem("authState");
-    currentAuthState = null;
-  }
-})();
-
-export function AuthProvider({
-  setCacheBustKey,
-  children,
-}: {
-  setCacheBustKey: (key: string) => void;
-  children: React.ReactNode;
-}) {
-  const [authState, setAuthState] = useState<AuthState | null>(() => getAuthState());
-
-  // Perhaps it had not been loaded yet
-  useEffect(() => {
-    if (!authState) {
-      void initialAuthPromise.then(() => {
-        setAuthState(getAuthState());
-        setCacheBustKey(getAuthState()?.did ?? "");
+/** Capture in a hook/render or before a multi-step operation, never after an await. */
+export function createSessionFetch() {
+  const scope = authSession.capture();
+  return async function sessionFetch<T>(
+    url: string,
+    options: FetchOptions<"json"> = {},
+  ): Promise<T> {
+    scope.assertCurrent();
+    const headers = new Headers(options.headers);
+    headers.delete("cookie");
+    if (scope.state) headers.set("cookie", `sid=${scope.state.sid}`);
+    // RN versions do not all implement AbortSignal.any.
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    scope.signal.addEventListener("abort", abort);
+    options.signal?.addEventListener("abort", abort);
+    if (scope.signal.aborted || options.signal?.aborted) abort();
+    try {
+      const result = await fetchClient<T>(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+        credentials: "omit",
+        retry: 0,
       });
-    }
-  }, []);
-
-  const signIn = async ({ handle }: { handle: string }) => {
-    // Start auth flow
-    const deepLink = Linking.createURL("/oauth-callback");
-    const authUrl = `${getBaseUrl()}/mobile/login?&handle=${handle}&redirect_uri=${deepLink}`;
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, deepLink);
-    if (result.type === "success") {
-      // Handle successful auth
-      const { url } = result;
-      const params = new URL(url).searchParams;
-      const authState = {
-        did: params.get("did")!,
-        handle: params.get("handle")!,
-        sid: params.get("sid")!,
-      };
-
-      if (authState.did && authState.handle && authState.sid) {
-        currentAuthState = authState;
-        await AsyncStorage.setItem("authState", JSON.stringify(authState));
-        setAuthState(authState);
-        router.replace("/(tabs)");
-      }
+      scope.assertCurrent();
+      return result;
+    } finally {
+      scope.signal.removeEventListener("abort", abort);
+      options.signal?.removeEventListener("abort", abort);
     }
   };
-
-  const signOut = async () => {
-    await AsyncStorage.removeItem("authState");
-    setAuthState(null);
-  };
-
-  const contextValue = useMemo(() => {
-    return authState === null
-      ? ({ isAuthenticated: false, authState: null, signIn, signOut } as const)
-      : ({ isAuthenticated: true, authState, signIn, signOut } as const);
-  }, [authState]);
-
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
+}
+export function authFetch<T>(url: string, options?: FetchOptions<"json">): Promise<T> {
+  return createSessionFetch()<T>(url, options);
 }
 
-export const useAuth = () => useContext(AuthContext);
+// Serialize writes so a slow sign-in save cannot resurrect a later logout.
+let storageQueue = Promise.resolve();
+function persistAuth(state: AuthState | null, expectedEpoch?: number) {
+  const work = storageQueue
+    .catch(() => {})
+    .then(async () => {
+      if (expectedEpoch !== undefined && authSession.epoch !== expectedEpoch) return;
+      if (Platform.OS === "web") {
+        await AsyncStorage.removeItem("authState");
+        return;
+      }
+      if (state) await SecureStore.setItemAsync("authState", JSON.stringify(state));
+      else await SecureStore.deleteItemAsync("authState");
+      await AsyncStorage.removeItem("authState");
+    });
+  storageQueue = work;
+  return work;
+}
+
+let restoration: Promise<AuthState | null> | undefined;
+let restorationComplete = false;
+async function restoreAuth(): Promise<AuthState | null> {
+  const epoch = authSession.epoch;
+  const stored = Platform.OS === "web" ? null : await SecureStore.getItemAsync("authState");
+  const legacy = stored ? null : await AsyncStorage.getItem("authState");
+  let saved: AuthState | null;
+  try {
+    saved = parseAuthState(JSON.parse(stored ?? legacy ?? "null"));
+  } catch {
+    saved = null;
+  }
+  if (!saved) {
+    await persistAuth(null, epoch);
+    return null;
+  }
+  await persistAuth(saved, epoch);
+  try {
+    const result = await fetchClient<{ success: boolean; payload?: { sid: string; did: string } }>(
+      "/mobile/refresh-token",
+      { headers: { cookie: `sid=${saved.sid}` } },
+    );
+    const next = parseAuthState({ ...saved, ...result.payload });
+    if (!result.success || !next || next.did !== saved.did) return saved;
+    await persistAuth(next, epoch);
+    return next;
+  } catch (error) {
+    const status = (error as { response?: { status?: number } }).response?.status;
+    if (isTerminalRefreshStatus(status)) {
+      await persistAuth(null, epoch);
+      return null;
+    }
+    return saved; // Offline, PDS timeout or server failure is not a logout.
+  }
+}
+
+type AuthContextValue = {
+  authState: AuthState | null;
+  isAuthenticated: boolean;
+  isRestoring: boolean;
+  sessionEpoch: number;
+  signIn: (ctx: { handle: string }) => Promise<SignInResult>;
+  signOut: () => Promise<void>;
+};
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [authState, setAuthState] = useState(getAuthState);
+  const [isRestoring, setRestoring] = useState(!restorationComplete);
+  const [sessionEpoch, setEpoch] = useState(authSession.epoch);
+  useEffect(
+    () =>
+      authSession.subscribe(() => {
+        setAuthState(getAuthState());
+        setEpoch(authSession.epoch);
+      }),
+    [],
+  );
+  useEffect(() => {
+    let active = true;
+    const epoch = authSession.epoch;
+    restoration ??= restoreAuth()
+      .then((saved) => {
+        // Apply exactly once per process, not on every provider remount.
+        if (epoch === authSession.epoch) authSession.replace(saved);
+        return saved;
+      })
+      .finally(() => {
+        restorationComplete = true;
+      });
+    void restoration
+      .catch(() => {
+        // Storage unavailable: stay signed out without deleting recoverable credentials.
+      })
+      .finally(() => {
+        if (active) setRestoring(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const signIn = async ({ handle }: { handle: string }): Promise<SignInResult> => {
+    const epoch = authSession.epoch;
+    const deepLink = Linking.createURL("/oauth-callback");
+    const params = new URLSearchParams({ handle: handle.trim(), redirect_uri: deepLink });
+    const result = await WebBrowser.openAuthSessionAsync(
+      `${getBaseUrl()}/mobile/login?${params}`,
+      deepLink,
+    );
+    if (result.type !== "success" || epoch !== authSession.epoch) return "cancelled";
+    const callback = new URL(result.url);
+    const expected = new URL(deepLink);
+    if (
+      callback.protocol !== expected.protocol ||
+      callback.host !== expected.host ||
+      callback.pathname !== expected.pathname
+    ) {
+      throw new Error("Unexpected login callback");
+    }
+    const next = parseAuthState(Object.fromEntries(callback.searchParams));
+    if (!next) throw new Error("Login response is missing session information");
+    await persistAuth(next, epoch);
+    if (epoch !== authSession.epoch) return "cancelled";
+    authSession.replace(next);
+    return "success";
+  };
+  const signOut = async () => {
+    authSession.replace(null);
+    await persistAuth(null);
+  };
+  return (
+    <AuthContext.Provider
+      value={{
+        authState,
+        isAuthenticated: !!authState,
+        isRestoring,
+        sessionEpoch,
+        signIn,
+        signOut,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+export function useAuth() {
+  const value = useContext(AuthContext);
+  if (!value) throw new Error("useAuth must be used within AuthProvider");
+  return value;
+}

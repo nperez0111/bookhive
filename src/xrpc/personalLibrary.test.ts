@@ -4,7 +4,7 @@
  * so each region stays reviewable.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Hono } from "hono";
 import { Kysely, SqliteDialect } from "kysely";
@@ -25,7 +25,7 @@ import {
   getStorageQuota,
   personalBookDir,
 } from "../data/personalLibrary";
-import { createXrpcRouter, type XrpcContext } from "./router";
+import { createXrpcRouter, type XrpcContext, type XrpcDeps } from "./router";
 import { testContext } from "../test/db";
 import type { SessionClient } from "../auth/client";
 
@@ -48,7 +48,10 @@ async function createTestDb(): Promise<Database> {
   return database;
 }
 
-function createApp(did: string | null = DID): TestApp {
+function createApp(
+  did: string | null = DID,
+  searchBooks: XrpcDeps["searchBooks"] = async () => [],
+): TestApp {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
     c.set(
@@ -65,7 +68,7 @@ function createApp(did: string | null = DID): TestApp {
   createXrpcRouter<XrpcContext>(
     app as never,
     {
-      searchBooks: async () => [],
+      searchBooks,
       ensureBookIdentifiersCurrent: async () => {},
       getProfile: async () => null,
     } as never,
@@ -116,6 +119,71 @@ afterEach(async () => {
 });
 
 describe("XRPC searchBooks genre pagination", () => {
+  it("does one ordinary seed search, not one scrape per candidate or skipped page", async () => {
+    const search = mock(async () => []);
+    const response = await createApp(null, search).request(
+      "/xrpc/buzz.bookhive.searchBooks?q=Dune&offset=500&limit=25",
+    );
+    expect(response.status).toBe(200);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(search).toHaveBeenCalledWith({
+      query: "Dune",
+      ctx: expect.objectContaining({ db, kv }),
+    });
+  });
+
+  it("never searches or warms the cache past the cap, for empty queries, or invalid limits", async () => {
+    const search = mock(async () => []);
+    const app = createApp(null, search);
+    const capped = await app.request("/xrpc/buzz.bookhive.searchBooks?q=Dune&offset=1000");
+    expect(capped.status).toBe(200);
+    expect(await capped.json()).toEqual({ books: [], offset: 1000 });
+    for (const q of ["", "  "]) {
+      const response = await app.request(
+        `/xrpc/buzz.bookhive.searchBooks?q=${encodeURIComponent(q)}`,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).books).toEqual([]);
+    }
+    expect((await app.request("/xrpc/buzz.bookhive.searchBooks?q=Dune&limit=0")).status).toBe(400);
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("continues text search beyond the original 20-result seed", async () => {
+    const now = new Date().toISOString();
+    await db
+      .insertInto("hive_book")
+      .values(
+        Array.from({ length: 55 }, (_, i) => ({
+          id: `bk_search_page_${i}` as const,
+          enrichAttempts: 0,
+          title: `Pagination Journey ${i}`,
+          rawTitle: `Pagination Journey ${i}`,
+          authors: "Anon",
+          source: "goodreads",
+          thumbnail: "",
+          createdAt: now,
+          updatedAt: now,
+        })),
+      )
+      .execute();
+    const app = createApp();
+    const ids: string[] = [];
+    let offset = 0;
+    for (const expectedCount of [25, 25, 5]) {
+      const response = await app.request(
+        `/xrpc/buzz.bookhive.searchBooks?q=Pagination%20Journey&limit=25&offset=${offset}`,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { books: Array<{ id: string }>; offset: number };
+      expect(body.books).toHaveLength(expectedCount);
+      ids.push(...body.books.map((book) => book.id));
+      offset = body.offset;
+    }
+    expect(new Set(ids).size).toBe(55);
+    expect(offset).toBe(55);
+  });
+
   it("honours an offset that is not a multiple of the limit", async () => {
     const now = new Date().toISOString();
     for (let i = 0; i < 5; i++) {

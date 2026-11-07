@@ -1,37 +1,39 @@
 /// <reference types="jest" />
-import React from "react";
-import renderer from "react-test-renderer";
+import { render, screen, fireEvent } from "@testing-library/react-native";
+import { Text, View } from "react-native";
 import { BackNavigationHeader } from "../BackNavigationHeader";
-import { View, Text } from "react-native";
 
-// Mock the dependencies
-jest.mock("@/hooks/useColorScheme");
-jest.mock("@/constants/Colors");
-jest.mock("expo-router");
-jest.mock("react-native-safe-area-context");
+const mockBack = jest.fn();
+jest.mock("expo-router", () => ({ useRouter: () => ({ back: mockBack }) }));
+jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
+jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "black" }));
+jest.mock("@expo/vector-icons", () => ({
+  Ionicons: () => {
+    const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
+    return <Text>Back</Text>;
+  },
+}));
 
-describe("BackNavigationHeader", () => {
-  it("renders without crashing", () => {
-    const tree = renderer.create(<BackNavigationHeader />).toJSON();
-    expect(tree).toBeTruthy();
-  });
+beforeEach(() => jest.clearAllMocks());
 
-  it("renders with a title", () => {
-    const tree = renderer.create(<BackNavigationHeader title="Test Title" />);
-    const root = tree.root;
-    const titleText = root.findAllByType(Text).find((node) => node.children.includes("Test Title"));
-    expect(titleText).toBeTruthy();
-  });
+it("renders a title and right-hand content", () => {
+  render(
+    <BackNavigationHeader title="Test Title" rightElement={<View testID="right-element" />} />,
+  );
+  expect(screen.getByText("Test Title")).toBeOnTheScreen();
+  expect(screen.getByTestId("right-element")).toBeOnTheScreen();
+});
 
-  it("renders with right element", () => {
-    const rightElement = (
-      <View testID="right-element">
-        <Text>Right</Text>
-      </View>
-    );
-    const tree = renderer.create(<BackNavigationHeader rightElement={rightElement} />);
-    const root = tree.root;
-    const element = root.findByProps({ testID: "right-element" });
-    expect(element).toBeTruthy();
-  });
+it("navigates back by default", () => {
+  render(<BackNavigationHeader />);
+  fireEvent.press(screen.getByText("Back"));
+  expect(mockBack).toHaveBeenCalledTimes(1);
+});
+
+it("uses a caller back handler instead of navigating", () => {
+  const onBackPress = jest.fn();
+  render(<BackNavigationHeader onBackPress={onBackPress} rightElement={<Text>Action</Text>} />);
+  fireEvent.press(screen.getByText("Back"));
+  expect(onBackPress).toHaveBeenCalledTimes(1);
+  expect(mockBack).not.toHaveBeenCalled();
 });

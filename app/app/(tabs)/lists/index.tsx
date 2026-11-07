@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -25,6 +25,9 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 
 export default function ListsScreen() {
   const { authState } = useAuth();
+  const { did } = useLocalSearchParams<{ did?: string }>();
+  const ownerDid = did || authState?.did;
+  const isOwner = Boolean(authState?.did && ownerDid === authState.did);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
@@ -32,13 +35,14 @@ export default function ListsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
 
-  const listsQuery = useUserLists(authState?.did);
+  const listsQuery = useUserLists(ownerDid);
   const deleteList = useDeleteList();
+  const { refetch } = listsQuery;
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    void listsQuery.refetch().finally(() => setIsRefreshing(false));
-  }, [listsQuery.refetch]);
+    void refetch().finally(() => setIsRefreshing(false));
+  }, [refetch]);
 
   const handleDeleteList = useCallback(
     (uri: string, name: string) => {
@@ -47,7 +51,11 @@ export default function ListsScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => deleteList.mutate({ uri }),
+          onPress: () =>
+            deleteList.mutate(
+              { uri },
+              { onError: (error) => Alert.alert("Couldn't delete list", error.message) },
+            ),
         },
       ]);
     },
@@ -59,11 +67,17 @@ export default function ListsScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
       <BackNavigationHeader
-        title="Your Lists"
+        title={isOwner ? "Your Public Lists" : "Public Lists"}
         rightElement={
-          <Pressable onPress={() => setCreateModalVisible(true)} hitSlop={8}>
-            <Ionicons name="add-circle" size={28} color={colors.primary} />
-          </Pressable>
+          isOwner ? (
+            <Pressable
+              accessibilityLabel="Create public list"
+              onPress={() => setCreateModalVisible(true)}
+              hitSlop={8}
+            >
+              <Ionicons name="add-circle" size={28} color={colors.primary} />
+            </Pressable>
+          ) : undefined
         }
       />
 
@@ -87,17 +101,21 @@ export default function ListsScreen() {
             No lists yet
           </ThemedText>
           <ThemedText style={[styles.emptySubtitle, { color: colors.secondaryText }]} type="body">
-            Create your first book list to organize your reads
+            {isOwner
+              ? "Create a public catalogue list to organize your reads. Private ebook shelves live in your personal library."
+              : "This reader hasn't created any public lists yet."}
           </ThemedText>
-          <Pressable
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={() => setCreateModalVisible(true)}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-            <ThemedText style={styles.createButtonText} type="label">
-              Create List
-            </ThemedText>
-          </Pressable>
+          {isOwner && (
+            <Pressable
+              style={[styles.createButton, { backgroundColor: colors.primary }]}
+              onPress={() => setCreateModalVisible(true)}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <ThemedText style={styles.createButtonText} type="label">
+                Create List
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
       ) : (
         <FlatList
@@ -147,10 +165,24 @@ export default function ListsScreen() {
                 <View style={styles.listCardFooter}>
                   <ThemedText style={{ color: colors.tertiaryText }} type="caption">
                     {item.itemCount ?? 0} {(item.itemCount ?? 0) === 1 ? "book" : "books"}
+                    {item.ordered ? " · Ordered" : ""}
                   </ThemedText>
-                  <Pressable onPress={() => handleDeleteList(item.uri, item.name)} hitSlop={8}>
-                    <Ionicons name="trash-outline" size={16} color={colors.error} />
-                  </Pressable>
+                  {isOwner && (
+                    <Pressable
+                      accessibilityLabel={`Delete ${item.name}`}
+                      disabled={deleteList.isPending}
+                      onPress={() => handleDeleteList(item.uri, item.name)}
+                      hitSlop={8}
+                      style={{
+                        minHeight: 40,
+                        minWidth: 40,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={colors.error} />
+                    </Pressable>
+                  )}
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.tertiaryText} />
@@ -159,7 +191,12 @@ export default function ListsScreen() {
         />
       )}
 
-      <CreateListModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} />
+      {isOwner && (
+        <CreateListModal
+          visible={createModalVisible}
+          onClose={() => setCreateModalVisible(false)}
+        />
+      )}
     </ThemedView>
   );
 }

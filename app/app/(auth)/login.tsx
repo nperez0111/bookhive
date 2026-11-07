@@ -5,8 +5,8 @@ import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
@@ -21,18 +21,20 @@ const STORED_HANDLE_KEY = "bookhive_last_handle";
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
+  const { handle: requestedHandle } = useLocalSearchParams<{ handle?: string }>();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const [handle, setHandle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
   const [isFocused, setIsFocused] = useState(false);
 
-  // Animation refs
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const spinValue = useRef(new Animated.Value(0)).current;
-  const inputScaleAnim = useRef(new Animated.Value(1)).current;
+  // Stable animation handles, initialized once for this screen.
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [slideAnim] = useState(() => new Animated.Value(30));
+  const [scaleAnim] = useState(() => new Animated.Value(0.9));
+  const [spinValue] = useState(() => new Animated.Value(0));
+  const [inputScaleAnim] = useState(() => new Animated.Value(1));
 
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
@@ -44,15 +46,15 @@ export default function LoginScreen() {
     const loadStoredHandle = async () => {
       try {
         const storedHandle = await AsyncStorage.getItem(STORED_HANDLE_KEY);
-        if (storedHandle) {
-          setHandle(storedHandle);
+        if (requestedHandle || storedHandle) {
+          setHandle(requestedHandle || storedHandle!);
         }
       } catch (error) {
         console.error("Failed to load stored handle:", error);
       }
     };
     void loadStoredHandle();
-  }, []);
+  }, [requestedHandle]);
 
   // Entrance animations
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, scaleAnim, slideAnim]);
 
   // Input focus animation
   useEffect(() => {
@@ -82,10 +84,11 @@ export default function LoginScreen() {
       duration: 200,
       useNativeDriver: true,
     }).start();
-  }, [isFocused]);
+  }, [isFocused, inputScaleAnim]);
 
   const handleSubmit = async () => {
-    if (!handle) return;
+    if (!handle.trim() || isLoading) return;
+    setError("");
     setIsLoading(true);
 
     // Save handle to storage
@@ -105,17 +108,9 @@ export default function LoginScreen() {
     ).start();
 
     try {
-      await signIn({ handle });
-      // Success animation before navigation
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        router.replace("/(tabs)");
-      });
+      await signIn({ handle }); // Root protected routes navigate only after successful auth.
     } catch (error) {
-      console.error(error);
+      setError(error instanceof Error ? error.message : "Could not sign in. Please try again.");
       // Reset animations on error
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -123,6 +118,8 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }).start();
     } finally {
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
       setIsLoading(false);
     }
   };
@@ -222,6 +219,7 @@ export default function LoginScreen() {
                 />
               </Animated.View>
 
+              {!!error && <ThemedText accessibilityRole="alert">{error}</ThemedText>}
               <Pressable
                 style={({ pressed }) => [
                   styles.button,
@@ -264,7 +262,7 @@ export default function LoginScreen() {
                 ]}
               >
                 <ThemedText style={[styles.createAccountText, { color: colors.primary }]}>
-                  Don't have an account? Create one
+                  Don&apos;t have an account? Create one
                 </ThemedText>
               </Pressable>
             </Animated.View>

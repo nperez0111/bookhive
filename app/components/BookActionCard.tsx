@@ -144,6 +144,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               },
             ]}
             onPress={onStatusPress}
+            disabled={isPending}
           >
             <ThemedText
               style={[
@@ -192,10 +193,11 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
               placeholder="Share your thoughts about this book..."
               value={reviewText}
               onChangeText={onReviewTextChange}
+              editable={!isPending}
               multiline
               placeholderTextColor={colors.placeholderText}
             />
-            {reviewText && (
+            {reviewText !== (_review ?? "") && (
               <Pressable
                 style={[
                   styles.saveReviewButton,
@@ -232,6 +234,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                   },
                 ]}
                 onPress={() => showDatePicker("started")}
+                disabled={isPending}
               >
                 <ThemedText
                   style={[
@@ -245,6 +248,17 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                 </ThemedText>
                 <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
+              {startedAt && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear started date"
+                  disabled={isPending}
+                  onPress={() => onStartedAtChange?.(null)}
+                  style={{ minHeight: 40, justifyContent: "center" }}
+                >
+                  <ThemedText type="caption">Clear started date</ThemedText>
+                </Pressable>
+              )}
             </View>
 
             {/* Finished Date */}
@@ -261,6 +275,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                   },
                 ]}
                 onPress={() => showDatePicker("finished")}
+                disabled={isPending}
               >
                 <ThemedText
                   style={[
@@ -274,6 +289,17 @@ export const BookActionCard: React.FC<BookActionCardProps> = ({
                 </ThemedText>
                 <Ionicons name="calendar-outline" size={20} color={colors.secondaryText} />
               </Pressable>
+              {finishedAt && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear finished date"
+                  disabled={isPending}
+                  onPress={() => onFinishedAtChange?.(null)}
+                  style={{ minHeight: 40, justifyContent: "center" }}
+                >
+                  <ThemedText type="caption">Clear finished date</ThemedText>
+                </Pressable>
+              )}
             </View>
 
             {/* Error Message */}

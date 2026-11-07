@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
+  AuthMethodUnsatisfiableError,
+  OAuthResponseError,
+  TokenInvalidError,
+  TokenRefreshError,
+  TokenRevokedError,
+} from "@atcute/oauth-node-client";
+import {
   guardedRestore,
   isSessionTerminatingError,
   PdsUnavailableError,
@@ -16,6 +23,28 @@ beforeEach(() => {
 const blackhole = () => new Promise<never>(() => {});
 
 describe("isSessionTerminatingError", () => {
+  it("recognizes SDK terminal errors independently of their message", () => {
+    const did = "did:plc:test";
+    for (const error of [
+      new TokenRefreshError(did, "session was deleted by another process"),
+      new TokenRefreshError(did, "no refresh token available"),
+      new TokenInvalidError(did),
+      new TokenRevokedError(did, "Access denied"),
+      new AuthMethodUnsatisfiableError("Key unavailable"),
+      new OAuthResponseError(new Response(null, { status: 400 }), "invalid_grant", "Bad token"),
+    ]) {
+      expect(isSessionTerminatingError(error)).toBe(true);
+    }
+  });
+
+  it("keeps transient SDK responses and abort timeouts nonterminal", () => {
+    expect(isSessionTerminatingError(new DOMException("Timed out", "TimeoutError"))).toBe(false);
+    expect(
+      isSessionTerminatingError(
+        new OAuthResponseError(new Response(null, { status: 503 }), "temporarily_unavailable"),
+      ),
+    ).toBe(false);
+  });
   it("treats credential rejections as terminal", () => {
     expect(isSessionTerminatingError(new Error("invalid_grant"))).toBe(true);
     expect(isSessionTerminatingError(new Error("refresh token was revoked"))).toBe(true);
@@ -103,6 +132,15 @@ describe("guardedRestore", () => {
       }),
     ).resolves.toBe("ok");
     expect(dispatched).toBe(true);
+  });
+
+  it("does not open the breaker for missing SDK sessions", async () => {
+    for (let i = 0; i < 5; i++) {
+      await guardedRestore("healthy.example", async () => {
+        throw new TokenRefreshError("did:plc:test", "session was deleted by another process");
+      }).catch(() => {});
+    }
+    expect(await guardedRestore("healthy.example", async () => "ok")).toBe("ok");
   });
 
   it("stays bounded even when every tracked host is open", async () => {

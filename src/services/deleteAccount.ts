@@ -17,12 +17,12 @@ async function listAllRecordUris(agent: SessionClient, collection: string): Prom
     const res = await agent.get("com.atproto.repo.listRecords", {
       params: { repo: agent.did, collection, limit: 100, cursor },
     });
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Failed to list ${collection} records from PDS`);
     const data = res.data as ListRecordsOut;
     for (const record of data.records) {
       uris.push(record.uri);
     }
-    cursor = data.records.length === 100 ? data.cursor : undefined;
+    cursor = data.cursor;
   } while (cursor);
   return uris;
 }
@@ -46,7 +46,12 @@ async function batchDeleteFromPds(
   }
 }
 
-/** Delete all BookHive data for a user from both PDS and local database. */
+/**
+ * Delete BookHive records, local rows and uploaded files (not Bluesky posts).
+ * These systems cannot share a transaction: PDS batches may partially succeed,
+ * and a later DB or filesystem failure cannot undo earlier deletions. Failures
+ * must reach the caller; retrying resumes from the remaining records/files.
+ */
 export async function deleteAccountData({
   agent,
   db,
@@ -70,21 +75,26 @@ export async function deleteAccountData({
   }
 
   const did = agent.did;
-  await db
-    .deleteFrom("personal_shelf_item")
-    .where("shelfId", "in", (qb) =>
-      qb.selectFrom("personal_shelf").select("id").where("userDid", "=", did),
-    )
-    .execute();
-  await db.deleteFrom("personal_shelf").where("userDid", "=", did).execute();
-  await db.deleteFrom("personal_book").where("userDid", "=", did).execute();
-  await db.deleteFrom("sync_document").where("userDid", "=", did).execute();
-  await db.deleteFrom("book_list_item").where("userDid", "=", did).execute();
-  await db.deleteFrom("book_list").where("userDid", "=", did).execute();
-  await db.deleteFrom("buzz").where("userDid", "=", did).execute();
-  await db.deleteFrom("user_book").where("userDid", "=", did).execute();
-  await db.deleteFrom("user_follows").where("userDid", "=", did).execute();
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .deleteFrom("personal_shelf_item")
+      .where("shelfId", "in", (qb) =>
+        qb.selectFrom("personal_shelf").select("id").where("userDid", "=", did),
+      )
+      .execute();
+    await trx.deleteFrom("personal_shelf").where("userDid", "=", did).execute();
+    await trx.deleteFrom("personal_book").where("userDid", "=", did).execute();
+    await trx.deleteFrom("sync_document").where("userDid", "=", did).execute();
+    await trx.deleteFrom("book_list_item").where("userDid", "=", did).execute();
+    await trx.deleteFrom("book_list").where("userDid", "=", did).execute();
+    await trx.deleteFrom("buzz").where("userDid", "=", did).execute();
+    await trx.deleteFrom("user_book").where("userDid", "=", did).execute();
+    await trx.deleteFrom("progress_history").where("userDid", "=", did).execute();
+    await trx.deleteFrom("user_follows").where("userDid", "=", did).execute();
+  });
 
   // Remove uploaded library files from disk
-  await removeUserDir(did).catch(() => {});
+  // Keep filesystem I/O outside the SQLite write transaction. If it fails, the
+  // rows are already gone, but the caller must not claim deletion completed.
+  await removeUserDir(did);
 }
