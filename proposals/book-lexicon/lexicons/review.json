@@ -1,0 +1,64 @@
+{
+  "lexicon": 1,
+  "id": "community.lexicon.book.review",
+  "description": "A portable review with an embedded book reference.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "A review or rating of a book. Separate record keys allow multiple reviews of the same book, including rereads.",
+      "record": {
+        "type": "object",
+        "description": "A self-contained review. At least one of rating or nonempty textContent is required.",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#editionRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Time this review was created.",
+            "format": "datetime"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Rating on a 1-20 scale; divide by four for a five-star display."
+          },
+          "textContent": {
+            "type": "string",
+            "description": "Plain-text review, without Markdown. At least one of rating or nonempty textContent must be supplied. Rich content alone does not satisfy this requirement.",
+            "minLength": 1
+          },
+          "subjectRecord": {
+            "type": "string",
+            "description": "Optional AT-URI to an edition record for enrichment; subject.identifiers remain the matching mechanism.",
+            "format": "at-uri"
+          },
+          "content": {
+            "type": "union",
+            "refs": [],
+            "description": "Optional client-specific rich content, using the same open-union shape as site.standard.document.content. Each content object must include a $type identifying its format. A written review must also supply its plain-text textContent fallback."
+          },
+          "flags": {
+            "type": "ref",
+            "ref": "#flags"
+          }
+        }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "description": "Optional review presentation flags.",
+      "required": [],
+      "properties": {
+        "spoilers": {
+          "type": "boolean",
+          "description": "Whether the review contains spoilers."
+        }
+      }
+    }
+  }
+}

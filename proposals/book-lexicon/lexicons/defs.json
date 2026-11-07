@@ -1,0 +1,337 @@
+{
+  "lexicon": 1,
+  "id": "community.lexicon.book.defs",
+  "description": "Shared book definitions: identifiers, contributors, publishers, editions, edition references, and result pages.",
+  "defs": {
+    "identifier": {
+      "type": "object",
+      "description": "A global or provider-scoped identifier. Shared provider identifiers may express that provider's grouping of editions.",
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Identifier namespace: a well-known global scheme token or a provider domain. Providers may use subdomains to distinguish namespaces. Compare this string exactly. Writers use lowercase global tokens and lowercase ASCII provider domains (IDNA A-labels for internationalized domains), without a scheme, path, or trailing dot.",
+          "minLength": 1,
+          "knownValues": ["isbn", "issn", "doi", "asin", "oclc", "lccn"]
+        },
+        "value": {
+          "type": "string",
+          "description": "Opaque identifier in its namespace's canonical form, defined in the proposal's identifier writing table. For isbn, write hyphenless ISBN-13, converting ISBN-10 on write. Matching compares type and value exactly without parsing or normalization.",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "description": "Optional canonical URL within the namespace, for display and reference only; never part of identifier comparison.",
+          "format": "uri"
+        }
+      }
+    },
+    "contributor": {
+      "type": "object",
+      "description": "Someone who contributed to the work or edition in some capacity.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The contributor's full known name; no particular order is required.",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "description": "Nature of the contribution. If omitted, author is assumed.",
+          "default": "author",
+          "knownValues": ["author", "co-author", "editor", "translator", "narrator", "illustrator"]
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Identifiers denoting this contributor in global or provider namespaces, compared exactly by type and value.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#identifier"
+          }
+        },
+        "ref": {
+          "type": "string",
+          "description": "Optional enrichment reference. The target record type is deliberately unspecified; resolving it is never required for display.",
+          "format": "at-uri"
+        }
+      }
+    },
+    "publisher": {
+      "type": "object",
+      "description": "The organization that published the edition.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Publisher name.",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Identifiers denoting this publisher in global or provider namespaces, compared exactly by type and value.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#identifier"
+          }
+        }
+      }
+    },
+    "editionRef": {
+      "type": "object",
+      "description": "A self-contained book reference for reviews and other records. Cover fields are optional.",
+      "required": ["title", "identifiers", "contributors"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the edition.",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#identifier"
+          },
+          "minLength": 1
+        },
+        "contributors": {
+          "type": "array",
+          "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#contributor"
+          }
+        },
+        "cover": {
+          "type": "blob",
+          "description": "Optional cover image, strongly recommended when storing in a repository. The blob must belong to the repository containing the record, including when embedded in a review. May coexist with coverUrl.",
+          "accept": ["image/*"]
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "Optional cover image URL, useful for API responses and providers without repository storage. May coexist with cover; a URL alone does not preserve image bytes in the user's repository.",
+          "format": "uri"
+        }
+      }
+    },
+    "edition": {
+      "type": "object",
+      "description": "Full edition metadata for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
+      "required": ["title", "identifiers", "contributors", "createdAt"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the edition.",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#identifier"
+          },
+          "minLength": 1
+        },
+        "contributors": {
+          "type": "array",
+          "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#contributor"
+          }
+        },
+        "cover": {
+          "type": "blob",
+          "description": "Optional cover image, strongly recommended when storing in a repository. The blob must belong to the repository containing the record, including when embedded in a review. May coexist with coverUrl.",
+          "accept": ["image/*"]
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "Optional cover image URL, useful for API responses and providers without repository storage. May coexist with cover; a URL alone does not preserve image bytes in the user's repository.",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Time this edition record or snapshot was created, not its publication date.",
+          "format": "datetime"
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Subtitle of the edition."
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the edition as a BCP 47 language tag.",
+          "format": "language"
+        },
+        "publishedDate": {
+          "type": "string",
+          "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+          "minLength": 4,
+          "maxLength": 10
+        },
+        "publisher": {
+          "type": "ref",
+          "ref": "community.lexicon.book.defs#publisher"
+        },
+        "format": {
+          "type": "string",
+          "description": "Medium of the edition. Additional values are permitted; clients should provide a fallback for unrecognized formats.",
+          "knownValues": ["physical", "ebook", "audio"]
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total page count for print or ebook editions, when known."
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total audio duration in whole seconds, when known."
+        },
+        "chapters": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
+        },
+        "series": {
+          "type": "string",
+          "description": "Name of the series."
+        },
+        "seriesPosition": {
+          "type": "string",
+          "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+        },
+        "bookEdition": {
+          "type": "string",
+          "description": "Edition statement, such as 2nd revised or Abridged."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the edition."
+        }
+      }
+    },
+    "editionView": {
+      "type": "object",
+      "description": "Full edition metadata for API responses. Covers are represented only by optional coverUrl; providers omit cover and coverDid. The URL may point to a blob download endpoint.",
+      "required": ["title", "identifiers", "contributors", "createdAt"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the edition.",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#identifier"
+          },
+          "minLength": 1
+        },
+        "contributors": {
+          "type": "array",
+          "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#contributor"
+          }
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "Optional directly retrievable cover image URL. May point to a CDN, image service, or a blob download endpoint including the repository and blob identifiers needed to fetch it. No separate cover or coverDid is supplied.",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Time this edition record or snapshot was created, not its publication date.",
+          "format": "datetime"
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Subtitle of the edition."
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the edition as a BCP 47 language tag.",
+          "format": "language"
+        },
+        "publishedDate": {
+          "type": "string",
+          "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+          "minLength": 4,
+          "maxLength": 10
+        },
+        "publisher": {
+          "type": "ref",
+          "ref": "community.lexicon.book.defs#publisher"
+        },
+        "format": {
+          "type": "string",
+          "description": "Medium of the edition. Additional values are permitted; clients should provide a fallback for unrecognized formats.",
+          "knownValues": ["physical", "ebook", "audio"]
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total page count for print or ebook editions, when known."
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total audio duration in whole seconds, when known."
+        },
+        "chapters": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
+        },
+        "series": {
+          "type": "string",
+          "description": "Name of the series."
+        },
+        "seriesPosition": {
+          "type": "string",
+          "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+        },
+        "bookEdition": {
+          "type": "string",
+          "description": "Edition statement, such as 2nd revised or Abridged."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the edition."
+        }
+      }
+    },
+    "editionResults": {
+      "type": "object",
+      "description": "Shared response envelope for search and single-book resolution.",
+      "required": ["items", "hasMore"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Full edition views in provider-defined relevance order, with URL-only covers. Preserve known identifiers, including the provider's identifiers; do not reduce them to only those supplied in the request.",
+          "items": {
+            "type": "ref",
+            "ref": "community.lexicon.book.defs#editionView"
+          }
+        },
+        "hasMore": {
+          "type": "boolean",
+          "description": "Whether more matching editions remain after this page. Must be false for an empty page."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional total number of matching editions before pagination, not the size of this page. Omit if not known."
+        }
+      }
+    }
+  }
+}

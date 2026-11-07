@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "community.lexicon.book.resolveEditions",
+  "description": "Resolve one book by exact equality of at least one identifier type/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Resolve one book by exact equality of at least one identifier type/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "description": "Resolve one identifier bag. Batch resolution is not defined in this version.",
+          "required": ["identifiers"],
+          "properties": {
+            "identifiers": {
+              "type": "array",
+              "description": "Identifiers describing one book. An edition qualifies when at least one supplied type/value pair matches exactly. Unknown identifiers do not invalidate other matches.",
+              "items": {
+                "type": "ref",
+                "ref": "community.lexicon.book.defs#identifier"
+              },
+              "minLength": 1
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "description": "Number of matching editions to skip in the provider's ordered result set."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "description": "Maximum number of editions to return in this page."
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "community.lexicon.book.defs#editionResults"
+        }
+      }
+    }
+  }
+}
