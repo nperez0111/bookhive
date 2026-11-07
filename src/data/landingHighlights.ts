@@ -56,15 +56,29 @@ export type LandingHighlights = {
   recentRows: Awaited<ReturnType<typeof recentActivity>>;
 };
 
+export function buildRecentActivityQuery(db: Database, limit: number) {
+  return (
+    db
+      // LIMIT before the join keeps the planner on the creation-date index.
+      // Joining first chose hive_feed and sorted the entire library in production.
+      .selectFrom((eb) =>
+        eb
+          .selectFrom("user_book")
+          .selectAll()
+          .orderBy("createdAt", "desc")
+          .orderBy("uri", "desc")
+          .limit(limit)
+          .as("user_book"),
+      )
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .orderBy("user_book.createdAt", "desc")
+      .orderBy("user_book.uri", "desc")
+  );
+}
+
 function recentActivity(db: Database, limit: number) {
-  return db
-    .selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
-    .orderBy("user_book.createdAt", "desc")
-    .orderBy("user_book.uri", "desc")
-    .limit(limit)
-    .execute();
+  return buildRecentActivityQuery(db, limit).execute();
 }
 
 /**

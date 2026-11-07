@@ -55,36 +55,58 @@ export async function listBooksByAuthor({
   sort: CatalogSort;
   language?: string | undefined;
 }): Promise<CatalogPage> {
-  // Indexed join on hive_book_author (migration 020) rather than LIKE
-  // patterns against the tab-separated `authors` column.
-  let dataQuery = db
-    .selectFrom("hive_book")
-    .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-    .where("hive_book_author.author", "=", author)
-    .selectAll("hive_book")
-    .$if(Boolean(language), (qb) => qb.orderBy(languagePreference(language!), "asc"));
-
-  // `relevance` has no meaning for an author listing; it falls through to
-  // popularity rather than silently producing a different order than the label.
-  dataQuery =
-    sort === "reviews"
-      ? dataQuery.orderBy("hive_book.rating", "desc").orderBy("hive_book.ratingsCount", "desc")
-      : dataQuery.orderBy("hive_book.ratingsCount", "desc").orderBy("hive_book.rating", "desc");
-
-  const [count, books] = await Promise.all([
+  const [count, selected] = await Promise.all([
     db
       .selectFrom("hive_book_author")
       .select(sql<number>`COUNT(*)`.as("count"))
       .where("author", "=", author)
       .executeTakeFirst(),
-    dataQuery
-      .orderBy("hive_book.id", "asc")
-      .limit(pageSize)
-      .offset(pageOffset(page, pageSize))
-      .execute(),
+    buildAuthorBookIdsQuery({
+      author,
+      sort,
+      language,
+      limit: pageSize,
+      offset: pageOffset(page, pageSize),
+    }).execute(db),
   ]);
+  const books = await hydrateSearchResults({ db, ids: selected.rows.map(({ id }) => id) });
 
   return finish(books, count?.count, page, pageSize);
+}
+
+/** Shared ID-only selection for author pages and same-author recommendations. */
+export function buildAuthorBookIdsQuery({
+  author,
+  sort = "popularity",
+  language,
+  excludeHiveId,
+  limit,
+  offset = 0,
+}: {
+  author: string;
+  sort?: CatalogSort;
+  language?: string | null | undefined;
+  excludeHiveId?: HiveId;
+  limit: number;
+  offset?: number;
+}) {
+  // As with genres, the explicit covering index avoids reading descriptions and
+  // metadata for every candidate (Unknown Author alone has over 32,000 books).
+  const preferredLanguage = language ? sql`${languagePreference(language)} ASC, ` : sql``;
+  const exclude = excludeHiveId ? sql`AND hive_book.id != ${excludeHiveId}` : sql``;
+  // Relevance intentionally falls back to popularity for an author listing.
+  const ordering =
+    sort === "reviews"
+      ? sql`hive_book.rating DESC, hive_book.ratingsCount DESC`
+      : sql`hive_book.ratingsCount DESC, hive_book.rating DESC`;
+  return sql<{ id: HiveId }>`
+    SELECT hive_book.id
+    FROM hive_book INDEXED BY idx_hive_book_stats
+    JOIN hive_book_author ON hive_book.id = hive_book_author.hiveId
+    WHERE hive_book_author.author = ${author} ${exclude}
+    ORDER BY ${preferredLanguage}${ordering}, hive_book.id ASC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
 }
 
 /** ID-only page selection, exported so plan tests exercise the live SQL. */

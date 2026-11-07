@@ -43,7 +43,18 @@ Don't "clean up" the hint, and don't reach for `ANALYZE` instead — it would re
 an app whose indexes were all tuned against the no-stats planner. `src/data/authorStats.test.ts`
 asserts the plans.
 
-## Genre pages select IDs before hydrating full rows
+## Landing activity must limit before joining catalogue rows
+
+The November 7 speed audit measured the landing page's recent-activity query at 5,561ms:
+joining first chose `idx_user_book_hive_feed` and sorted the whole library before LIMIT 10.
+`landingHighlights.ts` now selects the newest user-book page in a limited subquery before
+the LEFT JOIN, using existing `idx_user_book_created_at`. Keep both creation-date/URI ordering
+terms in the inner and outer queries, and keep unmatched catalogue rows. The new query's
+read-only production check returned ten rows in 5ms; this is a single warmed comparison, not
+an end-to-end latency guarantee. SWR remains useful but cannot make synchronous refresh SQL
+nonblocking. No new index or cache policy is needed.
+
+## Catalogue pages and author recommendations select IDs before hydrating full rows
 
 `data/catalogBooks.ts`'s `listBooksByGenre` first selects ordered page IDs and then hydrates only
 that page. Without a substring `q`, the ID query explicitly uses `idx_hive_book_stats` for a
@@ -60,6 +71,14 @@ the complete new helper (count, IDs, hydration): Fiction 1507ms → 70ms, Fantas
 Contemporary 220ms → 22ms. These are local measurements, not verified production latency gains.
 No new index or query-result cache is required; scheduling synchronous SQL in the background
 would still block the same worker.
+
+Author pages and `bookDetail.ts`'s same-author recommendations use the same covering-ID-first
+selection through `buildAuthorBookIdsQuery`, then hydrate only the selected page. The November 7
+audit found over 32,000 books under Unknown Author; all five sampled slow book pages belonged
+to that group. One read-only comparison of six recommendations was 5,251ms for full-row sorting
+versus 825ms for covering IDs plus hydration, with identical ordered IDs (warm-cache/order bias
+applies). Preserve exact author identity, pre-LIMIT language preference/exclusion, reviews versus
+popularity ordering, unique ID ties, and listing offsets. No new index or result cache is added.
 
 ## Profile and PDS directory refresh must not block stale readers
 

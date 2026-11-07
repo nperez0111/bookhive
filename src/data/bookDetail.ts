@@ -2,6 +2,7 @@ import { sql, type NotNull } from "kysely";
 
 import type { Database } from "../db";
 import type { HiveBook, HiveId, UserBookRow } from "../types";
+import { buildAuthorBookIdsQuery, hydrateSearchResults } from "./catalogBooks";
 
 /**
  * Everything `/books/:hiveId` and XRPC `getBook` read.
@@ -109,21 +110,13 @@ export async function listOtherBooksByAuthor({
   limit?: number;
 }): Promise<HiveBook[]> {
   if (!author) return [];
-  return await db
-    .selectFrom("hive_book")
-    .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
-    .selectAll("hive_book")
-    .where("hive_book.id", "!=", excludeHiveId)
-    .where("hive_book_author.author", "=", author)
-    .$if(Boolean(language), (qb) =>
-      qb.orderBy(sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`, "asc"),
-    )
-    .orderBy("hive_book.ratingsCount", "desc")
-    .orderBy("hive_book.rating", "desc")
-    // Unique final key, same rule as every other catalogue listing.
-    .orderBy("hive_book.id", "asc")
-    .limit(limit)
-    .execute();
+  const selected = await buildAuthorBookIdsQuery({
+    author,
+    excludeHiveId,
+    language,
+    limit,
+  }).execute(db);
+  return await hydrateSearchResults({ db, ids: selected.rows.map(({ id }) => id) });
 }
 
 /** The viewer's recorded reading progress for this book, newest first. */

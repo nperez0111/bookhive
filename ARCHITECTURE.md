@@ -101,7 +101,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `bsky/jetstream.ts`              | Jetstream v2 lifecycle, per-instance sequence replay and live-tip cutover — `ingestion-and-reconciliation.md`                 |
 | `services/getProfile.ts`         | Viewer-isolated LRU/SWR, bounded refresh + verified identity repair, cached failure fallback — `data-and-caching.md`          |
 | `pds/repoCache.ts`               | Public repository directory SWR, whole-traversal deadline and singleton transport guard — `data-and-caching.md`               |
-| `data/catalogBooks.ts`           | Genre pages select ordered IDs using the covering stats index before hydration — `data-and-caching.md`                        |
+| `data/catalogBooks.ts`           | Genre/author pages and author recommendations select covering IDs before hydration — `data-and-caching.md`                    |
 | `scrapers/waf/solver-worker.ts`  | Worker solve logic; `protocol.ts` validates envelopes — `src/scrapers/waf/README.md`                                          |
 | `services/userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
 | `services/bookRecordWrite.ts`    | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
@@ -129,7 +129,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `data/repoMirror.ts`             | `pruneMirroredRecords` — re-sync cleanup; handles the empty-keep-list case — `domain-rules-and-write-paths.md`                |
 | `routes/authResponse.ts`         | The one JSON 401 body — `domain-rules-and-write-paths.md`                                                                     |
 | `services/searchBooks.ts`        | The one catalogue-ensure + concurrency ceiling — `enrichment-and-scraping.md`                                                 |
-| `data/bookDetail.ts`             | `/books/:id`, comments, XRPC `getBook`; every ordering ends on `uri`                                                          |
+| `data/bookDetail.ts`             | `/books/:id`, comments, XRPC `getBook`; author recommendations share catalogue ID selection — `data-and-caching.md`           |
 | `core/hiveId.ts`                 | `HIVE_ID_PATTERN`/`isHiveId`/`asHiveId` — narrow the wire value, don't cast it                                                |
 | `core/cacheHeaders.ts`           | The one caching rule (signed-in vs signed-out)                                                                                |
 | `data/exploreGenres.ts`          | `getTopGenres`, SWR-cached, four consumers including XRPC `listGenres`                                                        |

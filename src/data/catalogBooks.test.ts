@@ -9,17 +9,20 @@
  */
 import type { Database as DatabaseSync } from "bun:sqlite";
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { sql } from "kysely";
 import { createTestDb } from "../test/db";
 
 import type { Database } from "../db";
 import type { HiveBook, HiveId } from "../types";
 import {
+  buildAuthorBookIdsQuery,
   buildGenreBookIdsQuery,
   hydrateSearchResults,
   listBooksByAuthor,
   listBooksByGenre,
   searchLocalCatalog,
 } from "./catalogBooks";
+import { listOtherBooksByAuthor } from "./bookDetail";
 
 let db: Database;
 let sqlite: DatabaseSync;
@@ -67,6 +70,96 @@ const plan = (query: string) =>
     .join("\n");
 
 describe("listBooksByAuthor", () => {
+  it("selects author pages and recommendations with covering book lookups", () => {
+    for (const sort of ["popularity", "reviews", "relevance"] as const) {
+      for (const language of [undefined, "French"]) {
+        const query = buildAuthorBookIdsQuery({
+          author: "Unknown Author",
+          sort,
+          language,
+          excludeHiveId: "bk_self" as HiveId,
+          limit: 6,
+          offset: 3,
+        }).compile(db);
+        const detail = (
+          sqlite.query(`EXPLAIN QUERY PLAN ${query.sql}`).all(...(query.parameters as never[])) as {
+            detail: string;
+          }[]
+        )
+          .map(({ detail }) => detail)
+          .join("\n");
+        expect(detail).toContain("COVERING INDEX idx_hive_book_stats");
+        expect(detail).toContain("idx_hive_book_author_author");
+      }
+    }
+  });
+
+  it("preserves full-row query ordering, language preference, pagination and exclusions", async () => {
+    for (let i = 0; i < 17; i++) {
+      insertBook({
+        id: `bk_${String(i).padStart(2, "0")}`,
+        authors: i === 16 ? "Other" : "Author\tCoauthor",
+        ratingsCount: i % 4,
+        rating: i % 3,
+        language: i % 2 ? "French" : null,
+      });
+    }
+    sqlite.exec("UPDATE hive_book SET rating = NULL WHERE rating = 0");
+    for (const sort of ["popularity", "reviews", "relevance"] as const) {
+      for (const language of [undefined, "French", "English"]) {
+        for (const page of [1, 2, 5]) {
+          const expected = await db
+            .selectFrom("hive_book")
+            .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
+            .selectAll("hive_book")
+            .where("hive_book_author.author", "=", "Author")
+            .$if(Boolean(language), (qb) =>
+              qb.orderBy(sql`CASE WHEN hive_book.language = ${language} THEN 0 ELSE 1 END`, "asc"),
+            )
+            .orderBy(sort === "reviews" ? "rating" : "ratingsCount", "desc")
+            .orderBy(sort === "reviews" ? "ratingsCount" : "rating", "desc")
+            .orderBy("hive_book.id", "asc")
+            .limit(4)
+            .offset((page - 1) * 4)
+            .execute();
+          const actual = await listBooksByAuthor({
+            db,
+            author: "Author",
+            page,
+            pageSize: 4,
+            sort,
+            language,
+          });
+          expect(actual.books).toEqual(expected);
+          expect(actual.totalBooks).toBe(16);
+        }
+      }
+    }
+    const expected = await db
+      .selectFrom("hive_book")
+      .innerJoin("hive_book_author", "hive_book_author.hiveId", "hive_book.id")
+      .selectAll("hive_book")
+      .where("hive_book_author.author", "=", "Author")
+      .where("hive_book.id", "!=", "bk_03" as HiveId)
+      .orderBy(sql`CASE WHEN hive_book.language = 'French' THEN 0 ELSE 1 END`, "asc")
+      .orderBy("ratingsCount", "desc")
+      .orderBy("rating", "desc")
+      .orderBy("hive_book.id", "asc")
+      .limit(6)
+      .execute();
+    expect(
+      await listOtherBooksByAuthor({
+        db,
+        author: "Author",
+        excludeHiveId: "bk_03" as HiveId,
+        language: "French",
+      }),
+    ).toEqual(expected);
+    expect(
+      await listOtherBooksByAuthor({ db, author: "", excludeHiveId: "bk_03" as HiveId }),
+    ).toEqual([]);
+  });
+
   it("pages without repeating or dropping a book when every sort key ties", async () => {
     // Identical ratingsCount and rating on every row, so only the final unique key decides order.
     for (let i = 0; i < 10; i++) {
