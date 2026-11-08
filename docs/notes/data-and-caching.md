@@ -160,9 +160,13 @@ invalid or unavailable. `pages/utils/actorLinkId.ts` owns that selection using t
 atcute-backed `isUsableHandle` guard; `handle.invalid` is never a routing identity.
 DID profile/stat routes display the usable fetched handle when available.
 
-Verified DID-to-handle traversal has its own process-wide limiter shared across resolver
+Verified handle-to-DID and DID-to-handle traversal share a process-wide limiter across resolver
 instances: 3 active, 12 queued, 500ms queue deadline, a 2.5s abort signal and a 3s caller wait.
-Identity-cache in-flight deduplication coalesces callers for the same DID. A caller timeout
+The November 8 timing logs exposed unresolved handle lookups waiting about 135s because only
+the reverse direction previously had these bounds. Both now use the same budget; existing
+verification and cache semantics remain unchanged. Timers cannot enforce wall-clock deadlines
+while the event loop itself is stalled. Identity-cache in-flight deduplication coalesces callers
+for the same identity. A caller timeout
 does not release capacity: the underlying actor-resolution promise must actually settle.
 This bounds observable traversals, not every transport inside the resolver. The upstream
 DNS/HTTP race can finish via HTTP while its uncancellable Node DNS loser is still running;

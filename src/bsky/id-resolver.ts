@@ -49,12 +49,13 @@ export type BaseIdResolver = {
   handle: { resolve(handle: string): Promise<string> };
 };
 
-export function createBaseIdResolver(): BaseIdResolver {
-  const actorResolver = createActorResolver();
+export function createBaseIdResolver(
+  actorResolver: ActorResolver = createActorResolver(),
+): BaseIdResolver {
   return {
     handle: {
       resolve: async (handle: string): Promise<string> => {
-        const actor = await actorResolver.resolve(handle as ActorIdentifier);
+        const actor = await resolveActorWithinBudget(actorResolver, handle as ActorIdentifier);
         return actor.did;
       },
     },
@@ -172,19 +173,21 @@ const identityRequests = new Semaphore(3, {
   acquireTimeoutMs: 500,
 });
 
+function resolveActorWithinBudget(resolver: ActorResolver, identifier: ActorIdentifier) {
+  return withTimeout(
+    identityRequests.run(() => resolver.resolve(identifier, { signal: AbortSignal.timeout(2500) })),
+    3000,
+    "identity resolution",
+  );
+}
+
 export function createBidirectionalResolverAtcute(
   actorResolver: ActorResolver = createActorResolver(),
 ): BidirectionalResolver {
   return {
     async resolveDidToHandle(did: string): Promise<string> {
       try {
-        const actor = await withTimeout(
-          identityRequests.run(() =>
-            actorResolver.resolve(did as ActorIdentifier, { signal: AbortSignal.timeout(2500) }),
-          ),
-          3000,
-          "identity resolution",
-        );
+        const actor = await resolveActorWithinBudget(actorResolver, did as ActorIdentifier);
         return isUsableHandle(actor.handle) ? actor.handle : did;
       } catch {
         return did;

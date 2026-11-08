@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test";
 import type { ActorResolver } from "@atcute/identity-resolver";
 import { createStorage } from "unstorage";
 import {
+  createBaseIdResolver,
   createCachingBaseIdResolver,
   createCachingBidirectionalResolver,
   createBidirectionalResolverAtcute,
@@ -41,11 +42,15 @@ test("identity traversal concurrency and queue are bounded across resolver insta
     }
   });
   const first = createBidirectionalResolverAtcute({ resolve });
-  const second = createBidirectionalResolverAtcute({ resolve });
+  const second = createCachingBaseIdResolver(createStorage(), createBaseIdResolver({ resolve }));
   const dids = Array.from({ length: 25 }, (_, i) => `did:plc:overload${i}`);
   expect(
-    await Promise.all(dids.map((did, i) => (i % 2 ? first : second).resolveDidToHandle(did))),
-  ).toEqual(dids);
+    await Promise.all(
+      dids.map((did, i) =>
+        i % 2 ? second.handle.resolve(`actor${i}.test`) : first.resolveDidToHandle(did),
+      ),
+    ),
+  ).toEqual(dids.map((did, i) => (i % 2 ? "" : did)));
   expect(peak).toBe(3);
   expect(signals).toHaveLength(3);
   expect(signals.every((signal) => signal.aborted)).toBe(true);
@@ -66,10 +71,11 @@ test("timed-out identity traversals keep their slots until an abort-ignoring tra
     kv,
     createBidirectionalResolverAtcute({ resolve }),
   );
+  const base = createCachingBaseIdResolver(kv, createBaseIdResolver({ resolve }));
   const dids = ["a", "b", "c"].map((id) => `did:plc:held${id}`);
   try {
     expect(await Promise.all(dids.map((did) => resolver.resolveDidToHandle(did)))).toEqual(dids);
-    expect(await resolver.resolveDidToHandle("did:plc:queued")).toBe("did:plc:queued");
+    expect(await base.handle.resolve("queued.test")).toBe("");
     expect(resolve).toHaveBeenCalledTimes(3);
   } finally {
     release();
@@ -79,6 +85,23 @@ test("timed-out identity traversals keep their slots until an abort-ignoring tra
   expect(resolve).toHaveBeenCalledTimes(4);
   for (const did of dids) expect(await kv.get("identity:v2:did:" + did)).toBeNull();
 }, 8000);
+
+test("verified handle lookups preserve DID results and warm both cache directions", async () => {
+  const kv = createStorage();
+  const resolve = mock<ActorResolver["resolve"]>(async () => ({
+    did: "did:plc:verified",
+    handle: "verified.test",
+    pds: "https://pds.test/",
+  }));
+  const base = createCachingBaseIdResolver(kv, createBaseIdResolver({ resolve }));
+  expect(await base.handle.resolve("verified.test")).toBe("did:plc:verified");
+  expect(await base.handle.resolve("verified.test")).toBe("did:plc:verified");
+  expect(resolve).toHaveBeenCalledTimes(1);
+  expect(await kv.get("identity:v2:did:did:plc:verified")).toEqual({
+    did: "did:plc:verified",
+    handle: "verified.test",
+  });
+});
 
 test("placeholder handles cannot overwrite either identity direction", async () => {
   const kv = createStorage();
