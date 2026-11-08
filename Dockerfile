@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1.4.4-alpine AS base
 WORKDIR /usr/src/app
 RUN rm -rf /var/cache/apk/*
 
