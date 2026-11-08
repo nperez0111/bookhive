@@ -1,9 +1,8 @@
 /**
  * Client state for "my relationship to this book" on /books/:id, shared by
- * the three islands. Changes apply optimistically and roll back to
- * `confirmed` on failure. Writes are serialised because the server CASes
- * each one on the previous write's cid, so a response never overwrites
- * `view` while later writes are still queued.
+ * the three islands. Changes apply optimistically over `confirmed`; after
+ * each response, only later pending edits are replayed. Writes are serialised
+ * because the server CASes each one on the previous write's cid.
  */
 import type { UserBookView } from "../../../core/userBookView";
 import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../../../constants";
@@ -71,6 +70,7 @@ export function applyOptimistic(
   current: UserBookView | null,
   fields: UpdateFields,
   props: Pick<BookActionsProps, "hiveId" | "title" | "authors">,
+  now: () => string = nowIso,
 ): UserBookView {
   const base: UserBookView = current ?? {
     uri: "",
@@ -86,8 +86,8 @@ export function applyOptimistic(
     finishedAt: null,
     bookProgress: null,
     previousReads: null,
-    createdAt: nowIso(),
-    indexedAt: nowIso(),
+    createdAt: now(),
+    indexedAt: now(),
   };
   const next: UserBookView = { ...base };
 
@@ -95,9 +95,7 @@ export function applyOptimistic(
   if (fields.stars !== undefined) next.stars = fields.stars || null;
   if (fields.review !== undefined) next.review = fields.review || base.review;
   if (fields.bookProgress !== undefined) {
-    next.bookProgress = fields.bookProgress
-      ? { ...fields.bookProgress, updatedAt: nowIso() }
-      : null;
+    next.bookProgress = fields.bookProgress ? { ...fields.bookProgress, updatedAt: now() } : null;
   }
 
   const transition = nextReadingState(
@@ -113,7 +111,7 @@ export function applyOptimistic(
       finishedAt: fields.finishedAt,
       bookProgress: fields.bookProgress,
     },
-    { now: nowIso },
+    { now },
   );
   next.status = transition.status;
   next.startedAt = transition.startedAt;
@@ -145,17 +143,23 @@ export function createUserBookStore(props: BookActionsProps) {
     listeners.forEach((l) => l());
   };
   let queue: Promise<unknown> = Promise.resolve();
+  const pendingEdits: { fields: UpdateFields; timestamp: string }[] = [];
+  const project = (confirmed: UserBookView | null) =>
+    pendingEdits.reduce<UserBookView | null>(
+      (view, { fields, timestamp }) => applyOptimistic(view, fields, props, () => timestamp),
+      confirmed,
+    );
   // `updateBookRecord` creates a record when no row exists, so a write starting during the DELETE would put the book back — awaiting `queue` isn't enough since every `update` reassigns it.
   let deleting = false;
 
   async function send(fields: UpdateFields, explicitSave: boolean): Promise<boolean> {
     const result = await writeBook(props.hiveId, fields);
+    pendingEdits.shift();
     if (result.ok && result.userBook) {
-      const pending = state.pending - 1;
       set({
         confirmed: result.userBook,
-        pending,
-        view: pending === 0 ? result.userBook : state.view,
+        pending: pendingEdits.length,
+        view: project(result.userBook),
         savedAt: explicitSave ? Date.now() : state.savedAt,
       });
       return true;
@@ -163,8 +167,8 @@ export function createUserBookStore(props: BookActionsProps) {
     // The server's message can name CIDs and lexicon paths.
     console.error("[book] save failed:", result.ok ? "Missing book" : result.message);
     set({
-      pending: state.pending - 1,
-      view: state.confirmed,
+      pending: pendingEdits.length,
+      view: project(state.confirmed),
       error: "That change could not be saved. Your library was left as it was.",
     });
     return false;
@@ -179,9 +183,15 @@ export function createUserBookStore(props: BookActionsProps) {
     /** Apply at once, send in order. Resolves to whether the write landed. */
     update: (fields: UpdateFields, { explicitSave = false } = {}): Promise<boolean> => {
       if (deleting) return Promise.resolve(false);
+      fields = {
+        ...fields,
+        ...(fields.bookProgress ? { bookProgress: { ...fields.bookProgress } } : {}),
+      };
+      const timestamp = nowIso();
+      pendingEdits.push({ fields, timestamp });
       set({
-        view: applyOptimistic(state.view, fields, props),
-        pending: state.pending + 1,
+        view: applyOptimistic(state.view, fields, props, () => timestamp),
+        pending: pendingEdits.length,
         error: null,
       });
       const run = () => send(fields, explicitSave);

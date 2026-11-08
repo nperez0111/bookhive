@@ -1,37 +1,13 @@
-import type { Storage } from "unstorage";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { statusFromProgress, toPercent } from "../core/bookProgress";
 import { matchSyncDocumentForUser, NO_HIVE_MATCH } from "./syncMatching";
 import { filenameKey } from "../core/filenameMatching";
 import type { SyncProgressData } from "../types";
+import { enqueuePdsWrite } from "./syncWriteQueue";
 
 /** The only sync provider today; `sync_document.provider` is keyed on it. */
 export const KOSYNC_PROVIDER = "kosync";
-
-export type PendingWrite = { hiveId: string; bookProgress: string };
-
-/**
- * Queue a bookProgress write to the user's PDS, to be flushed when a session
- * agent is next available (KOSync requests carry no OAuth session). Deduped by
- * hiveId so the latest progress wins.
- */
-export async function enqueuePdsWrite(
-  kv: Storage,
-  did: string,
-  entry: PendingWrite,
-): Promise<void> {
-  const key = `sync_pending:${did}`;
-  const existing = await kv.getItem<PendingWrite[]>(key);
-  const list = existing ?? [];
-  const idx = list.findIndex((e) => e.hiveId === entry.hiveId);
-  if (idx >= 0) {
-    list[idx] = entry;
-  } else {
-    list.push(entry);
-  }
-  await kv.setItem(key, list);
-}
 
 /**
  * Bridge e-reader progress onto the user's BookHive book: writes bookProgress to
@@ -42,34 +18,47 @@ export async function enqueuePdsWrite(
  */
 export async function bridgeProgressToUserBook(
   db: Database,
-  kv: Storage,
   userDid: string,
   hiveId: HiveId,
   percentage: number,
+  source?: { id: number; progressData: string },
 ): Promise<void> {
   // A dismissed document has no BookHive book to bridge onto.
   if (hiveId === NO_HIVE_MATCH) return;
 
-  const userBook = await db
-    .selectFrom("user_book")
-    .select(["uri", "status"])
-    .where("userDid", "=", userDid)
-    .where("hiveId", "=", hiveId)
-    .executeTakeFirst();
-  if (!userBook) return;
+  await db.transaction().execute(async (tx) => {
+    if (source) {
+      const current = await tx
+        .selectFrom("sync_document")
+        .select("id")
+        .where("id", "=", source.id)
+        .where("userDid", "=", userDid)
+        .where("hiveId", "=", hiveId)
+        .where("progressData", "=", source.progressData)
+        .executeTakeFirst();
+      if (!current) return;
+    }
+    const userBook = await tx
+      .selectFrom("user_book")
+      .select(["uri", "status"])
+      .where("userDid", "=", userDid)
+      .where("hiveId", "=", hiveId)
+      .executeTakeFirst();
+    if (!userBook) return;
 
-  const percent = toPercent(percentage);
-  const bookProgress = JSON.stringify({ percent, updatedAt: new Date().toISOString() });
+    const percent = toPercent(percentage);
+    const bookProgress = JSON.stringify({ percent, updatedAt: new Date().toISOString() });
 
-  const updates: Record<string, unknown> = { bookProgress };
-  // Zero percent is excluded: an e-reader reports it for a book merely opened, not yet reading.
-  const inferred = percent > 0 ? statusFromProgress(userBook.status) : undefined;
-  if (inferred) {
-    updates["status"] = inferred;
-  }
+    const updates: Record<string, unknown> = { bookProgress };
+    // Zero percent is excluded: an e-reader reports it for a book merely opened, not yet reading.
+    const inferred = percent > 0 ? statusFromProgress(userBook.status) : undefined;
+    if (inferred) {
+      updates["status"] = inferred;
+    }
 
-  await db.updateTable("user_book").set(updates).where("uri", "=", userBook.uri).execute();
-  await enqueuePdsWrite(kv, userDid, { hiveId, bookProgress });
+    await tx.updateTable("user_book").set(updates).where("uri", "=", userBook.uri).execute();
+    await enqueuePdsWrite(tx, userDid, { hiveId, bookProgress });
+  });
 }
 
 /**
@@ -85,7 +74,6 @@ export async function bridgeProgressToUserBook(
  */
 export async function recordSyncProgress({
   db,
-  kv,
   userDid,
   document,
   progress,
@@ -95,7 +83,6 @@ export async function recordSyncProgress({
   metadata,
 }: {
   db: Database;
-  kv: Storage;
   userDid: string;
   document: string;
   progress: string;
@@ -117,74 +104,75 @@ export async function recordSyncProgress({
     timestamp: Math.floor(Date.now() / 1000),
   };
 
-  const existing = await db
-    .selectFrom("sync_document")
-    .select(["id", "hiveId"])
-    .where("userDid", "=", userDid)
-    .where("provider", "=", KOSYNC_PROVIDER)
-    .where("documentHash", "=", document)
-    .executeTakeFirst();
-
-  if (existing) {
-    await db
-      .updateTable("sync_document")
-      .set({
+  // One statement owns creation and updates: simultaneous first pushes must
+  // not race a SELECT against an INSERT. Omitted metadata and any existing
+  // association (including dismissal) belong to the persisted document.
+  const stored = await db
+    .insertInto("sync_document")
+    .values({
+      userDid,
+      provider: KOSYNC_PROVIDER,
+      documentHash: document,
+      hiveId: null,
+      filename,
+      filenameKey: filenameKey(filename),
+      title,
+      authors,
+      progressData: JSON.stringify(progressData),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflict((oc) =>
+      oc.columns(["userDid", "provider", "documentHash"]).doUpdateSet({
         progressData: JSON.stringify(progressData),
         updatedAt: now,
         ...(filename != null ? { filename, filenameKey: filenameKey(filename) } : {}),
         ...(title != null ? { title } : {}),
         ...(authors != null ? { authors } : {}),
-      })
-      .where("id", "=", existing.id)
-      .execute();
-  } else {
-    await db
-      .insertInto("sync_document")
-      .values({
-        userDid,
-        provider: KOSYNC_PROVIDER,
-        documentHash: document,
-        hiveId: null,
-        filename,
-        filenameKey: filenameKey(filename),
-        title,
-        authors,
-        progressData: JSON.stringify(progressData),
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
-  }
+      }),
+    )
+    .returning(["id", "hiveId", "filename", "title", "authors"])
+    .executeTakeFirstOrThrow();
 
-  let hiveId = existing?.hiveId ?? null;
+  let hiveId = stored.hiveId;
 
   // Unconditional: a default-configured KOReader sends no metadata at all, and
   // `matchSyncDocumentForUser` resolves those from the uploaded file the document hash points at.
   if (!hiveId) {
-    hiveId = await matchSyncDocumentForUser(db, userDid, {
+    const matchedHiveId = await matchSyncDocumentForUser(db, userDid, {
       documentHash: document,
-      title,
-      authors,
-      filename,
+      title: stored.title,
+      authors: stored.authors,
+      filename: stored.filename,
     });
-    if (hiveId) {
+    if (matchedHiveId) {
       await db
         .updateTable("sync_document")
-        .set({ hiveId })
-        .where("userDid", "=", userDid)
-        .where("provider", "=", KOSYNC_PROVIDER)
-        .where("documentHash", "=", document)
+        .set({ hiveId: matchedHiveId })
+        .where("id", "=", stored.id)
         // Only fill a genuinely empty link — a concurrent request or a manual
         // link can land between the read above and this write, and this must
         // not clobber the NO_HIVE_MATCH dismissal sentinel either.
         .where("hiveId", "is", null)
         .execute();
     }
+
+    // Matching yields to other requests. Even a miss may have raced a manual
+    // link; always adopt the persisted winner before bridging or returning.
+    const current = await db
+      .selectFrom("sync_document")
+      .select("hiveId")
+      .where("id", "=", stored.id)
+      .executeTakeFirst();
+    hiveId = current?.hiveId ?? null;
   }
 
   if (hiveId) {
-    await bridgeProgressToUserBook(db, kv, userDid, hiveId as HiveId, percentage);
+    await bridgeProgressToUserBook(db, userDid, hiveId, percentage, {
+      id: stored.id,
+      progressData: JSON.stringify(progressData),
+    });
   }
 
-  return { hiveId: (hiveId as HiveId) ?? null };
+  return { hiveId };
 }

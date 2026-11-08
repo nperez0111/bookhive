@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createStorage } from "unstorage";
 import memoryDriver from "unstorage/drivers/memory";
 
@@ -12,6 +12,7 @@ import { completeUserBookRecord } from "./userBookFollowUp";
 import { recordFromUserBook } from "./userBookStore";
 import { toUserBookView } from "../core/userBookView";
 import { createTestDb } from "../test/db";
+import { LABEL, userBookFollowUpTotal } from "../metrics";
 
 const DID = "did:plc:testuser";
 const HIVE_ID = "bk_dune" as HiveId;
@@ -378,6 +379,73 @@ describe("updateBookRecord", () => {
     expect(followUp).resolves.toBe("nothing");
     expect(names()).toEqual(["putRecord"]);
   });
+
+  it.each([false, true])(
+    "dedupes after the caller deadline until underlying work settles (rejects: %s)",
+    async (rejects) => {
+      const server = coverServer();
+      const writeStarted = Promise.withResolvers<void>();
+      const finishWrite = Promise.withResolvers<void>();
+      const original = baseRecord({ cover: undefined });
+      const { agent, names } = fakePds({ value: original, cid: "cid0" });
+      await seedRow(original, "cid0");
+      const userBook = (await getUserBook({ ctx, agent, hiveId: HIVE_ID }))!;
+      const rawPost = agent.post.bind(agent);
+      const post = spyOn(agent, "post").mockImplementation(async (name, opts) => {
+        if (name === "com.atproto.repo.putRecord") {
+          writeStarted.resolve();
+          await finishWrite.promise;
+          if (rejects) throw new Error("late PDS failure");
+        }
+        return rawPost(name, opts);
+      });
+      const realSetTimeout = globalThis.setTimeout;
+      let expire: (() => void) | undefined;
+      const timer = spyOn(globalThis, "setTimeout").mockImplementation(
+        Object.assign((...args: Parameters<typeof setTimeout>) => {
+          const [handler, ms] = args;
+          if (ms === 60_000) expire = () => (handler as () => void)();
+          return realSetTimeout(...args);
+        }, realSetTimeout),
+      );
+      const metric = spyOn(userBookFollowUpTotal, "inc");
+      const start = () =>
+        completeUserBookRecord({ ctx, agent, userBook, coverImage: `${server.url}cover.png` });
+      try {
+        const first = start();
+        await writeStarted.promise;
+        expect(expire).toBeDefined();
+        expire!();
+        expect(await first).toBe("failed");
+        expect(metric).toHaveBeenCalledTimes(1);
+        expect(metric).toHaveBeenLastCalledWith(LABEL.userBookFollowUp.failed);
+
+        const second = start();
+        expect(second).toBe(first);
+        expect(await second).toBe("failed");
+        expect(names()).toEqual(["uploadBlob"]);
+        expect(post).toHaveBeenCalledTimes(2);
+        expect(metric).toHaveBeenCalledTimes(1);
+
+        finishWrite.resolve();
+        // Drain the real work's promise chain, including its DB mirror and cleanup.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(metric).toHaveBeenCalledTimes(1);
+        const retry = start();
+        expect(retry).not.toBe(first);
+        expect(await retry).toBe(rejects ? "failed" : "completed");
+        expect(names().filter((name) => name === "uploadBlob")).toHaveLength(2);
+        expect(metric).toHaveBeenCalledTimes(2);
+      } finally {
+        finishWrite.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        post.mockRestore();
+        timer.mockRestore();
+        metric.mockRestore();
+        await server.stop(true);
+      }
+    },
+  );
 
   it("re-reads and re-applies the patch after losing the CAS race", async () => {
     // The common race: the user's next edit (a rating click) lands while the

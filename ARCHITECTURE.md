@@ -6,6 +6,9 @@ modules whose reasons for existing aren't obvious from their names. See `AGENTS.
 map, page/component tables, and DB schema; see `docs/notes/*.md` for the incident-level detail
 behind individual rules.
 
+The November 2026 lifecycle audit fix status and remaining work are tracked in
+`docs/notes/state-machine-remediation.md`; mobile redesign findings are a separate handoff.
+
 ## The four layers (`src/lib`, `src/core`, `src/data`, `src/services`)
 
 `src/utils/` no longer exists — it was four layers wearing one name, and nothing stopped a page
@@ -26,6 +29,8 @@ KV page-cache schema/short-timeout connection and batched maintenance live in `s
 `context.ts`; optional cache failures preserve rendered responses. See `docs/notes/data-and-caching.md`.
 Runtime/active-request samples (`metrics.ts`, wide-event middleware) complement independent
 supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for diagnostic boundaries.
+Follow synchronization stages remote pages before an atomic mirror commit; cursor completion,
+freshness and concurrency boundaries are in `docs/notes/domain-rules-and-write-paths.md`.
 
 **Which bucket a new file goes in — answer the first question that is "yes":**
 
@@ -46,6 +51,8 @@ supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for di
 | `src/core/`     | `lib`, `types`, `constants`             | `authors` `rating` `hiveId` `bookProgress` `bookMeta` `userBookView` `imageUrl` `goodreadsCoverUrl` `filenameMatching` `bookMatching` `downloadFilename` `importBook` `csv` `ftsQuery` `cacheHeaders` `generateInitialsAvatar` `bookLifecycle` `readingYear` `enrichVerdict` `bookMetadata/` `listRecord`                                                                     |
 | `src/data/`     | `core`, `lib`, `db`                     | `activityFeed` `activeUsers` `authorStats` `communityStats` `exploreGenres` `readingStats` `catalogBooks` `personalBooks` `personalLibrary` `syncDocuments` `syncMatching` `syncBridge` `bookIdentifiers` `enrichQueue` `hiveBookGenres` `getLanguages` `dbExport` `dbExportLock` `bookDetail` `profileSummary` `socialCards` `landingHighlights` `userShelves` `rssActivity` |
 | `src/services/` | all of the above + workers/scrapers/PDS | `getBook` `userBookStore` `bookRecordWrite` `userBookFollowUp` `buzzWrite` `followGraph` `lists` `getFollows` `getProfile` `deleteAccount` `catalogBookService` `ensureBookCataloged` `uploadImageBlob` `uploadPersonalBook` `convertToEpub` `enrichBookData` `searchBooks` `dbExport` `importBookRecords`                                                                    |
+
+Deferred sync also uses `data/syncWriteQueue` and `services/syncWriteDrain`.
 
 Two deliberate exceptions: `core/bookMetadata/` moves whole even though sub-files need
 `@resvg/resvg-js`/`Bun.file` (a cohesive parser package); `data/personalLibrary.ts` touches the
@@ -149,13 +156,16 @@ name — full stories in the linked `docs/notes/*.md`.
 | `services/actor.ts`              | `resolveActorDid` — the one handle→DID, returns `null` rather than throwing                                                   |
 | `data/repoMirror.ts`             | `pruneMirroredRecords` — re-sync cleanup; handles the empty-keep-list case — `domain-rules-and-write-paths.md`                |
 | `routes/authResponse.ts`         | The one JSON 401 body — `domain-rules-and-write-paths.md`                                                                     |
+| `routes/importLifecycle.ts`      | Import worker/stream terminal ownership and exactly-once resource cleanup — `docs/notes/routes.md`                            |
 | `services/searchBooks.ts`        | The one catalogue-ensure + concurrency ceiling — `enrichment-and-scraping.md`                                                 |
 | `data/bookDetail.ts`             | `/books/:id`, comments, XRPC `getBook`; author recommendations share catalogue ID selection — `data-and-caching.md`           |
 | `core/hiveId.ts`                 | `HIVE_ID_PATTERN`/`isHiveId`/`asHiveId` — narrow the wire value, don't cast it                                                |
 | `core/cacheHeaders.ts`           | The one caching rule (signed-in vs signed-out)                                                                                |
 | `data/exploreGenres.ts`          | `getTopGenres`, SWR-cached, four consumers including XRPC `listGenres`                                                        |
 | `data/readingStats.ts`           | `getReadingStatsForYear` + the `MIN_BOOKS_FOR_YEAR_STATS` fallback                                                            |
-| `data/syncBridge.ts`             | `recordSyncProgress` — the one e-reader progress push; `enqueuePdsWrite` for the deferred write                               |
+| `data/syncBridge.ts`             | Document upsert and optimistic progress bridge — `e-reader-and-sync.md`                                                       |
+| `data/syncWriteQueue.ts`         | Deferred progress persistence and ownership — `e-reader-and-sync.md`                                                          |
+| `services/syncWriteDrain.ts`     | Session-opportunity PDS drain — `e-reader-and-sync.md`                                                                        |
 | `data/personalLibrary.ts`        | Library paths, `streamPersonalBook` — `e-reader-and-sync.md`                                                                  |
 | `services/buzzWrite.ts`          | The one buzz create/update — `domain-rules-and-write-paths.md`                                                                |
 | `services/followGraph.ts`        | The one follow/unfollow — PDS write first, `user_follows` mirrored only on success                                            |

@@ -11,6 +11,7 @@ import { ids } from "../bsky/lexicon";
 import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
 import { upsertBuzz } from "../services/buzzWrite";
+import { renderError } from "./errorPage";
 
 const app = new Hono<AppEnv>()
   .post(
@@ -97,13 +98,24 @@ const app = new Hono<AppEnv>()
       return c.json({ success: false, commentId, book: null });
     }
 
-    await agent.post("com.atproto.repo.deleteRecord", {
+    const deleted = await agent.post("com.atproto.repo.deleteRecord", {
       input: {
         repo: agent.did,
         collection: ids.BuzzBookhiveBuzz,
         rkey: commentId,
       },
     });
+    if (!deleted.ok) {
+      c.set("requestError", new Error("PDS rejected comment deletion"));
+      if (c.req.header("accept") === "application/json") {
+        return c.json({ success: false, commentId, message: "Failed to delete comment" }, 500);
+      }
+      return renderError(c, {
+        status: 500,
+        message: "Failed to delete comment",
+        description: "The comment could not be deleted. Please try again.",
+      });
+    }
     await c
       .get("ctx")
       .db.deleteFrom("buzz")

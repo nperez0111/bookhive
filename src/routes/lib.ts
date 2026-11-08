@@ -111,281 +111,254 @@ type ListRecordsOut = {
   cursor?: string;
 };
 
-export async function refetchBuzzes({
-  agent,
-  ctx,
-  cursor,
-  uris = [],
-}: {
-  agent: SessionClient;
-  ctx: AppContext;
-  cursor?: string;
-  uris?: string[];
-}) {
-  if (!agent) {
-    return;
-  }
-  const buzzesRes = await agent.get("com.atproto.repo.listRecords", {
-    params: {
-      repo: agent.did,
-      collection: ids.BuzzBookhiveBuzz,
-      limit: 100,
-      cursor,
-    },
-  });
-  if (!buzzesRes.ok) return;
-  const buzzes = { data: buzzesRes.data as ListRecordsOut };
-
-  const validRecords = buzzes.data.records.filter(
-    (record) => BuzzRecord.validateRecord(record.value).success,
-  );
-
-  const bookUris = validRecords.map((r) => (r.value as BuzzRecord.Record).book.uri);
-  const bookRows =
-    bookUris.length > 0
-      ? await ctx.db
-          .selectFrom("user_book")
-          .select(["uri", "hiveId"])
-          .where("uri", "in", bookUris)
-          .execute()
-      : [];
-  const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
-
-  const buzzValues = [];
-
-  for (const record of validRecords) {
-    const book = record.value as BuzzRecord.Record;
-    const hiveId = uriToHiveId.get(book.book.uri);
-
-    if (!hiveId) {
-      ctx.addWideEventContext({
-        refetch_buzz_hive_id_missing: true,
-        record_uri: record.uri,
-      });
-      continue;
-    }
-
-    uris.push(record.uri);
-    buzzValues.push({
-      uri: record.uri,
-      cid: record.cid,
-      userDid: agent.did,
-      createdAt: book.createdAt,
-      indexedAt: new Date().toISOString(),
-      hiveId: hiveId,
-      comment: book.comment ?? "",
-      parentUri: book.parent.uri,
-      parentCid: book.parent.cid,
-      bookCid: book.book.cid,
-      bookUri: book.book.uri,
+// Exhaustion, not page length, establishes that it is safe to prune a mirror.
+async function* repoRecordPages(agent: SessionClient, collection: string, delay = 0) {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  for (let page = 0; page < 500; page++) {
+    const response = await agent.get("com.atproto.repo.listRecords", {
+      params: { repo: agent.did, collection, limit: 100, cursor },
     });
+    if (!response.ok) throw new Error(`Re-sync ${collection}: PDS listRecords failed`);
+    const data = response.data as ListRecordsOut;
+    if (
+      !data ||
+      !Array.isArray(data.records) ||
+      (data.cursor !== undefined && (typeof data.cursor !== "string" || !data.cursor))
+    ) {
+      throw new Error(`Re-sync ${collection}: malformed pagination`);
+    }
+    if (data.cursor && seenCursors.has(data.cursor)) {
+      throw new Error(`Re-sync ${collection}: PDS returned a repeated cursor`);
+    }
+    if (data.cursor) seenCursors.add(data.cursor);
+    yield data.records;
+    if (!data.cursor) return;
+    cursor = data.cursor;
+    if (delay && data.records.length) await new Promise((resolve) => setTimeout(resolve, delay));
   }
-
-  if (buzzValues.length > 0) {
-    await ctx.db
-      .insertInto("buzz")
-      .values(buzzValues)
-      .onConflict((oc) => oc.column("uri").doUpdateSet(buzzUpsertSet))
-      .execute();
-  }
-
-  if (buzzes.data.records.length === 100) {
-    await new Promise((r) => setTimeout(r, 100));
-    return refetchBuzzes({ agent, ctx, cursor: buzzes.data?.cursor, uris });
-  } else {
-    await pruneMirroredRecords({ db: ctx.db, table: "buzz", userDid: agent.did, keepUris: uris });
-  }
+  throw new Error(`Re-sync ${collection}: page limit reached`);
 }
 
-export async function refetchBooks({
-  agent,
-  ctx,
-  cursor,
-  uris = [],
-  booksNeedingHiveUri = [],
-}: {
-  agent: SessionClient;
-  ctx: AppContext;
-  cursor?: string;
-  uris?: string[];
-  booksNeedingHiveUri?: Array<{
-    rkey: string;
-    hiveId: HiveId;
-    record: import("../bsky/lexicon").Book.Record;
-  }>;
-}) {
+export async function refetchBuzzes({ agent, ctx }: { agent: SessionClient; ctx: AppContext }) {
   if (!agent) {
     return;
   }
-  const bookRecordsRes = await agent.get("com.atproto.repo.listRecords", {
-    params: {
-      repo: agent.did,
-      collection: ids.BuzzBookhiveBook,
-      limit: 100,
-      cursor,
-    },
-  });
-  if (!bookRecordsRes.ok) return;
-  const listData = bookRecordsRes.data as ListRecordsOut;
-  const bookRecords = listData.records
-    .filter((record) => BookRecord.validateRecord(record.value).success)
-    .map((r) => ({ ...r, value: r.value as BookRecord.Record }));
+  const uris: string[] = [];
+  for await (const records of repoRecordPages(agent, ids.BuzzBookhiveBuzz, 100)) {
+    const validRecords = records.filter(
+      (record) => BuzzRecord.validateRecord(record.value).success,
+    );
 
-  const duplicatesByHiveId = new Map<string, typeof bookRecords>();
-  bookRecords.forEach((record) => {
-    const hiveId = record.value.hiveId;
-    if (hiveId) {
-      if (!duplicatesByHiveId.has(hiveId)) {
-        duplicatesByHiveId.set(hiveId, []);
+    const bookUris = validRecords.map((r) => (r.value as BuzzRecord.Record).book.uri);
+    const bookRows =
+      bookUris.length > 0
+        ? await ctx.db
+            .selectFrom("user_book")
+            .select(["uri", "hiveId"])
+            .where("uri", "in", bookUris)
+            .execute()
+        : [];
+    const uriToHiveId = new Map(bookRows.map((r) => [r.uri, r.hiveId]));
+
+    const buzzValues = [];
+
+    for (const record of validRecords) {
+      const book = record.value as BuzzRecord.Record;
+      const hiveId = uriToHiveId.get(book.book.uri);
+
+      if (!hiveId) {
+        ctx.addWideEventContext({
+          refetch_buzz_hive_id_missing: true,
+          record_uri: record.uri,
+        });
+        continue;
       }
-      duplicatesByHiveId.set(hiveId, [...duplicatesByHiveId.get(hiveId)!, record]);
-    }
-  });
 
-  const promises: Promise<unknown>[] = [];
-
-  Array.from(duplicatesByHiveId.values()).forEach((records) => {
-    if (records.length > 1) {
-      ctx.addWideEventContext({
-        duplicate_books_resolved: records.length,
-        records: records.map((r) => r.uri),
-      });
-      const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
-        a.value.createdAt.localeCompare(b.value.createdAt),
-      );
-
-      recordsToDelete.forEach((r) => {
-        const rkey = r.uri.split("/").pop()!;
-        promises.push(
-          agent.post("com.atproto.repo.deleteRecord", {
-            input: {
-              repo: agent.did,
-              collection: ids.BuzzBookhiveBook,
-              rkey,
-            },
-          }),
-        );
-        promises.push(
-          ctx.db
-            .deleteFrom("user_book")
-            .where("uri", "=", r.uri)
-            .where("userDid", "=", agent.did)
-            .execute(),
-        );
+      uris.push(record.uri);
+      buzzValues.push({
+        uri: record.uri,
+        cid: record.cid,
+        userDid: agent.did,
+        createdAt: book.createdAt,
+        indexedAt: new Date().toISOString(),
+        hiveId: hiveId,
+        comment: book.comment ?? "",
+        parentUri: book.parent.uri,
+        parentCid: book.parent.cid,
+        bookCid: book.book.cid,
+        bookUri: book.book.uri,
       });
     }
-  });
 
-  const indexedAt = new Date().toISOString();
-  const rowsToUpsert = bookRecords.map((record) => {
-    const book = record.value;
-
-    // warmCatalogSearch owns the concurrency ceiling — it used to live at this
-    // call site, so a second copy of this loop fired searches unbounded.
-    promises.push(warmCatalogSearch(book.title, ctx));
-    uris.push(record.uri);
-
-    if (!book.hiveBookUri) {
-      const rkey = record.uri.split("/").at(-1)!;
-      booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId as HiveId, record: book });
-    }
-
-    return serializeUserBook({
-      uri: record.uri,
-      cid: record.cid,
-      userDid: agent.did,
-      createdAt: book.createdAt,
-      title: book.title,
-      authors: book.authors,
-      indexedAt,
-      hiveId: book.hiveId as HiveId,
-      status: book.status,
-      owned: book.owned ? 1 : 0,
-      startedAt: book.startedAt,
-      finishedAt: book.finishedAt,
-      review: book.review,
-      stars: book.stars,
-      bookProgress: book.bookProgress ?? null,
-      previousReads: book.previousReads ?? null,
-      record: book,
-    });
-  });
-
-  for (let i = 0; i < rowsToUpsert.length; i += 100) {
-    await ctx.db
-      .insertInto("user_book")
-      .values(rowsToUpsert.slice(i, i + 100))
-      .onConflict((oc) => oc.column("uri").doUpdateSet(userBookUpsertSet))
-      .execute();
-  }
-
-  await Promise.all(promises);
-  if (listData.records.length === 100) {
-    await new Promise((r) => setTimeout(r, 10));
-    return refetchBooks({
-      agent,
-      ctx,
-      cursor: listData.cursor,
-      uris,
-      booksNeedingHiveUri,
-    });
-  } else {
-    await pruneMirroredRecords({
-      db: ctx.db,
-      table: "user_book",
-      userDid: agent.did,
-      keepUris: uris,
-    });
-
-    // Backfill hiveBookUri on user's book records if any are missing it
-    if (booksNeedingHiveUri.length > 0) {
-      const hiveIds = [...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId))];
-      const hiveBookRows = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "hiveBookAtUri"])
-        .where("id", "in", hiveIds)
+    if (buzzValues.length > 0) {
+      await ctx.db
+        .insertInto("buzz")
+        .values(buzzValues)
+        .onConflict((oc) => oc.column("uri").doUpdateSet(buzzUpsertSet))
         .execute();
-      const hiveBookUriMap = new Map(
-        hiveBookRows.filter((r) => r.hiveBookAtUri).map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
-      );
+    }
+  }
+  await pruneMirroredRecords({ db: ctx.db, table: "buzz", userDid: agent.did, keepUris: uris });
+}
 
-      const writes = booksNeedingHiveUri
-        .filter((b) => hiveBookUriMap.has(b.hiveId as HiveId))
-        .map((b) => ({
-          $type: "com.atproto.repo.applyWrites#update",
-          collection: ids.BuzzBookhiveBook,
-          rkey: b.rkey,
-          value: { ...b.record, hiveBookUri: hiveBookUriMap.get(b.hiveId as HiveId) },
-        }));
+export async function refetchBooks({ agent, ctx }: { agent: SessionClient; ctx: AppContext }) {
+  if (!agent) {
+    return;
+  }
+  const uris: string[] = [];
+  const booksNeedingHiveUri: Array<{ rkey: string; hiveId: HiveId; record: BookRecord.Record }> =
+    [];
+  for await (const records of repoRecordPages(agent, ids.BuzzBookhiveBook, 10)) {
+    const bookRecords = records
+      .filter((record) => BookRecord.validateRecord(record.value).success)
+      .map((r) => ({ ...r, value: r.value as BookRecord.Record }));
 
-      for (let i = 0; i < writes.length; i += 200) {
-        const batch = writes.slice(i, i + 200);
-        const response = await agent.post("com.atproto.repo.applyWrites", {
-          input: { repo: agent.did, writes: batch },
-        });
-        if (!response.ok) {
-          throw new Error(
-            `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
-          );
+    const duplicatesByHiveId = new Map<string, typeof bookRecords>();
+    bookRecords.forEach((record) => {
+      const hiveId = record.value.hiveId;
+      if (hiveId) {
+        if (!duplicatesByHiveId.has(hiveId)) {
+          duplicatesByHiveId.set(hiveId, []);
         }
-        // Mirror what we wrote onto the rows — a stale cid costs the next edit
-        // a CAS failure and a re-read.
-        const results =
-          (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
-        // One transaction to avoid per-row autocommit overhead.
-        await ctx.db.transaction().execute(async (trx) => {
-          for (const [index, write] of batch.entries()) {
-            const result = results[index];
-            if (!result?.uri || !result.cid) continue;
-            await trx
-              .updateTable("user_book")
-              .set({ cid: result.cid, record: JSON.stringify(write.value) })
-              .where("uri", "=", result.uri)
+        duplicatesByHiveId.set(hiveId, [...duplicatesByHiveId.get(hiveId)!, record]);
+      }
+    });
+
+    const promises: Promise<unknown>[] = [];
+
+    Array.from(duplicatesByHiveId.values()).forEach((records) => {
+      if (records.length > 1) {
+        ctx.addWideEventContext({
+          duplicate_books_resolved: records.length,
+          records: records.map((r) => r.uri),
+        });
+        const [_recordToKeep, ...recordsToDelete] = records.sort((a, b) =>
+          a.value.createdAt.localeCompare(b.value.createdAt),
+        );
+
+        recordsToDelete.forEach((r) => {
+          const rkey = r.uri.split("/").pop()!;
+          promises.push(
+            agent.post("com.atproto.repo.deleteRecord", {
+              input: {
+                repo: agent.did,
+                collection: ids.BuzzBookhiveBook,
+                rkey,
+              },
+            }),
+          );
+          promises.push(
+            ctx.db
+              .deleteFrom("user_book")
+              .where("uri", "=", r.uri)
               .where("userDid", "=", agent.did)
-              .execute();
-          }
+              .execute(),
+          );
         });
       }
+    });
+
+    const indexedAt = new Date().toISOString();
+    const rowsToUpsert = bookRecords.map((record) => {
+      const book = record.value;
+
+      // warmCatalogSearch owns the concurrency ceiling — it used to live at this
+      // call site, so a second copy of this loop fired searches unbounded.
+      promises.push(warmCatalogSearch(book.title, ctx));
+      uris.push(record.uri);
+
+      if (!book.hiveBookUri) {
+        const rkey = record.uri.split("/").at(-1)!;
+        booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId as HiveId, record: book });
+      }
+
+      return serializeUserBook({
+        uri: record.uri,
+        cid: record.cid,
+        userDid: agent.did,
+        createdAt: book.createdAt,
+        title: book.title,
+        authors: book.authors,
+        indexedAt,
+        hiveId: book.hiveId as HiveId,
+        status: book.status,
+        owned: book.owned ? 1 : 0,
+        startedAt: book.startedAt,
+        finishedAt: book.finishedAt,
+        review: book.review,
+        stars: book.stars,
+        bookProgress: book.bookProgress ?? null,
+        previousReads: book.previousReads ?? null,
+        record: book,
+      });
+    });
+
+    for (let i = 0; i < rowsToUpsert.length; i += 100) {
+      await ctx.db
+        .insertInto("user_book")
+        .values(rowsToUpsert.slice(i, i + 100))
+        .onConflict((oc) => oc.column("uri").doUpdateSet(userBookUpsertSet))
+        .execute();
+    }
+
+    await Promise.all(promises);
+  }
+  await pruneMirroredRecords({
+    db: ctx.db,
+    table: "user_book",
+    userDid: agent.did,
+    keepUris: uris,
+  });
+
+  // Backfill hiveBookUri on user's book records if any are missing it
+  if (booksNeedingHiveUri.length > 0) {
+    const hiveIds = [...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId))];
+    const hiveBookRows = await ctx.db
+      .selectFrom("hive_book")
+      .select(["id", "hiveBookAtUri"])
+      .where("id", "in", hiveIds)
+      .execute();
+    const hiveBookUriMap = new Map(
+      hiveBookRows.filter((r) => r.hiveBookAtUri).map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
+    );
+
+    const writes = booksNeedingHiveUri
+      .filter((b) => hiveBookUriMap.has(b.hiveId as HiveId))
+      .map((b) => ({
+        $type: "com.atproto.repo.applyWrites#update",
+        collection: ids.BuzzBookhiveBook,
+        rkey: b.rkey,
+        value: { ...b.record, hiveBookUri: hiveBookUriMap.get(b.hiveId as HiveId) },
+      }));
+
+    for (let i = 0; i < writes.length; i += 200) {
+      const batch = writes.slice(i, i + 200);
+      const response = await agent.post("com.atproto.repo.applyWrites", {
+        input: { repo: agent.did, writes: batch },
+      });
+      if (!response.ok) {
+        throw new Error(
+          `applyWrites hiveBookUri backfill failed: data=${JSON.stringify(response.data)}`,
+        );
+      }
+      // Mirror what we wrote onto the rows — a stale cid costs the next edit
+      // a CAS failure and a re-read.
+      const results =
+        (response.data as { results?: Array<{ uri?: string; cid?: string }> }).results ?? [];
+      // One transaction to avoid per-row autocommit overhead.
+      await ctx.db.transaction().execute(async (trx) => {
+        for (const [index, write] of batch.entries()) {
+          const result = results[index];
+          if (!result?.uri || !result.cid) continue;
+          await trx
+            .updateTable("user_book")
+            .set({ cid: result.cid, record: JSON.stringify(write.value) })
+            .where("uri", "=", result.uri)
+            .where("userDid", "=", agent.did)
+            .execute();
+        }
+      });
     }
   }
 }
@@ -395,25 +368,8 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
 
   // 1. Sync lists
   const listUris: string[] = [];
-  let listCursor: string | undefined;
-  let listPages = 0;
-  do {
-    if (++listPages > 500) throw new Error("refetchLists: list page limit reached");
-    const res = await agent.get("com.atproto.repo.listRecords", {
-      params: {
-        repo: agent.did,
-        collection: ids.SocialPopfeedFeedList,
-        limit: 100,
-        cursor: listCursor,
-      },
-    });
-    if (!res.ok) return;
-    const data = res.data as ListRecordsOut;
-    if (data.cursor && data.cursor === listCursor) {
-      throw new Error("refetchLists: PDS returned a repeated list cursor");
-    }
-
-    for (const record of data.records) {
+  for await (const records of repoRecordPages(agent, ids.SocialPopfeedFeedList)) {
+    for (const record of records) {
       if (!ListRecord.validateRecord(record.value).success) continue;
       const list = record.value as ListRecord.Record;
 
@@ -430,9 +386,7 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
         .onConflict((oc) => oc.column("uri").doUpdateSet(bookListUpsertSet))
         .execute();
     }
-
-    listCursor = data.cursor;
-  } while (listCursor);
+  }
 
   // Clean up deleted lists
   if (listUris.length === 0) {
@@ -447,25 +401,8 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
 
   // 2. Sync list items
   const itemUris: string[] = [];
-  let itemCursor: string | undefined;
-  let itemPages = 0;
-  do {
-    if (++itemPages > 500) throw new Error("refetchLists: list-item page limit reached");
-    const res = await agent.get("com.atproto.repo.listRecords", {
-      params: {
-        repo: agent.did,
-        collection: ids.SocialPopfeedFeedListItem,
-        limit: 100,
-        cursor: itemCursor,
-      },
-    });
-    if (!res.ok) return;
-    const data = res.data as ListRecordsOut;
-    if (data.cursor && data.cursor === itemCursor) {
-      throw new Error("refetchLists: PDS returned a repeated list-item cursor");
-    }
-
-    for (const record of data.records) {
+  for await (const records of repoRecordPages(agent, ids.SocialPopfeedFeedListItem)) {
+    for (const record of records) {
       if (!ListItemRecord.validateRecord(record.value).success) continue;
       const item = record.value as ListItemRecord.Record;
 
@@ -509,9 +446,7 @@ export async function refetchLists({ agent, ctx }: { agent: SessionClient; ctx: 
         .onConflict((oc) => oc.column("uri").doUpdateSet(bookListItemUpsertSet))
         .execute();
     }
-
-    itemCursor = data.cursor;
-  } while (itemCursor);
+  }
 
   // Clean up deleted items
   if (itemUris.length === 0) {

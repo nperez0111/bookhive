@@ -24,7 +24,7 @@ import {
 } from "../data/profileSummary";
 import { listAllUserBooks, listProfileBooks, listReadingStatsBooks } from "../data/userShelves";
 import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
-import { refetchBooks, refetchLists } from "./lib";
+import { refetchBooks, refetchBuzzes, refetchLists } from "./lib";
 import { getUserLists } from "../services/lists";
 
 const app = new Hono<AppEnv>()
@@ -43,7 +43,9 @@ const app = new Hono<AppEnv>()
     }
     startTime(c, "refetch_books");
     const results = await Promise.allSettled([
-      refetchBooks({ agent, ctx: c.get("ctx") }),
+      refetchBooks({ agent, ctx: c.get("ctx") }).then(() =>
+        refetchBuzzes({ agent, ctx: c.get("ctx") }),
+      ),
       refetchLists({ agent, ctx: c.get("ctx") }),
     ]);
     endTime(c, "refetch_books");

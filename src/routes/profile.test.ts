@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { timing } from "hono/timing";
 import type { AppContext, AppEnv } from "../context";
 import profileRouter from "./profile";
+import { createTestDb, testContext } from "../test/db";
+import type { SessionClient } from "../auth/client";
 
 it.each(["alice.test", "handle.invalid", null])(
   "profile redirect prefers a usable resolved handle, with DID fallback: %s",
@@ -29,7 +31,7 @@ it.each(["alice.test", "handle.invalid", null])(
   },
 );
 
-it("waits for book sync before returning a shelf-sync failure", async () => {
+it("waits for book sync before returning a failed refresh", async () => {
   let releaseBooks!: () => void;
   const booksPending = new Promise<void>((resolve) => {
     releaseBooks = resolve;
@@ -69,5 +71,37 @@ it("waits for book sync before returning a shelf-sync failure", async () => {
   const response = await pending;
   expect(bookSyncFinished).toBe(true);
   expect(response.status).toBe(500);
-  expect(await response.text()).toBe("Shelf sync failed");
+  expect(await response.text()).toContain("listRecords failed");
+});
+
+it.each([
+  "buzz.bookhive.book",
+  "buzz.bookhive.buzz",
+  "social.popfeed.feed.list",
+  "social.popfeed.feed.listItem",
+])("reports a non-OK %s scan rather than refresh success", async (collection) => {
+  const { db, close } = await createTestDb();
+  try {
+    const agent = {
+      did: "did:plc:alice",
+      get: async (_method: string, { params }: { params: { collection: string } }) =>
+        params.collection === collection ? { ok: false } : { ok: true, data: { records: [] } },
+    } as unknown as SessionClient;
+    const app = new Hono<AppEnv>();
+    app.use(timing());
+    app.use(async (c, next) => {
+      c.set("ctx", testContext({ db, getSessionAgent: async () => agent }));
+      await next();
+    });
+    app.onError((error, c) => c.text(error.message, 500));
+    app.route("/", profileRouter);
+    for (const accept of ["application/json", "text/html"]) {
+      const response = await app.request("/refresh-books", { headers: { accept } });
+      expect(response.status).toBe(500);
+      expect(response.headers.get("location")).toBeNull();
+      expect(await response.text()).toContain(collection);
+    }
+  } finally {
+    await close();
+  }
 });

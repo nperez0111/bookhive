@@ -114,10 +114,11 @@ type ShippingDependencies = {
   reply: (message: WorkerReply) => void;
   log: (level: number, message: string, fields: Record<string, unknown>) => void;
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  now?: () => number;
 };
 
 export class OpenObserveSender {
-  private readonly queue: Array<LogMessage & { bytes: number }> = [];
+  private readonly queue: Array<LogMessage & { bytes: number; at: number }> = [];
   private queuedBytes = 0;
   private inFlightBytes = 0;
   private inFlightMessages = 0;
@@ -125,6 +126,10 @@ export class OpenObserveSender {
   private disabled = false;
   private failures = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private dropTimer: ReturnType<typeof setTimeout> | undefined;
+  private droppedMessages = 0;
+  private droppedBytes = 0;
+  private reportedDrops = 0;
   private controller: AbortController | undefined;
   private readonly apiUrl: string;
   private readonly authHeader: string;
@@ -146,21 +151,42 @@ export class OpenObserveSender {
       this.queue.length + this.inFlightMessages >= LOG_SHIPPING_LIMITS.messages
     ) {
       this.deps.reply({ type: "ack", ids: [message.id], result: "dropped" });
+      this.droppedMessages++;
+      this.droppedBytes += bytes;
+      // Coalesce overflow-only traffic too; it may never produce a batch settlement.
+      if (!this.disabled)
+        this.dropTimer ??= setTimeout(() => this.reportDrops(), LOG_SHIPPING_LIMITS.flushMs);
       return;
     }
-    this.queue.push({ ...message, data: message.data.trimEnd(), bytes });
+    this.queue.push({ ...message, data: message.data.trimEnd(), bytes, at: this.now() });
     this.queuedBytes += bytes;
     this.schedule();
   }
 
   private schedule(): void {
     if (this.disabled || this.sending || !this.queue.length) return;
-    if (this.queue.length >= LOG_SHIPPING_LIMITS.batchSize) void this.flush();
+    const delay = Math.max(0, this.queue[0]!.at + LOG_SHIPPING_LIMITS.flushMs - this.now());
+    if (this.queue.length >= LOG_SHIPPING_LIMITS.batchSize || delay === 0) void this.flush();
     else
       this.timer ??= setTimeout(() => {
         this.timer = undefined;
         void this.flush();
-      }, LOG_SHIPPING_LIMITS.flushMs);
+      }, delay);
+  }
+
+  private now(): number {
+    return (this.deps.now ?? Date.now)();
+  }
+
+  private reportDrops(): void {
+    if (this.dropTimer) clearTimeout(this.dropTimer);
+    this.dropTimer = undefined;
+    if (this.droppedMessages === this.reportedDrops) return;
+    this.reportedDrops = this.droppedMessages;
+    this.deps.log(40, "openobserve_dropped", {
+      droppedMessages: this.droppedMessages,
+      droppedBytes: this.droppedBytes,
+    });
   }
 
   async flush(): Promise<void> {
@@ -183,9 +209,10 @@ export class OpenObserveSender {
         headers: { Authorization: this.authHeader, "Content-Type": "application/json" },
         body: `[${batch.map((line) => line.data).join(",")}]`,
       });
+      // Every HTTP response breaks a consecutive connection-refusal streak.
+      this.failures = 0;
       if (response.ok) {
         await response.body?.cancel();
-        this.failures = 0;
         result = "sent";
       } else {
         this.deps.log(50, "openobserve_send_failed", {
@@ -203,15 +230,25 @@ export class OpenObserveSender {
           code === "ECONNREFUSED" ||
           /unable to connect/i.test(cause?.message ?? "")
         ) {
+          this.deps.log(50, "openobserve_send_failed", {
+            error: errorMessage(error).slice(0, 500),
+            refused: true,
+          });
           if (++this.failures >= 3) {
             this.close();
             this.deps.reply({ type: "disabled" });
             this.deps.log(40, "openobserve_disabled", {
               reason: "connection refused",
               failures: this.failures,
+              recovery: "worker restart",
             });
           }
-        } else this.deps.log(50, "openobserve_send_failed", { error: errorMessage(error) });
+        } else {
+          this.failures = 0;
+          this.deps.log(50, "openobserve_send_failed", {
+            error: errorMessage(error).slice(0, 500),
+          });
+        }
       }
     } finally {
       clearTimeout(timeout);
@@ -220,6 +257,7 @@ export class OpenObserveSender {
       this.inFlightMessages = 0;
       this.sending = false;
       this.deps.reply({ type: "ack", ids: batch.map((line) => line.id), result });
+      this.reportDrops();
       this.schedule();
     }
   }
@@ -230,10 +268,13 @@ export class OpenObserveSender {
     this.timer = undefined;
     this.controller?.abort();
     if (this.queue.length) {
+      this.droppedMessages += this.queue.length;
+      this.droppedBytes += this.queuedBytes;
       this.deps.reply({ type: "ack", ids: this.queue.map((line) => line.id), result: "dropped" });
       this.queue.length = 0;
       this.queuedBytes = 0;
     }
+    this.reportDrops();
     // In-flight credits remain owned until the actual fetch/body cancellation settles.
   }
 }

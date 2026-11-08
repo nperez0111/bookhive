@@ -216,6 +216,7 @@ export default defineDriver<
   // so it is not re-initialized on every getDb() call.
   let _db: KvDb | null = sharedDb ?? null;
   let _tableCreated = tableCreated;
+  let _tableCreation: Promise<void> | undefined;
 
   function getDb(): KvDb {
     if (!_db) {
@@ -231,20 +232,32 @@ export default defineDriver<
       });
     }
 
-    if (!_tableCreated) {
-      _tableCreated = true;
-      // Create table if not exists (idempotent — safe to run on every cold start)
-      void _db.schema
-        .createTable(table)
-        .ifNotExists()
-        .addColumn("id", "text", (col) => col.primaryKey())
-        .addColumn("value", "text", (col) => col.notNull())
-        .addColumn("created_at", "text", (col) => col.notNull())
-        .addColumn("updated_at", "text", (col) => col.notNull())
-        .execute();
-    }
-
     return _db;
+  }
+
+  async function getReadyDb(): Promise<KvDb> {
+    const db = getDb();
+    if (!_tableCreated) {
+      // Every table operation joins this attempt. Only success is permanent;
+      // a failed CREATE rejects its callers and permits the next call to retry.
+      _tableCreation ??= Promise.resolve().then(async () => {
+        try {
+          await db.schema
+            .createTable(table)
+            .ifNotExists()
+            .addColumn("id", "text", (col) => col.primaryKey())
+            .addColumn("value", "text", (col) => col.notNull())
+            .addColumn("created_at", "text", (col) => col.notNull())
+            .addColumn("updated_at", "text", (col) => col.notNull())
+            .execute();
+          _tableCreated = true;
+        } finally {
+          _tableCreation = undefined;
+        }
+      });
+      await _tableCreation;
+    }
+    return db;
   }
 
   return {
@@ -253,7 +266,8 @@ export default defineDriver<
     getInstance: getDb,
 
     async hasItem(key) {
-      const result = await getDb()
+      const db = await getReadyDb();
+      const result = await db
         .selectFrom(table)
         .select(["id"])
         .where("id", "=", key)
@@ -262,7 +276,8 @@ export default defineDriver<
     },
 
     async getItem(key) {
-      const result = await getDb()
+      const db = await getReadyDb();
+      const result = await db
         .selectFrom(table)
         .select(["value"])
         .where("id", "=", key)
@@ -272,7 +287,8 @@ export default defineDriver<
 
     async setItem(key: string, value: string) {
       const now = new Date().toISOString();
-      await getDb()
+      const db = await getReadyDb();
+      await db
         .insertInto(table)
         .values({
           id: key,
@@ -291,40 +307,41 @@ export default defineDriver<
 
     async setItems(items) {
       const now = new Date().toISOString();
+      const db = await getReadyDb();
 
       await withBusyRetry(() =>
-        getDb()
-          .transaction()
-          .execute(async (trx) => {
-            await Promise.all(
-              items.map(({ key, value }) => {
-                return trx
-                  .insertInto(table)
-                  .values({
-                    id: key,
+        db.transaction().execute(async (trx) => {
+          await Promise.all(
+            items.map(({ key, value }) => {
+              return trx
+                .insertInto(table)
+                .values({
+                  id: key,
+                  value,
+                  created_at: now,
+                  updated_at: now,
+                })
+                .onConflict((oc) =>
+                  oc.column("id").doUpdateSet({
                     value,
-                    created_at: now,
                     updated_at: now,
-                  })
-                  .onConflict((oc) =>
-                    oc.column("id").doUpdateSet({
-                      value,
-                      updated_at: now,
-                    }),
-                  )
-                  .execute();
-              }),
-            );
-          }),
+                  }),
+                )
+                .execute();
+            }),
+          );
+        }),
       );
     },
 
     async removeItem(key: string) {
-      await getDb().deleteFrom(table).where("id", "=", key).execute();
+      const db = await getReadyDb();
+      await db.deleteFrom(table).where("id", "=", key).execute();
     },
 
     async getMeta(key: string) {
-      const result = await getDb()
+      const db = await getReadyDb();
+      const result = await db
         .selectFrom(table)
         .select(["created_at", "updated_at"])
         .where("id", "=", key)
@@ -342,7 +359,8 @@ export default defineDriver<
     },
 
     async getKeys(base = "") {
-      const results = await getDb()
+      const db = await getReadyDb();
+      const results = await db
         .selectFrom(table)
         .select(["id"])
         .where("id", "like", `${base}%`)
@@ -351,7 +369,8 @@ export default defineDriver<
     },
 
     async clear() {
-      await getDb().deleteFrom(table).execute();
+      const db = await getReadyDb();
+      await db.deleteFrom(table).execute();
     },
 
     async dispose() {

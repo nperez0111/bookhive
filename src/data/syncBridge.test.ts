@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { createStorage } from "unstorage";
-import memoryDriver from "unstorage/drivers/memory";
 
 import type { Database } from "../db";
 import { READING, WANTTOREAD } from "../constants";
 import type { HiveId } from "../types";
-import { bridgeProgressToUserBook, type PendingWrite } from "./syncBridge";
+import { bridgeProgressToUserBook } from "./syncBridge";
 import { NO_HIVE_MATCH } from "./syncMatching";
 import { createTestDb } from "../test/db";
 
@@ -15,11 +13,9 @@ const URI = `at://${DID}/buzz.bookhive.book/1`;
 
 describe("bridgeProgressToUserBook", () => {
   let db: Database;
-  let kv: ReturnType<typeof createStorage>;
 
   beforeEach(async () => {
     ({ db } = await createTestDb());
-    kv = createStorage({ driver: memoryDriver() });
 
     await db
       .insertInto("user_book")
@@ -46,13 +42,13 @@ describe("bridgeProgressToUserBook", () => {
       .executeTakeFirst();
 
   it("writes progress and promotes the book to reading", async () => {
-    await bridgeProgressToUserBook(db, kv, DID, HIVE_ID, 0.42);
+    await bridgeProgressToUserBook(db, DID, HIVE_ID, 0.42);
 
     const row = await readUserBook();
     expect(row?.status).toBe(READING);
     expect(JSON.parse(row?.bookProgress ?? "{}").percent).toBe(42);
 
-    const pending = await kv.getItem<PendingWrite[]>(`sync_pending:${DID}`);
+    const pending = await db.selectFrom("sync_write_queue").selectAll().execute();
     expect(pending?.[0]?.hiveId).toBe(HIVE_ID);
   });
 
@@ -77,7 +73,7 @@ describe("bridgeProgressToUserBook", () => {
       })
       .execute();
 
-    await bridgeProgressToUserBook(db, kv, DID, NO_HIVE_MATCH, 0.9);
+    await bridgeProgressToUserBook(db, DID, NO_HIVE_MATCH, 0.9);
 
     const row = await db
       .selectFrom("user_book")
@@ -86,11 +82,19 @@ describe("bridgeProgressToUserBook", () => {
       .executeTakeFirst();
     expect(row?.status).toBe(WANTTOREAD);
     expect(row?.bookProgress).toBeNull();
-    expect(await kv.getItem(`sync_pending:${DID}`)).toBeNull();
+    expect(await db.selectFrom("sync_write_queue").selectAll().execute()).toEqual([]);
   });
 
   it("no-ops when the user does not track the book", async () => {
-    await bridgeProgressToUserBook(db, kv, DID, "bk_untracked" as HiveId, 0.5);
-    expect(await kv.getItem(`sync_pending:${DID}`)).toBeNull();
+    await bridgeProgressToUserBook(db, DID, "bk_untracked" as HiveId, 0.5);
+    expect(await db.selectFrom("sync_write_queue").selectAll().execute()).toEqual([]);
+  });
+
+  it("rolls back optimistic progress if durable enqueue fails", async () => {
+    const { sql } = await import("kysely");
+    await sql`CREATE TRIGGER reject_sync_write BEFORE INSERT ON sync_write_queue
+      BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END`.execute(db);
+    expect(bridgeProgressToUserBook(db, DID, HIVE_ID, 0.5)).rejects.toThrow("queue unavailable");
+    expect(await readUserBook()).toEqual({ status: WANTTOREAD, bookProgress: null });
   });
 });

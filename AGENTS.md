@@ -122,8 +122,9 @@ Worker threads (bundled to .output/server/workers/):
 
 Shared helpers: `src/routes/lib.ts` (`cacheControl`, `searchBooks`, `refetchBooks`/`refetchBuzzes`/`refetchLists`, `syncFollowsIfNeeded`), `src/routes/syncCredentials.tsx` (KOSync/OPDS password, mounted at both `/settings/sync` and `/library/sync`), `src/routes/errorPage.tsx`'s `renderError(c, {status, ...})` — always use it rather than a bare `<ErrorPage>` render, since its `statusCode` prop is display-only and won't set the actual HTTP status.
 
-Settings → Book sync (`/refresh-books`) also re-syncs Popfeed shelves/items to repair missed
-Jetstream events. List ingestion/backfill/re-sync share `bookListUpsertSet`, including ranked
+Settings → Book sync (`/refresh-books`) re-syncs books, then buzzes, alongside Popfeed shelves/items
+to repair missed Jetstream events. Incomplete scans report failure rather than successful refresh;
+login recovery remains nonblocking and logs failures. List ingestion/backfill/re-sync share `bookListUpsertSet`, including ranked
 `itemOrder`; see `docs/notes/domain-rules-and-write-paths.md`.
 
 ## Server-Side Pages (`src/pages/`)
@@ -235,7 +236,7 @@ Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/util
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–032) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`); `DB_TEMP_STORE` is opt-in `FILE` or the unchanged `MEMORY` default. Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
+SQLite via Kysely. Schema + all migrations (001–033) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`); `DB_TEMP_STORE` is opt-in `FILE` or the unchanged `MEMORY` default. Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -255,6 +256,8 @@ SQLite via Kysely. Schema + all migrations (001–032) in one file. `createDb` s
 | `personal_shelf`      | User's personal shelves   | id (PK, autoincrement), userDid, name, description                                                                                                                                                       |
 | `personal_shelf_item` | Books in personal shelves | shelfId, **personalBookId** (UNIQUE pair) — the row id, not the content hash                                                                                                                             |
 | `progress_history`    | Reading progress log      | id (PK, autoincrement), userDid, hiveId, currentPage, totalPages, percent, createdAt. Deduped on insert against the latest entry for the same user+book                                                  |
+| `sync_write_queue`    | Deferred PDS progress     | PK (userDid, hiveId), opaque revision, bookProgress, enqueuedAt (attempt ordering); acknowledged by exact revision, not whole-user snapshot                                                              |
+| `sync_write_state`    | Sync drain ownership      | userDid (PK), legacyImported marker, leaseToken, leaseUntil; migration 033, cross-process lease + one-time KV import                                                                                     |
 
 `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
@@ -263,6 +266,9 @@ VACUUM and FTS-rebuild scheduling (`src/context.ts`) is gated on freelist ratio,
 ### KV Cache (`src/sqlite-kv.ts`)
 
 Unstorage mounts: `search:` (in-memory LRU), `profile:` (per-process LRU, 10,000 entries / 30d TTL), `identity:`, `follows_sync:`, `auth_session:`, `auth_state:`, `book_lock:`, `sync_pending:`, `sync_token:`, `page:` (anon page cache). All other mounts use SQLite (`src/sqlite-kv.ts`), VACUUMed on startup by primary worker; incremental vacuum on 15-min sweep. Profile value/freshness share one entry, not separate metadata; see `docs/notes/data-and-caching.md`.
+
+`sync_pending:` is legacy import-only; queue guarantees, cleanup and rollout limits:
+`docs/notes/e-reader-and-sync.md`.
 
 ### Module layers (`src/lib`, `src/core`, `src/data`, `src/services`)
 
@@ -410,6 +416,10 @@ Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`
 ## iOS App (`app/`)
 
 Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes personal-library and KOSync surfaces (XRPC `*PersonalBook`/`*PersonalShelf` methods, REST `/library/*`, `/settings/sync/*`, `POST /library/upload`).
+
+The mobile redesign is being handled separately. The November 2026 lifecycle audit handoff is
+`docs/notes/mobile-state-machine-handoff.md`; it records findings and regression criteria, not
+implemented mobile fixes. Do not fold mobile changes into the server audit fix pass.
 
 The app renders `payload.error` verbatim for any non-2xx upload response, which is why the quota rejection (413) carries human prose rather than a bare code. It reads `storage` off `getPersonalLibrary` for its own quota meter, so **anything that changes the quota's wire shape needs an app release**. `app/utils/personalLibrary.ts`'s `formatBytes` is a deliberate byte-for-byte copy of the server's.
 

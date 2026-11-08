@@ -71,6 +71,60 @@ Dual-format: OPDS 1.2 XML or 2.0 JSON based on `Accept`.
 
 ## KOSync (`src/routes/sync/kosync.ts`)
 
+### Durable deferred progress and ownership
+
+Migration 033 adds `sync_write_queue` and `sync_write_state` in the **main** database, not KV.
+The optimistic `user_book` progress update and per-DID/book enqueue commit in one transaction.
+Every replacement has a new opaque revision; success deletes only the revision actually written,
+and failure never replaces a whole user's queue. Untracked books are discarded without creation.
+The canonical PDS writer still owns merge/CAS, lifecycle inference and follow-up work.
+
+`services/syncWriteDrain.ts` takes at most 100 entries per session opportunity. A token-qualified
+per-DID SQL lease serializes drains across workers; it lasts 60 seconds and renews every 15 seconds
+while transport work is active, as well as before each entry. Failed revisions move to the end of
+attempt ordering (`enqueuedAt`) so a failing batch cannot permanently starve later books. There is
+no periodic background PDS login or new retry loop. Ack/release/renew check the lease token;
+completion of an old request cannot delete a newer enqueue or release a replacement owner's lease.
+The lease recovers crashed workers, but SQLite cannot fence a live remote PDS operation after a
+process pause exceeding the lease; this is not an exactly-once transport guarantee. Likewise account
+deletion cannot cancel an already-running PDS write. Global deletion/write quiescence remains open.
+
+The old `sync_pending:<did>` KV array is imported **once** per DID, transactionally with a durable
+marker. Existing SQL progress wins over legacy values. Only then is the old key removed, best effort;
+failed removal leaves an inert key, not a permanent cleanup retry on subsequent drains. A stale read
+or failed removal cannot re-import acknowledged work. Account cleanup deletes SQL
+queue entries and retains the minimal import marker so leftover legacy work cannot resurrect them.
+Deploy by restarting the worker set together: old binaries must not continue producing/acknowledging
+KV arrays after a DID's import marker is committed. No downgrade synchronization is provided.
+
+Revision-qualified acknowledgement protects queued intent, **not local publication**: if an older
+drain is in `updateBookRecord` while a newer push commits mirror + queue, the older writer's
+unconditional `updateUserBook` publication can overwrite the newer optimistic mirror. The newer
+queue revision survives for a later session opportunity. Fixing this requires a revision-aware
+publication boundary in the canonical writer, not a post-drain restore (which would itself race).
+The lease also does not serialize interactive writers with drains.
+
+`recordSyncProgress` uses one upsert, preserving links, dismissals and omitted metadata. Matching
+uses persisted metadata and adopts the stored winner, even after a miss. Before bridging, the
+transaction checks the source document's association and exact serialized progress snapshot. An
+older request delayed in matching, or an upload bridge delayed after linking, cannot replace a newer
+document's progress or bridge a link that has since lost. This check orders server snapshots, not
+device clocks; incoming pushes still use server arrival order. The manual-link branch that directly
+creates a missing PDS book remains a separate partial-commit boundary.
+
+### Upload publication and automatic links
+
+`services/uploadPersonalBook.ts` reserves quota with the `personal_book` insert before moving
+the bytes. Both directory creation and rename share the rollback region: either failure removes
+the reservation so retry is possible. This is exception cleanup, **not crash-atomic publication**:
+a process exit between insert and rename can still leave a row without a file, and concurrent
+delete/re-upload needs a separate per-file lifecycle/generation design.
+
+Upload-time automatic sync links use `UPDATE … WHERE hiveId IS NULL RETURNING` and bridge progress
+only for returned documents. A manual link or `bk_none` dismissal that wins before that update
+must not be overwritten. The later bridge transaction rechecks both association and source progress,
+so a relink or newer push that lands before bridging suppresses the obsolete bridge.
+
 - **A KOSync `document` id is not necessarily a content hash.** KOReader's checksum method is a
   user setting: `BINARY` (default) is a partial MD5 over the file, but `FILENAME` is
   `md5(basename)` — users switch to it precisely because their files aren't byte-identical across

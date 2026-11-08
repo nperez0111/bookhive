@@ -16,7 +16,6 @@ import path from "node:path";
 import { rename, rm, readdir, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
-import type { Storage } from "unstorage";
 
 import type { Database } from "../db";
 import type { HiveId } from "../types";
@@ -266,7 +265,6 @@ function progressPercentage(progressData: string | null | undefined): number | n
 
 export type UploadPersonalBookInput = {
   db: Database;
-  kv: Storage;
   userDid: string;
   filename: string;
   source: UploadSource;
@@ -283,7 +281,7 @@ export type UploadPersonalBookInput = {
 export async function uploadPersonalBook(
   input: UploadPersonalBookInput,
 ): Promise<UploadPersonalBookResult> {
-  const { db, kv, userDid, filename, source } = input;
+  const { db, userDid, filename, source } = input;
   const maxBytes = input.maxBytes ?? MAX_PERSONAL_BOOK_BYTES;
   const quotaBytes = getStorageQuota();
   const declared =
@@ -427,11 +425,12 @@ export async function uploadPersonalBook(
     }
 
     // ── 9. Commit the bytes: rename, not copy ──
-    await ensureDir(personalBookDir(userDid, contentHash));
     try {
+      await ensureDir(personalBookDir(userDid, contentHash));
       await rename(tmp, filePath);
     } catch (err) {
-      // The row committed in step 8 — roll it back so a rename failure doesn't leave a row with no file behind it.
+      // The row committed in step 8 — roll it back if directory creation or
+      // rename fails, so a missing file cannot leave a phantom quota reservation.
       await db
         .deleteFrom("personal_book")
         .where("userDid", "=", userDid)
@@ -485,8 +484,8 @@ export async function uploadPersonalBook(
       // matched now points at this book — so the next push bridges instead of
       // being dropped.
       const linked = await db
-        .selectFrom("sync_document")
-        .select(["id", "progressData"])
+        .updateTable("sync_document")
+        .set({ hiveId })
         .where("userDid", "=", userDid)
         .where("hiveId", "is", null)
         .where((eb) =>
@@ -496,25 +495,19 @@ export async function uploadPersonalBook(
             ...(uploadFilenameKey ? [eb("filenameKey", "=", uploadFilenameKey)] : []),
           ]),
         )
+        .returning(["id", "progressData"])
         .execute();
 
-      if (linked.length > 0) {
-        await db
-          .updateTable("sync_document")
-          .set({ hiveId })
-          .where(
-            "id",
-            "in",
-            linked.map((d) => d.id),
-          )
-          .execute();
-
-        // The percentage those documents already recorded has been sitting
-        // unused; without this it stays that way until the device next syncs.
-        for (const doc of linked) {
-          const pct = progressPercentage(doc.progressData);
-          if (pct !== null) await bridgeProgressToUserBook(db, kv, userDid, hiveId, pct);
-        }
+      // Only bridge rows this conditional update actually linked. A manual
+      // link or dismissal that won first must neither be replaced nor bridged
+      // to our guessed book.
+      for (const doc of linked) {
+        const pct = progressPercentage(doc.progressData);
+        if (pct !== null)
+          await bridgeProgressToUserBook(db, userDid, hiveId, pct, {
+            id: doc.id,
+            progressData: doc.progressData,
+          });
       }
 
       await db

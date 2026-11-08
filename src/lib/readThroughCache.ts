@@ -1,52 +1,12 @@
 import type { StorageValue, Storage } from "unstorage";
 
 /**
- * If multiple requests for the same key are made at the same time, we only want
- * to fetch the value once. This cache stores the promise for the fetch.
+ * Foreground misses and stale refreshes share fetch ownership, but unrelated
+ * storage instances must never share values. Entries live until persistence settles.
  */
-const dupeRequestsCache = new Map<string, Promise<StorageValue>>();
-
-/**
- * Simple rate limiter using token bucket algorithm
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-  private readonly requestsPerSecond: number;
-
-  constructor(requestsPerSecond: number) {
-    this.requestsPerSecond = requestsPerSecond;
-    this.tokens = requestsPerSecond;
-    this.lastRefill = Date.now();
-  }
-
-  async acquireToken(): Promise<void> {
-    const now = Date.now();
-    const timePassed = (now - this.lastRefill) / 1000;
-
-    // Refill tokens based on time passed
-    this.tokens = Math.min(
-      this.requestsPerSecond,
-      this.tokens + timePassed * this.requestsPerSecond,
-    );
-    this.lastRefill = now;
-
-    if (this.tokens < 1) {
-      // Wait until we have a token
-      const waitTime = ((1 - this.tokens) / this.requestsPerSecond) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
-      this.tokens = 1;
-    }
-
-    this.tokens -= 1;
-  }
-}
+const fetches = new WeakMap<object, Map<string, Promise<StorageValue>>>();
 
 export type ReadThroughCacheOptions = {
-  /**
-   * Number of requests allowed per second. If not provided, no rate limiting is applied.
-   */
-  requestsPerSecond?: number;
   /**
    * Time to live for cache in milliseconds.
    * @default 86400000 (1 day in ms)
@@ -71,90 +31,60 @@ export async function readThroughCache<T extends StorageValue>(
   defaultValue?: T,
   options: ReadThroughCacheOptions = {},
 ): Promise<T> {
-  // Create rate limiter if requestsPerSecond is specified
-  const rateLimiter = options.requestsPerSecond ? new RateLimiter(options.requestsPerSecond) : null;
-
   // TTL in ms, default to 1 day
   const ttl = options.ttl ?? 24 * 60 * 60 * 1000;
   const revalidateAfter = options.revalidateAfter;
 
-  // Dedupe requests for the same key.
-  if (dupeRequestsCache.has(key)) {
-    return dupeRequestsCache.get(key) as Promise<T>;
+  const [cached, meta] = await Promise.all([kv.get<T>(key), kv.getMeta(key)]);
+  const timestamp = meta && typeof meta["timestamp"] === "number" ? meta["timestamp"] : null;
+  const age = timestamp !== null ? Date.now() - timestamp : Infinity;
+  const hasCached = cached !== null && cached !== undefined;
+
+  if (hasCached && timestamp !== null && age < (revalidateAfter ?? ttl)) {
+    return cached;
   }
 
-  const unresolvedPromise = Promise.all([kv.get<T>(key), kv.getMeta(key)]).then(
-    async ([cached, meta]) => {
-      const now = Date.now();
-      const timestamp = meta && typeof meta["timestamp"] === "number" ? meta["timestamp"] : null;
-      const age = timestamp !== null ? now - timestamp : Infinity;
+  const isStale =
+    hasCached &&
+    timestamp !== null &&
+    revalidateAfter != null &&
+    age >= revalidateAfter &&
+    age < ttl;
 
-      // Fresh: within revalidateAfter (if SWR) or within ttl
-      const isFresh = cached && timestamp !== null && age < (revalidateAfter ?? ttl);
-      // Stale but serveable: SWR enabled, between revalidateAfter and ttl
-      const isStale =
-        cached &&
-        timestamp !== null &&
-        revalidateAfter != null &&
-        age >= revalidateAfter &&
-        age < ttl;
-
-      if (isFresh) {
-        return cached;
-      }
-
-      if (isStale) {
-        // Serve stale immediately, revalidate in background
-        const bgKey = `__bg:${key}`;
-        if (!dupeRequestsCache.has(bgKey)) {
-          const bgPromise = (async () => {
-            if (rateLimiter) await rateLimiter.acquireToken();
-            const fresh = await fetch({ key });
-            await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: Date.now() })]);
-            return fresh;
-          })()
-            .catch((err) => {
-              console.warn(
-                `[readThroughCache] background revalidation failed for key "${key}":`,
-                err,
-              );
-              return cached;
-            })
-            .finally(() => {
-              dupeRequestsCache.delete(bgKey);
-            });
-          dupeRequestsCache.set(bgKey, bgPromise as Promise<StorageValue>);
+  let pending = fetches.get(kv);
+  if (!pending) {
+    pending = new Map();
+    fetches.set(kv, pending);
+  }
+  let flight = pending.get(key) as Promise<T> | undefined;
+  if (!flight) {
+    // Defer invocation until ownership is registered; synchronous throws must also
+    // release ownership and follow the same failure path as rejected fetches.
+    flight = Promise.resolve()
+      .then(() => fetch({ key }))
+      .then(async (fresh) => {
+        const timestamp = Date.now(); // A slow fetch must not be born stale.
+        try {
+          // Never stamp old data fresh when the value write fails.
+          await kv.set(key, fresh);
+          await kv.setMeta(key, { timestamp });
+        } catch (err) {
+          console.warn(`[readThroughCache] cache write failed for key "${key}":`, err);
         }
-        return cached;
-      }
-
-      // Expired or miss: block on fetch
-      if (rateLimiter) {
-        await rateLimiter.acquireToken();
-      }
-
-      return fetch({ key })
-        .then(async (fresh) => {
-          // Stamped *after* the fetch, not with the `now` captured before it.
-          // A 5s fetch used to be born 5s stale, which on a short TTL cost a
-          // meaningful slice of the entry's life (and on an SWR entry brought
-          // the next revalidation forward by the whole fetch duration). The
-          // SWR path below already does this.
-          await Promise.all([kv.set(key, fresh), kv.setMeta(key, { timestamp: Date.now() })]);
-          return fresh;
-        })
-        .catch(() => {
-          return defaultValue as T;
-        });
-    },
-  );
-
-  dupeRequestsCache.set(key, unresolvedPromise);
-
-  try {
-    return (await unresolvedPromise) as Promise<T>;
-  } finally {
-    // Make sure to delete the promise from the cache once it's resolved.
-    dupeRequestsCache.delete(key);
+        return fresh;
+      })
+      .finally(() => pending.delete(key));
+    pending.set(key, flight);
+    if (isStale) {
+      // Observe background failures without replacing the shared rejected flight:
+      // an expired reader joining it must use its own default, not stale data.
+      void flight.catch((err) => {
+        console.warn(`[readThroughCache] background revalidation failed for key "${key}":`, err);
+      });
+    }
   }
+
+  if (isStale) return cached;
+  // Expired/missing entries block, including when a stale reader started the fetch.
+  return flight.catch(() => defaultValue as T);
 }

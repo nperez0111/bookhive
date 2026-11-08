@@ -5,6 +5,15 @@ Background for the caching/indexing rules referenced from `AGENTS.md`. If you're
 `src/middleware/anon-page-cache.ts`, `src/core/cacheHeaders.ts`, or the DB/KV vacuum logic in
 `src/context.ts`, read this first.
 
+## KV table readiness
+
+Each `sqliteKv` driver awaits one shared initialization promise before every table operation,
+including preload-style `getKeys`. A failed CREATE rejects current waiters and clears the promise
+so the next call can retry; it must not set a permanent ready flag before CREATE succeeds.
+The explicit `tableCreated` option still bypasses CREATE for callers that own schema setup.
+`getInstance` is synchronous connection access, not initialization. Busy retry and vacuum policies
+are unchanged.
+
 ## `bun:sqlite` is synchronous — a slow query is a whole-worker outage
 
 `stmt.all()` blocks the event loop, and production runs 3 processes (`WEB_CONCURRENCY`, see
@@ -29,6 +38,32 @@ stamped **after** the fetch resolves, so a slow fetch isn't born stale.
   section rather than fail. A reader must have at least one shelfed row (`status IS NOT NULL`), so
   owned-only records do not inflate the count. Finished-last-week is a rolling seven-day window
   bounded at the current time, excluding future-dated rows.
+
+## Read-through cache fetch ownership is per storage instance and key
+
+`lib/readThroughCache.ts` treats only null/undefined as absent: cached `false`, `0`, and `""`
+are real values in both fresh and SWR windows. Missing timestamps still force a fetch; no-SWR
+entries block after TTL, and SWR entries return stale immediately only before TTL. Expired
+readers join an already-running stale refresh rather than launching a competing fetch. One
+process-local flight per storage object + literal key covers fetching and persistence; there
+is no reserved `__bg:` key namespace. Separate storage wrappers/processes do not share flights.
+Callers sharing a storage/key must agree on the value type and fetch semantics; each reader
+still uses its own TTL/SWR policy and its own default on fetch failure.
+
+Fetch failures preserve stale data and use the caller's default for expired/missing readers.
+Successful fetches remain successful even when cache writes fail (including joined readers).
+Write the value before its completion timestamp: a failed value write must not stamp old data
+fresh. The two writes are not atomic; metadata failure can leave new data with old/missing
+freshness and cause an extra fetch. Read/metadata-read failures still reject, as before.
+There is no timeout, failure backoff, eviction policy, or cross-process lock in this helper;
+a hung fetch/write retains its flight until it settles.
+
+The unused `requestsPerSecond` option and its caller argument were removed along with the
+per-call bucket, which restarted full for every lookup and never enforced a shared
+rate (fractional values merely delayed each call independently). Actual concurrency/rate
+policy belongs to the calling service. In particular, do not replace it with another Goodreads
+limiter: enrichment's queue interval/concurrency remains its sole rate policy, and catalogue
+search retains its own existing concurrency ceiling.
 
 ## Request-stage timings must survive into logs
 

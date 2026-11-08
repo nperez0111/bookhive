@@ -241,7 +241,9 @@ export const LibraryImport: FC = () => {
 
                   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
 
+                  let receivedTerminalEvent = false;
                   const processEvent = (event: any) => {
+                    if (receivedTerminalEvent) return;
                     // Forward book-load events for progress tracking
                     if (event.event === "book-load") {
                       dispatchImportEvent(event);
@@ -266,8 +268,10 @@ export const LibraryImport: FC = () => {
                         },
                       });
                     } else if (event.event === "import-error") {
+                      if (event.stage === "error") receivedTerminalEvent = true;
                       dispatchImportEvent(event);
                     } else if (event.event === "import-complete") {
+                      receivedTerminalEvent = true;
                       dispatchImportEvent({ ...event, shareText });
                       if (event.failedBooks?.length) {
                         for (let i = 0; i < event.failedBooks.length; i++) {
@@ -332,6 +336,9 @@ export const LibraryImport: FC = () => {
                         console.error("Failed to parse SSE message:", e);
                       }
                     }
+                  }
+                  if (!receivedTerminalEvent) {
+                    throw new Error("Import stream ended before completion");
                   }
                 } catch (e) {
                   console.error("Stream reading failed:", e);

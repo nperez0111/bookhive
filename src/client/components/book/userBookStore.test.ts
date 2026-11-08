@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 
 import type { UserBookView } from "../../../core/userBookView";
 import { STATUS, applyOptimistic, createUserBookStore } from "./userBookStore";
@@ -156,6 +156,12 @@ describe("createUserBookStore", () => {
   const jsonOk = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "text/plain" } });
 
+  const deferred = <T>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  };
+
   it("rolls the view back to the last confirmed state when a write fails", async () => {
     globalThis.fetch = (async () =>
       jsonOk({ success: false, message: "nope" })) as unknown as typeof fetch;
@@ -168,7 +174,7 @@ describe("createUserBookStore", () => {
     expect(s.error).toBeTruthy();
   });
 
-  it("keeps queued writes in order and only the last response replaces the view", async () => {
+  it("keeps queued writes in order and reconciles the final response", async () => {
     const seen: string[] = [];
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
       // `RequestInit["body"]` is a `BodyInit` union, so `String()` on it would
@@ -192,6 +198,179 @@ describe("createUserBookStore", () => {
     expect(s.pending).toBe(0);
     expect(s.view?.stars).toBe(8);
   });
+
+  it("drops only the failed edit and preserves the later queued projection", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    let calls = 0;
+    globalThis.fetch = (async () =>
+      ++calls === 1 ? first.promise : second.promise) as unknown as typeof fetch;
+    const store = createUserBookStore(props);
+    const a = store.update({ status: STATUS.FINISHED });
+    const b = store.update({ stars: 8 }, { explicitSave: true });
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    expect(store.getSnapshot().view?.status).toBe(STATUS.FINISHED);
+    expect(store.getSnapshot().view?.stars).toBe(8);
+
+    first.resolve(jsonOk({ success: false, message: "nope" }));
+    expect(await a).toBe(false);
+    expect(store.getSnapshot()).toMatchObject({
+      confirmed: props.userBook,
+      view: { status: STATUS.WANT_TO_READ, finishedAt: null, stars: 8 },
+      pending: 1,
+      savedAt: null,
+    });
+    expect(store.getSnapshot().error).toBeTruthy();
+
+    const canonical = view({ stars: 8, cid: "cid2" });
+    second.resolve(jsonOk({ success: true, userBook: canonical }));
+    expect(await b).toBe(true);
+    expect(calls).toBe(2);
+    expect(store.getSnapshot()).toMatchObject({
+      view: canonical,
+      confirmed: canonical,
+      pending: 0,
+    });
+    expect(store.getSnapshot().savedAt).not.toBeNull();
+  });
+
+  it("replays later edits over the first canonical success", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    let calls = 0;
+    globalThis.fetch = (async () =>
+      ++calls === 1 ? first.promise : second.promise) as unknown as typeof fetch;
+    const store = createUserBookStore(props);
+    const a = store.update({ status: STATUS.READING });
+    const b = store.update({ stars: 8 });
+    const canonical = view({
+      status: STATUS.READING,
+      cid: "cid2",
+      startedAt: "2026-04-03T00:00:00.000Z",
+      review: "Canonical review",
+      bookProgress: { currentPage: 42, totalPages: 300, updatedAt: "server" },
+    });
+    first.resolve(jsonOk({ success: true, userBook: canonical }));
+    expect(await a).toBe(true);
+    expect(store.getSnapshot()).toMatchObject({
+      confirmed: canonical,
+      view: { ...canonical, stars: 8 },
+      pending: 1,
+      error: null,
+    });
+
+    second.resolve(jsonOk({ success: false, message: "nope" }));
+    expect(await b).toBe(false);
+    expect(store.getSnapshot().view).toEqual(canonical);
+    expect(store.getSnapshot().pending).toBe(0);
+  });
+
+  for (const status of [STATUS.READING, STATUS.FINISHED]) {
+    it.each([true, false])(
+      `preserves the pending ${status} edit's enqueue date across midnight (success: %s)`,
+      async (success) => {
+        const timestamp = "2026-11-08T23:59:59.000Z";
+        const clock = spyOn(Date.prototype, "toISOString").mockReturnValue(timestamp);
+        try {
+          const first = deferred<Response>();
+          const second = deferred<Response>();
+          let calls = 0;
+          globalThis.fetch = (async () =>
+            ++calls === 1 ? first.promise : second.promise) as unknown as typeof fetch;
+          const store = createUserBookStore(props);
+          const a = store.update({ owned: false });
+          const b = store.update({ status, bookProgress: { percent: 10 } });
+          const dateField = status === STATUS.READING ? "startedAt" : "finishedAt";
+          expect(store.getSnapshot().view?.[dateField]).toBe(timestamp);
+          expect(store.getSnapshot().view?.bookProgress?.updatedAt).toBe(timestamp);
+
+          clock.mockReturnValue("2026-11-09T00:00:01.000Z");
+          first.resolve(jsonOk({ success, userBook: view({ owned: false }) }));
+          expect(await a).toBe(success);
+          expect(store.getSnapshot().pending).toBe(1);
+          expect(store.getSnapshot().view?.[dateField]).toBe(timestamp);
+          expect(store.getSnapshot().view?.bookProgress?.updatedAt).toBe(timestamp);
+
+          const canonical = store.getSnapshot().view;
+          second.resolve(jsonOk({ success: true, userBook: canonical }));
+          expect(await b).toBe(true);
+        } finally {
+          clock.mockRestore();
+        }
+      },
+    );
+  }
+
+  it("copies queued fields and nested progress before callers can mutate them", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const sent: unknown[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      if (typeof init.body !== "string") throw new Error("expected a JSON string body");
+      sent.push(JSON.parse(init.body));
+      return sent.length === 1 ? first.promise : second.promise;
+    }) as unknown as typeof fetch;
+    const store = createUserBookStore(props);
+    const a = store.update({ owned: false });
+    const fields = { stars: 8, bookProgress: { percent: 10 } };
+    const b = store.update(fields);
+    fields.stars = 2;
+    fields.bookProgress.percent = 100;
+
+    first.resolve(jsonOk({ success: true, userBook: view({ owned: false }) }));
+    expect(await a).toBe(true);
+    expect(store.getSnapshot().view).toMatchObject({
+      stars: 8,
+      status: STATUS.READING,
+      bookProgress: { percent: 10 },
+    });
+    const canonical = store.getSnapshot().view;
+    second.resolve(jsonOk({ success: true, userBook: canonical }));
+    expect(await b).toBe(true);
+    expect(sent[1]).toEqual({ hiveId: props.hiveId, stars: 8, bookProgress: { percent: 10 } });
+  });
+
+  it.each([true, false])(
+    "blocks updates and duplicate deletes throughout removal (success: %s)",
+    async (success) => {
+      const updateResponse = deferred<Response>();
+      const deleteResponse = deferred<Response>();
+      const deleteStarted = deferred<void>();
+      const calls: string[] = [];
+      globalThis.fetch = (async (_url: string, init: RequestInit) => {
+        calls.push(init.method!);
+        if (init.method === "DELETE") {
+          deleteStarted.resolve();
+          return deleteResponse.promise;
+        }
+        return (await updateResponse.promise).clone();
+      }) as unknown as typeof fetch;
+      const store = createUserBookStore(props);
+      const save = store.update({ stars: 8 });
+      const removal = store.remove();
+      expect(await store.update({ owned: false })).toBe(false);
+      expect(await store.remove()).toBe(false);
+      expect(calls).toEqual(["POST"]);
+
+      const canonical = view({ stars: 8 });
+      updateResponse.resolve(jsonOk({ success: true, userBook: canonical }));
+      expect(await save).toBe(true);
+      await deleteStarted.promise;
+      expect(store.getSnapshot().view).toEqual(canonical);
+      expect(await store.update({ stars: 2 })).toBe(false);
+      expect(await store.remove()).toBe(false);
+      expect(calls).toEqual(["POST", "DELETE"]);
+
+      deleteResponse.resolve(jsonOk({ success }));
+      expect(await removal).toBe(success);
+      expect(store.getSnapshot().view).toEqual(success ? null : canonical);
+      if (!success) expect(store.getSnapshot().error).toBeTruthy();
+
+      expect(await store.update({ stars: 8 })).toBe(true);
+      expect(calls).toEqual(["POST", "DELETE", "POST"]);
+    },
+  );
 
   it("waits for queued writes before deleting", async () => {
     const calls: string[] = [];

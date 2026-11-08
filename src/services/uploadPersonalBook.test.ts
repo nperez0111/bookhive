@@ -1,11 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
-import { Kysely, SqliteDialect } from "kysely";
-import { createStorage } from "unstorage";
-import memoryDriver from "unstorage/drivers/memory";
+import { Kysely, SqliteDialect, sql } from "kysely";
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
-import type { Storage } from "unstorage";
 
 import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
 import { migrateToLatest, type DatabaseSchema, type Database } from "../db";
@@ -33,7 +30,6 @@ const OTHER_DID = "did:plc:someoneelse";
 const HIVE_A = "bk_aaaaaaaa" as HiveId;
 
 let db: Database;
-let kv: Storage;
 
 async function createTestDb(): Promise<Database> {
   const sqlite = new DatabaseSync(":memory:");
@@ -64,7 +60,6 @@ function upload(
   });
   return uploadPersonalBook({
     db,
-    kv,
     userDid,
     filename,
     // `chunked` models a request with no Content-Length.
@@ -179,7 +174,6 @@ async function tmpEntries(): Promise<string[]> {
 
 beforeEach(async () => {
   db = await createTestDb();
-  kv = createStorage({ driver: memoryDriver() });
   // The preload points LIBRARY_DIR at a per-pid tmp root; make sure it exists
   // and is empty so leftover files can't make an assertion pass.
   await ensureDir(getLibraryTmpDir());
@@ -357,6 +351,37 @@ describe("uploadPersonalBook — empty metadata normalisation", () => {
 });
 
 describe("uploadPersonalBook — sync document linking", () => {
+  it.each([HIVE_A, NO_HIVE_MATCH])(
+    "does not bridge an auto-link update skipped in favour of %s",
+    async (winner) => {
+      const bytes = makeEpub({ title: "Dune", authors: ["Frank Herbert"] });
+      const hiveId = await seedHiveBook("Dune", "Frank Herbert");
+      await seedUserBook(hiveId);
+      await seedSyncDocument({ documentHash: koreaderPartialMD5(bytes), percentage: 0.88 });
+
+      // Simulate a competing manual link/dismissal winning at the write
+      // boundary. The skipped update must not return a row to bridge.
+      await sql`
+        CREATE TRIGGER manual_link_wins BEFORE UPDATE OF hiveId ON sync_document
+        WHEN OLD.hiveId IS NULL
+        BEGIN
+          UPDATE sync_document SET hiveId = ${sql.lit(winner)} WHERE id = OLD.id;
+          SELECT RAISE(IGNORE);
+        END
+      `.execute(db);
+
+      const result = await upload(bytes, "Dune.epub");
+      expect(result.ok).toBe(true);
+      const doc = await db.selectFrom("sync_document").select("hiveId").executeTakeFirstOrThrow();
+      expect(doc.hiveId).toBe(winner);
+      const book = await db
+        .selectFrom("user_book")
+        .select("bookProgress")
+        .executeTakeFirstOrThrow();
+      expect(book.bookProgress).toBeNull();
+    },
+  );
+
   it("links via an exact content hash", async () => {
     const bytes = makeEpub();
     await seedSyncDocument({ documentHash: koreaderPartialMD5(bytes), hiveId: HIVE_A });
@@ -565,7 +590,6 @@ describe("uploadPersonalBook — rejections", () => {
 
     const result = await uploadPersonalBook({
       db,
-      kv,
       userDid: DID,
       filename: "huge.epub",
       source: { kind: "stream", body: oversized, declaredLength: undefined },
@@ -589,7 +613,6 @@ describe("uploadPersonalBook — rejections", () => {
 
     const result = await uploadPersonalBook({
       db,
-      kv,
       userDid: DID,
       filename: "huge.epub",
       source: { kind: "bytes", bytes: new Uint8Array(CAP + 1) },
@@ -610,6 +633,35 @@ describe("uploadPersonalBook — rejections", () => {
 });
 
 describe("uploadPersonalBook — storage quota", () => {
+  it("releases the row and quota if directory creation fails, allowing a retry", async () => {
+    const bytes = makeEpub();
+    const hash = koreaderPartialMD5(bytes);
+    const dir = personalBookDir(DID, hash);
+    const used = getStorageQuota() - bytes.length;
+    await seedPersonalBook("seeded", used);
+    await ensureDir(path.dirname(dir));
+    // A regular file at the target directory reliably causes mkdir to fail,
+    // even when tests run as root (permission bits would not).
+    await Bun.write(dir, "not a directory");
+
+    const failure = await upload(bytes, "x.epub").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(
+      await db.selectFrom("personal_book").select("id").where("contentHash", "=", hash).execute(),
+    ).toHaveLength(0);
+    expect(await getStorageUsage(db, DID)).toBe(used);
+    expect(await tmpEntries()).toEqual([]);
+
+    await rm(dir);
+    const retry = await upload(bytes, "x.epub");
+    expect(retry.ok).toBe(true);
+    expect(await getStorageUsage(db, DID)).toBe(getStorageQuota());
+    expect(await Bun.file(bookFilePath(DID, hash, "epub")).exists()).toBe(true);
+  });
+
   it("refuses an upload that would cross the quota, before reading the body", async () => {
     const bytes = makeEpub();
     // One byte of headroom short of what this upload needs.

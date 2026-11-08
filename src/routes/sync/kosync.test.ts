@@ -152,7 +152,6 @@ describe("PUT /kosync/syncs/progress — upload first, then sync", () => {
     const bytes = makeEpub({ title: "Dune", authors: ["Frank Herbert"] });
     const upload = await uploadPersonalBook({
       db,
-      kv,
       userDid: DID,
       filename: "Dune.epub",
       source: {
@@ -185,7 +184,6 @@ describe("PUT /kosync/syncs/progress — upload first, then sync", () => {
     const bytes = makeEpub({ title: "Neuromancer", authors: ["William Gibson"] });
     await uploadPersonalBook({
       db,
-      kv,
       userDid: DID,
       filename: "Neuromancer.epub",
       source: {

@@ -24,7 +24,7 @@ app.get("/users/auth", syncAuthMiddleware, (c) => {
 
 app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
   const userDid = c.get("syncUserDid");
-  const { db, kv } = c.get("ctx");
+  const { db } = c.get("ctx");
 
   let body: {
     document: string;
@@ -48,7 +48,6 @@ app.put("/syncs/progress", syncAuthMiddleware, async (c) => {
 
   await recordSyncProgress({
     db,
-    kv,
     userDid,
     document,
     progress,

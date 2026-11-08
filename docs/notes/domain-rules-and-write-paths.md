@@ -78,8 +78,9 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   `userBook` for updates), so an empty/malformed 2xx cannot confirm an optimistic edit.
   The book-detail store and `LibraryTable` both use it; they roll edits back on failure and
   keep deletions visible until the server confirms them.
-- **A book deletion must be confirmed by the PDS before deleting its local mirror.**
-  `DELETE /books/:hiveId` checks `deleteRecord.ok` before removing `user_book`; an HTTP-successful
+- **A book or comment deletion must be confirmed by the PDS before deleting its local mirror.**
+  `DELETE /books/:hiveId` and `DELETE /comments/:commentId` check `deleteRecord.ok` before removing
+  `user_book` or `buzz`; an HTTP-successful
   XRPC response can still contain a rejected PDS operation. Clearing the mirror in that case
   made the deleted book reappear on the next re-sync.
 - **A re-sync's cleanup must handle the empty case** — `pruneMirroredRecords`
@@ -136,11 +137,49 @@ stale descriptions/ranking untouched, but leaves existing books, buzzes and item
 Failed PDS scans must not set the backfill completion marker. Worker recovery and backfill
 limits are described in `ingestion-and-reconciliation.md`; there are no periodic PDS scans.
 
-Login re-syncs shelves; Settings → Book sync (`/refresh-books`) also re-syncs lists and
-items to repair missed creates, updates and deletes. Follow the PDS cursor even when a page
+Login and Settings → Book sync (`/refresh-books`) re-sync books, buzzes and shelves/items
+to repair missed creates, updates and deletes. Buzzes run after books so their references can
+resolve. `routes/lib.ts` shares one cursor traversal across all four collections. Follow the PDS cursor even when a page
 has fewer than 100 records, and only prune a collection after all its pages succeed.
 Reject repeated cursors and cap each collection scan at 500 pages before pruning.
+Failed/malformed scans reject so manual refresh can report failure; login observes failures
+without blocking authentication. Earlier page upserts are not rolled back on a later scan failure.
 This is a recovery path for stream gaps, not proof that a particular Jetstream outage caused one.
+
+### Follow synchronization stages before committing
+
+`services/getFollows.ts` collects the remote follows before modifying the mirror. Full sync
+atomically marks/upserts/prunes in a SQLite transaction only after cursor exhaustion. Non-OK
+responses, repeated cursors, empty cursor-bearing pages and the 500-page ceiling fail without
+pruning or advancing freshness. There is no separate row cutoff: full scans must exhaust the
+cursor even for users following more than 1,000 accounts. Short pages do not imply completion.
+Incremental sync stages only the prefix before the first already-active follow; inactive rows
+before that boundary are reactivated. Existing rows retain their `syncedAt` ordering timestamp.
+A failed incremental scan publishes none of its staged rows.
+
+Scans are not serialized: concurrent complete snapshots can still commit out of order.
+Freshness is stored in KV after the DB commit, not atomically with it; a KV failure can cause
+a safe redundant re-sync.
+
+### Pending edits and background work retain their owners
+
+Book-detail hydration also retains a confirmed view plus ordered pending edits. A response replaces
+the confirmed view and then replays remaining edits; failure removes only its own edit. A delete
+blocks new saves while waiting for the existing queue and for its entire network operation.
+Background `userBookFollowUp` keeps both its slot and per-URI dedupe until the underlying work
+settles, not merely until the bounded caller promise times out. Late completion must not permit
+a second cover/catalogue operation alongside the first.
+
+### Account deletion requires complete enumeration
+
+`services/deleteAccount.ts` follows each collection's cursor regardless of page size and rejects
+non-OK requests, cursor cycles and scans exceeding 500 pages. Local data is removed only after
+all PDS collection cleanups succeed. The local deletions, including `progress_history`, share a
+transaction. File removal errors propagate rather than claiming success; the settings adapter
+retains the session so the user can retry. Earlier PDS deletions are not rolled back on a later
+collection failure. Cleanup also deletes `sync_write_queue` entries and sets the durable legacy
+import marker, preventing old KV progress from being re-imported. This is not a lease against
+concurrent ingestion/uploads or a PDS write already running; those need separate deletion ownership.
 
 ## Listing order — every paginated listing ends on a unique key
 

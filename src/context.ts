@@ -1,4 +1,4 @@
-import type { HiveId, ProfileViewDetailed } from "./types";
+import type { ProfileViewDetailed } from "./types";
 import type { Did } from "@atcute/lexicons";
 import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
@@ -56,7 +56,7 @@ import { startEnrichmentDrain } from "./data/enrichQueue";
 import { lazy } from "./lib/lazy";
 import { createProfileCache, getProfile } from "./services/getProfile";
 import { updateBookRecord } from "./services/getBook";
-import type { PendingWrite } from "./data/syncBridge";
+import { drainSyncWrites } from "./services/syncWriteDrain";
 import { errorMessage } from "./lib/errors";
 
 /** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
@@ -702,39 +702,20 @@ export function createContextMiddleware(deps: AppDeps) {
  * consistent with every other book update.
  */
 async function flushPendingSyncWrites(client: SessionClient, ctx: BookUtilContext): Promise<void> {
-  const key = `sync_pending:${client.did}`;
   try {
-    const pending = await ctx.kv.getItem<PendingWrite[]>(key);
-    if (!pending?.length) return;
-
-    const failed: PendingWrite[] = [];
-    for (const entry of pending) {
-      try {
-        // Only bridge books the user still tracks; never auto-create from a sync.
-        const userBook = await ctx.db
-          .selectFrom("user_book")
-          .select(["uri"])
-          .where("userDid", "=", client.did)
-          .where("hiveId", "=", entry.hiveId as HiveId)
-          .executeTakeFirst();
-        if (!userBook) continue;
-
+    await drainSyncWrites({
+      db: ctx.db,
+      kv: ctx.kv,
+      userDid: client.did,
+      write: async (entry) => {
         await updateBookRecord({
           ctx,
           agent: client,
-          hiveId: entry.hiveId as HiveId,
+          hiveId: entry.hiveId,
           updates: { bookProgress: JSON.parse(entry.bookProgress) },
         });
-      } catch {
-        failed.push(entry);
-      }
-    }
-
-    if (failed.length > 0) {
-      await ctx.kv.setItem(key, failed);
-    } else {
-      await ctx.kv.removeItem(key);
-    }
+      },
+    });
   } catch {
     // fire-and-forget — don't break the login flow
   }
