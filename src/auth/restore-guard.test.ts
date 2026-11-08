@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
 import {
   guardedRestore,
   isSessionTerminatingError,
@@ -6,11 +6,13 @@ import {
   resetRestoreGuards,
   restoreGuardStates,
   MAX_BREAKERS,
+  RESTORE_TIMEOUT_MS,
 } from "./restore-guard";
 
 beforeEach(() => {
   resetRestoreGuards();
 });
+afterEach(() => jest.useRealTimers());
 
 /** Never settles — stands in for a host that blackholes packets. */
 const blackhole = () => new Promise<never>(() => {});
@@ -39,15 +41,16 @@ describe("guardedRestore", () => {
   });
 
   it("times out a hung restore instead of hanging the request", async () => {
-    // A short override stands in for RESTORE_TIMEOUT_MS — the invariant is that a blackholing host is bounded, not the exact timeout length.
-    const timeoutMs = 200;
+    jest.useFakeTimers();
+    // Exercise the production budget without spending five real seconds waiting.
+    const timeoutMs = RESTORE_TIMEOUT_MS;
     const start = Date.now();
     // Awaited directly, not via `expect().rejects`: the elapsed-time assertion
     // below depends on this having blocked, and `expect().rejects` returns
     // `undefined` so nothing in the expression expresses that dependency.
-    const error = await guardedRestore("dead.example", blackhole, undefined, timeoutMs).catch(
-      (e: unknown) => e,
-    );
+    const pending = guardedRestore("dead.example", blackhole).catch((e: unknown) => e);
+    jest.advanceTimersByTime(timeoutMs);
+    const error = await pending;
     expect((error as Error).message).toContain("timed out");
     expect(Date.now() - start).toBeLessThan(timeoutMs + 2_000);
   });

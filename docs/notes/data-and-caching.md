@@ -207,6 +207,15 @@ This bounds observable traversals, not every transport inside the resolver. The 
 DNS/HTTP race can finish via HTTP while its uncancellable Node DNS loser is still running;
 abort is checked after DNS settles. We retain that resolver behavior, not a custom DNS stack.
 
+Profile/identity deadline regressions advance Bun's fake clock, including `AbortSignal.timeout`,
+rather than waiting through production budgets. A captured real `setImmediate` flushes promise
+continuations without advancing that clock; restore real timers after each test. Feed pagination
+fixtures supply an empty-profile session client instead of querying the live AppView for synthetic
+actors. Keep the timeout/late-result/capacity assertions, not their real-time delays.
+The OAuth restore/refresh-lock unit tests use the same approach; overlapping callbacks are held
+with explicit promise gates instead of sleeps. Actual lock-contention/PDS integration tests keep
+their real transports and SQLite busy waits.
+
 ## Anonymous page cache (`src/middleware/anon-page-cache.ts`)
 
 Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV

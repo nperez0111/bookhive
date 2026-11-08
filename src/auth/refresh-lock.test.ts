@@ -1,15 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, jest } from "bun:test";
 import { sql } from "kysely";
 import { createSharedKvDb, type KvDb } from "../sqlite-kv";
 import { createCrossProcessLock } from "./refresh-lock";
 
 let db: KvDb;
+const realSetImmediate = setImmediate;
+const nextTurn = () => new Promise<void>((resolve) => realSetImmediate(resolve));
+
+async function advance(ms: number) {
+  jest.advanceTimersByTime(ms);
+  await nextTurn();
+}
 
 beforeEach(() => {
   db = createSharedKvDb(":memory:").db;
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   await db.destroy();
 });
 
@@ -44,20 +52,27 @@ describe("createCrossProcessLock", () => {
     // All calls in one process share the OWNER, so the lock is re-entrant by design — only different workers need to block each other.
     const lock = createCrossProcessLock(db);
     const results: string[] = [];
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
 
     const p1 = lock("same-key", async () => {
       results.push("p1-start");
-      await new Promise((r) => setTimeout(r, 50));
+      started.resolve();
+      await release.promise;
       results.push("p1-end");
       return "first";
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await started.promise;
 
     const p2 = lock("same-key", async () => {
       results.push("p2");
       return "second";
     });
+
+    expect(await p2).toBe("second");
+    expect(results).toEqual(["p1-start", "p2"]);
+    release.resolve();
 
     const [r1, r2] = await Promise.all([p1, p2]);
     expect(r1).toBe("first");
@@ -70,22 +85,27 @@ describe("createCrossProcessLock", () => {
   it("allows concurrent callbacks for different keys", async () => {
     const lock = createCrossProcessLock(db);
     const order: string[] = [];
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
 
     const p1 = lock("key-a", async () => {
       order.push("a-start");
-      await new Promise((r) => setTimeout(r, 50));
+      started.resolve();
+      await release.promise;
       order.push("a-end");
     });
 
-    await new Promise((r) => setTimeout(r, 5));
+    await started.promise;
 
     const p2 = lock("key-b", async () => {
       order.push("b-start");
-      await new Promise((r) => setTimeout(r, 20));
       order.push("b-end");
     });
 
-    await Promise.all([p1, p2]);
+    await p2;
+    expect(order).toEqual(["a-start", "b-start", "b-end"]);
+    release.resolve();
+    await p1;
     expect(order.indexOf("b-start")).toBeLessThan(order.indexOf("a-end"));
   });
 
@@ -103,6 +123,7 @@ describe("createCrossProcessLock", () => {
   });
 
   it("blocks a different owner from acquiring the same key", async () => {
+    jest.useFakeTimers();
     // Simulate another process holding a fresh lock.
     const lock = createCrossProcessLock(db);
     const freshTime = Date.now();
@@ -110,26 +131,24 @@ describe("createCrossProcessLock", () => {
       db,
     );
 
-    // Blocks until the other owner releases; release after a short delay to avoid a real timeout.
-    const releaseAfterMs = 120;
-    const releaseTimer = setTimeout(async () => {
-      await sql`DELETE FROM auth_refresh_lock WHERE id = 'held-key'`.execute(db);
-    }, releaseAfterMs);
-
-    const start = Date.now();
-    const result = await lock("held-key", async () => "acquired");
-    const elapsed = Date.now() - start;
-
-    clearTimeout(releaseTimer);
-    expect(result).toBe("acquired");
-    // Tied to the release delay rather than a bare 200: the claim is that the
-    // waiter actually blocked until the other owner let go, and that stays true
-    // whatever the delay is scaled to. Allow one backoff tick of slack.
-    expect(elapsed).toBeGreaterThanOrEqual(releaseAfterMs * 0.8);
+    let acquired = false;
+    const pending = lock("held-key", async () => {
+      acquired = true;
+      return "acquired";
+    });
+    await nextTurn();
+    await advance(25);
+    await advance(50);
+    expect(acquired).toBe(false);
+    await sql`DELETE FROM auth_refresh_lock WHERE id = 'held-key'`.execute(db);
+    await advance(100);
+    expect(await pending).toBe("acquired");
+    expect(acquired).toBe(true);
   });
 
   // Regression: a holder wedged on an unreachable PDS kept its lock alive via the heartbeat, so waiters spun forever issuing blocking SQLite statements.
   it("gives up on a permanently held lock within its wait budget", async () => {
+    jest.useFakeTimers();
     // A short wait budget stands in for MAX_WAIT_MS — the invariant is giving up rather than spinning forever, not the exact budget.
     const maxWaitMs = 120;
     const lock = createCrossProcessLock(db, { maxWaitMs });
@@ -142,7 +161,12 @@ describe("createCrossProcessLock", () => {
     // `undefined` (it drains the loop internally) so nothing in the expression
     // makes that dependency visible.
     const start = Date.now();
-    const error = await lock("wedged", async () => "never").catch((e: unknown) => e);
+    const pending = lock("wedged", async () => "never").catch((e: unknown) => e);
+    await nextTurn();
+    await advance(25);
+    await advance(50);
+    await advance(45);
+    const error = await pending;
     const elapsed = Date.now() - start;
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("Cross-process lock timeout for wedged");
@@ -155,6 +179,7 @@ describe("createCrossProcessLock", () => {
   });
 
   it("backs off exponentially rather than polling at a fixed interval", async () => {
+    jest.useFakeTimers();
     const lock = createCrossProcessLock(db, { maxWaitMs: 120 });
     await sql`INSERT INTO auth_refresh_lock (id, owner, acquired_at) VALUES ('counted', 'other-pid-999', ${Date.now()})`.execute(
       db,
@@ -172,7 +197,12 @@ describe("createCrossProcessLock", () => {
       // Awaited directly, not via `expect().rejects`: the `finally` must not
       // restore `executeQuery` until the waiter has finished polling, or
       // `selects` counts nothing.
-      error = await lock("counted", async () => "never").catch((e: unknown) => e);
+      const pending = lock("counted", async () => "never").catch((e: unknown) => e);
+      await nextTurn();
+      await advance(25);
+      await advance(50);
+      await advance(45);
+      error = await pending;
     } finally {
       db.executeQuery = originalExecuteQuery;
     }
