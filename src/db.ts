@@ -1293,6 +1293,17 @@ migrations["030"] = {
   },
 };
 
+migrations["031"] = {
+  async up(db: Kysely<unknown>) {
+    // Broad FTS matches need popularity order without reading every wide book row.
+    await sql`CREATE INDEX IF NOT EXISTS idx_hive_book_search_rank
+      ON hive_book(ratingsCount DESC, rating DESC, id ASC)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_hive_book_search_rank`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

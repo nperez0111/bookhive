@@ -220,11 +220,26 @@ export async function listBooksByGenre({
   return finish(books, count?.count, page, pageSize);
 }
 
+// A bounded probe chooses the access path, never the set of eligible matches.
+const DIRECT_FTS_MATCHES = 512;
+
+export function buildFtsBookIdsQuery(match: string, limit: number, direct = false) {
+  return sql<{ id: HiveId }>`
+    SELECT b.id FROM hive_book b
+    ${direct ? sql`` : sql`INDEXED BY idx_hive_book_search_rank`}
+    WHERE b.rowid IN (
+      SELECT rowid FROM hive_book_fts WHERE hive_book_fts MATCH ${match}
+    )
+    ORDER BY b.ratingsCount DESC, b.rating DESC, b.id ASC
+    LIMIT ${limit}
+  `;
+}
+
 /**
  * **The one** "which books in our catalogue match this string" — uses the
  * FTS5 index rather than an open-coded `LIKE '%…%'` scan.
  *
- * Returns ids in relevance order; pair with `hydrateSearchResults` for rows.
+ * Returns ids in popularity order; pair with `hydrateSearchResults` for rows.
  */
 export async function searchLocalCatalog({
   db,
@@ -241,16 +256,20 @@ export async function searchLocalCatalog({
   const match = isUsefulFtsQuery(q) ? ftsMatchQuery(q) : null;
   if (!match || limit <= 0) return [];
 
-  const rows = (
-    await sql<{ id: HiveId }>`
-      SELECT b.id
-      FROM hive_book_fts f
-      JOIN hive_book b ON b.rowid = f.rowid
-      WHERE hive_book_fts MATCH ${match}
-      ORDER BY b.ratingsCount DESC, b.rating DESC, b.id ASC
-      LIMIT ${limit + exclude.length}
-    `.execute(db)
+  const candidates = (
+    await sql<{ rowid: number }>`
+    SELECT rowid FROM hive_book_fts WHERE hive_book_fts MATCH ${match}
+    LIMIT ${DIRECT_FTS_MATCHES + 1}
+  `.execute(db)
   ).rows;
+  if (!candidates.length) return [];
+  // Evaluate MATCH again with the result query: writes between the probe and
+  // selection must not leave stale rowids eligible after a title change.
+  const { rows } = await buildFtsBookIdsQuery(
+    match,
+    limit + exclude.length,
+    candidates.length <= DIRECT_FTS_MATCHES,
+  ).execute(db);
 
   const skip = new Set(exclude);
   const out: HiveId[] = [];

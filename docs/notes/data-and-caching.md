@@ -264,3 +264,19 @@ the shelf picker's every keystroke. They also disagreed on which column: the FTS
 `title`, `rawTitle` and `authors`; the two `LIKE` copies searched only one each. `rawTitle` is the
 un-normalised scraped title, so a book whose title was normalised away from it was findable in one
 and not the other.
+
+Broad FTS prefixes can still stall a worker if every match joins a wide `hive_book` row before
+sorting. Migration 031 adds `idx_hive_book_search_rank(ratingsCount DESC, rating DESC, id ASC)`.
+`searchLocalCatalog` probes at most 513 FTS rowids: up to 512 matches use direct rowid lookups;
+larger sets use the ordered **covering** rank index, filtering against **all** matching FTS rowids.
+The probe chooses a plan, never a candidate cutoff. The broad plan avoids both wide table reads
+and a temporary popularity sort; rare/no-match searches avoid scanning the rank index. Exclusions,
+limits, prefix syntax and popularity/id tie ordering are unchanged. `services/searchBooks` now
+calls this helper too instead of keeping a second FTS query (previously without an id tie-break).
+
+Local synthetic measurements (100k books, 4 KiB descriptions, 8 MiB SQLite page cache, warm OS
+cache, three page-cache-reset runs) reduced a 50k-match prefix from about 20–22ms to 5.6–5.8ms,
+and an all-catalogue author match from 22–23ms to 11–11.3ms, including the probe. These are
+fixture results, not a promise for production's multi-second tail: event-loop/host stalls also
+inflate the logged `search_local_ms`. Check that stage after deployment rather than attributing
+every long search to FTS. No query-result cache or changes to the Goodreads-first search policy.

@@ -16,6 +16,7 @@ import type { Database } from "../db";
 import type { HiveBook, HiveId } from "../types";
 import {
   buildAuthorBookIdsQuery,
+  buildFtsBookIdsQuery,
   buildGenreBookIdsQuery,
   hydrateSearchResults,
   listBooksByAuthor,
@@ -505,18 +506,61 @@ describe("searchLocalCatalog", () => {
     expect(await searchLocalCatalog({ db, q: "Handmaid's Tale" })).toEqual(["bk_a"] as HiveId[]);
   });
 
-  it("uses the FTS index rather than scanning hive_book", () => {
-    // A SCAN hive_book here is the regression coming back.
-    const detail = plan(`
-      SELECT b.id FROM hive_book_fts f
-      JOIN hive_book b ON b.rowid = f.rowid
-      WHERE hive_book_fts MATCH '"dune"*'
-      ORDER BY b.ratingsCount DESC, b.rating DESC, b.id ASC
-      LIMIT 20
-    `);
-    // The regression this guards is `SCAN b` — a full pass over hive_book.
-    expect(detail).toContain("VIRTUAL TABLE");
-    expect(detail).toContain("SEARCH b USING INTEGER PRIMARY KEY");
-    expect(detail).not.toContain("SCAN b");
+  it("uses a covering popularity index for broad matches, direct row lookups for rare ones", async () => {
+    const details = async (direct = false) => {
+      const { rows } = await sql<{ detail: string }>`EXPLAIN QUERY PLAN
+        ${buildFtsBookIdsQuery('"dune"*', 20, direct)}
+      `.execute(db);
+      return rows.map(({ detail }) => detail).join("\n");
+    };
+    const broad = await details();
+    expect(broad).toContain("COVERING INDEX idx_hive_book_search_rank");
+    expect(broad).toContain("VIRTUAL TABLE");
+    expect(broad).not.toContain("TEMP B-TREE FOR ORDER BY");
+    expect(broad).not.toContain("SEARCH b USING INTEGER PRIMARY KEY");
+    const rare = await details(true);
+    expect(rare).toContain("SEARCH b USING INTEGER PRIMARY KEY");
+    expect(rare).not.toContain("SCAN b");
+  });
+
+  it("keeps every broad match eligible, with the same ordering, exclusions and limits", async () => {
+    for (let i = 0; i < 600; i++) {
+      insertBook({
+        id: `bk_${String(i).padStart(4, "0")}`,
+        title: i % 2 ? "Dune" : "Dune novel",
+        authors: "Frank Herbert",
+        ratingsCount: i % 37,
+        rating: i % 5,
+      });
+    }
+    // The best result is beyond the bounded probe; it must not be discarded.
+    insertBook({ id: "bk_last", title: "Dune rare", authors: "Frank Herbert", ratingsCount: 999 });
+    sqlite.exec("UPDATE hive_book SET rating = NULL WHERE id = 'bk_0036'");
+    sqlite.exec("UPDATE hive_book SET ratingsCount = NULL WHERE id = 'bk_0073'");
+    for (const [q, match] of [
+      ["Dune", '"Dune"*'],
+      ["rare", '"rare"*'],
+    ] as const) {
+      const original = (
+        await sql<{ id: HiveId }>`
+        SELECT b.id FROM hive_book_fts f JOIN hive_book b ON b.rowid = f.rowid
+        WHERE hive_book_fts MATCH ${match}
+        ORDER BY b.ratingsCount DESC, b.rating DESC, b.id ASC
+      `.execute(db)
+      ).rows.map(({ id }) => id);
+      for (const limit of [1, 20, 650]) {
+        for (const exclude of [[], original.slice(0, 3)]) {
+          expect(await searchLocalCatalog({ db, q, limit, exclude })).toEqual(
+            original.filter((id) => !exclude.includes(id)).slice(0, limit),
+          );
+        }
+      }
+    }
+    expect((await searchLocalCatalog({ db, q: "Dune" }))[0]).toBe("bk_last");
+    // Rank-index changes follow ordinary catalogue writes; no stale side table.
+    sqlite.exec("UPDATE hive_book SET ratingsCount = 1000 WHERE id = 'bk_0000'");
+    expect((await searchLocalCatalog({ db, q: "Dune" }))[0]).toBe("bk_0000");
+    sqlite.exec("DELETE FROM hive_book WHERE id = 'bk_0000'");
+    expect((await searchLocalCatalog({ db, q: "Dune" }))[0]).toBe("bk_last");
   });
 });

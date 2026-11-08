@@ -101,7 +101,7 @@ name — full stories in the linked `docs/notes/*.md`.
 | `bsky/jetstream.ts`              | Jetstream v2 lifecycle, per-instance sequence replay and live-tip cutover — `ingestion-and-reconciliation.md`                 |
 | `services/getProfile.ts`         | Viewer-isolated LRU/SWR, bounded refresh + verified identity repair, cached failure fallback — `data-and-caching.md`          |
 | `pds/repoCache.ts`               | Public repository directory SWR, whole-traversal deadline and singleton transport guard — `data-and-caching.md`               |
-| `data/catalogBooks.ts`           | Genre/author pages and author recommendations select covering IDs before hydration — `data-and-caching.md`                    |
+| `data/catalogBooks.ts`           | Covering catalogue pages/recommendations; shared FTS selects direct or covering rank lookup — `data-and-caching.md`           |
 | `scrapers/waf/solver-worker.ts`  | Worker solve logic; `protocol.ts` validates envelopes — `src/scrapers/waf/README.md`                                          |
 | `services/userBookStore.ts`      | `user_book` row read/upsert + `recordFromUserBook`; split from `getBook.ts` to avoid an import cycle                          |
 | `services/bookRecordWrite.ts`    | CAS write of a book record (`putRecord`/`swapRecord`, `createRecord` for new) — no unguarded variant                          |
