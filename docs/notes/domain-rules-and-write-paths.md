@@ -157,7 +157,24 @@ Incremental sync stages only the prefix before the first already-active follow; 
 before that boundary are reactivated. Existing rows retain their `syncedAt` ordering timestamp.
 A failed incremental scan publishes none of its staged rows.
 
-Scans are not serialized: concurrent complete snapshots can still commit out of order.
+`follow_sync_state` (migration 034) stores a durable per-user revision, independent of graph rows
+so even an empty graph has a publication fence. Each scan reads its baseline before remote I/O;
+its short SQL transaction compare-and-increments that revision before touching the mirror.
+Every successful scan advances the revision, even if its snapshot changes no rows. A concurrent
+scan or an acknowledged `followGraph` follow/unfollow advances the same revision atomically with
+its mirror mutation. A scan whose baseline no longer matches rejects without publishing rows or
+advancing freshness. This works across processes, preserves interactive writes during a scan,
+and prevents an older scan from overwriting a newer scan that committed first. Scans are not
+serialized: the first successful publisher wins; losing scans retry on a later sync opportunity.
+Interactive unfollow advances the revision even when the mirror row was already inactive/absent.
+Malformed follow arrays/entries and non-string/empty cursors also reject before publication.
+
+The fence coordinates local mirror publishers, not AppView freshness or a remote snapshot: an
+AppView response obtained after a local write may still lag that write. Account cleanup also
+advances (and retains) the revision, fencing scans already in flight; this is not a tombstone
+against newly started scans. External PDS changes and overlapping interactive writes require
+their own ordering/ownership policy.
+Do not delete/reset a revision row while scans may still be running (that would permit ABA).
 Freshness is stored in KV after the DB commit, not atomically with it; a KV failure can cause
 a safe redundant re-sync.
 

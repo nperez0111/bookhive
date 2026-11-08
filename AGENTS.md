@@ -236,7 +236,7 @@ Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/util
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–033) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`); `DB_TEMP_STORE` is opt-in `FILE` or the unchanged `MEMORY` default. Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
+SQLite via Kysely. Schema + all migrations (001–034) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`); `DB_TEMP_STORE` is opt-in `FILE` or the unchanged `MEMORY` default. Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -262,6 +262,10 @@ SQLite via Kysely. Schema + all migrations (001–033) in one file. `createDb` s
 `book_list*` are keyed by AT URI, not numeric ids. `NO_HIVE_MATCH` sentinel (`bk_none`) on `sync_document.hiveId` means the user dismissed the match — read paths must surface `{ hiveId: null, dismissed: true }`. `enqueueEnrichmentBatch` filters books with recent `enrichAttempts`/`enrichFailedAt` internally (7d cooldown).
 
 VACUUM and FTS-rebuild scheduling (`src/context.ts`) is gated on freelist ratio, not run unconditionally — full reasoning and measured costs: `docs/notes/data-and-caching.md`.
+
+`follow_sync_state` stores each user's durable follow-mirror revision (migration 034); scans
+publish only if no intervening scan or acknowledged follow/unfollow changed that revision.
+See `docs/notes/domain-rules-and-write-paths.md` for the concurrency boundary.
 
 ### KV Cache (`src/sqlite-kv.ts`)
 

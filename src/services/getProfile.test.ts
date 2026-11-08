@@ -78,8 +78,8 @@ describe("profile cache", () => {
       expect(await pending).toEqual(cached);
     } finally {
       session.resolve(agent);
+      await nextTurn();
     }
-    await nextTurn();
     await eventually(
       async () =>
         (await ctx.kv.get<{ profile: ProfileViewDetailed }>(key(cached.did)))?.profile.handle ===
@@ -379,20 +379,39 @@ describe("profile cache", () => {
     const ctx = context(get);
     const cold = ["a", "b", "c"].map((id) => getProfile({ ctx, did: `did:plc:${id}` }));
     const pending = Promise.all(cold);
-    await nextTurn();
-    expect(get).toHaveBeenCalledTimes(3);
-    jest.advanceTimersByTime(3000);
-    expect(await pending).toEqual([null, null, null]);
-    expect(signals.length).toBe(3);
-    expect(signals.every((signal) => signal.aborted)).toBe(true);
-    // These requests did not release their slots when the caller timed out.
-    const queued = getProfile({ ctx, did: "did:plc:queued" });
-    await nextTurn();
-    jest.advanceTimersByTime(500);
-    expect(await queued).toBeNull();
-    expect(get).toHaveBeenCalledTimes(3);
-    gate.resolve();
-    await nextTurn();
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    try {
+      await nextTurn();
+      expect(get).toHaveBeenCalledTimes(3);
+      expect(signals).toHaveLength(3);
+      jest.advanceTimersByTime(2499);
+      await nextTurn();
+      expect(settled).toBe(false);
+      expect(signals.every((signal) => !signal.aborted)).toBe(true);
+      jest.advanceTimersByTime(1);
+      await nextTurn();
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+      expect(settled).toBe(false);
+      jest.advanceTimersByTime(499);
+      await nextTurn();
+      expect(settled).toBe(false);
+      jest.advanceTimersByTime(1);
+      await nextTurn();
+      expect(settled).toBe(true);
+      expect(await pending).toEqual([null, null, null]);
+      // These requests did not release their slots when the caller timed out.
+      const queued = getProfile({ ctx, did: "did:plc:queued" });
+      await nextTurn();
+      jest.advanceTimersByTime(500);
+      expect(await queued).toBeNull();
+      expect(get).toHaveBeenCalledTimes(3);
+    } finally {
+      gate.resolve();
+      await nextTurn();
+    }
     expect(await getProfile({ ctx, did: "did:plc:recovered" })).toEqual(
       profile("did:plc:recovered"),
     );

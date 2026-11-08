@@ -114,6 +114,24 @@ describe("account deletion", () => {
     expect(counts()).toEqual(TABLES.map(() => ({ count: 2 })));
   });
 
+  it("advances the follow generation without touching another user's fence", async () => {
+    await fixture.db
+      .insertInto("follow_sync_state")
+      .values([
+        { userDid: USER, revision: 4 },
+        { userDid: OTHER, revision: 7 },
+      ])
+      .execute();
+    await deleteAccountData({ agent: agentWith(), db: fixture.db });
+    await deleteAccountData({ agent: agentWith(), db: fixture.db });
+    expect(
+      await fixture.db.selectFrom("follow_sync_state").selectAll().orderBy("userDid").execute(),
+    ).toEqual([
+      { userDid: USER, revision: 6 },
+      { userDid: OTHER, revision: 7 },
+    ]);
+  });
+
   it("follows a short page's cursor before deleting its records", async () => {
     const get = mock(async () => emptyPage())
       .mockResolvedValueOnce({

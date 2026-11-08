@@ -1,6 +1,7 @@
 import type { SessionClient } from "../auth/client";
 import { ids } from "../bsky/lexicon/index";
 import type { Database } from "../db";
+import { sql } from "kysely";
 import { removeUserDir } from "../data/personalLibrary";
 
 type ListRecordsOut = {
@@ -94,6 +95,13 @@ export async function deleteAccountData({
     await trx.deleteFrom("buzz").where("userDid", "=", did).execute();
     await trx.deleteFrom("user_book").where("userDid", "=", did).execute();
     await trx.deleteFrom("user_follows").where("userDid", "=", did).execute();
+    // Preserve a generation even for an empty graph: an older scan must not
+    // republish follows after this cleanup commits.
+    await trx
+      .insertInto("follow_sync_state")
+      .values({ userDid: did, revision: 1 })
+      .onConflict((oc) => oc.column("userDid").doUpdateSet({ revision: sql<number>`revision + 1` }))
+      .execute();
     await trx.deleteFrom("progress_history").where("userDid", "=", did).execute();
     await trx.deleteFrom("sync_write_queue").where("userDid", "=", did).execute();
     // A leftover legacy KV array must not resurrect work. This does not cancel remote writes.

@@ -17,6 +17,7 @@ function initializationProbe(db: KvDb) {
   let attempts = 0;
   let operations = 0;
   let fail = false;
+  let failAfterRelease = false;
   const instrumented = db.withPlugin({
     transformQuery({ node, queryId }) {
       if (node.kind === "CreateTableNode") {
@@ -32,6 +33,7 @@ function initializationProbe(db: KvDb) {
       if (creates.delete(queryId)) {
         entered.resolve();
         await release.promise;
+        if (failAfterRelease) throw new Error("async CREATE failed");
       }
       return result;
     },
@@ -42,6 +44,9 @@ function initializationProbe(db: KvDb) {
     release: release.resolve,
     setFail: (value: boolean) => {
       fail = value;
+    },
+    setFailAfterRelease: (value: boolean) => {
+      failAfterRelease = value;
     },
     attempts: () => attempts,
     operations: () => operations,
@@ -61,6 +66,52 @@ const operations: [string, (driver: TestDriver) => unknown][] = [
 ];
 
 describe("SQLite KV table readiness", () => {
+  it("rejects overlapping waiters after asynchronous initialization failure, then retries", async () => {
+    const { db } = createSharedKvDb(":memory:");
+    const probe = initializationProbe(db);
+    const driver = sqliteKv({ table: "kv", db: probe.db });
+    probe.setFailAfterRelease(true);
+    const pending = Promise.allSettled(operations.map(([, run]) => run(driver)));
+    try {
+      await probe.entered;
+      expect(probe.attempts()).toBe(1);
+      expect(probe.operations()).toBe(0);
+      probe.release();
+      const results = await pending;
+      for (const result of results) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected")
+          expect(String(result.reason)).toContain("async CREATE failed");
+      }
+      expect(probe.operations()).toBe(0);
+      probe.setFailAfterRelease(false);
+      await driver.setItem!("key", "retry", {});
+      expect(await driver.getItem!("key", {})).toBe("retry");
+      expect(probe.attempts()).toBe(2);
+    } finally {
+      probe.release();
+      await pending;
+      await db.destroy();
+    }
+  });
+
+  it("bypasses CREATE when the caller owns schema initialization", async () => {
+    const { db } = createSharedKvDb(":memory:");
+    const setup = sqliteKv({ table: "kv", db });
+    try {
+      await setup.getKeys!("", {});
+      const probe = initializationProbe(db);
+      probe.setFail(true);
+      const driver = sqliteKv({ table: "kv", db: probe.db, tableCreated: true });
+      await driver.setItem!("key", "value", {});
+      expect(await driver.getItem!("key", {})).toBe("value");
+      expect(probe.attempts()).toBe(0);
+      expect(probe.operations()).toBe(2);
+    } finally {
+      await db.destroy();
+    }
+  });
+
   it("rejects a failed CREATE for every waiter, then retries on the next operation", async () => {
     const { db } = createSharedKvDb(":memory:");
     const probe = initializationProbe(db);

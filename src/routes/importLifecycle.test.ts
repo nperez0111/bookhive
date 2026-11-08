@@ -42,6 +42,11 @@ function harness(
   };
   const stream = {
     aborted: options.aborted ?? false,
+    abort: () => {
+      if (stream.aborted) return;
+      stream.aborted = true;
+      abort();
+    },
     onAbort: (listener: () => void) => {
       abort = listener;
     },
@@ -164,6 +169,58 @@ test("completion drains ordered SSE, releases once and ignores captured late cal
   expect(h.counts()).toEqual({ releases: 1, terminations: 1, starts: 1 });
   expect(h.scheduled.size).toBe(0);
 });
+
+test.each(["success-deadline", "error-deadline", "error-grace", "timeout-grace"] as const)(
+  "real Hono %s settles blocked writes before late cancellation without draining",
+  async (outcome) => {
+    const ready = Promise.withResolvers<ReturnType<typeof harness>>();
+    let startedWrites = 0;
+    let settledWrites = 0;
+    let transportAborted = false;
+    const app = new Hono();
+    app.get("/", (c) =>
+      streamSSE(c, async (stream) => {
+        const writeSSE = stream.writeSSE.bind(stream);
+        stream.writeSSE = async (message) => {
+          startedWrites++;
+          try {
+            await writeSSE(message);
+          } finally {
+            settledWrites++;
+          }
+        };
+        stream.onAbort(() => {
+          transportAborted = true;
+        });
+        const h = harness({ stream });
+        ready.resolve(h);
+        await h.done;
+      }),
+    );
+    const response = await app.request("/");
+    const h = await ready.promise;
+    try {
+      for (let i = 0; i < 5; i++) h.send({ type: "sse", data: "progress" });
+      if (outcome === "success-deadline") h.send({ type: "done" });
+      else if (outcome !== "timeout-grace") h.send({ type: "done", error: "failed" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(startedWrites).toBeGreaterThan(settledWrites);
+      if (outcome === "timeout-grace") h.scheduled.get(1)!();
+      h.scheduled.get(outcome.endsWith("grace") ? 3 : 1)!();
+      await h.done;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      // Do not read the response: abort must release the real Hono write itself.
+      expect(transportAborted).toBe(true);
+      expect(settledWrites).toBe(startedWrites);
+      expect(h.counts()).toEqual({ releases: 1, terminations: 1, starts: 1 });
+      expect(h.scheduled.size).toBe(0);
+      await response.body!.cancel();
+      expect(settledWrites).toBe(startedWrites);
+    } finally {
+      await response.body!.cancel();
+    }
+  },
+);
 
 test.each(["done-error", "crash", "timeout"])(
   "%s cleans up even when terminal SSE rejects",

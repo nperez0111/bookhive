@@ -30,8 +30,13 @@ remain stripped from page metadata. Local HTTP origins remain HTTP when configur
   with at most 1s grace; abort or the original deadline interrupts an existing drain. A timeout
   starting its own error drain gets only that 1s grace, never an unbounded wait. Error delivery
   remains best effort when output is blocked; abort/write failure returns without draining.
+  Interrupted drains explicitly call Hono's supported `stream.abort()` before callback return,
+  cancelling its underlying reader so blocked writes settle without client consumption. Merely
+  returning would leave Hono's `close()` blocked and disable its later disconnect cancellation.
   Hono observes disconnects via `onAbort` (its underlying writer swallows transport rejections).
   Client EOF without a terminal event is an error, not completion.
+  Worker progress messages await acknowledgement after each SSE write, bounding the cross-thread
+  backlog for slow clients; heartbeat writes also allow only one outstanding write.
 
 `/admin/export` prepares its sanitized files in a short-lived worker and streams tar/gzip.
 A dedicated SQLite lock spans preparation, download, child termination and cleanup across

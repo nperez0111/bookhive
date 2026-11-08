@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createStorage } from "unstorage";
 import memoryDriver from "unstorage/drivers/memory";
+import type { KyselyPlugin } from "kysely";
 
 import type { SessionClient } from "../auth/client";
 import type { BookUtilContext } from "../context";
@@ -9,10 +10,14 @@ import type { Database } from "../db";
 import type { BookRecordValue, HiveId } from "../types";
 import { getBookRecord, getUserBook, updateBookRecord } from "./getBook";
 import { completeUserBookRecord } from "./userBookFollowUp";
+import * as followUpModule from "./userBookFollowUp";
 import { recordFromUserBook } from "./userBookStore";
 import { toUserBookView } from "../core/userBookView";
 import { createTestDb } from "../test/db";
 import { LABEL, userBookFollowUpTotal } from "../metrics";
+import { enqueuePdsWrite } from "../data/syncWriteQueue";
+import { bridgeProgressToUserBook } from "../data/syncBridge";
+import { drainSyncWrites } from "./syncWriteDrain";
 
 const DID = "did:plc:testuser";
 const HIVE_ID = "bk_dune" as HiveId;
@@ -161,6 +166,275 @@ describe("updateBookRecord", () => {
       })
       .execute();
   }
+
+  it.each(["progress", "interactive", "delete", "lease"] as const)(
+    "fences real deferred publication after an intervening %s change",
+    async (change) => {
+      const progress = {
+        percent: 20,
+        currentPage: 20,
+        totalPages: 100,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      const original = baseRecord({ status: READING, bookProgress: progress });
+      const { agent, pds } = fakePds({ value: original, cid: "cid0" });
+      await seedRow(original, "cid0", { status: READING, bookProgress: JSON.stringify(progress) });
+      await enqueuePdsWrite(db, DID, { hiveId: HIVE_ID, bookProgress: JSON.stringify(progress) });
+      const committed = Promise.withResolvers<void>();
+      const reply = Promise.withResolvers<void>();
+      const rawPost = agent.post.bind(agent);
+      let holdFirst = true;
+      const post = spyOn(agent, "post").mockImplementation(async (name, opts) => {
+        const result = await rawPost(name, opts);
+        if (name === "com.atproto.repo.putRecord" && holdFirst) {
+          holdFirst = false;
+          committed.resolve();
+          await reply.promise;
+        }
+        return result;
+      });
+      const run = () =>
+        drainSyncWrites({
+          db,
+          kv: ctx.kv,
+          userDid: DID,
+          write: async (entry, syncPublication) => {
+            await updateBookRecord({
+              ctx,
+              agent,
+              hiveId: entry.hiveId,
+              updates: { bookProgress: JSON.parse(entry.bookProgress) },
+              syncPublication,
+            });
+          },
+        });
+      const running = run();
+      void running.then(
+        (result) => committed.reject(new Error(JSON.stringify(result))),
+        committed.reject,
+      );
+      const followUp = spyOn(followUpModule, "completeUserBookRecord");
+      try {
+        await committed.promise;
+        if (change === "progress") {
+          await bridgeProgressToUserBook(db, DID, HIVE_ID, 0.8);
+        } else if (change === "interactive") {
+          await updateBookRecord({ ctx, agent, hiveId: HIVE_ID, updates: { stars: 8 } });
+        } else if (change === "delete") {
+          await db.transaction().execute(async (tx) => {
+            await tx.deleteFrom("user_book").where("userDid", "=", DID).execute();
+            await tx.deleteFrom("sync_write_queue").where("userDid", "=", DID).execute();
+          });
+        } else {
+          await db
+            .updateTable("sync_write_state")
+            .set({ leaseToken: "replacement" })
+            .where("userDid", "=", DID)
+            .execute();
+        }
+        const historyBefore = await db.selectFrom("progress_history").selectAll().execute();
+        followUp.mockClear();
+        reply.resolve();
+        expect(await running).toMatchObject({ failed: 1 });
+        expect(followUp).not.toHaveBeenCalled();
+        expect(await db.selectFrom("progress_history").selectAll().execute()).toEqual(
+          historyBefore,
+        );
+        const row = await getUserBook({ ctx, agent, hiveId: HIVE_ID });
+        expect(pds.record).not.toBeNull(); // Remote commit cannot be cancelled retroactively.
+        if (change === "delete") expect(row).toBeNull();
+        else if (change === "interactive") expect(row?.stars).toBe(8);
+        else {
+          expect(row?.cid).toBe("cid0");
+          expect(row?.bookProgress?.percent).toBe(change === "progress" ? 80 : 20);
+        }
+        if (change === "progress") {
+          const queued = await db
+            .selectFrom("sync_write_queue")
+            .select("bookProgress")
+            .executeTakeFirstOrThrow();
+          expect(JSON.parse(queued.bookProgress).percent).toBe(80);
+          post.mockRestore();
+          expect(await run()).toMatchObject({ failed: 0, remaining: 0 });
+          expect((await getUserBook({ ctx, agent, hiveId: HIVE_ID }))?.bookProgress?.percent).toBe(
+            80,
+          );
+          expect(pds.record?.value.bookProgress?.percent).toBe(80);
+        }
+      } finally {
+        reply.resolve();
+        await running;
+        post.mockRestore();
+        followUp.mockRestore();
+      }
+    },
+  );
+
+  it("never creates a record when a tracked book disappears after the drain snapshot", async () => {
+    const original = baseRecord();
+    const { agent, names } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0");
+    await enqueuePdsWrite(db, DID, { hiveId: HIVE_ID, bookProgress: '{"percent":20}' });
+    const result = await drainSyncWrites({
+      db,
+      kv: ctx.kv,
+      userDid: DID,
+      write: async (entry, syncPublication) => {
+        await db.deleteFrom("user_book").where("uri", "=", URI).execute();
+        await updateBookRecord({
+          ctx,
+          agent,
+          hiveId: entry.hiveId,
+          updates: { bookProgress: JSON.parse(entry.bookProgress) },
+          syncPublication,
+        });
+      },
+    });
+    expect(result).toMatchObject({ failed: 1 });
+    expect(names()).toEqual([]);
+    expect(await getUserBook({ ctx, agent, hiveId: HIVE_ID })).toBeNull();
+  });
+
+  it.each(["progress", "interactive", "delete", "lease"] as const)(
+    "does not retry a PDS conflict after losing %s authority during getRecord",
+    async (change) => {
+      const progress = { percent: 20, updatedAt: "2026-01-01T00:00:00.000Z" };
+      const original = baseRecord({ status: READING, bookProgress: progress });
+      const remote = baseRecord({ status: READING, bookProgress: { ...progress, percent: 60 } });
+      const { agent, names, pds } = fakePds({ value: remote, cid: "external-cid" });
+      await seedRow(original, "cid0", { status: READING, bookProgress: JSON.stringify(progress) });
+      await enqueuePdsWrite(db, DID, { hiveId: HIVE_ID, bookProgress: JSON.stringify(progress) });
+      const rawGet = agent.get.bind(agent);
+      const get = spyOn(agent, "get").mockImplementation(async (name, opts) => {
+        const result = await rawGet(name, opts);
+        if (change === "progress") await bridgeProgressToUserBook(db, DID, HIVE_ID, 0.8);
+        else if (change === "interactive") {
+          await db
+            .updateTable("user_book")
+            .set({ cid: "newer-local-cid" })
+            .where("uri", "=", URI)
+            .execute();
+        } else if (change === "delete") {
+          await db.deleteFrom("user_book").where("uri", "=", URI).execute();
+        } else {
+          await db
+            .updateTable("sync_write_state")
+            .set({ leaseToken: "replacement" })
+            .where("userDid", "=", DID)
+            .execute();
+        }
+        return result;
+      });
+      try {
+        expect(
+          await drainSyncWrites({
+            db,
+            kv: ctx.kv,
+            userDid: DID,
+            write: async (entry, syncPublication) => {
+              await updateBookRecord({
+                ctx,
+                agent,
+                hiveId: entry.hiveId,
+                updates: { bookProgress: JSON.parse(entry.bookProgress) },
+                syncPublication,
+              });
+            },
+          }),
+        ).toMatchObject({ failed: 1 });
+        expect(names()).toEqual(["putRecord", "getRecord"]);
+        expect(pds.record?.value.bookProgress?.percent).toBe(60);
+        expect(await db.selectFrom("progress_history").selectAll().execute()).toEqual([]);
+        if (change === "progress") {
+          expect((await getUserBook({ ctx, agent, hiveId: HIVE_ID }))?.bookProgress?.percent).toBe(
+            80,
+          );
+          const queued = await db
+            .selectFrom("sync_write_queue")
+            .select("bookProgress")
+            .executeTakeFirstOrThrow();
+          expect(JSON.parse(queued.bookProgress).percent).toBe(80);
+        }
+      } finally {
+        get.mockRestore();
+      }
+    },
+  );
+
+  it("publishes deferred page history in the same transaction as the mirror, before account cleanup", async () => {
+    const progress = {
+      percent: 20,
+      currentPage: 20,
+      totalPages: 100,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const original = baseRecord({ status: READING, bookProgress: progress });
+    const { agent } = fakePds({ value: original, cid: "cid0" });
+    await seedRow(original, "cid0", { status: READING, bookProgress: JSON.stringify(progress) });
+    await enqueuePdsWrite(db, DID, { hiveId: HIVE_ID, bookProgress: JSON.stringify(progress) });
+    const historyRead = Promise.withResolvers<void>();
+    const resumeHistory = Promise.withResolvers<void>();
+    const historyQueries = new WeakSet<object>();
+    const plugin: KyselyPlugin = {
+      transformQuery(args) {
+        if (
+          args.node.kind === "SelectQueryNode" &&
+          JSON.stringify(args.node).includes('"name":"progress_history"')
+        ) {
+          historyQueries.add(args.queryId);
+        }
+        return args.node;
+      },
+      async transformResult(args) {
+        if (historyQueries.has(args.queryId)) {
+          historyRead.resolve();
+          await resumeHistory.promise;
+        }
+        return args.result;
+      },
+    };
+    const writing = drainSyncWrites({
+      db,
+      kv: ctx.kv,
+      userDid: DID,
+      write: async (entry, syncPublication) => {
+        await updateBookRecord({
+          ctx: { ...ctx, db: db.withPlugin(plugin) },
+          agent,
+          hiveId: entry.hiveId,
+          updates: { bookProgress: JSON.parse(entry.bookProgress) },
+          syncPublication,
+        });
+      },
+    });
+    void writing.then(
+      (result) => historyRead.reject(new Error(JSON.stringify(result))),
+      historyRead.reject,
+    );
+    let deleting: Promise<void> | undefined;
+    try {
+      await historyRead.promise;
+      let cleanupEntered = false;
+      deleting = db.transaction().execute(async (tx) => {
+        cleanupEntered = true;
+        await tx.deleteFrom("user_book").where("userDid", "=", DID).execute();
+        await tx.deleteFrom("sync_write_queue").where("userDid", "=", DID).execute();
+        await tx.deleteFrom("progress_history").where("userDid", "=", DID).execute();
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(cleanupEntered).toBe(false);
+      resumeHistory.resolve();
+      expect(await writing).toMatchObject({ failed: 0 });
+      await deleting;
+      expect(await db.selectFrom("user_book").selectAll().execute()).toEqual([]);
+      expect(await db.selectFrom("progress_history").selectAll().execute()).toEqual([]);
+      expect(await db.selectFrom("sync_write_queue").selectAll().execute()).toEqual([]);
+    } finally {
+      resumeHistory.resolve();
+      await writing;
+      await deleting;
+    }
+  });
 
   it("merges locally and writes once with a CAS on the row's cid", async () => {
     const original = baseRecord();

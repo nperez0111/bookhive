@@ -13,6 +13,8 @@ so the next call can retry; it must not set a permanent ready flag before CREATE
 The explicit `tableCreated` option still bypasses CREATE for callers that own schema setup.
 `getInstance` is synchronous connection access, not initialization. Busy retry and vacuum policies
 are unchanged.
+Regression coverage includes delayed asynchronous CREATE failure shared by overlapping
+operations, retry, the explicit schema-ready bypass, and startup key preloading.
 
 ## `bun:sqlite` is synchronous — a slow query is a whole-worker outage
 
@@ -57,6 +59,9 @@ fresh. The two writes are not atomic; metadata failure can leave new data with o
 freshness and cause an extra fetch. Read/metadata-read failures still reject, as before.
 There is no timeout, failure backoff, eviction policy, or cross-process lock in this helper;
 a hung fetch/write retains its flight until it settles.
+SQLite-backed unstorage regressions exercise native/custom timestamp precedence and
+metadata publication failure as well as falsy cache hits; custom timestamps override
+the driver's native update time, so a failed metadata write can require another fetch.
 
 The unused `requestsPerSecond` option and its caller argument were removed along with the
 per-call bucket, which restarted full for every lookup and never enforced a shared

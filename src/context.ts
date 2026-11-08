@@ -660,7 +660,7 @@ export function createContextMiddleware(deps: AppDeps) {
       getSessionAgent(c.req.raw, c.res, ctx, sessionTiming).then((client) => {
         if (client) {
           ctx.addWideEventContext({ userDid: client.did });
-          void flushPendingSyncWrites(client, ctx);
+          void flushPendingSyncWrites(client, ctx, deps.logger);
         }
         return client;
       }),
@@ -701,22 +701,48 @@ export function createContextMiddleware(deps: AppDeps) {
  * routes through the canonical `updateBookRecord` writer so PDS + DB stay
  * consistent with every other book update.
  */
-async function flushPendingSyncWrites(client: SessionClient, ctx: BookUtilContext): Promise<void> {
+async function flushPendingSyncWrites(
+  client: SessionClient,
+  ctx: BookUtilContext,
+  logger: AppDeps["logger"],
+): Promise<void> {
   try {
-    await drainSyncWrites({
+    const summary = await drainSyncWrites({
       db: ctx.db,
       kv: ctx.kv,
       userDid: client.did,
-      write: async (entry) => {
+      onStalled: (durationMs) =>
+        logger.warn(
+          {
+            event: "sync_write_drain",
+            outcome: "stalled",
+            userDid: client.did,
+            duration_ms: durationMs,
+          },
+          "sync progress write still running; retaining drain ownership",
+        ),
+      write: async (entry, syncPublication) => {
         await updateBookRecord({
           ctx,
           agent: client,
           hiveId: entry.hiveId,
           updates: { bookProgress: JSON.parse(entry.bookProgress) },
+          syncPublication,
         });
       },
     });
-  } catch {
-    // fire-and-forget — don't break the login flow
+    // Detached work may finish after the request's wide event has already emitted.
+    if (summary) {
+      const fields = { event: "sync_write_drain", userDid: client.did, ...summary };
+      if (summary.failed || summary.lease_lost)
+        logger.warn(fields, "sync progress drain incomplete");
+      else logger.info(fields, "sync progress drain completed");
+    }
+  } catch (error) {
+    logger.warn(
+      { event: "sync_write_drain", userDid: client.did, error: errorMessage(error) },
+      "sync progress drain failed",
+    );
+    // Fire-and-forget — don't break the login flow.
   }
 }

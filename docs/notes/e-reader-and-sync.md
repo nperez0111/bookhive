@@ -79,8 +79,12 @@ Every replacement has a new opaque revision; success deletes only the revision a
 and failure never replaces a whole user's queue. Untracked books are discarded without creation.
 The canonical PDS writer still owns merge/CAS, lifecycle inference and follow-up work.
 
-`services/syncWriteDrain.ts` takes at most 100 entries per session opportunity. A token-qualified
-per-DID SQL lease serializes drains across workers; it lasts 60 seconds and renews every 15 seconds
+`services/syncWriteDrain.ts` takes at most 100 entries per session opportunity (a count limit,
+not a wall-clock deadline). Once legacy import is marked complete, an empty queue takes a single
+read-only main-DB query: no lease writes and no legacy KV access. This is only a hint; the lease,
+import and subsequent queue snapshot still decide what may run. A producer arriving after the
+empty read waits for another session opportunity, as one arriving after the snapshot already does.
+A token-qualified per-DID SQL lease serializes drains across workers; it lasts 60 seconds and renews every 15 seconds
 while transport work is active, as well as before each entry. Failed revisions move to the end of
 attempt ordering (`enqueuedAt`) so a failing batch cannot permanently starve later books. There is
 no periodic background PDS login or new retry loop. Ack/release/renew check the lease token;
@@ -88,6 +92,25 @@ completion of an old request cannot delete a newer enqueue or release a replacem
 The lease recovers crashed workers, but SQLite cannot fence a live remote PDS operation after a
 process pause exceeding the lease; this is not an exactly-once transport guarantee. Likewise account
 deletion cannot cancel an already-running PDS write. Global deletion/write quiescence remains open.
+
+**A live stalled write can retain the lease indefinitely**, preventing other session opportunities
+from draining this DID. Do not release it on a caller-only deadline: the old operation could still
+publish after a replacement starts. Context7's current Atcute client/OAuth documentation and the
+installed `@atcute/client` 5.1.1 / `@atcute/oauth-node-client` 2.0.1 implementation were checked:
+XRPC forwards an optional request signal but supplies no default deadline. `OAuthSession.handle`
+gets tokens before forwarding that signal to the PDS fetch; token acquisition uses a separate
+30s signal and issuer verification has a 10s signal, but the token endpoint POST does not receive
+either signal. These are not an end-to-end bound, nor does the app's bounded OAuth restore guard
+bound subsequent session writes. Runtime/network timeouts must not be treated as a drain guarantee.
+A safe duration bound requires cancellation/settlement throughout token refresh and the canonical
+writer, or stronger remote/local publication ownership; it is not implemented here.
+
+Detached drains emit one structured `sync_write_drain` summary for a nonempty snapshot (selected,
+attempted, failed, remaining backlog, observed lease loss, duration and last error), or a warning
+on infrastructure failure. The application logger is used because the initiating request's wide
+event may already have emitted. Empty/busy opportunities stay quiet. Once per drain, a write still
+active after 60s emits a stalled warning without releasing ownership; normal heartbeat renewal
+continues. Deterministic clock/timer tests exercise renewal and exclusion past initial lease expiry.
 
 The old `sync_pending:<did>` KV array is imported **once** per DID, transactionally with a durable
 marker. Existing SQL progress wins over legacy values. Only then is the old key removed, best effort;
@@ -97,12 +120,22 @@ queue entries and retains the minimal import marker so leftover legacy work cann
 Deploy by restarting the worker set together: old binaries must not continue producing/acknowledging
 KV arrays after a DID's import marker is committed. No downgrade synchronization is provided.
 
-Revision-qualified acknowledgement protects queued intent, **not local publication**: if an older
-drain is in `updateBookRecord` while a newer push commits mirror + queue, the older writer's
-unconditional `updateUserBook` publication can overwrite the newer optimistic mirror. The newer
-queue revision survives for a later session opportunity. Fixing this requires a revision-aware
-publication boundary in the canonical writer, not a post-drain restore (which would itself race).
-The lease also does not serialize interactive writers with drains.
+Deferred calls to `updateBookRecord` also carry the selected row's URI/CID, queue revision and
+lease token. They refuse a missing/replaced row before sending, and recheck this authority in an
+immediate transaction with the existing mirror upsert and page-history publication. A newer queued push,
+acknowledged CID-changing interactive edit, deleted row/queue or replacement lease prevents stale mirror publication,
+history and initiation of follow-up work. History cannot outlive this publication transaction and
+reinsert after account cleanup. Follow-up starts after commit and is still detached: a subsequent
+deletion cannot cancel its remote work. The newer intent stays queued for a subsequent opportunity; a CAS
+retry then merges against the actual PDS record. Direct interactive writes retain their existing
+behavior. Composed tests run the real canonical writer, including response-after-new-push,
+interactive-edit, deletion and lease-replacement interleavings, not just a mocked drain callback.
+This is a **local publication fence**, not cancellation of an already-committed remote write:
+the lease does not serialize interactive writers or remote account deletion with drains, and
+ingestion may still observe remote commits independently. It is not a global account tombstone.
+Column-only changes without a new CID or queue revision (for example an upload setting `owned`)
+are not detected by this fence and retain the existing whole-record publication race. It is not
+a revision covering every local mutation.
 
 `recordSyncProgress` uses one upsert, preserving links, dismissals and omitted metadata. Matching
 uses persisted metadata and adopts the stored winner, even after a miss. Before bridging, the

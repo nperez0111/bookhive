@@ -87,6 +87,14 @@ async function fetchAndCommitFollows(
   let cursor: string | undefined;
   let totalSynced = 0;
   let complete = false;
+  // An absent row is revision zero, including for an empty graph. Publication
+  // must compete with both other scans and acknowledged interactive writes.
+  const baseline = await ctx.db
+    .selectFrom("follow_sync_state")
+    .select("revision")
+    .where("userDid", "=", userDid)
+    .executeTakeFirst();
+  const revision = baseline?.revision ?? 0;
 
   // Bound requests: duplicate pages must not run forever, even with fresh cursors.
   for (let page = 0; page < 500; page++) {
@@ -100,6 +108,20 @@ async function fetchAndCommitFollows(
     });
     if (!response.ok) throw new Error("Failed to fetch follows");
     const out = response.data as { follows: Follow[]; cursor?: string };
+    if (
+      !out ||
+      !Array.isArray(out.follows) ||
+      out.follows.some(
+        (follow) =>
+          !follow ||
+          typeof follow.did !== "string" ||
+          !follow.did ||
+          (follow.createdAt !== undefined && typeof follow.createdAt !== "string"),
+      ) ||
+      (out.cursor !== undefined && (typeof out.cursor !== "string" || !out.cursor))
+    ) {
+      throw new Error("Incomplete follows scan: malformed pagination");
+    }
     const follows = out.follows;
     if (out.cursor && (cursors.has(out.cursor) || follows.length === 0)) {
       throw new Error("Incomplete follows scan: invalid cursor traversal");
@@ -143,6 +165,20 @@ async function fetchAndCommitFollows(
   // untouched. The mark/upsert/prune sequence is atomic to other workers too.
   const now = new Date().toISOString();
   const removed = await ctx.db.transaction().execute(async (tx) => {
+    await tx
+      .insertInto("follow_sync_state")
+      .values({ userDid, revision: 0 })
+      .onConflict((oc) => oc.column("userDid").doNothing())
+      .execute();
+    const claimed = await tx
+      .updateTable("follow_sync_state")
+      .set({ revision: revision + 1 })
+      .where("userDid", "=", userDid)
+      .where("revision", "=", revision)
+      .executeTakeFirst();
+    if (claimed.numUpdatedRows !== 1n) {
+      throw new Error("Follow mirror changed during scan; retry synchronization");
+    }
     if (syncType === "full") {
       await tx
         .updateTable("user_follows")

@@ -3,6 +3,7 @@ import type { ImportRequest, ImportSseAck, ImportWorkerMessage } from "../worker
 type ImportWorker = Pick<Worker, "onmessage" | "onerror" | "postMessage" | "terminate">;
 type ImportStream = {
   aborted: boolean;
+  abort: () => void;
   onAbort: (listener: () => void) => void;
   writeSSE: (message: { data: string; event?: string }) => Promise<unknown>;
 };
@@ -29,7 +30,7 @@ export async function runImportWorker({
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let errorDrainTimeout: ReturnType<typeof setTimeout> | undefined;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
-  let terminal = false;
+  let workerStopped = false;
   let heartbeatPending = false;
   let writes = Promise.resolve();
   let resolveDone!: () => void;
@@ -37,26 +38,39 @@ export async function runImportWorker({
     resolveDone = resolve;
   });
 
-  const complete = () => {
+  const completeOutput = () => {
     if (timeout !== undefined) timers.clearTimeout(timeout);
     if (errorDrainTimeout !== undefined) timers.clearTimeout(errorDrainTimeout);
     resolveDone();
   };
-  const finish = (error?: { message: string; error: string }, drain = !!error) => {
+  const interruptOutput = () => {
+    // Hono's close() marks the stream closed before its writer settles. Abort
+    // first: it cancels the underlying reader and releases blocked writes even
+    // if the client never reads (or disconnects after callback-owned close).
+    if (!stream.aborted) stream.abort();
+    completeOutput();
+  };
+  const finishWorker = (error?: { message: string; error: string }, drain = !!error) => {
     // Abort/write failure can also interrupt an already-terminal output drain.
-    if (!drain) complete();
-    if (terminal) return;
-    terminal = true;
+    if (workerStopped) {
+      if (!drain) interruptOutput();
+      return;
+    }
+    workerStopped = true;
     if (heartbeat !== undefined) timers.clearInterval(heartbeat);
     if (worker) {
       worker.onmessage = null;
       worker.onerror = null;
       worker.terminate();
     }
+    if (!drain) {
+      interruptOutput();
+      return;
+    }
     if (error && !stream.aborted) {
       // Hono closes when our callback returns. Give even timeout/startup errors
       // time to write, but never let their output hold the route indefinitely.
-      errorDrainTimeout = timers.setTimeout(complete, ERROR_DRAIN_MS);
+      errorDrainTimeout = timers.setTimeout(interruptOutput, ERROR_DRAIN_MS);
       writes = writes.then(async () => {
         await stream.writeSSE({
           data: JSON.stringify({
@@ -69,57 +83,59 @@ export async function runImportWorker({
       });
     }
     const settled = writes.catch(() => {});
-    if (drain) void settled.then(complete);
+    void settled.then(completeOutput);
   };
 
   const write = (message: { data: string; event?: string }, acknowledge = false) => {
-    writes = writes.then(() => stream.writeSSE(message)).then(() => {
-      // The worker may emit its next event only after actual stream backpressure
-      // clears. A terminal cleanup may have terminated it while the write waited.
-      if (acknowledge && !terminal) {
-        worker?.postMessage({ type: "sse-ack" } satisfies ImportSseAck);
-      }
-    });
+    writes = writes
+      .then(() => stream.writeSSE(message))
+      .then(() => {
+        // The worker may emit its next event only after actual stream backpressure
+        // clears. A terminal cleanup may have terminated it while the write waited.
+        if (acknowledge && !workerStopped) {
+          worker?.postMessage({ type: "sse-ack" } satisfies ImportSseAck);
+        }
+      });
     // Observe failures without letting an async event handler reject unobserved.
-    void writes.catch(() => finish());
+    void writes.catch(() => finishWorker());
     return writes;
   };
 
-  stream.onAbort(() => finish());
+  stream.onAbort(() => finishWorker());
   try {
     if (stream.aborted) {
-      finish();
+      finishWorker();
     } else {
       worker = createWorker();
       worker.onmessage = (event: MessageEvent<ImportWorkerMessage>) => {
-        if (terminal) return;
+        if (workerStopped) return;
         const msg = event.data;
         if (msg.type === "wide-event") {
           addWideEventContext(msg.context);
         } else if (msg.type === "sse") {
           void write({ data: msg.data }, true);
         } else {
-          finish(
+          finishWorker(
             msg.error ? { message: `Import failed: ${msg.error}`, error: msg.error } : undefined,
             true,
           );
         }
       };
       worker.onerror = (event) => {
-        finish({ message: "Import worker crashed", error: event.message || "Worker error" });
+        finishWorker({ message: "Import worker crashed", error: event.message || "Worker error" });
       };
       timeout = timers.setTimeout(() => {
-        if (terminal) {
-          complete();
+        if (workerStopped) {
+          interruptOutput();
           return;
         }
         const message = "Import timed out after 5 minutes";
-        finish({ message, error: message });
+        finishWorker({ message, error: message });
       }, timeoutMs);
       // Keepalives prevent idle timeouts while the worker starts up.
       heartbeat = timers.setInterval(() => {
         // Keep at most one queued/in-flight heartbeat behind a slow SSE write.
-        if (terminal || heartbeatPending) return;
+        if (workerStopped || heartbeatPending) return;
         heartbeatPending = true;
         void write({ data: "", event: "keepalive" })
           .finally(() => {
@@ -130,7 +146,7 @@ export async function runImportWorker({
       worker.postMessage(request, [request.csvData]);
     }
   } catch (error) {
-    finish({
+    finishWorker({
       message: "Import worker failed to start",
       error: error instanceof Error ? error.message : String(error),
     });

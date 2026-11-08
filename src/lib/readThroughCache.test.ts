@@ -1,6 +1,8 @@
 import { describe, it, expect, mock } from "bun:test";
 import { readThroughCache, type ReadThroughCacheOptions } from "./readThroughCache";
 import type { Storage, StorageMeta } from "unstorage";
+import { createStorage } from "unstorage";
+import sqliteKv, { createSharedKvDb } from "../sqlite-kv";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +63,56 @@ function deferred<T>() {
 // ---------------------------------------------------------------------------
 
 describe("readThroughCache", () => {
+  describe("real unstorage SQLite metadata", () => {
+    it("honors custom freshness over native metadata and caches falsy values", async () => {
+      const { db } = createSharedKvDb(":memory:");
+      const kv = createStorage({ driver: sqliteKv({ table: "cache", db }) });
+      try {
+        await kv.set("key", false);
+        await kv.setMeta("key", { timestamp: 0 });
+        expect((await kv.getMeta("key", { nativeOnly: true }))["timestamp"]).toBeGreaterThan(0);
+        expect((await kv.getMeta("key"))["timestamp"]).toBe(0);
+        const fetcher = mock(async () => 0);
+        expect(await readThroughCache<number | boolean>(kv, "key", fetcher)).toBe(0);
+        expect(await readThroughCache<number | boolean>(kv, "key", fetcher)).toBe(0);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+      } finally {
+        await kv.dispose();
+      }
+    });
+
+    it("preserves fetched success but does not refresh old custom metadata when publication fails", async () => {
+      const { db } = createSharedKvDb(":memory:");
+      const driver = sqliteKv({ table: "cache", db });
+      let failMetadata = false;
+      const kv = createStorage<string>({
+        driver: {
+          ...driver,
+          async setItem(key, value, options) {
+            if (failMetadata && key === "key$") throw new Error("metadata unavailable");
+            await driver.setItem!(key, value, options);
+          },
+        },
+      });
+      try {
+        await kv.set("key", "old");
+        await kv.setMeta("key", { timestamp: 0 });
+        failMetadata = true;
+        expect(await cacheGet(kv, "key", async () => "fresh", "fallback")).toBe("fresh");
+        expect(await kv.get("key")).toBe("fresh");
+        expect((await kv.getMeta("key"))["timestamp"]).toBe(0);
+        failMetadata = false;
+        const retry = mock(async () => "revalidated");
+        expect(await cacheGet(kv, "key", retry)).toBe("revalidated");
+        expect(retry).toHaveBeenCalledTimes(1);
+        expect(await cacheGet(kv, "key", retry)).toBe("revalidated");
+        expect(retry).toHaveBeenCalledTimes(1);
+      } finally {
+        await kv.dispose();
+      }
+    });
+  });
+
   // ------ Basic behavior (no SWR) ------
 
   describe("basic (no SWR)", () => {

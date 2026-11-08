@@ -10,7 +10,8 @@ is [mobile-state-machine-handoff.md](mobile-state-machine-handoff.md).
 - Book/buzz/shelf reconciliation: cursor-driven bounded traversal; incomplete scans must reject
   without pruning. Manual refresh reports failure; detached login work observes rejections.
 - Follow synchronization: stage pages; atomically commit a complete full snapshot; do not advance
-  freshness after incomplete scans. Incremental sync reactivates returned inactive rows.
+  freshness after incomplete scans. Incremental sync reactivates returned inactive rows. A durable
+  per-user revision fences publication against intervening scans and acknowledged follow/unfollow.
 - Account deletion: fail incomplete collection enumeration, transact local cleanup including
   reading progress history, and surface filesystem cleanup failures for retry.
 - Comment deletion: require PDS acknowledgement before removing the local mirror, for both JSON
@@ -25,8 +26,12 @@ Regression tests accompany these changes. Detailed invariants live in
 
 1. **Implemented: durable deferred sync acknowledgement** (`data/syncWriteQueue.ts`,
    `services/syncWriteDrain.ts`): guarantees, legacy cutover and limitations live in
-   `e-reader-and-sync.md`. Still open: canonical publication can overwrite newer optimistic
-   progress during an older drain, even though the newer queued revision survives.
+   `e-reader-and-sync.md`. Deferred canonical publication now checks the tracked URI/CID,
+   queue revision and lease token transactionally, preserving newer progress and deleted rows.
+   Remote commits remain uncancellable; this is not a global deletion/write barrier. A drain's
+   100-entry cap is not a duration bound: a transport that never settles retains its lease.
+   Releasing it at a caller-only deadline would permit overlapping live remote writes; recovery
+   needs transport-enforced cancellation or process replacement, not an unsafe timer unlock.
 2. **Implemented: sync association winners** (`data/syncBridge.ts`); see `e-reader-and-sync.md`.
    Still open: shared progress inference across mirror and canonical PDS flush, and partial
    commits in manual linking that creates a new tracked book.
@@ -59,7 +64,9 @@ Regression tests accompany these changes. Detailed invariants live in
   not an indefinitely running import. Partial/per-book outcomes remain distinct from pipeline completion.
   Terminal errors get a bounded 1s output drain before Hono closes the response; worker/heartbeat
   cleanup stays immediate, and disconnect/deadline interrupts existing drains. Real Hono streaming
-  regression tests cover callback-close ordering as well as blocked-writer interruption.
+  regression tests cover callback-close ordering and underlying blocked-write settlement without
+  reading the response. Upstream's per-event SSE acknowledgement bounds cross-thread backlog;
+  heartbeat writes are singleflight too. Production Bun/Nitro disconnect propagation remains unverified.
 - Search palette: agree on status-clearing contract with the server, prevent Enter on action
   buttons from triggering navigation, disable stale-query actions, reconcile status overrides.
 - **Implemented:** book-detail optimistic state replays remaining ordered operations over the
@@ -69,7 +76,7 @@ Regression tests accompany these changes. Detailed invariants live in
 
 ## Runtime, auth and auxiliary write paths
 
-- **Implemented:** OpenObserve retained payload bounds (1,000 entries/1 MiB), oldest-item deadlines,
+- **Implemented:** OpenObserve credited mailbox/HTTP payload bounds (1,024 entries/1 MiB, 64 KiB per line), oldest-item deadlines,
   consecutive-refusal reset, structured drop summaries and restart-only recovery.
   Stdout remains independent; shipping stays best effort, not durable. See `memory-and-runtime.md`.
 - Coordinate bounded graceful shutdown; current immediate exit does not await ingestion,

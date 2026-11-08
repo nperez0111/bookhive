@@ -56,6 +56,122 @@ describe("durable sync writes", () => {
   const drain = (write: (entry: { bookProgress: string }) => Promise<void>) =>
     drainSyncWrites({ db: fixture.db, kv, userDid: DID, write });
 
+  it("does no main-database writes or legacy reads on an imported empty queue", async () => {
+    // The first opportunity still has to durably complete legacy import.
+    expect(await drain(async () => {})).toBeNull();
+    const changes = () => fixture.sqlite.query("SELECT total_changes() AS n").get();
+    const before = changes();
+    const read = spyOn(kv, "getItem");
+    try {
+      expect(await drain(async () => {})).toBeNull();
+      expect(await drain(async () => {})).toBeNull();
+      expect(changes()).toEqual(before);
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
+    // A later producer must still be discovered by the read-only fast path.
+    await enqueue("new");
+    expect(await drain(async () => {})).toMatchObject({ selected: 1, remaining: 0 });
+  });
+
+  it("takes an authoritative snapshot after acquisition and legacy import", async () => {
+    const read = spyOn(kv, "getItem").mockImplementationOnce(async () => {
+      await enqueue("arrived during import");
+      return null;
+    });
+    try {
+      const written: string[] = [];
+      expect(
+        await drain(async (entry) => {
+          written.push(entry.bookProgress);
+        }),
+      ).toMatchObject({ selected: 1, attempted: 1, failed: 0, remaining: 0 });
+      expect(written).toEqual(["arrived during import"]);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
+  it("reports a failed revision and remaining backlog without swallowing its reason", async () => {
+    await enqueue("old");
+    expect(
+      await drain(async () => {
+        throw new Error("PDS offline");
+      }),
+    ).toMatchObject({
+      selected: 1,
+      attempted: 1,
+      failed: 1,
+      remaining: 1,
+      last_error: "PDS offline",
+    });
+  });
+
+  it("renews throughout a long live write, warns once, and excludes later drains", async () => {
+    await enqueue("old");
+    let now = Date.now();
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    let heartbeat!: () => Promise<void> | undefined;
+    const originalInterval = globalThis.setInterval;
+    const interval = spyOn(globalThis, "setInterval").mockImplementation(((
+      handler: () => void,
+      delay?: number,
+    ) => {
+      heartbeat = handler as () => Promise<void> | undefined;
+      return originalInterval(handler, delay);
+    }) as typeof globalThis.setInterval);
+    const entered = deferred(),
+      finish = deferred();
+    const warnings: number[] = [];
+    let calls = 0;
+    const running = drainSyncWrites({
+      db: fixture.db,
+      kv,
+      userDid: DID,
+      onStalled: (durationMs) => {
+        warnings.push(durationMs);
+      },
+      write: async () => {
+        calls++;
+        entered.resolve();
+        await finish.promise;
+      },
+    });
+    try {
+      await entered.promise;
+      // Exercise real renewal SQL with a deterministic clock, past initial expiry.
+      for (let tick = 0; tick < 6; tick++) {
+        now += SYNC_WRITE_LEASE_MS / 4;
+        await heartbeat();
+        const state = await fixture.db
+          .selectFrom("sync_write_state")
+          .selectAll()
+          .executeTakeFirstOrThrow();
+        expect(state.leaseUntil).toBe(now + SYNC_WRITE_LEASE_MS);
+        expect(
+          await drain(async () => {
+            calls++;
+          }),
+        ).toBeNull();
+      }
+      expect(calls).toBe(1);
+      expect(warnings).toEqual([SYNC_WRITE_LEASE_MS]);
+      expect(await pending()).toHaveLength(1);
+    } finally {
+      finish.resolve();
+      await running;
+      interval.mockRestore();
+      clock.mockRestore();
+    }
+    expect(await pending()).toEqual([]);
+    const state = await fixture.db
+      .selectFrom("sync_write_state")
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    expect(state.leaseToken).toBeNull();
+  });
+
   for (const fails of [false, true]) {
     it(`preserves newer progress when an older write ${fails ? "fails" : "succeeds"}`, async () => {
       await enqueue("old");

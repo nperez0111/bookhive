@@ -1,8 +1,16 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { Database as DatabaseSync } from "bun:sqlite";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Kysely, SqliteDialect } from "kysely";
 import type { AppContext } from "../context";
 import type { SessionClient } from "../auth/client";
-import { createTestDb } from "../test/db";
+import { createTestDb, testContext } from "../test/db";
+import { wrapBunSqliteForKysely } from "../bun-sqlite-kysely";
+import { migrateToLatest, type DatabaseSchema } from "../db";
 import type { FollowsSync } from "./getFollows";
+import { followUser, unfollowUser } from "./followGraph";
 
 const { shouldSyncFollows, getUserFollows, syncUserFollows } = await import("./getFollows");
 
@@ -193,7 +201,7 @@ describe("follow sync completion and atomicity", () => {
       .where("userDid", "=", userDid)
       .orderBy("followsDid")
       .execute();
-  const page = (dids: string[], cursor?: string) => ({
+  const page = (dids: readonly string[], cursor?: string) => ({
     ok: true,
     data: { follows: dids.map((did) => ({ did })), cursor },
   });
@@ -364,12 +372,174 @@ describe("follow sync completion and atomicity", () => {
 
   it("rolls back stale marking when the commit fails and does not mark fresh", async () => {
     const before = await rows();
-    const result = await syncUserFollows(
-      ctx,
-      agent(mock(async () => ({ ok: true, data: { follows: [{ did: null }] } }))),
-    ).catch((error: unknown) => error);
+    fixture.sqlite.exec(`CREATE TRIGGER reject_follow_insert BEFORE INSERT ON user_follows
+      BEGIN SELECT RAISE(ABORT, 'test commit failure'); END`);
+    const result = await syncUserFollows(ctx, agent(mock(async () => page(["new"])))).catch(
+      (error: unknown) => error,
+    );
     expect(result).toBeInstanceOf(Error);
     expect(await rows()).toEqual(before);
     expect(set).not.toHaveBeenCalled();
+    expect(await fixture.db.selectFrom("follow_sync_state").selectAll().execute()).toEqual([]);
+  });
+
+  for (const mode of ["full", "incremental"]) {
+    for (const action of ["follow", "unfollow"]) {
+      it(`${mode}: an acknowledged ${action} during traversal fences publication`, async () => {
+        if (mode === "incremental") incremental();
+        const beforeMetadata = metadata;
+        const targetDid = action === "follow" ? "new" : "inactive";
+        const writeAgent = {
+          did: userDid,
+          get: mock(async () => ({
+            ok: true,
+            data: {
+              records: [
+                {
+                  uri: `at://${userDid}/app.bsky.graph.follow/record`,
+                  value: { subject: targetDid },
+                },
+              ],
+            },
+          })),
+          post: mock(async () => ({
+            ok: true,
+            data: { results: [{ $type: "com.atproto.repo.applyWrites#createResult" }] },
+          })),
+        } as unknown as SessionClient;
+        const scan = agent(
+          mock(async () => {
+            const mutate = action === "follow" ? followUser : unfollowUser;
+            expect(await mutate({ db: fixture.db, agent: writeAgent, targetDid })).toEqual({
+              ok: true,
+            });
+            // This response was captured before the acknowledged interactive write.
+            return page(action === "follow" ? [] : [targetDid]);
+          }),
+        );
+        const result = await syncUserFollows(ctx, scan).catch((error: unknown) => error);
+        expect(result).toMatchObject({ message: expect.stringContaining("changed during scan") });
+        const stored = await rows();
+        expect(stored.find((row) => row.followsDid === targetDid)?.isActive).toBe(
+          action === "follow" ? 1 : 0,
+        );
+        expect(stored.find((row) => row.followsDid === "old")?.isActive).toBe(1);
+        expect(metadata).toEqual(beforeMetadata);
+        expect(set).not.toHaveBeenCalled();
+        expect(writeAgent.post).toHaveBeenCalledTimes(1);
+      });
+    }
+  }
+
+  it.each([{ newerDids: [] }, { newerDids: ["newer"] }])(
+    "fences an older scan after a newer snapshot commits: %j",
+    async ({ newerDids }) => {
+      await fixture.db.deleteFrom("user_follows").execute();
+      let release!: () => void;
+      let entered!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const older = syncUserFollows(
+        ctx,
+        agent(
+          mock(async () => {
+            entered();
+            await pending;
+            return page(["older"]);
+          }),
+        ),
+      );
+      // Attach the rejection observer before releasing the older scan.
+      const rejected = older.catch((error: unknown) => error);
+      try {
+        await Promise.race([
+          started,
+          older.then(() => {
+            throw new Error("Older scan ended before entering the remote request");
+          }),
+        ]);
+        await syncUserFollows(ctx, agent(mock(async () => page(newerDids))));
+      } finally {
+        release();
+      }
+      expect(await rejected).toMatchObject({
+        message: expect.stringContaining("changed during scan"),
+      });
+      expect((await rows()).map((row) => row.followsDid)).toEqual([...newerDids]);
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(
+        (await fixture.db.selectFrom("follow_sync_state").selectAll().executeTakeFirstOrThrow())
+          .revision,
+      ).toBe(1);
+    },
+  );
+
+  it("observes the interactive mutation fence through an independent SQLite connection", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "bookhive-follow-sync-"));
+    const sqlite = new DatabaseSync(`${directory}/db.sqlite`);
+    sqlite.exec("PRAGMA journal_mode = WAL");
+    const scanDb = new Kysely<DatabaseSchema>({
+      dialect: new SqliteDialect({ database: wrapBunSqliteForKysely(sqlite) }),
+    });
+    const writeDb = new Kysely<DatabaseSchema>({
+      dialect: new SqliteDialect({
+        database: wrapBunSqliteForKysely(new DatabaseSync(`${directory}/db.sqlite`)),
+      }),
+    });
+    try {
+      await migrateToLatest(scanDb, sqlite);
+      const scanCtx = testContext({ db: scanDb });
+      const writer = {
+        did: userDid,
+        post: mock(async () => ({
+          ok: true,
+          data: { results: [{ $type: "com.atproto.repo.applyWrites#createResult" }] },
+        })),
+      } as unknown as SessionClient;
+      const scan = agent(
+        mock(async () => {
+          expect(await followUser({ db: writeDb, agent: writer, targetDid: "new" })).toEqual({
+            ok: true,
+          });
+          return page([]);
+        }),
+      );
+      const result = await syncUserFollows(scanCtx, scan).catch((error: unknown) => error);
+      expect(result).toMatchObject({ message: expect.stringContaining("changed during scan") });
+      expect(
+        await scanDb.selectFrom("user_follows").select(["followsDid", "isActive"]).execute(),
+      ).toEqual([{ followsDid: "new", isActive: 1 }]);
+      expect(await scanCtx.kv.get(`follows_sync:${userDid}`)).toBeNull();
+    } finally {
+      await scanDb.destroy();
+      await writeDb.destroy();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    null,
+    {},
+    { follows: null },
+    { follows: [null] },
+    { follows: [{ did: null }] },
+    { follows: [{ did: "" }] },
+    { follows: [{ did: "new", createdAt: 123 }] },
+    { follows: [], cursor: null },
+    { follows: [], cursor: "" },
+    { follows: [], cursor: 123 },
+  ])("rejects malformed follow pagination without mutation: %j", async (data) => {
+    const before = await rows();
+    const result = await syncUserFollows(ctx, agent(mock(async () => ({ ok: true, data })))).catch(
+      (error: unknown) => error,
+    );
+    expect(result).toMatchObject({ message: expect.stringContaining("malformed pagination") });
+    expect(await rows()).toEqual(before);
+    expect(set).not.toHaveBeenCalled();
+    expect(await fixture.db.selectFrom("follow_sync_state").selectAll().execute()).toEqual([]);
   });
 });

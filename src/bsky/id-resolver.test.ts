@@ -55,14 +55,29 @@ test("identity traversal concurrency and queue are bounded across resolver insta
       i % 2 ? second.handle.resolve(`actor${i}.test`) : first.resolveDidToHandle(did),
     ),
   );
-  await nextTurn();
-  expect(signals).toHaveLength(3);
-  jest.advanceTimersByTime(3000);
-  expect(await pending).toEqual(dids.map((did, i) => (i % 2 ? "" : did)));
-  expect(peak).toBe(3);
-  expect(signals).toHaveLength(3);
-  expect(signals.every((signal) => signal.aborted)).toBe(true);
-  expect(active).toBe(0);
+  let settled = false;
+  void pending.then(() => {
+    settled = true;
+  });
+  try {
+    await nextTurn();
+    expect(signals).toHaveLength(3);
+    jest.advanceTimersByTime(2499);
+    await nextTurn();
+    expect(settled).toBe(false);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    jest.advanceTimersByTime(1);
+    await nextTurn();
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(await pending).toEqual(dids.map((did, i) => (i % 2 ? "" : did)));
+    expect(peak).toBe(3);
+    expect(signals).toHaveLength(3);
+    expect(active).toBe(0);
+  } finally {
+    // Drain abort/queue deadlines even if an assertion fails before advancing time.
+    jest.advanceTimersByTime(3000);
+    await nextTurn();
+  }
 });
 
 test("timed-out identity traversals keep their slots until an abort-ignoring transport settles", async () => {
@@ -71,7 +86,9 @@ test("timed-out identity traversals keep their slots until an abort-ignoring tra
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const resolve = mock<ActorResolver["resolve"]>(async (did) => {
+  const signals: AbortSignal[] = [];
+  const resolve = mock<ActorResolver["resolve"]>(async (did, options) => {
+    signals.push(options!.signal!);
     if (resolve.mock.calls.length <= 3) await gate;
     return { did: did as `did:plc:${string}`, handle: "verified.test", pds: "https://pds.test/" };
   });
@@ -84,9 +101,27 @@ test("timed-out identity traversals keep their slots until an abort-ignoring tra
   const dids = ["a", "b", "c"].map((id) => `did:plc:held${id}`);
   try {
     const pending = Promise.all(dids.map((did) => resolver.resolveDidToHandle(did)));
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
     await nextTurn();
     expect(resolve).toHaveBeenCalledTimes(3);
-    jest.advanceTimersByTime(3000);
+    expect(signals).toHaveLength(3);
+    jest.advanceTimersByTime(2499);
+    await nextTurn();
+    expect(settled).toBe(false);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+    jest.advanceTimersByTime(1);
+    await nextTurn();
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(settled).toBe(false);
+    jest.advanceTimersByTime(499);
+    await nextTurn();
+    expect(settled).toBe(false);
+    jest.advanceTimersByTime(1);
+    await nextTurn();
+    expect(settled).toBe(true);
     expect(await pending).toEqual(dids);
     const queued = base.handle.resolve("queued.test");
     await nextTurn();
@@ -95,8 +130,8 @@ test("timed-out identity traversals keep their slots until an abort-ignoring tra
     expect(resolve).toHaveBeenCalledTimes(3);
   } finally {
     release();
+    await nextTurn();
   }
-  await nextTurn();
   expect(await resolver.resolveDidToHandle("did:plc:recovered")).toBe("verified.test");
   expect(resolve).toHaveBeenCalledTimes(4);
   for (const did of dids) expect(await kv.get("identity:v2:did:" + did)).toBeNull();

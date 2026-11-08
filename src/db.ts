@@ -41,6 +41,12 @@ export type DatabaseSchema = {
   progress_history: ProgressHistoryRow;
   sync_write_queue: SyncWriteQueueRow;
   sync_write_state: SyncWriteStateRow;
+  follow_sync_state: FollowSyncStateRow;
+};
+
+export type FollowSyncStateRow = {
+  userDid: string;
+  revision: Generated<number>;
 };
 
 export type SyncWriteQueueRow = {
@@ -1347,6 +1353,17 @@ migrations["033"] = {
   async down(db: Kysely<unknown>) {
     await sql`DROP TABLE sync_write_queue`.execute(db);
     await sql`DROP TABLE sync_write_state`.execute(db);
+  },
+};
+
+migrations["034"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`CREATE TABLE follow_sync_state (
+      userDid TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL DEFAULT 0
+    )`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP TABLE follow_sync_state`.execute(db);
   },
 };
 
