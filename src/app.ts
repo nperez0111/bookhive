@@ -61,13 +61,14 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     endTime(c, "vite_manifest");
     await next();
   });
-  // secureHeaders() sets CORP: same-origin after next() returns, which blocks
-  // the proxied images (imgproxy responses, dev's CDN redirect) from loading
-  // cross-origin — override it here, after secureHeaders has run.
-  app.use("/images/*", async (c, next) => {
-    await next();
-    c.header("Cross-Origin-Resource-Policy", "cross-origin");
-  });
+  // Public cover/avatar and OG images must be embeddable on other sites.
+  // Override after secureHeaders() unwinds; keep its same-origin default elsewhere.
+  for (const path of ["/images/*", "/og/*"]) {
+    app.use(path, async (c, next) => {
+      await next();
+      c.header("Cross-Origin-Resource-Policy", "cross-origin");
+    });
+  }
   app.use(secureHeaders());
 
   // Wrap compress() to measure time spent in compression

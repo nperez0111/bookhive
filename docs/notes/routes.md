@@ -4,6 +4,11 @@ Full route-by-route breakdown. `AGENTS.md`'s Routes section has the prefix → r
 the cross-cutting gotchas (etag, caching policy); this is where to look once you know which router
 you're touching.
 
+Public image responses under `/images/*` and `/og/*` override the global security middleware
+with `Cross-Origin-Resource-Policy: cross-origin` so other sites can embed them. The override
+must unwind after `secureHeaders()`; other routes retain `same-origin`. This does not add CORS
+headers, which ordinary image embedding does not require.
+
 `src/app.ts` mounts infra/admin routes, then `/` → `src/routes/main.tsx` (`mainRouter`). `mainRouter` registers standalone pages, the image proxy, feature route modules, and the XRPC router.
 
 `src/pages/layout.tsx` normalizes same-host crawler URLs to the scheme/port in `PUBLIC_URL`.
