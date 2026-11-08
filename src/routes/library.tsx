@@ -176,10 +176,9 @@ const app = new Hono<LibraryEnv>()
         uploadFailure(c, status, code, error, extra);
       const file = c.req.valid("form").file;
 
-      const { db, kv } = c.get("ctx");
+      const { db } = c.get("ctx");
       const result = await uploadPersonalBook({
         db,
-        kv,
         userDid: agent.did,
         filename: file.name,
         source: { kind: "stream", body: file.stream(), declaredLength: file.size },
@@ -340,7 +339,7 @@ app.post(
   async (c) => {
     const agent = await c.get("ctx").getSessionAgent();
     if (!agent) return jsonUnauthorized(c);
-    const { db, kv } = c.get("ctx");
+    const { db } = c.get("ctx");
     const { document, hiveId } = c.req.valid("json");
 
     const row = await db
@@ -394,7 +393,10 @@ app.post(
       });
       // updateBookRecord wrote to PDS + local DB, so bridge is already done
     } else {
-      await bridgeProgressToUserBook(db, kv, agent.did, hiveId as HiveId, percentage);
+      await bridgeProgressToUserBook(db, agent.did, hiveId as HiveId, percentage, {
+        id: row.id,
+        progressData: row.progressData,
+      });
     }
 
     return c.json({ hiveId: book.id, bookTitle: book.title });

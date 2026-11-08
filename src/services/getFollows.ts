@@ -19,11 +19,7 @@ export async function syncUserFollows(ctx: AppContext, agent: SessionClient): Pr
     const end = followSyncDuration.startTimer(LABEL.followSync[syncType]);
 
     try {
-      if (syncType === "full") {
-        await fullFollowsSync(ctx, agent, userDid);
-      } else {
-        await incrementalFollowsSync(ctx, agent, userDid);
-      }
+      await fetchAndCommitFollows(ctx, agent, userDid, syncType);
     } finally {
       end();
     }
@@ -74,124 +70,34 @@ async function determineSyncType(
   }
 }
 
-async function fullFollowsSync(
+async function fetchAndCommitFollows(
   ctx: AppContext,
   agent: SessionClient,
   userDid: string,
+  syncType: "full" | "incremental",
 ): Promise<void> {
   ctx.addWideEventContext({
-    follows_sync_type: "full",
+    follows_sync_type: syncType,
     userDid,
   });
 
-  // Mark all existing follows as potentially stale
-  try {
-    await ctx.db
-      .updateTable("user_follows")
-      .set({ isActive: 0 })
-      .where("userDid", "=", userDid)
-      .execute();
-  } catch (error) {
-    ctx.addWideEventContext({
-      follows_mark_stale: "failed",
-      userDid,
-      error: errorMessage(error),
-    });
-    throw error;
-  }
-
+  type Follow = { did: string; createdAt?: string };
+  const staged = new Map<string, Follow>();
+  const cursors = new Set<string>();
   let cursor: string | undefined;
   let totalSynced = 0;
-
-  do {
-    let response;
-    try {
-      response = await agent.get("app.bsky.graph.getFollows", {
-        params: {
-          actor: userDid as ActorIdentifier,
-          limit: 100,
-          cursor,
-        },
-        headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
-      });
-    } catch (error) {
-      ctx.addWideEventContext({
-        follows_fetch_api: "failed",
-        userDid,
-        cursor,
-        error: errorMessage(error),
-      });
-      throw error;
-    }
-    if (!response.ok) break;
-    type GetFollowsOut = {
-      follows: Array<{ did: string; createdAt?: string }>;
-      cursor?: string;
-    };
-    const out = response.data as GetFollowsOut;
-    const follows = out.follows;
-    const now = new Date().toISOString();
-
-    if (follows.length > 0) {
-      // Upsert follows in batches of 100
-      const rows = follows.map((follow) => ({
-        userDid,
-        followsDid: follow.did,
-        followedAt: follow.createdAt || now,
-        syncedAt: now,
-        lastSeenAt: now,
-        isActive: 1 as const,
-      }));
-      for (let i = 0; i < rows.length; i += 100) {
-        await ctx.db
-          .insertInto("user_follows")
-          .values(rows.slice(i, i + 100))
-          .onConflict((oc) =>
-            oc.columns(["userDid", "followsDid"]).doUpdateSet({
-              lastSeenAt: now,
-              isActive: 1,
-            }),
-          )
-          .execute();
-      }
-
-      totalSynced += follows.length;
-    }
-
-    cursor = out.cursor;
-  } while (cursor && totalSynced < 1000); // Limit to prevent runaway syncs
-
-  // Remove follows that weren't seen (unfollowed)
-  const removed = await ctx.db
-    .deleteFrom("user_follows")
+  let complete = false;
+  // An absent row is revision zero, including for an empty graph. Publication
+  // must compete with both other scans and acknowledged interactive writes.
+  const baseline = await ctx.db
+    .selectFrom("follow_sync_state")
+    .select("revision")
     .where("userDid", "=", userDid)
-    .where("isActive", "=", 0)
     .executeTakeFirst();
+  const revision = baseline?.revision ?? 0;
 
-  ctx.addWideEventContext({
-    follows_full_sync_completed: true,
-    userDid,
-    total_synced: totalSynced,
-    removed: Number(removed.numDeletedRows),
-  });
-}
-
-async function incrementalFollowsSync(
-  ctx: AppContext,
-  agent: SessionClient,
-  userDid: string,
-): Promise<void> {
-  ctx.addWideEventContext({
-    follows_sync_type: "incremental",
-    userDid,
-  });
-
-  let newFollows = 0;
-  let cursor: string | undefined = undefined;
-  let foundExisting = false;
-
-  // Fetch follows starting from the most recent until we find ones we already have
-  do {
+  // Bound requests: duplicate pages must not run forever, even with fresh cursors.
+  for (let page = 0; page < 500; page++) {
     const response = await agent.get("app.bsky.graph.getFollows", {
       params: {
         actor: userDid as ActorIdentifier,
@@ -200,45 +106,98 @@ async function incrementalFollowsSync(
       },
       headers: { "atproto-proxy": "did:web:api.bsky.app#bsky_appview" },
     });
-    if (!response.ok) break;
-    type GetFollowsOut = {
-      follows: Array<{ did: string; createdAt?: string }>;
-      cursor?: string;
-    };
-    const out = response.data as GetFollowsOut;
+    if (!response.ok) throw new Error("Failed to fetch follows");
+    const out = response.data as { follows: Follow[]; cursor?: string };
+    if (
+      !out ||
+      !Array.isArray(out.follows) ||
+      out.follows.some(
+        (follow) =>
+          !follow ||
+          typeof follow.did !== "string" ||
+          !follow.did ||
+          (follow.createdAt !== undefined && typeof follow.createdAt !== "string"),
+      ) ||
+      (out.cursor !== undefined && (typeof out.cursor !== "string" || !out.cursor))
+    ) {
+      throw new Error("Incomplete follows scan: malformed pagination");
+    }
     const follows = out.follows;
-    const now = new Date().toISOString();
+    if (out.cursor && (cursors.has(out.cursor) || follows.length === 0)) {
+      throw new Error("Incomplete follows scan: invalid cursor traversal");
+    }
+    totalSynced += follows.length;
 
-    if (follows.length === 0) break;
-
-    // Batch-check which follows we already have
-    const followDids = follows.map((f) => f.did);
-    const existingRows = await ctx.db
-      .selectFrom("user_follows")
-      .select("followsDid")
-      .where("userDid", "=", userDid)
-      .where("followsDid", "in", followDids)
-      .execute();
-    const existingDids = new Set(existingRows.map((r) => r.followsDid));
-
+    let existingDids = new Set<string>();
+    if (syncType === "incremental" && follows.length > 0) {
+      // Inactive rows are NOT a caught-up boundary: they need reactivation.
+      const existing = await ctx.db
+        .selectFrom("user_follows")
+        .select("followsDid")
+        .where("userDid", "=", userDid)
+        .where("isActive", "=", 1)
+        .where(
+          "followsDid",
+          "in",
+          follows.map((follow) => follow.did),
+        )
+        .execute();
+      existingDids = new Set(existing.map((follow) => follow.followsDid));
+    }
+    let foundExisting = false;
     for (const follow of follows) {
       if (existingDids.has(follow.did)) {
-        // We've caught up to existing data
         foundExisting = true;
         break;
       }
+      staged.set(follow.did, follow);
+    }
+    if (!out.cursor || foundExisting) {
+      complete = true;
+      break;
+    }
+    cursors.add(out.cursor);
+    cursor = out.cursor;
+  }
+  if (!complete) throw new Error("Incomplete follows scan: scan limit");
 
-      // This is a new follow, store it
-      await ctx.db
+  // No remote I/O under the write transaction; failures above leave the mirror
+  // untouched. The mark/upsert/prune sequence is atomic to other workers too.
+  const now = new Date().toISOString();
+  const removed = await ctx.db.transaction().execute(async (tx) => {
+    await tx
+      .insertInto("follow_sync_state")
+      .values({ userDid, revision: 0 })
+      .onConflict((oc) => oc.column("userDid").doNothing())
+      .execute();
+    const claimed = await tx
+      .updateTable("follow_sync_state")
+      .set({ revision: revision + 1 })
+      .where("userDid", "=", userDid)
+      .where("revision", "=", revision)
+      .executeTakeFirst();
+    if (claimed.numUpdatedRows !== 1n) {
+      throw new Error("Follow mirror changed during scan; retry synchronization");
+    }
+    if (syncType === "full") {
+      await tx
+        .updateTable("user_follows")
+        .set({ isActive: 0 })
+        .where("userDid", "=", userDid)
+        .execute();
+    }
+    const rows = [...staged.values()].map((follow) => ({
+      userDid,
+      followsDid: follow.did,
+      followedAt: follow.createdAt || now,
+      syncedAt: now,
+      lastSeenAt: now,
+      isActive: 1 as const,
+    }));
+    for (let i = 0; i < rows.length; i += 100) {
+      await tx
         .insertInto("user_follows")
-        .values({
-          userDid,
-          followsDid: follow.did,
-          followedAt: follow.createdAt || now,
-          syncedAt: now,
-          lastSeenAt: now,
-          isActive: 1,
-        })
+        .values(rows.slice(i, i + 100))
         .onConflict((oc) =>
           oc.columns(["userDid", "followsDid"]).doUpdateSet({
             lastSeenAt: now,
@@ -246,17 +205,21 @@ async function incrementalFollowsSync(
           }),
         )
         .execute();
-
-      newFollows++;
     }
-
-    cursor = out.cursor;
-  } while (cursor && !foundExisting);
-
+    if (syncType !== "full") return 0;
+    const result = await tx
+      .deleteFrom("user_follows")
+      .where("userDid", "=", userDid)
+      .where("isActive", "=", 0)
+      .executeTakeFirst();
+    return Number(result.numDeletedRows);
+  });
   ctx.addWideEventContext({
-    follows_incremental_sync_completed: true,
+    [syncType === "full" ? "follows_full_sync_completed" : "follows_incremental_sync_completed"]:
+      true,
     userDid,
-    new_follows: newFollows,
+    total_synced: totalSynced,
+    removed,
   });
 }
 

@@ -23,7 +23,20 @@ remain stripped from page metadata. Local HTTP origins remain HTTP when configur
 - `/metrics` → Prometheus
 - `/admin/*` → `src/routes/admin.ts` (gated by `EXPORT_SHARED_SECRET`). `GET /admin/backfill-catalog/progress` reads through the KV, not just process memory — the backfill runs for hours on the primary worker while the request can land on any of the three. Persist the status object directly, never `JSON.stringify` of it (unstorage runs `destr` on read; a stored JSON string reads back as an object and any `JSON.parse` of it throws).
 - `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`)
-- `/import` (POST `/goodreads`, `/storygraph`) → `src/routes/import.ts` — CSV import handler
+- `/import` (POST `/goodreads`, `/storygraph`, `/hardcover`) → `src/routes/import.ts` — CSV import handler;
+  `importLifecycle.ts` owns worker/timer cleanup; route-level `finally` releases metrics exactly
+  once. Worker/heartbeat cleanup is immediate. Success drains ordered SSE output, still bounded
+  by timeout/disconnect. Terminal errors drain before returning (Hono closes on callback return),
+  with at most 1s grace; abort or the original deadline interrupts an existing drain. A timeout
+  starting its own error drain gets only that 1s grace, never an unbounded wait. Error delivery
+  remains best effort when output is blocked; abort/write failure returns without draining.
+  Interrupted drains explicitly call Hono's supported `stream.abort()` before callback return,
+  cancelling its underlying reader so blocked writes settle without client consumption. Merely
+  returning would leave Hono's `close()` blocked and disable its later disconnect cancellation.
+  Hono observes disconnects via `onAbort` (its underlying writer swallows transport rejections).
+  Client EOF without a terminal event is an error, not completion.
+  Worker progress messages await acknowledgement after each SSE write, bounding the cross-thread
+  backlog for slow clients; heartbeat writes also allow only one outstanding write.
 
 `/admin/export` prepares its sanitized files in a short-lived worker and streams tar/gzip.
 A dedicated SQLite lock spans preparation, download, child termination and cleanup across
@@ -88,7 +101,7 @@ OAuth handle resolution.
 
 ### `src/routes/profile.tsx` (mounted at `/`)
 
-- `/refresh-books` → re-sync books and Popfeed shelves/items from PDS (auth), linked from Settings → Book sync. This repairs missed shelf Jetstream events without deleting/recreating the shelf.
+- `/refresh-books` → re-sync books, then buzzes, alongside Popfeed shelves/items from PDS (auth), linked from Settings → Book sync. This repairs missed Jetstream events without deleting/recreating shelves. Incomplete/failed scans return an error rather than a successful refresh; each collection prunes only after cursor exhaustion. Login runs these recovery scans without blocking and logs rejected work.
   Both sync operations settle before responding, including on failure; rejected syncs still produce a 500.
 - `/profile` → redirects to the resolved usable handle, with DID fallback on invalid/unavailable identity
 - `/profile/:handle` → `src/pages/profile.tsx` — profile, shelves, follow counts, lists, genre stats

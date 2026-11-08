@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, jest, mock } from "bun:test";
 import { createStorage } from "unstorage";
 import lruCacheDriver from "unstorage/drivers/lru-cache";
 import type { SessionClient } from "../auth/client";
@@ -8,8 +8,12 @@ import { createProfileCache, getProfile, getProfiles } from "./getProfile";
 
 const DAY = 86_400_000;
 const originalFetch = globalThis.fetch;
+// Flush async work without moving the fake request/queue deadline clock.
+const realSetImmediate = setImmediate;
+const nextTurn = () => new Promise<void>((resolve) => realSetImmediate(resolve));
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  jest.useRealTimers();
 });
 
 function profile(did: string, displayName = did): ProfileViewDetailed {
@@ -55,6 +59,7 @@ async function eventually(check: () => Promise<boolean>) {
 
 describe("profile cache", () => {
   it("bounds invalid cached-profile repair even while OAuth restoration is still pending", async () => {
+    jest.useFakeTimers();
     const ctx = context(async () => ({ ok: true, data: { profiles: [profile("did:plc:alice")] } }));
     const session = deferred<SessionClient>();
     const agent = await ctx.getSessionAgent();
@@ -66,12 +71,14 @@ describe("profile cache", () => {
     } as ProfileViewDetailed;
     await seed(ctx, cached);
     try {
-      expect(
-        await withTimeout(getProfile({ ctx, did: cached.did }), 4000, "cached restore wait"),
-      ).toEqual(cached);
+      const pending = getProfile({ ctx, did: cached.did });
+      await nextTurn();
       expect(ctx.getSessionAgent).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(3000);
+      expect(await pending).toEqual(cached);
     } finally {
       session.resolve(agent);
+      await nextTurn();
     }
     await eventually(
       async () =>
@@ -360,6 +367,7 @@ describe("profile cache", () => {
   });
 
   it("bounds caller wait but holds concurrency slots until an abort-ignoring transport settles", async () => {
+    jest.useFakeTimers();
     const gate = deferred<void>();
     const signals: AbortSignal[] = [];
     const get = mock(async (_name: string, opts?: Record<string, unknown>) => {
@@ -370,31 +378,47 @@ describe("profile cache", () => {
     });
     const ctx = context(get);
     const cold = ["a", "b", "c"].map((id) => getProfile({ ctx, did: `did:plc:${id}` }));
-    expect(await withTimeout(Promise.all(cold), 3_500, "profile caller deadline")).toEqual([
-      null,
-      null,
-      null,
-    ]);
-    expect(signals.length).toBe(3);
-    expect(signals.every((signal) => signal.aborted)).toBe(true);
-    // These requests did not release their slots when the caller timed out.
-    expect(
-      await withTimeout(
-        getProfile({ ctx, did: "did:plc:queued" }),
-        1_000,
-        "profile queue deadline",
-      ),
-    ).toBeNull();
-    expect(get).toHaveBeenCalledTimes(3);
-    gate.resolve();
-    await Bun.sleep(1);
+    const pending = Promise.all(cold);
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    try {
+      await nextTurn();
+      expect(get).toHaveBeenCalledTimes(3);
+      expect(signals).toHaveLength(3);
+      jest.advanceTimersByTime(2499);
+      await nextTurn();
+      expect(settled).toBe(false);
+      expect(signals.every((signal) => !signal.aborted)).toBe(true);
+      jest.advanceTimersByTime(1);
+      await nextTurn();
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+      expect(settled).toBe(false);
+      jest.advanceTimersByTime(499);
+      await nextTurn();
+      expect(settled).toBe(false);
+      jest.advanceTimersByTime(1);
+      await nextTurn();
+      expect(settled).toBe(true);
+      expect(await pending).toEqual([null, null, null]);
+      // These requests did not release their slots when the caller timed out.
+      const queued = getProfile({ ctx, did: "did:plc:queued" });
+      await nextTurn();
+      jest.advanceTimersByTime(500);
+      expect(await queued).toBeNull();
+      expect(get).toHaveBeenCalledTimes(3);
+    } finally {
+      gate.resolve();
+      await nextTurn();
+    }
     expect(await getProfile({ ctx, did: "did:plc:recovered" })).toEqual(
       profile("did:plc:recovered"),
     );
     expect(get).toHaveBeenCalledTimes(4);
     // Late abandoned responses cannot install data after the failed refresh.
     expect(await ctx.kv.get(key("did:plc:a"))).toBeNull();
-  }, 10_000);
+  });
 
   it("falls back to the public cache after a failed restore, never writing it under a viewer", async () => {
     const cached = profile("did:plc:alice", "public");

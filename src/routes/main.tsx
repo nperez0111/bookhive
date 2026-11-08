@@ -75,11 +75,17 @@ export function mainRouter(deps: AppDeps): HonoServer {
   loginRouter(app, {
     onLogin: async ({ agent, ctx }) => {
       if (!agent) return;
-      void Promise.all([
+      void Promise.allSettled([
         refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
         syncFollowsIfNeeded({ agent, ctx }),
         refetchLists({ agent, ctx }),
-      ]);
+      ]).then((results) => {
+        for (const result of results) {
+          if (result.status === "rejected") {
+            deps.logger.error({ err: result.reason, userDid: agent.did }, "Login re-sync failed");
+          }
+        }
+      });
     },
   });
 

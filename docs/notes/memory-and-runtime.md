@@ -151,3 +151,20 @@ in-flight queries do not occupy separate slots. Background warming retains its e
 bounded admission and uses the same miss gate. This is not an additional enrichment request
 rate limiter or a Goodreads circuit breaker. Under saturation best-effort searches can fall back
 to the existing empty-result behavior; resource samples expose active and waiting work.
+
+### Best-effort shipping failure policy
+
+Three **consecutive connection refusals** disable shipping: pending entries are dropped, timers
+are cancelled, and subsequent messages are counted/dropped without retaining their payloads.
+Any HTTP response or non-refusal failure breaks that refusal streak. Recovery requires a
+worker/process restart; the parent initializes once, and repeated `init` messages are ignored.
+There are no periodic probes or automatic replay. Production batch/deadline limits are fixed,
+not configurable. Structured shipping diagnostics go only to stdout. Worker capacity drops are
+coalesced instead of warning per message; parent admission drops are exposed in resource counters.
+Capacity drops also schedule one coalesced 5s diagnostic timer, even when every entry is
+oversized and no batch can be sent. Further drops do not postpone that report; a batch
+settlement reports sooner and cancels the pending diagnostic timer. It retains no payloads
+and stops when there are no further capacity drops. Permanent disable cancels it;
+subsequent disabled drops never schedule diagnostics.
+This deliberately trades remote log completeness
+for bounded retained payloads without changing local stdout delivery.

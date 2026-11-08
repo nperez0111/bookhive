@@ -128,18 +128,27 @@ export function completeUserBookRecord({
   const task: Promise<FollowUpOutcome> = (async () => {
     // Held until the work settles, not until the deadline: nothing in `run` is
     // cancellable, so releasing early lets a new follow-up start alongside it.
-    const release = await slots.acquireSlot();
+    let release: () => void;
+    try {
+      release = await slots.acquireSlot();
+    } catch (error) {
+      inFlight.delete(userBook.uri);
+      throw error;
+    }
     const running = run();
-    void running.then(release, release);
+    const settled = () => {
+      release();
+      // The deadline only bounds callers, not the uncancellable work. Keep
+      // deduping onto their bounded task until that work really settles.
+      inFlight.delete(userBook.uri);
+    };
+    void running.then(settled, settled);
     return withTimeout(running, FOLLOW_UP_DEADLINE_MS, `follow-up ${userBook.uri}`);
   })()
     .catch((): FollowUpOutcome => "failed")
     .then((outcome) => {
       userBookFollowUpTotal.inc(LABEL.userBookFollowUp[outcome]);
       return outcome;
-    })
-    .finally(() => {
-      inFlight.delete(userBook.uri);
     });
   inFlight.set(userBook.uri, task);
   return task;

@@ -39,6 +39,29 @@ export type DatabaseSchema = {
   personal_shelf_item: PersonalShelfItemRow;
   enrich_queue: EnrichQueueRow;
   progress_history: ProgressHistoryRow;
+  sync_write_queue: SyncWriteQueueRow;
+  sync_write_state: SyncWriteStateRow;
+  follow_sync_state: FollowSyncStateRow;
+};
+
+export type FollowSyncStateRow = {
+  userDid: string;
+  revision: Generated<number>;
+};
+
+export type SyncWriteQueueRow = {
+  userDid: string;
+  hiveId: HiveId;
+  revision: string;
+  bookProgress: string;
+  enqueuedAt: string;
+};
+
+export type SyncWriteStateRow = {
+  userDid: string;
+  legacyImported: Generated<number>;
+  leaseToken: string | null;
+  leaseUntil: number | null;
 };
 
 export type ProgressHistoryRow = {
@@ -1312,6 +1335,35 @@ migrations["032"] = {
   },
   async down(db: Kysely<unknown>) {
     await sql`DROP INDEX IF EXISTS idx_user_follows_reverse_active`.execute(db);
+  },
+};
+
+migrations["033"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`CREATE TABLE sync_write_queue (
+      userDid TEXT NOT NULL, hiveId TEXT NOT NULL, revision TEXT NOT NULL,
+      bookProgress TEXT NOT NULL, enqueuedAt TEXT NOT NULL,
+      PRIMARY KEY (userDid, hiveId)
+    )`.execute(db);
+    await sql`CREATE TABLE sync_write_state (
+      userDid TEXT PRIMARY KEY NOT NULL, legacyImported INTEGER NOT NULL DEFAULT 0,
+      leaseToken TEXT, leaseUntil INTEGER
+    )`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP TABLE sync_write_queue`.execute(db);
+    await sql`DROP TABLE sync_write_state`.execute(db);
+  },
+};
+
+migrations["034"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`CREATE TABLE follow_sync_state (
+      userDid TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL DEFAULT 0
+    )`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP TABLE follow_sync_state`.execute(db);
   },
 };
 

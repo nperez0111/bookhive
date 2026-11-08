@@ -63,6 +63,102 @@ describe("LogShippingCredits", () => {
 });
 
 describe("OpenObserveSender", () => {
+  it("flushes overdue partial backlog immediately after the active request settles", async () => {
+    let now = 0;
+    const gate = deferred<Response>();
+    const bodies: string[] = [];
+    const sender = new OpenObserveSender(options, {
+      reply: () => {},
+      log: () => {},
+      now: () => now,
+      fetch: (_url, init) => {
+        if (typeof init.body !== "string") throw new Error("Expected a string batch");
+        bodies.push(init.body);
+        return bodies.length === 1 ? gate.promise : Promise.resolve(new Response());
+      },
+    });
+    try {
+      sender.enqueue({ type: "log", id: 0, data: "{}" });
+      const flushing = sender.flush();
+      now = 100;
+      sender.enqueue({ type: "log", id: 1, data: '{"queued":true}' });
+      now = 4_900;
+      sender.enqueue({ type: "log", id: 2, data: '{"later":true}' });
+      now = 5_100;
+      gate.resolve(new Response());
+      await flushing;
+      expect(bodies.map((body) => JSON.parse(body))).toEqual([
+        [{}],
+        [{ queued: true }, { later: true }],
+      ]);
+      await Bun.sleep(0);
+    } finally {
+      sender.close();
+    }
+  });
+
+  it("HTTP and non-refusal failures each break the refusal streak", async () => {
+    const replies: WorkerReply[] = [];
+    const outcomes = ["refused", "refused", "http", "refused", "refused", "other", "refused"];
+    let index = 0;
+    const sender = new OpenObserveSender(options, {
+      reply: (reply) => {
+        replies.push(reply);
+      },
+      log: () => {},
+      fetch: () => {
+        const outcome = outcomes[index++];
+        if (outcome === "http") return Promise.resolve(new Response(null, { status: 503 }));
+        return Promise.reject(
+          Object.assign(new Error(outcome), {
+            code: outcome === "refused" ? "ConnectionRefused" : "ETIMEDOUT",
+          }),
+        );
+      },
+    });
+    try {
+      for (let id = 0; id < outcomes.length; id++) {
+        sender.enqueue({ type: "log", id, data: "{}" });
+        await sender.flush();
+      }
+      expect(replies.filter((reply) => reply.type === "disabled")).toHaveLength(0);
+      expect(replies).toHaveLength(outcomes.length);
+      expect(index).toBe(outcomes.length);
+    } finally {
+      sender.close();
+    }
+  });
+
+  it("coalesces overflow-only diagnostics without waiting for a batch settlement", async () => {
+    const diagnostics: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const sender = new OpenObserveSender(options, {
+      reply: () => {},
+      log: (_level, message, fields) => {
+        diagnostics.push({ message, fields });
+      },
+      fetch: () => {
+        throw new Error("Oversized entries must not be sent");
+      },
+    });
+    try {
+      const data = "x".repeat(LOG_SHIPPING_LIMITS.lineBytes + 1);
+      for (let id = 0; id < 3; id++) sender.enqueue({ type: "log", id, data });
+      expect(diagnostics).toHaveLength(0);
+      await Bun.sleep(LOG_SHIPPING_LIMITS.flushMs + 50);
+      expect(diagnostics).toEqual([
+        {
+          message: "openobserve_dropped",
+          fields: { droppedMessages: 3, droppedBytes: data.length * 3 },
+        },
+      ]);
+      sender.close();
+      sender.enqueue({ type: "log", id: 3, data });
+      expect(diagnostics).toHaveLength(1);
+    } finally {
+      sender.close();
+    }
+  }, 10_000);
+
   it("holds credits through actual HTTP settlement, including abort-ignoring work", async () => {
     const gate = deferred<Response>();
     const credits = new LogShippingCredits();

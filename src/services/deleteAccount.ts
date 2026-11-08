@@ -1,6 +1,7 @@
 import type { SessionClient } from "../auth/client";
 import { ids } from "../bsky/lexicon/index";
 import type { Database } from "../db";
+import { sql } from "kysely";
 import { removeUserDir } from "../data/personalLibrary";
 
 type ListRecordsOut = {
@@ -9,22 +10,31 @@ type ListRecordsOut = {
 };
 
 const PDS_BATCH_LIMIT = 200;
+const PDS_SCAN_PAGE_LIMIT = 500;
 
 async function listAllRecordUris(agent: SessionClient, collection: string): Promise<string[]> {
   const uris: string[] = [];
+  const seenCursors = new Set<string>();
   let cursor: string | undefined;
-  do {
+  for (let page = 0; page < PDS_SCAN_PAGE_LIMIT; page++) {
     const res = await agent.get("com.atproto.repo.listRecords", {
       params: { repo: agent.did, collection, limit: 100, cursor },
     });
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Failed to list ${collection} records from PDS`);
     const data = res.data as ListRecordsOut;
     for (const record of data.records) {
       uris.push(record.uri);
     }
-    cursor = data.records.length === 100 ? data.cursor : undefined;
-  } while (cursor);
-  return uris;
+    cursor = data.cursor;
+    if (!cursor) return uris;
+    if (seenCursors.has(cursor)) {
+      throw new Error(`Repeated cursor while listing ${collection} records from PDS`);
+    }
+    seenCursors.add(cursor);
+  }
+  throw new Error(
+    `Could not finish listing ${collection} records within ${PDS_SCAN_PAGE_LIMIT} pages`,
+  );
 }
 
 async function batchDeleteFromPds(
@@ -70,21 +80,39 @@ export async function deleteAccountData({
   }
 
   const did = agent.did;
-  await db
-    .deleteFrom("personal_shelf_item")
-    .where("shelfId", "in", (qb) =>
-      qb.selectFrom("personal_shelf").select("id").where("userDid", "=", did),
-    )
-    .execute();
-  await db.deleteFrom("personal_shelf").where("userDid", "=", did).execute();
-  await db.deleteFrom("personal_book").where("userDid", "=", did).execute();
-  await db.deleteFrom("sync_document").where("userDid", "=", did).execute();
-  await db.deleteFrom("book_list_item").where("userDid", "=", did).execute();
-  await db.deleteFrom("book_list").where("userDid", "=", did).execute();
-  await db.deleteFrom("buzz").where("userDid", "=", did).execute();
-  await db.deleteFrom("user_book").where("userDid", "=", did).execute();
-  await db.deleteFrom("user_follows").where("userDid", "=", did).execute();
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .deleteFrom("personal_shelf_item")
+      .where("shelfId", "in", (qb) =>
+        qb.selectFrom("personal_shelf").select("id").where("userDid", "=", did),
+      )
+      .execute();
+    await trx.deleteFrom("personal_shelf").where("userDid", "=", did).execute();
+    await trx.deleteFrom("personal_book").where("userDid", "=", did).execute();
+    await trx.deleteFrom("sync_document").where("userDid", "=", did).execute();
+    await trx.deleteFrom("book_list_item").where("userDid", "=", did).execute();
+    await trx.deleteFrom("book_list").where("userDid", "=", did).execute();
+    await trx.deleteFrom("buzz").where("userDid", "=", did).execute();
+    await trx.deleteFrom("user_book").where("userDid", "=", did).execute();
+    await trx.deleteFrom("user_follows").where("userDid", "=", did).execute();
+    // Preserve a generation even for an empty graph: an older scan must not
+    // republish follows after this cleanup commits.
+    await trx
+      .insertInto("follow_sync_state")
+      .values({ userDid: did, revision: 1 })
+      .onConflict((oc) => oc.column("userDid").doUpdateSet({ revision: sql<number>`revision + 1` }))
+      .execute();
+    await trx.deleteFrom("progress_history").where("userDid", "=", did).execute();
+    await trx.deleteFrom("sync_write_queue").where("userDid", "=", did).execute();
+    // A leftover legacy KV array must not resurrect work. This does not cancel remote writes.
+    await trx
+      .insertInto("sync_write_state")
+      .values({ userDid: did, legacyImported: 1, leaseToken: null, leaseUntil: null })
+      .onConflict((oc) => oc.column("userDid").doUpdateSet({ legacyImported: 1 }))
+      .execute();
+  });
 
   // Remove uploaded library files from disk
-  await removeUserDir(did).catch(() => {});
+  // The settings adapter retains the session on failure so a retry can finish cleanup.
+  await removeUserDir(did);
 }

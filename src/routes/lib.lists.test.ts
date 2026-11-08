@@ -103,7 +103,8 @@ describe("Popfeed shelf recovery", () => {
   it("does not prune existing shelves after a failed PDS page", async () => {
     await seed();
     const agent = agentWith(async () => ({ ok: false }));
-    await refetchLists({ agent, ctx: ctx() });
+    const error = await refetchLists({ agent, ctx: ctx() }).catch((error: unknown) => error);
+    expect(error).toMatchObject({ message: expect.stringContaining("listRecords failed") });
     expect((await db.selectFrom("book_list").selectAll().executeTakeFirstOrThrow()).name).toBe(
       "Old name",
     );
@@ -131,8 +132,8 @@ describe("Popfeed shelf recovery", () => {
   });
 
   for (const target of [collection, "social.popfeed.feed.listItem"]) {
-    for (const repeated of [true, false]) {
-      it(`rejects ${repeated ? "repeated cursors" : "cursor cycles after 500 pages"} for ${target} without pruning`, async () => {
+    for (const failure of ["repeated", "cycle", "limit", "nonOK"] as const) {
+      it(`rejects ${failure} for ${target} without pruning`, async () => {
         await seed();
         await db
           .insertInto("book_list_item")
@@ -151,16 +152,31 @@ describe("Popfeed shelf recovery", () => {
             return { ok: true, data: { records: [listRecord()] } };
           }
           pages++;
+          if (failure === "nonOK" && pages === 2) return { ok: false };
           return {
             ok: true,
-            data: { records: [], cursor: repeated || pages % 2 ? "a" : "b" },
+            data: {
+              records: [],
+              cursor:
+                failure === "limit"
+                  ? `page-${pages}`
+                  : failure === "cycle" && pages % 2 === 0
+                    ? "b"
+                    : "a",
+            },
           };
         });
-        const failure = await refetchLists({ agent, ctx: ctx() }).catch((error: unknown) => error);
-        expect(failure).toMatchObject({
-          message: expect.stringContaining(repeated ? "repeated" : "page limit"),
+        const error = await refetchLists({ agent, ctx: ctx() }).catch((error: unknown) => error);
+        expect(error).toMatchObject({
+          message: expect.stringContaining(
+            failure === "limit"
+              ? "page limit"
+              : failure === "nonOK"
+                ? "listRecords failed"
+                : "repeated",
+          ),
         });
-        expect(pages).toBe(repeated ? 2 : 500);
+        expect(pages).toBe(failure === "limit" ? 500 : failure === "cycle" ? 3 : 2);
         expect(await db.selectFrom("book_list").select("uri").execute()).toEqual([{ uri }]);
         expect(await db.selectFrom("book_list_item").select("uri").execute()).toEqual([
           { uri: itemUri },

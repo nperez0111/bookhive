@@ -1459,7 +1459,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
       const declared = Number(request.headers.get("content-length"));
       const result = await uploadPersonalBook({
         db: ctx.db,
-        kv: ctx.kv,
         userDid,
         filename,
         source: {
@@ -1871,7 +1870,6 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       await recordSyncProgress({
         db: ctx.db,
-        kv: ctx.kv,
         userDid,
         document,
         progress,

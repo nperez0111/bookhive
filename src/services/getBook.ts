@@ -8,6 +8,7 @@ import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon/ind
 import type { BookIdentifiers, HiveId, PreviousRead, UserBook } from "../types";
 import { findBookIdentifiersByLookup } from "../bsky/bookLookup";
 import { toBookIdentifiersOutput } from "../data/bookIdentifiers";
+import { syncWritePublicationIsCurrent, type SyncWritePublication } from "../data/syncWriteQueue";
 import { uploadImageBlob } from "./uploadImageBlob";
 import { BOOK_STATUS } from "../constants";
 import { nextReadingState, readingDatesProblem } from "../core/bookLifecycle";
@@ -223,12 +224,14 @@ export async function updateBookRecord({
   hiveId,
   updates,
   skipAutoDate = false,
+  syncPublication,
 }: {
   ctx: BookUtilContext;
   agent: SessionClient;
   hiveId: HiveId;
   updates: Partial<BookRecord.Record> & { coverImage?: string };
   skipAutoDate?: boolean;
+  syncPublication?: SyncWritePublication;
 }): Promise<{
   book: BookRecord.Record;
   userBook: UserBook;
@@ -236,6 +239,16 @@ export async function updateBookRecord({
 }> {
   const { coverImage, ...recordUpdates } = updates;
   const userBook = await getUserBook({ ctx, agent, hiveId });
+  if (
+    syncPublication &&
+    (!userBook ||
+      userBook.uri !== syncPublication.uri ||
+      userBook.cid !== syncPublication.cid ||
+      agent.did !== syncPublication.userDid ||
+      hiveId !== syncPublication.hiveId)
+  ) {
+    throw new Error("Deferred sync publication superseded");
+  }
 
   let original: { value: BookRecord.Record; cid: string } | null = null;
   if (userBook) {
@@ -286,6 +299,15 @@ export async function updateBookRecord({
     });
 
   let record = build(original?.value ?? null);
+  const assertSyncPublication = async (owner: SyncWritePublication) => {
+    const current = await ctx.db
+      .selectFrom("user_book")
+      .select("uri")
+      .where(syncWritePublicationIsCurrent(owner))
+      .executeTakeFirst();
+    if (!current) throw new Error("Deferred sync publication superseded");
+  };
+  if (syncPublication) await assertSyncPublication(syncPublication);
   const rkey = userBook ? userBook.uri.split("/").at(-1)! : TID.now();
   let written = await writeBookRecord({
     agent,
@@ -300,6 +322,9 @@ export async function updateBookRecord({
     ctx.addWideEventContext({ book_merge_source: "pds_after_conflict" });
     if (fresh) {
       record = build(fresh.value);
+      // getRecord awaited transport: the selected queue/row/lease may have lost
+      // authority while resolving the conflict. Do not knowingly send stale intent.
+      if (syncPublication) await assertSyncPublication(syncPublication);
       written = await writeBookRecord({ agent, rkey, record, swapRecord: fresh.cid });
     }
   }
@@ -316,8 +341,32 @@ export async function updateBookRecord({
     userDid: agent.did,
     record,
   });
-  await updateUserBook({ ctx, userBook: nextUserBook });
-  await recordProgressHistory({ ctx, userDid: agent.did, hiveId, progress: record.bookProgress });
+  const publish = async (db: BookUtilContext["db"]) => {
+    await updateUserBook({ ctx: { db }, userBook: nextUserBook });
+    await recordProgressHistory({
+      ctx: { ...ctx, db },
+      userDid: agent.did,
+      hiveId,
+      progress: record.bookProgress,
+    });
+  };
+  if (syncPublication) {
+    // No transport inside BEGIN IMMEDIATE. The same ownership check orders both
+    // mirror and history against newer pushes, local edits and account cleanup.
+    await ctx.db.transaction().execute(async (db) => {
+      const current = await db
+        .selectFrom("user_book")
+        .select("uri")
+        .where(syncWritePublicationIsCurrent(syncPublication))
+        .executeTakeFirst();
+      if (!current || nextUserBook.uri !== syncPublication.uri) {
+        throw new Error("Deferred sync publication superseded after PDS write");
+      }
+      await publish(db);
+    });
+  } else {
+    await publish(ctx.db);
+  }
 
   const followUp = completeUserBookRecord({
     ctx,

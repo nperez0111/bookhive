@@ -23,7 +23,10 @@ test("CSV input label contains instructions, with import code outside its access
 });
 
 // Execute the rendered inline script so tests exercise the same handlers browsers receive.
-async function importControlHarness(service: string | null = "goodreads") {
+async function importControlHarness(
+  service: string | null = "goodreads",
+  responseBody = 'data: {"event":"import-complete"}\n\n',
+) {
   class Element {
     listeners = new Map<string, (event: any) => unknown>();
     classList = {
@@ -75,7 +78,7 @@ async function importControlHarness(service: string | null = "goodreads") {
     { removeItem: () => {} },
     async (endpoint: string, options: { body: FormData }) => {
       requests.push({ endpoint, file: options.body.get("export") as File });
-      return new Response('data: {"event":"import-complete"}\n\n');
+      return new Response(responseBody);
     },
     Element,
   );
@@ -101,6 +104,34 @@ test("import control activates the picker once for Enter and Space and ignores o
   }
   expect(getElement("import-file").clicks).toBe(2);
   expect(prevented).toBe(3);
+});
+
+test.each([
+  "",
+  "event: keepalive\ndata: \n\n",
+  'data: {"event":"import-error","stage":"uploading","error":"partial"}\n\n',
+])("clean EOF without terminal event stops import progress: %s", async (body) => {
+  const { getElement, events } = await importControlHarness("goodreads", body);
+  const input = getElement("import-file");
+  input.files = [new File(["Title,Author"], "export.csv")];
+  await input.dispatchEvent(new Event("change"));
+  expect(events.at(-1)).toMatchObject({ event: "import-error", stage: "error" });
+  expect(input.value).toBe("");
+  // The terminal cleanup permits another import attempt.
+  await input.dispatchEvent(new Event("change"));
+  expect(events.filter((event) => event.event === "import-start")).toHaveLength(2);
+});
+
+test.each([
+  'data: {"event":"import-complete"}',
+  'data: {"event":"import-error","stage":"error","error":"failed"}\n\n',
+])("terminal event before EOF does not emit a spurious failure: %s", async (body) => {
+  const { getElement, events } = await importControlHarness("goodreads", body);
+  const input = getElement("import-file");
+  input.files = [new File(["Title,Author"], "export.csv")];
+  await input.dispatchEvent(new Event("change"));
+  expect(events).toHaveLength(2);
+  expect(events[1]).toMatchObject(JSON.parse(body.slice(6).trim()));
 });
 
 test("dropping a CSV prevents navigation and imports through the picker change handler", async () => {

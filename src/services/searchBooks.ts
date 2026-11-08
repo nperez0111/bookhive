@@ -139,9 +139,6 @@ export async function searchBooks({
           throw error;
         }),
     [] as HiveId[],
-    {
-      requestsPerSecond: 5,
-    },
   );
 
   ctx.addWideEventContext({ search_lookup_ms: performance.now() - lookupStarted });

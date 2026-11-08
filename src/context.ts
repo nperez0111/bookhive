@@ -1,4 +1,4 @@
-import type { HiveId, ProfileViewDetailed } from "./types";
+import type { ProfileViewDetailed } from "./types";
 import type { Did } from "@atcute/lexicons";
 import type { OAuthClient } from "@atcute/oauth-node-client";
 import type { Ingester } from "./bsky/ingester";
@@ -56,7 +56,7 @@ import { startEnrichmentDrain } from "./data/enrichQueue";
 import { lazy } from "./lib/lazy";
 import { createProfileCache, getProfile } from "./services/getProfile";
 import { updateBookRecord } from "./services/getBook";
-import type { PendingWrite } from "./data/syncBridge";
+import { drainSyncWrites } from "./services/syncWriteDrain";
 import { errorMessage } from "./lib/errors";
 
 /** Add business context to the single wide event emitted at request end. Prefer this over logger.info in handlers. */
@@ -660,7 +660,7 @@ export function createContextMiddleware(deps: AppDeps) {
       getSessionAgent(c.req.raw, c.res, ctx, sessionTiming).then((client) => {
         if (client) {
           ctx.addWideEventContext({ userDid: client.did });
-          void flushPendingSyncWrites(client, ctx);
+          void flushPendingSyncWrites(client, ctx, deps.logger);
         }
         return client;
       }),
@@ -701,41 +701,48 @@ export function createContextMiddleware(deps: AppDeps) {
  * routes through the canonical `updateBookRecord` writer so PDS + DB stay
  * consistent with every other book update.
  */
-async function flushPendingSyncWrites(client: SessionClient, ctx: BookUtilContext): Promise<void> {
-  const key = `sync_pending:${client.did}`;
+async function flushPendingSyncWrites(
+  client: SessionClient,
+  ctx: BookUtilContext,
+  logger: AppDeps["logger"],
+): Promise<void> {
   try {
-    const pending = await ctx.kv.getItem<PendingWrite[]>(key);
-    if (!pending?.length) return;
-
-    const failed: PendingWrite[] = [];
-    for (const entry of pending) {
-      try {
-        // Only bridge books the user still tracks; never auto-create from a sync.
-        const userBook = await ctx.db
-          .selectFrom("user_book")
-          .select(["uri"])
-          .where("userDid", "=", client.did)
-          .where("hiveId", "=", entry.hiveId as HiveId)
-          .executeTakeFirst();
-        if (!userBook) continue;
-
+    const summary = await drainSyncWrites({
+      db: ctx.db,
+      kv: ctx.kv,
+      userDid: client.did,
+      onStalled: (durationMs) =>
+        logger.warn(
+          {
+            event: "sync_write_drain",
+            outcome: "stalled",
+            userDid: client.did,
+            duration_ms: durationMs,
+          },
+          "sync progress write still running; retaining drain ownership",
+        ),
+      write: async (entry, syncPublication) => {
         await updateBookRecord({
           ctx,
           agent: client,
-          hiveId: entry.hiveId as HiveId,
+          hiveId: entry.hiveId,
           updates: { bookProgress: JSON.parse(entry.bookProgress) },
+          syncPublication,
         });
-      } catch {
-        failed.push(entry);
-      }
+      },
+    });
+    // Detached work may finish after the request's wide event has already emitted.
+    if (summary) {
+      const fields = { event: "sync_write_drain", userDid: client.did, ...summary };
+      if (summary.failed || summary.lease_lost)
+        logger.warn(fields, "sync progress drain incomplete");
+      else logger.info(fields, "sync progress drain completed");
     }
-
-    if (failed.length > 0) {
-      await ctx.kv.setItem(key, failed);
-    } else {
-      await ctx.kv.removeItem(key);
-    }
-  } catch {
-    // fire-and-forget — don't break the login flow
+  } catch (error) {
+    logger.warn(
+      { event: "sync_write_drain", userDid: client.did, error: errorMessage(error) },
+      "sync progress drain failed",
+    );
+    // Fire-and-forget — don't break the login flow.
   }
 }

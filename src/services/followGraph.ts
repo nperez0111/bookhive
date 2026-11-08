@@ -25,6 +25,18 @@ export type FollowResult = { ok: true; alreadyGone?: boolean } | { ok: false; me
 
 type ApplyWritesOut = { results?: Array<{ $type: string }> };
 
+// Called inside the same transaction as the acknowledged mirror mutation.
+// Bump even for a no-op/absent unfollow: an older staged scan may contain it.
+async function advanceFollowRevision(db: Database, userDid: string): Promise<void> {
+  await db
+    .insertInto("follow_sync_state")
+    .values({ userDid, revision: 1 })
+    .onConflict((oc) =>
+      oc.column("userDid").doUpdateSet({ revision: (eb) => eb("revision", "+", 1) }),
+    )
+    .execute();
+}
+
 /** Mirror the follow into `user_follows`. Only ever called after a good PDS write. */
 async function markFollowed(
   db: Database,
@@ -33,29 +45,35 @@ async function markFollowed(
   followedAt: string,
 ): Promise<void> {
   const now = new Date().toISOString();
-  await db
-    .insertInto("user_follows")
-    .values({
-      userDid,
-      followsDid,
-      followedAt,
-      syncedAt: now,
-      lastSeenAt: now,
-      isActive: 1,
-    })
-    .onConflict((oc) =>
-      oc.columns(["userDid", "followsDid"]).doUpdateSet({ lastSeenAt: now, isActive: 1 }),
-    )
-    .execute();
+  await db.transaction().execute(async (tx) => {
+    await advanceFollowRevision(tx, userDid);
+    await tx
+      .insertInto("user_follows")
+      .values({
+        userDid,
+        followsDid,
+        followedAt,
+        syncedAt: now,
+        lastSeenAt: now,
+        isActive: 1,
+      })
+      .onConflict((oc) =>
+        oc.columns(["userDid", "followsDid"]).doUpdateSet({ lastSeenAt: now, isActive: 1 }),
+      )
+      .execute();
+  });
 }
 
 async function markUnfollowed(db: Database, userDid: string, followsDid: string): Promise<void> {
-  await db
-    .updateTable("user_follows")
-    .set({ isActive: 0 })
-    .where("userDid", "=", userDid)
-    .where("followsDid", "=", followsDid)
-    .execute();
+  await db.transaction().execute(async (tx) => {
+    await advanceFollowRevision(tx, userDid);
+    await tx
+      .updateTable("user_follows")
+      .set({ isActive: 0 })
+      .where("userDid", "=", userDid)
+      .where("followsDid", "=", followsDid)
+      .execute();
+  });
 }
 
 export async function followUser({

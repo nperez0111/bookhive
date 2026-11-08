@@ -22,9 +22,10 @@ const BOB = "did:plc:bob";
 let sqlite: DatabaseSync;
 let db: Database;
 
-/** `getProfiles` short-circuits to the public client with no session, so avatars come back empty — none of these assertions check avatars. */
+/** Pagination tests need no avatars; never send synthetic actors to the live AppView. */
 function ctxFor(): FeedCtx {
   const store = new Map<string, unknown>();
+  const noProfiles = async () => ({ ok: true as const, data: { profiles: [] } });
   return {
     db,
     kv: {
@@ -33,7 +34,7 @@ function ctxFor(): FeedCtx {
       set: async (k: string, v: unknown) => void store.set(k, v),
       setMeta: async () => {},
     } as unknown as FeedCtx["kv"],
-    getSessionAgent: async () => null,
+    getSessionAgent: async () => ({ did: ME, get: noProfiles, post: noProfiles }),
     resolver: {
       resolveDidsToHandles: async (dids: string[]) =>
         Object.fromEntries(dids.map((d) => [d, `${d.split(":").at(-1)}.test`])),
