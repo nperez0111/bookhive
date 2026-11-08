@@ -5,7 +5,7 @@ import { createStorage, type Storage } from "unstorage";
 
 import sqliteKv, { createSharedKvDb } from "../sqlite-kv";
 import { withTimeout } from "../lib/semaphore";
-import { anonPageCache } from "./anon-page-cache";
+import { anonPageCache, getPageCacheMemoryStats } from "./anon-page-cache";
 
 let kv: Storage;
 
@@ -32,6 +32,56 @@ const get = (app: Hono, path: string, headers?: Record<string, string>) =>
   app.request(new Request(`http://test.local${path}`, { headers }));
 
 describe("anonPageCache storage", () => {
+  it("skips optional extraction without queuing when two other bodies are still open", async () => {
+    const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const app = new Hono();
+    app.use("/p/*", anonPageCache(kv) as any);
+    app.get(
+      "/p/:name",
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controllers.push(controller);
+              controller.enqueue(new TextEncoder().encode("<html>stream</html>"));
+            },
+          }),
+          { headers: { "content-type": "text/html" } },
+        ),
+    );
+    const before = getPageCacheMemoryStats().page_cache_skipped_fills;
+    const first = get(app, "/p/first");
+    const second = get(app, "/p/second");
+    let third: Response | undefined;
+    try {
+      await withTimeout(
+        (async () => {
+          while (
+            getPageCacheMemoryStats().page_cache_active_fills < 2 ||
+            getPageCacheMemoryStats().page_cache_buffered_bytes === 0
+          )
+            await Bun.sleep(0);
+        })(),
+        1000,
+        "cache fills started",
+      );
+      third = await withTimeout(Promise.resolve(get(app, "/p/third")), 1000, "uncached response");
+      expect(third.status).toBe(200);
+      expect(third.headers.get("x-page-cache")).toBeNull();
+      expect(getPageCacheMemoryStats().page_cache_active_fills).toBe(2);
+      expect(getPageCacheMemoryStats().page_cache_skipped_fills).toBe(before + 1);
+    } finally {
+      for (const controller of controllers) controller.close();
+      for (const response of await Promise.all([first, second])) await response.text();
+      if (third) expect(await third.text()).toBe("<html>stream</html>");
+    }
+    expect(getPageCacheMemoryStats().page_cache_active_fills).toBe(0);
+    expect(getPageCacheMemoryStats().page_cache_buffered_bytes).toBe(0);
+    expect(
+      (await get(appServing("recovered").app, "/p/recovered")).headers.get("x-page-cache"),
+    ).toBe("miss");
+  });
+
   it("serves the rendered page when persistence fails, and can recover on the next request", async () => {
     const write = spyOn(kv, "setItem").mockRejectedValue(new Error("database is locked"));
     const { app, renders } = appServing("<html>still available</html>");
@@ -54,6 +104,29 @@ describe("anonPageCache storage", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("<html>fresh</html>");
     read.mockRestore();
+  });
+
+  it("releases extraction accounting when the source stream fails", async () => {
+    const app = new Hono();
+    app.use("/p/*", anonPageCache(kv) as any);
+    app.get(
+      "/p/broken-stream",
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("partial"));
+              controller.error(new Error("source failed"));
+            },
+          }),
+          { headers: { "content-type": "text/html" } },
+        ),
+    );
+    const response = await get(app, "/p/broken-stream");
+    expect(response.status).toBe(200);
+    expect(response.text()).rejects.toThrow("source failed");
+    expect(getPageCacheMemoryStats().page_cache_active_fills).toBe(0);
+    expect(getPageCacheMemoryStats().page_cache_buffered_bytes).toBe(0);
   });
 
   it("does not fail coalesced waiters when a rendered page cannot be persisted", async () => {

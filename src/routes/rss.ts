@@ -5,8 +5,8 @@
 import { Hono } from "hono";
 import { isDid } from "@atcute/lexicons/syntax";
 
-import type { AppContext, AppEnv } from "../context";
-import { BookFields } from "../db";
+import type { AppEnv } from "../context";
+import { listRssActivityRows as activityRows } from "../data/rssActivity";
 import { BOOK_STATUS } from "../constants";
 import type { HiveId } from "../types";
 import { escapeXml } from "../lib/xml";
@@ -110,50 +110,6 @@ function feedParams(c: { req: { query: (k: string) => string | undefined } }) {
     statusFilter: parseStatusFilter(c.req.query("status")),
     limit: Math.min(200, Math.max(1, parseInt(c.req.query("limit") || "50", 10))),
   };
-}
-
-/**
- * The rows behind every RSS feed: `user_book` joined to `hive_book`, newest
- * activity first, with `uri` as the keyset tiebreaker — mirrors `buildFeedQuery`
- * in `src/data/activityFeed.ts`, differing only in `where`.
- */
-async function activityRows(
-  db: AppContext["db"],
-  scope:
-    | { kind: "user"; did: string }
-    | { kind: "book"; hiveId: HiveId }
-    | { kind: "friends"; did: string },
-  { limit, statusFilter }: { limit: number; statusFilter: string[] | null },
-): Promise<FeedItem[]> {
-  let query = db
-    .selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
-    .orderBy("user_book.indexedAt", "desc")
-    .orderBy("user_book.uri", "desc")
-    .limit(limit);
-
-  if (scope.kind === "user") {
-    query = query.where("user_book.userDid", "=", scope.did) as typeof query;
-  } else if (scope.kind === "book") {
-    query = query.where("user_book.hiveId", "=", scope.hiveId) as typeof query;
-  } else {
-    query = query.where(
-      "user_book.userDid",
-      "in",
-      db
-        .selectFrom("user_follows")
-        .where("user_follows.userDid", "=", scope.did)
-        .where("user_follows.isActive", "=", 1)
-        .select("user_follows.followsDid"),
-    ) as typeof query;
-  }
-
-  if (statusFilter) {
-    query = query.where("user_book.status", "in", statusFilter) as typeof query;
-  }
-
-  return await query.execute();
 }
 
 const RSS_HEADERS = {

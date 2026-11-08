@@ -2,6 +2,7 @@ import type { SessionOptions } from "iron-session";
 
 import { env } from "../env";
 import type { SessionClient } from "./client";
+import { SessionCache } from "./sessionCache";
 
 // The iron-session cookie config and in-process `SessionClient` cache — split
 // out because `context.ts` and `auth/router.tsx` both need them, and having
@@ -24,34 +25,19 @@ export function getSessionConfig(): SessionOptions {
   };
 }
 
-const MAX_CACHE_TTL_MS = 10 * 60 * 1000; // 10-minute cap on session cache
-const MIN_CACHE_TTL_MS = 10_000; // 10-second minimum
-const TOKEN_EXPIRY_BUFFER_MS = 60_000; // re-restore 60s before token expires
-const SESSION_SAVE_INTERVAL_MS = 24 * 60 * 60 * 1000; // re-save iron-session cookie every 24h
+const sessionClientCache = new SessionCache<SessionClient>();
+// Expire dormant DIDs too; an unref'ed timer must not keep a worker alive at shutdown.
+setInterval(() => sessionClientCache.prune(), 60_000).unref();
 
-type CachedSession = {
-  client: SessionClient;
-  /** When this cache entry should be evicted (triggers a fresh restore). */
-  expiresAt: number;
-  /** Last time we called session.save() to extend the iron-session cookie TTL. */
-  lastSaveAt: number;
-};
-
-const sessionClientCache = new Map<string, CachedSession>();
+/** Fixed-cardinality snapshot; no DID or client contents escape into monitoring. */
+export function getSessionCacheStats() {
+  return sessionClientCache.stats();
+}
 
 export function getCachedSessionClient(
   did: string,
 ): { client: SessionClient; needsSave: boolean } | null {
-  const entry = sessionClientCache.get(did);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    sessionClientCache.delete(did);
-    return null;
-  }
-  return {
-    client: entry.client,
-    needsSave: Date.now() - entry.lastSaveAt > SESSION_SAVE_INTERVAL_MS,
-  };
+  return sessionClientCache.get(did);
 }
 
 export function setCachedSessionClient(
@@ -59,17 +45,7 @@ export function setCachedSessionClient(
   client: SessionClient,
   tokenExpiresAt: number | undefined,
 ): void {
-  const now = Date.now();
-  let ttl = MAX_CACHE_TTL_MS;
-  if (tokenExpiresAt) {
-    const timeUntilExpiry = tokenExpiresAt - now - TOKEN_EXPIRY_BUFFER_MS;
-    ttl = Math.max(MIN_CACHE_TTL_MS, Math.min(timeUntilExpiry, MAX_CACHE_TTL_MS));
-  }
-  sessionClientCache.set(did, {
-    client,
-    expiresAt: now + ttl,
-    lastSaveAt: now,
-  });
+  sessionClientCache.set(did, client, tokenExpiresAt);
 }
 
 /** Drop a cached client — the session was deleted upstream, so re-restore. */
@@ -79,6 +55,5 @@ export function evictCachedSessionClient(did: string): void {
 
 /** Record that the iron-session cookie was just re-saved, resetting the 24h timer. */
 export function markSessionSaved(did: string): void {
-  const entry = sessionClientCache.get(did);
-  if (entry) entry.lastSaveAt = Date.now();
+  sessionClientCache.markSaved(did);
 }

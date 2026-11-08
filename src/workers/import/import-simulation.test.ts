@@ -62,6 +62,10 @@ void mock.module("../../services/getBook", () => ({
   getBookRecord: mock(async () => null),
 }));
 
+void mock.module("../../services/importBookRecords", () => ({
+  getImportBookRecords: mockGetUserRepoRecords,
+}));
+
 // Import after mocking
 const { processGoodreadsImport, processStorygraphImport } = await import("./logic");
 

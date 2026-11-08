@@ -72,9 +72,10 @@ export function classifyWorkerExit(args: {
  * Memory footprint of a live worker, read from procfs. Must be sampled while
  * the worker is running — `/proc/<pid>` is gone by the time `onExit` fires.
  *
- * `Anonymous` is the number that matters; `Rss` also counts the shared,
- * reclaimable file-backed SQLite mmap, which makes it look alarming for no
- * reason. Returns null off Linux (dev).
+ * `Anonymous` helps isolate private/native allocation growth. `Rss` also counts
+ * shared, reclaimable file-backed mappings, so summing worker RSS double-counts
+ * shared pages. File cache still contributes real host/cgroup memory pressure;
+ * interpret both alongside aggregate memory samples. Returns null off Linux (dev).
  */
 export function readProcessMemoryKb(
   pid: number,

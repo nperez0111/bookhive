@@ -40,12 +40,12 @@ supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for di
    a lexicon field? → **`core/`**.
 5. Otherwise → **`lib/`**.
 
-| Layer           | May import                              | Contents                                                                                                                                                                                                                                                                                                                                         |
-| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/lib/`      | nothing of ours                         | `semaphore` `circuitBreaker` `readThroughCache` `batchTransform` `lazy` `pagination` `dateInput` `xml` `htmlToText` `formatBytes` `formatCount` `viewTransitionName` `buildUrl` `contentDisposition` `errors` `manifest`                                                                                                                         |
-| `src/core/`     | `lib`, `types`, `constants`             | `authors` `rating` `hiveId` `bookProgress` `bookMeta` `userBookView` `imageUrl` `goodreadsCoverUrl` `filenameMatching` `bookMatching` `downloadFilename` `importBook` `csv` `ftsQuery` `cacheHeaders` `generateInitialsAvatar` `bookLifecycle` `readingYear` `enrichVerdict` `bookMetadata/` `listRecord`                                        |
-| `src/data/`     | `core`, `lib`, `db`                     | `activityFeed` `activeUsers` `authorStats` `communityStats` `exploreGenres` `readingStats` `catalogBooks` `personalBooks` `personalLibrary` `syncDocuments` `syncMatching` `syncBridge` `bookIdentifiers` `enrichQueue` `hiveBookGenres` `getLanguages` `dbExport` `bookDetail` `profileSummary` `socialCards` `landingHighlights` `userShelves` |
-| `src/services/` | all of the above + workers/scrapers/PDS | `getBook` `userBookStore` `bookRecordWrite` `userBookFollowUp` `buzzWrite` `followGraph` `lists` `getFollows` `getProfile` `deleteAccount` `catalogBookService` `ensureBookCataloged` `uploadImageBlob` `uploadPersonalBook` `convertToEpub` `enrichBookData` `searchBooks`                                                                      |
+| Layer           | May import                              | Contents                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/`      | nothing of ours                         | `semaphore` `circuitBreaker` `readThroughCache` `batchTransform` `lazy` `pagination` `dateInput` `xml` `htmlToText` `formatBytes` `formatCount` `viewTransitionName` `buildUrl` `contentDisposition` `errors` `manifest`                                                                                                                                                      |
+| `src/core/`     | `lib`, `types`, `constants`             | `authors` `rating` `hiveId` `bookProgress` `bookMeta` `userBookView` `imageUrl` `goodreadsCoverUrl` `filenameMatching` `bookMatching` `downloadFilename` `importBook` `csv` `ftsQuery` `cacheHeaders` `generateInitialsAvatar` `bookLifecycle` `readingYear` `enrichVerdict` `bookMetadata/` `listRecord`                                                                     |
+| `src/data/`     | `core`, `lib`, `db`                     | `activityFeed` `activeUsers` `authorStats` `communityStats` `exploreGenres` `readingStats` `catalogBooks` `personalBooks` `personalLibrary` `syncDocuments` `syncMatching` `syncBridge` `bookIdentifiers` `enrichQueue` `hiveBookGenres` `getLanguages` `dbExport` `dbExportLock` `bookDetail` `profileSummary` `socialCards` `landingHighlights` `userShelves` `rssActivity` |
+| `src/services/` | all of the above + workers/scrapers/PDS | `getBook` `userBookStore` `bookRecordWrite` `userBookFollowUp` `buzzWrite` `followGraph` `lists` `getFollows` `getProfile` `deleteAccount` `catalogBookService` `ensureBookCataloged` `uploadImageBlob` `uploadPersonalBook` `convertToEpub` `enrichBookData` `searchBooks` `dbExport` `importBookRecords`                                                                    |
 
 Two deliberate exceptions: `core/bookMetadata/` moves whole even though sub-files need
 `@resvg/resvg-js`/`Bun.file` (a cohesive parser package); `data/personalLibrary.ts` touches the
@@ -89,6 +89,27 @@ XRPC/OPDS/RSS. `listShelf` takes its sort key as a parameter rather than unifyin
 reading** sorts by `indexedAt` (an activity list), **Want to read** by `createdAt` (a queue) — see
 `docs/notes/activity-feed.md`. Catalogue `ORDER BY` tie-breaking, cover-selection precedence, and
 the guarded `JSON.parse(progressData)`: `docs/notes/domain-rules-and-write-paths.md`.
+
+`userShelves.ts` also owns `listProfileBooks`, `listTrackedBooks` and `listReadingStatsBooks`:
+purpose-specific projections avoid hydrating catalogue descriptions and histories a consumer does
+not use. The full `listAllUserBooks` remains for XRPC profile and mirror/export contracts.
+`data/rssActivity.ts` reads RSS activity directly from `user_book`, without an unused catalogue
+join. Feed pagination limits IDs before its narrow hydration; cursor and burst rules remain in
+`docs/notes/activity-feed.md`. Follow membership uses indexed `EXISTS` probes plus migration 032's
+reverse-active follow index, rather than materializing every book owner's DID.
+
+`services/dbExport.ts` coordinates preparation/download ownership; `data/dbExport.ts` owns bounded
+file/SQLite copying and tar streaming, and `data/dbExportLock.ts` owns the dedicated cluster lock.
+The short-lived `workers/export-worker.ts` uses an acknowledgement-based client, not forced
+termination of a possibly running native VACUUM. Bounds and fail-closed cancellation are described
+in `docs/notes/memory-and-runtime.md`. Session retention is isolated in `auth/sessionCache.ts`;
+`logger/openObserve.ts` owns parent/worker byte credits and bounded shipping rather than adding
+another unbounded logging queue.
+
+`routes/boundedMultipart.ts` counts actual request bytes before multipart materialization.
+`services/importBookRecords.ts` pages only the book collection while retaining original record keys;
+the CSV worker uses bounded processing groups and acknowledges streamed progress. Admission and
+remaining whole-file/report allocations are documented in `docs/notes/memory-and-runtime.md`.
 
 ## Modules with a note worth keeping
 
@@ -142,7 +163,7 @@ name — full stories in the linked `docs/notes/*.md`.
 
 ## Reading navigation
 
-`/my-books` reads the signed-in viewer's books through `listAllUserBooks` and renders
+`/my-books` reads the signed-in viewer's books through the narrow `listTrackedBooks` and renders
 `pages/myBooks.tsx`. `pages/components/TrackedBooks.tsx` owns the LibraryTable mount,
 serialized props, and server-renders the same `client/components/LibraryTable.tsx` workspace
 with a CSS-responsive initial grid/table and disabled editing controls; there is no new island.

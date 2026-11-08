@@ -18,7 +18,8 @@ import {
   type StorygraphBook,
   type HardcoverBook,
 } from "../../core/csv";
-import { getUserRepoRecords, updateBookRecords, updateBookRecord } from "../../services/getBook";
+import { updateBookRecords, updateBookRecord } from "../../services/getBook";
+import { getImportBookRecords } from "../../services/importBookRecords";
 import {
   normalizeStr,
   mapGoodreadsStatus,
@@ -50,16 +51,24 @@ function sseJSON(payload: Record<string, unknown>): string {
 const BATCH_SIZE = 10;
 const SEARCH_CONCURRENCY = 3;
 
-/** Read all rows from a CSV ReadableStream into an array. */
-async function drainStream<T>(stream: ReadableStream<T>): Promise<T[]> {
-  const items: T[] = [];
-  const reader = stream.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    items.push(value);
-  }
-  return items;
+/** Small views over the transferred input: no Blob copy or whole parsed-row array. */
+function csvRows<T>(csvData: ArrayBuffer, parser: () => TransformStream<Uint8Array, T>) {
+  const bytes = new Uint8Array(csvData);
+  let offset = 0;
+  return new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (offset >= bytes.length) {
+          controller.close();
+          return;
+        }
+        const end = Math.min(offset + 16 * 1024, bytes.length);
+        controller.enqueue(bytes.subarray(offset, end));
+        offset = end;
+      },
+    },
+    { highWaterMark: 0 },
+  ).pipeThrough(parser());
 }
 
 type BookUpdate = Partial<BookRecord.Record> & {
@@ -269,100 +278,109 @@ async function processCsvImport<TBook>({
     return;
   }
 
-  // Phase 1: parse the entire CSV.
-  const allBooks = await drainStream(new Blob([csvData]).stream().pipeThrough(source.parser()));
-  const totalBooks = allBooks.length;
+  // A count-only first pass preserves the exact parser-derived SSE totals
+  // before any PDS writes. The second pass processes groups of three, with bounded
+  // parser input chunks instead of retaining the whole parsed library.
+  let totalBooks = 0;
+  for await (const _book of csvRows(csvData, source.parser)) totalBooks++;
 
-  // Start fetching the user's existing PDS records in the background.
-  const bookRecords = getUserRepoRecords({ ctx, agent });
-  const existingHiveIdsPromise = bookRecords.then(
-    (br) => new Set(Array.from(br.books.values()).map((b) => b.hiveId)),
-  );
+  const existingRecords = await getImportBookRecords({ agent });
+  const bookRecords = Promise.resolve(existingRecords);
+  const existingHiveIds = new Set(Array.from(existingRecords.books.values(), (b) => b.hiveId));
 
   // Phase 2: search in groups of SEARCH_CONCURRENCY, process results in order.
   let currentBatch = new Map<HiveId, BookUpdate>();
 
-  for (let i = 0; i < allBooks.length; i += SEARCH_CONCURRENCY) {
-    const chunk = allBooks.slice(i, i + SEARCH_CONCURRENCY);
-    // Fire every search in this chunk, then consume them in order.
-    const searches = chunk.map((book) => searchBooks({ query: source.title(book), ctx }));
+  const rows = csvRows(csvData, source.parser).getReader();
+  try {
+    for (let i = 0; i < totalBooks; i += SEARCH_CONCURRENCY) {
+      const chunk: TBook[] = [];
+      for (let j = 0; j < SEARCH_CONCURRENCY; j++) {
+        const { done, value } = await rows.read();
+        if (done) break;
+        chunk.push(value);
+      }
+      // Fire every search in this chunk, then consume them in order.
+      const searches = chunk.map((book) => searchBooks({ query: source.title(book), ctx }));
 
-    for (let j = 0; j < chunk.length; j++) {
-      const book = chunk[j]!;
-      const title = source.title(book);
-      const author = source.author(book);
+      for (let j = 0; j < chunk.length; j++) {
+        const book = chunk[j]!;
+        const title = source.title(book);
+        const author = source.author(book);
 
-      await onSSE(
-        sseJSON({
-          title,
-          author,
-          processed: matchedBooks.value,
-          failed: unmatchedBooks.length,
-          total: totalBooks,
-          event: "book-load",
-          stage: "searching",
-          stageProgress: {
-            current: i + j + 1,
+        await onSSE(
+          sseJSON({
+            title,
+            author,
+            processed: matchedBooks.value,
+            failed: unmatchedBooks.length,
             total: totalBooks,
-            message: `Looking up "${title}"…`,
-          },
-          id: id.value++,
-        }),
-      );
+            event: "book-load",
+            stage: "searching",
+            stageProgress: {
+              current: i + j + 1,
+              total: totalBooks,
+              message: `Looking up "${title}"…`,
+            },
+            id: id.value++,
+          }),
+        );
 
-      await searches[j];
+        await searches[j];
 
-      const hiveBook = await ctx.db
-        .selectFrom("hive_book")
-        .select(["id", "title", "cover", "identifiers"])
-        .where("hive_book.rawTitle", "=", title)
-        .where("authors", "=", author)
-        .executeTakeFirst();
+        const hiveBook = await ctx.db
+          .selectFrom("hive_book")
+          .select(["id", "title", "cover", "identifiers"])
+          .where("hive_book.rawTitle", "=", title)
+          .where("authors", "=", author)
+          .executeTakeFirst();
 
-      if (!hiveBook) {
-        const key = `${normalizeStr(title)}::${normalizeStr(author)}`;
-        if (!unmatchedSet.has(key)) {
-          unmatchedSet.add(key);
-          unmatchedBooks.push({ book, reason: "no_match" });
+        if (!hiveBook) {
+          const key = `${normalizeStr(title)}::${normalizeStr(author)}`;
+          if (!unmatchedSet.has(key)) {
+            unmatchedSet.add(key);
+            unmatchedBooks.push({ book, reason: "no_match" });
+          }
+          continue;
         }
-        continue;
-      }
 
-      const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
-        ? JSON.parse(hiveBook.identifiers)
-        : {};
-      const { identifiers: newIdentifiers, changed } = source.mergeIdentifiers(
-        book,
-        existingIdentifiers,
-        hiveBook.id,
-      );
-      if (changed) {
-        await persistMergedIdentifiers(ctx, hiveBook.id as HiveId, newIdentifiers);
-      }
+        const existingIdentifiers: BookIdentifiers = hiveBook.identifiers
+          ? JSON.parse(hiveBook.identifiers)
+          : {};
+        const { identifiers: newIdentifiers, changed } = source.mergeIdentifiers(
+          book,
+          existingIdentifiers,
+          hiveBook.id,
+        );
+        if (changed) {
+          await persistMergedIdentifiers(ctx, hiveBook.id as HiveId, newIdentifiers);
+        }
 
-      const existingHiveIds = await existingHiveIdsPromise;
-      currentBatch.set(
-        hiveBook.id as HiveId,
-        source.buildRecord({ book, hiveBook, existingHiveIds }),
-      );
+        currentBatch.set(
+          hiveBook.id as HiveId,
+          source.buildRecord({ book, hiveBook, existingHiveIds }),
+        );
 
-      if (currentBatch.size >= BATCH_SIZE) {
-        await flushBatch({
-          batch: currentBatch,
-          ctx,
-          agent,
-          bookRecords,
-          onSSE,
-          id,
-          matchedBooks,
-          uploadedBooks,
-          unmatchedBooks,
-          totalBooks,
-          makeFallbackBook: source.makeFallbackBook,
-        });
-        currentBatch = new Map();
+        if (currentBatch.size >= BATCH_SIZE) {
+          await flushBatch({
+            batch: currentBatch,
+            ctx,
+            agent,
+            bookRecords,
+            onSSE,
+            id,
+            matchedBooks,
+            uploadedBooks,
+            unmatchedBooks,
+            totalBooks,
+            makeFallbackBook: source.makeFallbackBook,
+          });
+          currentBatch = new Map();
+        }
       }
     }
+  } finally {
+    await rows.cancel();
   }
 
   await flushBatch({

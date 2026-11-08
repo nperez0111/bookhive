@@ -121,7 +121,6 @@ test.each(["fixture.test", "handle.invalid"])(
           profile={null}
           isOwnProfile={false}
           availableYears={[2024, 2025]}
-          books={[]}
           showYearInBooks={false}
         />,
       ),

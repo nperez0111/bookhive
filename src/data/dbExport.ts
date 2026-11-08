@@ -43,9 +43,10 @@ export function isAuthorizedExportRequest(opts: {
 }
 
 async function sqliteBackup({ sourcePath, destPath }: { sourcePath: string; destPath: string }) {
-  const db = new DatabaseSync(sourcePath);
+  const db = new DatabaseSync(sourcePath, { readonly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000");
+    db.exec("PRAGMA mmap_size = 0; PRAGMA cache_size = -2048");
     // VACUUM INTO copies the database to a new file (SQLite 3.27+)
     const escaped = path.resolve(destPath).replace(/'/g, "''");
     db.exec(`VACUUM INTO '${escaped}'`);
@@ -61,9 +62,11 @@ function shouldExcludeTable(name: string): boolean {
 async function createSanitizedKvCopy({
   sourcePath,
   destPath,
+  checkCancelled,
 }: {
   sourcePath: string;
   destPath: string;
+  checkCancelled: () => void;
 }) {
   const src = new DatabaseSync(sourcePath, { readonly: true });
   const dest = new DatabaseSync(destPath);
@@ -71,6 +74,8 @@ async function createSanitizedKvCopy({
   try {
     src.exec("PRAGMA busy_timeout = 10000");
     dest.exec("PRAGMA busy_timeout = 5000");
+    src.exec("PRAGMA mmap_size = 0; PRAGMA cache_size = -2048");
+    dest.exec("PRAGMA mmap_size = 0; PRAGMA cache_size = -2048");
 
     const objects = src
       .prepare(
@@ -115,7 +120,7 @@ async function createSanitizedKvCopy({
         }
         tablesToCopy.push({
           name,
-          colList: cols.map((c) => `"${c.name}"`).join(", "),
+          colList: cols.map((c) => `"${c.name.replace(/"/g, '""')}"`).join(", "),
           colNames: cols.map((c) => c.name),
           quotedTable,
         });
@@ -134,17 +139,17 @@ async function createSanitizedKvCopy({
       // Copy data by reading from src and inserting into dest (no ATTACH —
       // the app may have the source DB open, which would lock it)
       for (const { name, colList, colNames, quotedTable } of tablesToCopy) {
-        const rows = src.prepare(`SELECT ${colList} FROM ${quotedTable}`).all() as Record<
-          string,
-          unknown
-        >[];
-        if (rows.length === 0) continue;
+        checkCancelled();
+        const rows = src.prepare(`SELECT ${colList} FROM ${quotedTable}`).iterate() as Iterable<
+          Record<string, unknown>
+        >;
         const placeholders = colNames.map(() => "?").join(", ");
         const safeName = `"${name.replace(/"/g, '""')}"`;
         const insert = dest.prepare(
           `INSERT INTO main.${safeName} (${colList}) VALUES (${placeholders})`,
         );
         for (const row of rows) {
+          checkCancelled();
           insert.run(...colNames.map((col) => row[col] as string | number | bigint | null));
         }
       }
@@ -159,6 +164,7 @@ async function createSanitizedKvCopy({
       throw new Error(`Failed to create sanitized KV copy: ${toError(e).message}`);
     }
 
+    checkCancelled();
     dest.exec("VACUUM");
   } finally {
     src.close();
@@ -171,13 +177,15 @@ function createTgz(cwd: string, outputFile: string, files: string[]): Promise<vo
     const proc = spawn("tar", ["-czf", outputFile, "-C", cwd, ...files], {
       stdio: ["ignore", "ignore", "pipe"],
     });
-    const stderr: string[] = [];
-    proc.stderr.on("data", (d) => stderr.push(d.toString()));
+    let stderr = "";
+    proc.stderr.on("data", (d) => {
+      stderr = (stderr + d.toString()).slice(-8192);
+    });
     proc.on("error", reject);
     proc.on("close", (code) =>
       code === 0
         ? resolve()
-        : reject(new Error(`tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`)),
+        : reject(new Error(`tar exited ${code}: ${stderr.trim() || "no stderr"}`)),
     );
   });
 }
@@ -187,56 +195,164 @@ export function createTgzReadStream(
   files: string[],
   callbacks?: { onClose?: () => void; onError?: (err: Error) => void },
 ): ReadableStream<Uint8Array> {
+  const download = startTgzDownload(cwd, files);
+  void download.done.then((error) =>
+    error ? callbacks?.onError?.(error) : callbacks?.onClose?.(),
+  );
+  return download.stream;
+}
+
+/** Completion means both the consumer and tar are finished, not merely stdout EOF. */
+export function startTgzDownload(
+  cwd: string,
+  files: string[],
+  signal?: AbortSignal,
+): { stream: ReadableStream<Uint8Array>; done: Promise<Error | undefined> } {
   const proc = spawn("tar", ["-czf", "-", "-C", cwd, ...files], {
     stdio: ["ignore", "pipe", "pipe"],
+    // GNU tar starts gzip as a child. Cancel the whole private process group,
+    // not just tar, or gzip can outlive the disconnected download.
+    detached: process.platform !== "win32",
   });
-  const stderr: string[] = [];
-  if (proc.stderr) {
-    proc.stderr.on("data", (d: Buffer) => stderr.push(d.toString()));
+  let stderr = "";
+  let processError: Error | undefined;
+  proc.stderr.on("data", (d: Buffer) => {
+    stderr = (stderr + d.toString()).slice(-8192);
+  });
+  proc.on("error", (error) => {
+    processError = error;
+  });
+  const closed = new Promise<Error | undefined>((resolve) => {
+    proc.on("close", (code) =>
+      resolve(
+        processError ??
+          (code === 0
+            ? undefined
+            : new Error(`tar exited ${code}: ${stderr.trim() || "no stderr"}`)),
+      ),
+    );
+  });
+  const reader = (
+    Readable.toWeb(proc.stdout, {
+      strategy: { highWaterMark: 64 * 1024, size: (chunk: Uint8Array) => chunk.byteLength },
+    }) as unknown as ReadableStream<Uint8Array>
+  ).getReader();
+  let settle!: (error: Error | undefined) => void;
+  const done = new Promise<Error | undefined>((resolve) => {
+    settle = resolve;
+  });
+  let finishing: Promise<void> | undefined;
+  let cancelled = false;
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const finish = (error?: Error): Promise<void> => {
+    if (finishing) return finishing;
+    finishing = (async () => {
+      signal?.removeEventListener("abort", abort);
+      if (error) {
+        if (process.platform !== "win32" && proc.pid) {
+          try {
+            process.kill(-proc.pid, "SIGKILL");
+          } catch {
+            proc.kill("SIGKILL");
+          }
+        } else proc.kill("SIGKILL");
+        await reader.cancel(error).catch(() => {});
+      }
+      const childError = await closed;
+      settle(error ?? childError);
+      if (!error && !cancelled) {
+        if (childError) controller.error(childError);
+        else controller.close();
+      }
+    })();
+    return finishing;
+  };
+  const abort = () => {
+    cancelled = true;
+    const error = new Error("Export download cancelled");
+    if (!finishing) controller.error(error);
+    void finish(error);
+  };
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      start(value) {
+        controller = value;
+        signal?.addEventListener("abort", abort, { once: true });
+        if (signal?.aborted) abort();
+      },
+      async pull(value) {
+        try {
+          const next = await reader.read();
+          if (finishing) return;
+          if (next.done) await finish();
+          else value.enqueue(next.value);
+        } catch (error) {
+          if (finishing) return;
+          value.error(error);
+          await finish(toError(error));
+        }
+      },
+      cancel() {
+        cancelled = true;
+        return finish(new Error("Export download cancelled"));
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { stream, done };
+}
+
+async function computeFileMd5(filePath: string, checkCancelled: () => void): Promise<string> {
+  const hash = crypto.createHash("md5");
+  for await (const chunk of fs.createReadStream(filePath, { highWaterMark: 64 * 1024 })) {
+    checkCancelled();
+    hash.update(chunk);
   }
-  proc.on("error", (err: Error) => callbacks?.onError?.(err));
-  proc.on("close", (code: number | null) => {
-    if (code === 0) {
-      callbacks?.onClose?.();
-    } else {
-      callbacks?.onError?.(
-        new Error(`tar exited ${code}: ${stderr.join("").trim() || "no stderr"}`),
-      );
-    }
-  });
-  return Readable.toWeb(proc.stdout!) as unknown as ReadableStream<Uint8Array>;
+  return hash.digest("hex");
 }
 
-function computeFileMd5(filePath: string): string {
-  const content = fs.readFileSync(filePath);
-  return crypto.createHash("md5").update(content).digest("hex");
-}
-
-async function getFileStats(filePath: string): Promise<{ md5: string; size: number }> {
+async function getFileStats(
+  filePath: string,
+  checkCancelled: () => void,
+): Promise<{ md5: string; size: number }> {
   const { size } = await fsp.stat(filePath);
-  return { md5: computeFileMd5(filePath), size };
+  return { md5: await computeFileMd5(filePath, checkCancelled), size };
 }
 
-type PrepareResult = {
+export type PrepareResult = {
   tmpDir: string;
   filename: string;
   files: string[];
 };
 
-export async function prepareSanitizedExportFiles(opts: {
+export type ExportOptions = {
   dbPath: string;
   kvPath?: string;
   exportDir: string;
   includeKv: boolean;
-}): Promise<PrepareResult> {
-  const { dbPath, kvPath, exportDir, includeKv } = opts;
+};
 
-  await cleanupStaleExports(exportDir);
-
-  const now = new Date();
-  const stamp = now.toISOString().replace(/[:.]/g, "-");
+export function exportJobPaths(exportDir: string): PrepareResult {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runId = crypto.randomUUID();
-  const tmpDir = path.join(exportDir, `bookhive-export-${stamp}-${runId}`);
+  return {
+    tmpDir: path.join(exportDir, `bookhive-export-${stamp}-${runId}`),
+    filename: `bookhive-export-${stamp}-${runId.slice(0, 8)}.tgz`,
+    files: [],
+  };
+}
+
+// The caller records this private job directory before starting a Worker. Never
+// sweep other jobs here: another process may still be writing or streaming one.
+export async function prepareSanitizedExportFiles(
+  opts: ExportOptions,
+  job = exportJobPaths(opts.exportDir),
+  checkCancelled: () => void = () => {},
+): Promise<PrepareResult> {
+  const { dbPath, kvPath, includeKv } = opts;
+  const now = new Date();
+  const { tmpDir, filename } = job;
+  checkCancelled();
 
   try {
     await fsp.mkdir(tmpDir, { recursive: true });
@@ -245,8 +361,6 @@ export async function prepareSanitizedExportFiles(opts: {
       `Failed to create export temporary directory at ${tmpDir}: ${toError(err).message}`,
     );
   }
-
-  const filename = `bookhive-export-${stamp}-${runId.slice(0, 8)}.tgz`;
 
   try {
     const dbOut = path.join(tmpDir, "db.sqlite");
@@ -260,7 +374,8 @@ export async function prepareSanitizedExportFiles(opts: {
     const tables: string[] = [];
     const views: string[] = [];
 
-    const dbStats = await getFileStats(dbOut);
+    checkCancelled();
+    const dbStats = await getFileStats(dbOut, checkCancelled);
     includedFiles.push({ name: "db.sqlite", md5: dbStats.md5, size: dbStats.size });
 
     try {
@@ -286,13 +401,13 @@ export async function prepareSanitizedExportFiles(opts: {
     if (includeKv && kvPath) {
       const kvOut = path.join(tmpDir, "kv.sqlite");
       try {
-        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut });
+        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut, checkCancelled });
       } catch (err) {
         throw new Error(
           `Failed to create sanitized KV copy from ${kvPath}: ${toError(err).message}`,
         );
       }
-      const kvStats = await getFileStats(kvOut);
+      const kvStats = await getFileStats(kvOut, checkCancelled);
       includedFiles.push({ name: "kv.sqlite", md5: kvStats.md5, size: kvStats.size });
     }
 
@@ -311,7 +426,7 @@ export async function prepareSanitizedExportFiles(opts: {
       throw new Error(`Failed to write manifest file: ${toError(err).message}`);
     }
 
-    const manifestStats = await getFileStats(manifestPath);
+    const manifestStats = await getFileStats(manifestPath, checkCancelled);
     includedFiles.push({ name: "manifest.json", md5: manifestStats.md5, size: manifestStats.size });
 
     return { tmpDir, filename, files: includedFiles.map((f) => f.name) };
@@ -321,143 +436,17 @@ export async function prepareSanitizedExportFiles(opts: {
   }
 }
 
-export async function createSanitizedExportArchive(opts: {
-  dbPath: string;
-  kvPath?: string;
-  exportDir: string;
-  includeKv: boolean;
-}): Promise<ExportResult> {
-  const { dbPath, kvPath, exportDir, includeKv } = opts;
-
-  await cleanupStaleExports(exportDir);
-
-  const now = new Date();
-  const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const runId = crypto.randomUUID();
-  const tmpDir = path.join(exportDir, `bookhive-export-${stamp}-${runId}`);
-
+export async function createSanitizedExportArchive(opts: ExportOptions): Promise<ExportResult> {
+  const prepared = await prepareSanitizedExportFiles(opts);
+  const { tmpDir, filename, files } = prepared;
+  const archivePath = path.join(opts.exportDir, filename);
   try {
-    await fsp.mkdir(tmpDir, { recursive: true });
-  } catch (err) {
-    throw new Error(
-      `Failed to create export temporary directory at ${tmpDir}: ${toError(err).message}`,
-    );
-  }
-
-  const filename = `bookhive-export-${stamp}-${runId.slice(0, 8)}.tgz`;
-  const archivePath = path.join(exportDir, filename);
-
-  try {
-    const dbOut = path.join(tmpDir, "db.sqlite");
-    try {
-      await sqliteBackup({ sourcePath: dbPath, destPath: dbOut });
-    } catch (err) {
-      throw new Error(`Failed to backup main database from ${dbPath}: ${toError(err).message}`);
-    }
-
-    const includedFiles: ExportManifest["files"] = [];
-    const tables: string[] = [];
-    const views: string[] = [];
-
-    const dbStats = await getFileStats(dbOut);
-    includedFiles.push({
-      name: "db.sqlite",
-      md5: dbStats.md5,
-      size: dbStats.size,
-    });
-
-    try {
-      const db = new DatabaseSync(dbOut, { readonly: true });
-      try {
-        const schemaObjects = db
-          .prepare(
-            `SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name`,
-          )
-          .all() as Array<{ type: string; name: string }>;
-
-        for (const obj of schemaObjects) {
-          (obj.type === "table" ? tables : views).push(obj.name);
-        }
-      } finally {
-        db.close();
-      }
-    } catch (err) {
-      throw new Error(
-        `Failed to extract schema information from main database: ${toError(err).message}`,
-      );
-    }
-
-    if (includeKv && kvPath) {
-      const kvOut = path.join(tmpDir, "kv.sqlite");
-      try {
-        await createSanitizedKvCopy({ sourcePath: kvPath, destPath: kvOut });
-      } catch (err) {
-        throw new Error(
-          `Failed to create sanitized KV copy from ${kvPath}: ${toError(err).message}`,
-        );
-      }
-
-      const kvStats = await getFileStats(kvOut);
-      includedFiles.push({
-        name: "kv.sqlite",
-        md5: kvStats.md5,
-        size: kvStats.size,
-      });
-    }
-
-    const manifest: ExportManifest = {
-      createdAt: now.toISOString(),
-      version: "1.0",
-      files: includedFiles,
-      excludedKvTables: ["auth_sessions", "auth_state"],
-      schema: {
-        tables,
-        views,
-      },
-    };
-
-    const manifestPath = path.join(tmpDir, "manifest.json");
-    try {
-      await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-    } catch (err) {
-      throw new Error(`Failed to write manifest file: ${toError(err).message}`);
-    }
-
-    const manifestStats = await getFileStats(manifestPath);
-    includedFiles.push({
-      name: "manifest.json",
-      md5: manifestStats.md5,
-      size: manifestStats.size,
-    });
-
-    try {
-      await createTgz(
-        tmpDir,
-        archivePath,
-        includedFiles.map((f) => f.name),
-      );
-    } catch (err) {
-      throw new Error(`Failed to create tar archive: ${toError(err).message}`);
-    }
-
+    await createTgz(tmpDir, archivePath, files);
     return { archivePath, filename, tmpDir };
   } catch (err) {
     await cleanupExportPaths({ archivePath, tmpDir });
     throw err;
   }
-}
-
-async function cleanupStaleExports(exportDir: string): Promise<void> {
-  let entries: string[];
-  try {
-    entries = await fsp.readdir(exportDir);
-  } catch {
-    return; // exportDir doesn't exist yet — nothing to clean
-  }
-  const stale = entries.filter((e) => e.startsWith("bookhive-export-"));
-  await Promise.allSettled(
-    stale.map((e) => fsp.rm(path.join(exportDir, e), { recursive: true, force: true })),
-  );
 }
 
 export async function cleanupExportPaths(paths: {
@@ -477,5 +466,7 @@ export function createExportReadStream(
   const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
   stream.on("close", () => callbacks?.onClose?.());
   stream.on("error", (err) => callbacks?.onError?.(err));
-  return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+  return Readable.toWeb(stream, {
+    strategy: { highWaterMark: 64 * 1024, size: (chunk: Uint8Array) => chunk.byteLength },
+  }) as unknown as ReadableStream<Uint8Array>;
 }

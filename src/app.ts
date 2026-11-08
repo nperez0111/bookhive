@@ -10,14 +10,19 @@ import { endTime, startTime, timing } from "hono/timing";
 import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./lib/manifest";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
+import { getSessionCacheStats } from "./auth/session";
+import { getLogShippingStats } from "./logger";
+import { getExportWorkerStats } from "./workers/export-client";
 import { registry, startRuntimeMetricsCollection } from "./metrics";
-import { anonPageCache } from "./middleware/anon-page-cache";
+import { anonPageCache, getPageCacheMemoryStats } from "./middleware/anon-page-cache";
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
 import adminRoutes from "./routes/admin";
 import debugRoutes from "./routes/debug";
-import importRoutes from "./routes/import";
+import importRoutes, { getImportAdmissionState } from "./routes/import";
+import { getMultipartUploadAdmissionState } from "./routes/library";
+import { getSearchAdmissionState } from "./services/searchBooks";
 import { mainRouter } from "./routes";
 
 export type CreateAppOptions = {
@@ -121,7 +126,22 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   });
 
   startRuntimeMetricsCollection((fields) =>
-    deps.logger.info({ ...fields, build_sha: env.BUILD_SHA }, "runtime_sample"),
+    deps.logger.info(
+      {
+        ...fields,
+        ...getPageCacheMemoryStats(),
+        resources: {
+          session_cache: getSessionCacheStats(),
+          log_shipping: getLogShippingStats(),
+          export_worker: getExportWorkerStats(),
+          search: getSearchAdmissionState(),
+          multipart_upload: getMultipartUploadAdmissionState(),
+          csv_import: getImportAdmissionState(),
+        },
+        build_sha: env.BUILD_SHA,
+      },
+      "runtime_sample",
+    ),
   );
 
   app.route("/admin", adminRoutes);

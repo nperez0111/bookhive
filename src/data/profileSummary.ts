@@ -24,8 +24,30 @@ import { readThroughCache } from "../lib/readThroughCache";
  * `getFollowDids` produces the list rendered under it — narrowing one and not
  * the other reads "12 following" above 15 avatars.
  */
-function buzzerDids(db: Database) {
-  return db.selectFrom("user_book").select("userDid").distinct();
+export function buildFollowMembershipQuery({
+  db,
+  did,
+  direction,
+}: {
+  db: Database;
+  did: string;
+  direction: "following" | "followers";
+}) {
+  const owner = direction === "following" ? "userDid" : "followsDid";
+  const member = direction === "following" ? "user_follows.followsDid" : "user_follows.userDid";
+  return (
+    db
+      .selectFrom("user_follows")
+      .where(owner, "=", did)
+      .where("isActive", "=", 1)
+      // Probe the member's userDid index instead of building a DISTINCT set of
+      // every BookHive reader. Owned-only rows still establish membership.
+      .where((eb) =>
+        eb.exists(
+          eb.selectFrom("user_book").select("userDid").whereRef("user_book.userDid", "=", member),
+        ),
+      )
+  );
 }
 
 /** Does this DID have any book on BookHive at all? Gates the expensive reads. */
@@ -78,21 +100,12 @@ export async function getFollowCounts({
     kv as Storage<{ followingCount: number; followersCount: number }>,
     `followCounts:${did}`,
     async () => {
-      const buzzers = buzzerDids(db);
       const [following, followers] = await Promise.all([
-        db
-          .selectFrom("user_follows")
+        buildFollowMembershipQuery({ db, did, direction: "following" })
           .select((eb) => eb.fn.countAll().as("count"))
-          .where("userDid", "=", did)
-          .where("isActive", "=", 1)
-          .where("followsDid", "in", buzzers)
           .executeTakeFirst(),
-        db
-          .selectFrom("user_follows")
+        buildFollowMembershipQuery({ db, did, direction: "followers" })
           .select((eb) => eb.fn.countAll().as("count"))
-          .where("followsDid", "=", did)
-          .where("isActive", "=", 1)
-          .where("userDid", "in", buzzers)
           .executeTakeFirst(),
       ]);
       return {
@@ -116,24 +129,15 @@ export async function getFollowDids({
   did: string;
   limit?: number;
 }): Promise<{ following: string[]; followers: string[] }> {
-  const buzzers = buzzerDids(db);
   const [followingRows, followersRows] = await Promise.all([
-    db
-      .selectFrom("user_follows")
+    buildFollowMembershipQuery({ db, did, direction: "following" })
       .select("followsDid")
-      .where("userDid", "=", did)
-      .where("isActive", "=", 1)
-      .where("followsDid", "in", buzzers)
       .orderBy("followedAt", "desc")
       .orderBy("followsDid", "desc")
       .limit(limit)
       .execute(),
-    db
-      .selectFrom("user_follows")
+    buildFollowMembershipQuery({ db, did, direction: "followers" })
       .select("userDid")
-      .where("followsDid", "=", did)
-      .where("isActive", "=", 1)
-      .where("userDid", "in", buzzers)
       .orderBy("followedAt", "desc")
       .orderBy("userDid", "desc")
       .limit(limit)

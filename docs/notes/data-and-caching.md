@@ -191,6 +191,13 @@ Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors
   the writer's response as a cache miss. Request wide events record `page_cache_error` as
   `read`, `extract`, or `write`. The clone is read incrementally and abandoned once it exceeds
   4 MiB; buffering the entire clone before checking the limit doesn't bound memory.
+- **Only two response extractions may hold raw-body chunks per process.** Further fills skip
+  the optional cache immediately, without a waiting queue or cloning the response. The slot is
+  held through compression and released on success, oversize and errors. This bounds retained
+  extraction chunks to 8 MiB, not total request memory: concatenation/compression, original response
+  bodies and cached-hit decompression still allocate separately. `runtime_sample` includes
+  `page_cache_active_fills`, `page_cache_buffered_bytes` (retained chunks only), and cumulative
+  `page_cache_skipped_fills` so shedding is visible without per-URL metric labels.
 - **`page:` has its own connection with a 50ms busy timeout; durable KV retains 10s.** On
   November 3, eight page-cache writes surfaced `SQLITE_BUSY` as HTTP 500 after ~10s, aligned with
   the primary's 15-minute cleanup. Production's expiry DELETE scanned the unindexed table.

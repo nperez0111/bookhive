@@ -1,8 +1,8 @@
 import type { FC } from "hono/jsx";
-import type { Book } from "../types";
+import type { TrackedBook } from "../types";
 import { TrackedBooks } from "./components/TrackedBooks";
 
-export const MyBooks: FC<{ books: Book[] }> = ({ books }) => (
+export const MyBooks: FC<{ books: TrackedBook[] }> = ({ books }) => (
   <div class="space-y-6 px-4 py-6 lg:px-8">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2">
       <h1 class="text-foreground text-3xl font-bold tracking-tight">My Books</h1>

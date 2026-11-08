@@ -12,8 +12,8 @@ import { Hono } from "hono";
 import type { AppEnv } from "../context";
 import type { Context } from "hono";
 import { imageProcessingDuration, activeOperations, LABEL } from "../metrics";
-import { BookFields } from "../db";
-import type { Book, HiveId } from "../types";
+import type { ReadingStatsBook, HiveId } from "../types";
+import { listReadingStatsBooks } from "../data/userShelves";
 import { getProfile } from "../services/getProfile";
 import {
   getAuthorCardStats,
@@ -21,7 +21,6 @@ import {
   getGenreCardStats,
   getProfileCardStats,
 } from "../data/socialCards";
-import { hydrateUserBook } from "../core/bookProgress";
 import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
 import { parseAuthors } from "../core/authors";
 import { normalizeBookMeta } from "../core/bookMeta";
@@ -221,17 +220,11 @@ const app = new Hono<AppEnv>()
 
     const profile = await getProfile({ ctx: c.get("ctx"), did });
 
-    const books = await c
-      .get("ctx")
-      .db.selectFrom("user_book")
-      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-      .select(BookFields)
-      .where("user_book.userDid", "=", did)
-      .orderBy("user_book.indexedAt", "desc")
-      .limit(10_000)
-      .execute();
-
-    const parsedBooks = books.map((b) => hydrateUserBook(b));
+    const parsedBooks = await listReadingStatsBooks({
+      db: c.get("ctx").db,
+      userDid: did,
+      orderBy: "indexedAt",
+    });
     // Shows the same scope the page shows (year, or all-time fallback);
     // `genreLimit` is 5 here vs. the page's 15, the only thing this surface changes.
     const { stats, allTimeStats } = await getReadingStatsForYear({
@@ -246,7 +239,7 @@ const app = new Hono<AppEnv>()
 
     const booksPerMonth = shown.booksCount >= 2 ? shown.booksCount / 12 : null;
 
-    const makeBookendCover = (book: Book | null) => {
+    const makeBookendCover = (book: ReadingStatsBook | null) => {
       if (!book) return null;
       const img = book.cover || book.thumbnail;
       return {

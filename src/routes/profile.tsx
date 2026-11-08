@@ -22,7 +22,7 @@ import {
   isFollowing as isFollowingCheck,
   listRecentProgress,
 } from "../data/profileSummary";
-import { listAllUserBooks } from "../data/userShelves";
+import { listAllUserBooks, listProfileBooks, listReadingStatsBooks } from "../data/userShelves";
 import { getReadingStatsForYear, isValidStatsYear } from "../data/readingStats";
 import { refetchBooks, refetchLists } from "./lib";
 import { getUserLists } from "../services/lists";
@@ -138,7 +138,7 @@ const app = new Hono<AppEnv>()
     const [isBuzzer, profile, books] = await Promise.all([
       isBuzzerCheck({ db: c.get("ctx").db, did }),
       getProfile({ ctx: c.get("ctx"), did }),
-      listAllUserBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" }),
+      listReadingStatsBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" }),
     ]);
     endTime(c, "isBuzzer+profile+books");
     if (profile && isUsableHandle(profile.handle)) handle = profile.handle;
@@ -182,7 +182,6 @@ const app = new Hono<AppEnv>()
         profile={profile}
         isOwnProfile={isOwnProfile}
         availableYears={availableYears}
-        books={parsedBooks}
         allTimeStats={allTimeStats}
         showYearInBooks={showYearInBooks}
       />,
@@ -233,7 +232,7 @@ const app = new Hono<AppEnv>()
     startTime(c, "books+session");
     const [parsedBooks, sessionAgent] = await Promise.all([
       isBuzzer
-        ? listAllUserBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" })
+        ? listProfileBooks({ db: c.get("ctx").db, userDid: did, orderBy: "indexedAt" })
         : Promise.resolve([]),
       c.get("ctx").getSessionAgent(),
     ]);

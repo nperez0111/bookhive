@@ -88,3 +88,11 @@ its own call site instead, so `POST /admin/refresh-user-books` fired a bare `voi
 per book — 100 per page, recursing over a whole library with the promises dropped. That fan-out
 shape caused the 2026-08-01 OOM kills. `warmCatalogSearch` is now the only spelling of
 fire-and-forget catalogue warming, and it cannot be called unbounded.
+
+Distinct cache misses additionally share a per-process admission gate: 3 active, at most 64
+waiting, and a 60s admission deadline. The gate is inside the cache loader, so cache hits and
+same-key deduplication do not consume slots. Warming retains its separate 3-active/500-pending
+bound and passes through the same miss gate. This bounds retained search work, not the enrichment
+drain's request rate; it adds neither another enrichment rate limiter nor a WAF circuit breaker.
+Admission failure uses the existing uncached empty-result fallback and records `search_miss`
+failure context in the wide event.

@@ -1,5 +1,5 @@
 import { type FC } from "hono/jsx";
-import { type Book } from "../types";
+import { type ShelfBook } from "../types";
 import type { BookListRow, ProfileViewDetailed } from "../types";
 import { BookList } from "./components/book";
 import { ProfileHeader } from "./components/ProfileHeader";
@@ -16,7 +16,7 @@ import { actorLinkId } from "./utils/actorLinkId";
 export const ProfilePage: FC<{
   handle: string;
   did: string;
-  books: Book[];
+  books: ShelfBook[];
   isBuzzer: boolean;
   profile: ProfileViewDetailed | null;
   isFollowing?: boolean;

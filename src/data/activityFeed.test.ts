@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 
-import type { Database } from "../db";
+import { BookFields, type Database } from "../db";
 import { BOOK_STATUS } from "../constants";
 import type { HiveId } from "../types";
 import {
@@ -203,6 +203,72 @@ describe("getActivityFeed", () => {
   beforeEach(async () => {
     seq = 0;
     ({ db, sqlite } = await makeDb());
+  });
+
+  it("hydrates only the selected IDs and keeps display fields without unused catalogue payload", async () => {
+    const review = `\u2003${"Full review ".repeat(100)}\u2003`;
+    await insertBook({
+      userDid: ALICE,
+      hiveId: "bk_a",
+      createdAt: iso(1),
+      indexedAt: iso(10),
+      review,
+    });
+    await insertBook({ userDid: BOB, hiveId: "bk_missing", createdAt: iso(2), indexedAt: iso(9) });
+    sqlite
+      .prepare(`INSERT INTO hive_book (id,title,authors,source,thumbnail,cover,description,meta,rating,createdAt,updatedAt)
+      VALUES ('bk_a','Catalogue title','Catalogue author','goodreads','thumb','cover',?,'{"numPages":999}',4.5,?,?)`)
+      .run("Unused catalogue description ".repeat(1000), iso(0), iso(0));
+    const query = buildFeedQuery({
+      ctx: ctxFor(),
+      viewerDid: null,
+      tab: "all",
+      cursor: null,
+      rawLimit: 1,
+    });
+    const raw = await query.execute();
+    const legacy = await db
+      .selectFrom("user_book")
+      .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+      .select(BookFields)
+      .orderBy("user_book.indexedAt", "desc")
+      .orderBy("user_book.uri", "desc")
+      .limit(2)
+      .execute();
+    expect(legacy).toMatchObject(raw);
+    expect(raw[0]).toMatchObject({
+      title: "Book 1",
+      cover: "cover",
+      thumbnail: "thumb",
+      rating: 4.5,
+      review,
+    });
+    expect(raw[1]).toMatchObject({ title: "Book 2", cover: null, thumbnail: null, rating: null });
+    for (const book of raw) {
+      expect(book).not.toHaveProperty("description");
+      expect(book).not.toHaveProperty("meta");
+      expect(book).not.toHaveProperty("previousReads");
+    }
+    const res = await getActivityFeed({
+      ctx: ctxFor(),
+      viewerDid: null,
+      tab: "all",
+      limit: 1,
+      collapse: false,
+    });
+    if (!res.ok) throw new Error("auth");
+    const first = res.groups[0];
+    expect(first?.kind).toBe("single");
+    if (first?.kind !== "single") throw new Error("expected single activity");
+    expect(first.item.book.review).toBe(`${review.trim().slice(0, 240).trimEnd()}…`);
+    const compiled = query.compile();
+    const plan = sqlite
+      .prepare(`EXPLAIN QUERY PLAN ${compiled.sql}`)
+      .all(...(compiled.parameters as never[]))
+      .map((r) => (r as { detail: string }).detail)
+      .join("\n");
+    expect(plan).toContain("CO-ROUTINE page");
+    expect(plan).toContain("SCAN user_book USING COVERING INDEX idx_user_book_feed");
   });
 
   it("orders by indexedAt, not createdAt — the reported bug", async () => {
@@ -569,13 +635,13 @@ describe("feed query plans", () => {
   // The IN-driven tabs cannot get ordering from an index, so a temp B-tree over the matched rows is inherent — what must never happen is a full scan of user_book feeding that sort.
   it("uses an indexed user_book lookup for the friends tab, never a scan", () => {
     const plan = planFor("friends");
-    expect(plan).toContain("SEARCH user_book USING INDEX idx_user_book_user_did");
+    expect(plan).toContain("SEARCH user_book USING COVERING INDEX idx_user_book_user_feed");
     expect(plan).not.toContain("SCAN user_book");
   });
 
   it("uses idx_user_book_hive_feed for the tracking tab, never a scan", () => {
     const plan = planFor("tracking");
-    expect(plan).toContain("SEARCH user_book USING INDEX idx_user_book_hive_feed");
+    expect(plan).toContain("SEARCH user_book USING COVERING INDEX idx_user_book_hive_feed");
     expect(plan).not.toContain("SCAN user_book");
   });
 });

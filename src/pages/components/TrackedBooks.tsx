@@ -1,11 +1,11 @@
 import type { FC } from "hono/jsx";
 import { raw } from "hono/html";
-import type { Book } from "../../types";
+import type { TrackedBook } from "../../types";
 import { normalizeBookMeta } from "../../core/bookMeta";
 import { LibraryTable } from "../../client/components/LibraryTable";
 
 /** Paint the same workspace the island enhances; no-JS book links remain navigable. */
-export const TrackedBooks: FC<{ books: Book[] }> = ({ books }) => {
+export const TrackedBooks: FC<{ books: TrackedBook[] }> = ({ books }) => {
   const initialBooks = books.map((b) => ({
     hiveId: b.hiveId,
     title: b.title,
@@ -18,7 +18,6 @@ export const TrackedBooks: FC<{ books: Book[] }> = ({ books }) => {
     finishedAt: b.finishedAt,
     createdAt: b.createdAt,
     owned: b.owned,
-    review: b.review,
     bookProgress: b.bookProgress,
     totalPages: b.bookProgress?.totalPages ?? normalizeBookMeta(b.meta).numPages ?? null,
   }));

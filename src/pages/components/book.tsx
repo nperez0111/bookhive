@@ -1,21 +1,21 @@
 import { type Child, type FC } from "hono/jsx";
-import type { Book } from "../../types";
+import type { ShelfBook } from "../../types";
 import { BOOK_STATUS } from "../../constants";
 import { useRequestContext } from "hono/jsx-renderer";
 import { BookCard, normalizeBookData } from "./BookCard";
-import { listAllUserBooks } from "../../data/userShelves";
+import { listProfileBooks } from "../../data/userShelves";
 
 const NO_BOOKS_FOUND = <p className="text-center text-lg">No books in this list</p>;
 
 export const BookList: FC<{
-  books?: Book[];
+  books?: ShelfBook[];
   fallback?: Child;
 }> = async ({ books: booksFromProps, fallback }) => {
   const c = useRequestContext();
   const agent = await c.get("ctx").getSessionAgent();
   const books =
     booksFromProps ||
-    (agent ? await listAllUserBooks({ db: c.get("ctx").db, userDid: agent.did }) : []);
+    (agent ? await listProfileBooks({ db: c.get("ctx").db, userDid: agent.did }) : []);
 
   if (!books?.length) {
     return (fallback || NO_BOOKS_FOUND) as any;

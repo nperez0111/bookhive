@@ -399,3 +399,61 @@ export type Book = Simplify<
     [K in keyof HiveFields]: HiveFields[K] | null;
   }
 >;
+
+/** HTML shelves/profile cards do not need catalogue descriptions or PDS records. */
+export type ShelfBook = Pick<
+  Book,
+  | "hiveId"
+  | "title"
+  | "authors"
+  | "cover"
+  | "thumbnail"
+  | "status"
+  | "stars"
+  | "review"
+  | "createdAt"
+  | "startedAt"
+  | "finishedAt"
+  | "indexedAt"
+  | "owned"
+  | "bookProgress"
+  | "previousReads"
+  | "rating"
+  | "ratingsCount"
+  | "meta"
+>;
+
+/** The editable library never displays the full review or re-read history. */
+export type TrackedBook = Pick<
+  ShelfBook,
+  | "hiveId"
+  | "title"
+  | "authors"
+  | "cover"
+  | "thumbnail"
+  | "status"
+  | "stars"
+  | "createdAt"
+  | "startedAt"
+  | "finishedAt"
+  | "owned"
+  | "bookProgress"
+  | "meta"
+>;
+
+/** Only the fields used to compute stats and render its six winning books. */
+export type ReadingStatsBook = Pick<
+  ShelfBook,
+  | "hiveId"
+  | "title"
+  | "authors"
+  | "cover"
+  | "thumbnail"
+  | "status"
+  | "stars"
+  | "finishedAt"
+  | "bookProgress"
+  | "rating"
+  | "ratingsCount"
+  | "meta"
+>;

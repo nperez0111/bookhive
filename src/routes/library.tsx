@@ -1,9 +1,11 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import type { Context, Env, MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
+import type { SessionClient } from "../auth/client";
 import { LibraryPage } from "../pages/library";
 import { syncCredentialRoutes } from "./syncCredentials";
 import { bridgeProgressToUserBook } from "../data/syncBridge";
@@ -16,15 +18,79 @@ import { NO_HIVE_MATCH } from "../data/syncMatching";
 import { listSyncDocuments } from "../data/syncDocuments";
 import type { HiveId, SyncProgressData } from "../types";
 import { jsonUnauthorized } from "./authResponse";
+import { Semaphore, SemaphoreFullError } from "../lib/semaphore";
+import {
+  readBoundedMultipart,
+  MultipartTooLargeError,
+  MultipartTimeoutError,
+} from "./boundedMultipart";
 
 const MAX_FILE_SIZE = MAX_PERSONAL_BOOK_BYTES;
 
 /**
- * Headroom for multipart headers when checking Content-Length against the
- * per-file limit. Generous on purpose — this is a cheap early reject; the
- * core enforces the real cap on the file itself.
+ * Headroom for multipart headers/fields in the actual wire-byte limit. The
+ * core separately enforces the real cap on the file itself.
  */
 const MULTIPART_SLACK = 64 * 1024;
+
+// Admit before formData(), not merely at the later ebook parser. A queued
+// request would otherwise retain its materialised File while waiting.
+const multipartUploads = new Semaphore(1, { label: "multipart-upload", maxPending: 0 });
+
+export const getMultipartUploadAdmissionState = () => ({
+  active: multipartUploads.active,
+  pending: multipartUploads.pending,
+});
+
+type LibraryEnv = AppEnv & {
+  Variables: AppEnv["Variables"] & { uploadAgent: SessionClient };
+};
+
+function uploadFailure<E extends Env>(
+  c: Context<E>,
+  status: ContentfulStatusCode,
+  code: string,
+  error: string,
+  extra = {},
+) {
+  return c.req.header("accept")?.includes("application/json")
+    ? c.json({ error, code, ...extra }, status)
+    : c.redirect(`/library?error=${encodeURIComponent(code)}`);
+}
+
+// Auth + admission must precede zValidator("form"), which materialises the body.
+const admitUpload: MiddlewareHandler<LibraryEnv> = async (c, next) => {
+  const agent = await c.get("ctx").getSessionAgent();
+  if (!agent) return jsonUnauthorized(c, "Your session expired. Sign in again to upload.");
+  c.set("uploadAgent", agent);
+
+  let release: () => void;
+  try {
+    release = await multipartUploads.acquireSlot();
+  } catch (error) {
+    if (!(error instanceof SemaphoreFullError)) throw error;
+    c.get("ctx").addWideEventContext({ upload_admission: "busy" });
+    return uploadFailure(c, 503, "Busy", "Server is busy — try again in a moment");
+  }
+
+  try {
+    try {
+      await readBoundedMultipart(c.req, MAX_FILE_SIZE + MULTIPART_SLACK);
+    } catch (error) {
+      if (error instanceof MultipartTimeoutError) {
+        return uploadFailure(c, 408, "UploadTimeout", "Upload timed out. Try again.");
+      }
+      if (error instanceof MultipartTooLargeError) {
+        return uploadFailure(c, 413, "TooLarge", "File exceeds 100 MB limit");
+      }
+      return uploadFailure(c, 400, "NoFile", "Invalid upload form");
+    }
+    await next();
+    return;
+  } finally {
+    release();
+  }
+};
 
 /**
  * The `?error=` codes the upload adapter redirects a browser back with. Closed
@@ -33,6 +99,7 @@ const MULTIPART_SLACK = 64 * 1024;
  * banner on another user's library.
  */
 const UPLOAD_ERROR_CODES = [
+  "UploadTimeout",
   "TooLarge",
   "QuotaExceeded",
   "UnsupportedFormat",
@@ -42,7 +109,7 @@ const UPLOAD_ERROR_CODES = [
   "Busy",
 ] as const;
 
-const app = new Hono<AppEnv>()
+const app = new Hono<LibraryEnv>()
   .get(
     "/",
     // `.catch` rather than a hard 400: an unrecognised code means a stale or
@@ -89,75 +156,62 @@ const app = new Hono<AppEnv>()
   // Thin adapter over `uploadPersonalBook` — the same core the XRPC procedure
   // calls; this owns only content negotiation and status-code mapping.
   //
-  // No `bodyLimit()` middleware — it only checks Content-Length and buffers
-  // chunked bodies in full before this handler even runs, so the core caps
-  // size while streaming to disk instead.
-  .post("/upload", async (c) => {
-    const agent = await c.get("ctx").getSessionAgent();
-    if (!agent) {
-      // Upload-specific wording: the iOS app renders `payload.error` verbatim,
-      // so a bare "Unauthorized" here would short-circuit its own re-login copy.
-      return jsonUnauthorized(c, "Your session expired. Sign in again to upload.");
-    }
+  // Byte-counted multipart parsing below bounds both chunked and sized bodies;
+  // the core still enforces the per-file cap while streaming to disk.
+  .post(
+    "/upload",
+    admitUpload,
+    zValidator("form", z.object({ file: z.instanceof(File) }), (result, c) => {
+      if (!result.success) return uploadFailure(c, 400, "NoFile", "No file provided");
+      return;
+    }),
+    async (c) => {
+      const agent = c.get("uploadAgent");
 
-    // The browser posts a plain <form> and wants to land back on the library;
-    // the mobile app posts the same multipart body but needs the created record
-    // (and a real status on duplicates) rather than a redirect to HTML.
-    const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
-    const fail = (status: ContentfulStatusCode, code: string, error: string, extra = {}) =>
-      wantsJson
-        ? c.json({ error, code, ...extra }, status)
-        : c.redirect(`/library?error=${encodeURIComponent(code)}`);
+      // The browser posts a plain <form> and wants to land back on the library;
+      // the mobile app posts the same multipart body but needs the created record
+      // (and a real status on duplicates) rather than a redirect to HTML.
+      const wantsJson = c.req.header("accept")?.includes("application/json") ?? false;
+      const fail = (status: ContentfulStatusCode, code: string, error: string, extra = {}) =>
+        uploadFailure(c, status, code, error, extra);
+      const file = c.req.valid("form").file;
 
-    // `formData()` below still materialises the whole File in memory — Bun/hono
-    // expose no incremental multipart API — so reject an obviously oversized
-    // body before parsing it.
-    const declaredTotal = Number(c.req.header("content-length"));
-    if (Number.isFinite(declaredTotal) && declaredTotal > MAX_FILE_SIZE + MULTIPART_SLACK) {
-      return fail(413, "TooLarge", "File exceeds 100 MB limit");
-    }
+      const { db, kv } = c.get("ctx");
+      const result = await uploadPersonalBook({
+        db,
+        kv,
+        userDid: agent.did,
+        filename: file.name,
+        source: { kind: "stream", body: file.stream(), declaredLength: file.size },
+      });
 
-    const formData = await c.req.formData();
-    const file = formData.get("file");
-    if (!file || !(file instanceof File)) {
-      return fail(400, "NoFile", "No file provided");
-    }
+      if (result.ok) {
+        // Same shape as getPersonalLibrary#personalBookView so clients have one
+        // book type for both the list and the upload response.
+        return wantsJson ? c.json({ book: result.book }) : c.redirect("/library");
+      }
 
-    const { db, kv } = c.get("ctx");
-    const result = await uploadPersonalBook({
-      db,
-      kv,
-      userDid: agent.did,
-      filename: file.name,
-      source: { kind: "stream", body: file.stream(), declaredLength: file.size },
-    });
-
-    if (result.ok) {
-      // Same shape as getPersonalLibrary#personalBookView so clients have one
-      // book type for both the list and the upload response.
-      return wantsJson ? c.json({ book: result.book }) : c.redirect("/library");
-    }
-
-    switch (result.reason) {
-      case "too-large":
-        return fail(413, "TooLarge", "File exceeds 100 MB limit");
-      case "quota-exceeded":
-        return fail(
-          413,
-          "QuotaExceeded",
-          `Library full — ${formatBytes(result.usedBytes)} of ${formatBytes(result.quotaBytes)} used. Delete a book to free space.`,
-          { usedBytes: result.usedBytes, quotaBytes: result.quotaBytes },
-        );
-      case "unsupported-format":
-        return fail(400, "UnsupportedFormat", "Unsupported file format");
-      case "duplicate":
-        return fail(409, "AlreadyExists", "This book is already in your library");
-      case "empty":
-        return fail(400, "EmptyFile", "The file is empty");
-      case "busy":
-        return fail(503, "Busy", "Server is busy — try again in a moment");
-    }
-  });
+      switch (result.reason) {
+        case "too-large":
+          return fail(413, "TooLarge", "File exceeds 100 MB limit");
+        case "quota-exceeded":
+          return fail(
+            413,
+            "QuotaExceeded",
+            `Library full — ${formatBytes(result.usedBytes)} of ${formatBytes(result.quotaBytes)} used. Delete a book to free space.`,
+            { usedBytes: result.usedBytes, quotaBytes: result.quotaBytes },
+          );
+        case "unsupported-format":
+          return fail(400, "UnsupportedFormat", "Unsupported file format");
+        case "duplicate":
+          return fail(409, "AlreadyExists", "This book is already in your library");
+        case "empty":
+          return fail(400, "EmptyFile", "The file is empty");
+        case "busy":
+          return fail(503, "Busy", "Server is busy — try again in a moment");
+      }
+    },
+  );
 
 app.get("/covers/:hash", async (c) => {
   const userDid = await c.get("ctx").getSessionDid();

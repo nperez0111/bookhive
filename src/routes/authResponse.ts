@@ -26,6 +26,6 @@ export function authFailureBody(message = UNAUTHENTICATED_MESSAGE): AuthFailureB
 }
 
 /** A JSON 401 for a route the client reads as JSON. */
-export function jsonUnauthorized(c: Context<AppEnv>, message?: string) {
+export function jsonUnauthorized<E extends AppEnv>(c: Context<E>, message?: string) {
   return c.json(authFailureBody(message), 401);
 }

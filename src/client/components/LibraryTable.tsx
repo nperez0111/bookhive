@@ -30,7 +30,7 @@ export type LibraryBook = {
   finishedAt: string | null;
   createdAt: string;
   owned: number;
-  review: string | null;
+  review?: string | null;
   bookProgress: BookProgressData;
   totalPages: number | null;
 };

@@ -34,6 +34,22 @@ const searchSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, {
   acquireTimeoutMs: 60_000,
 });
 
+// This gate is inside readThroughCache's loader: fresh hits and identical
+// in-flight queries never wait for/consume a distinct upstream-search slot.
+// Shared by foreground and warming callers in each web/ingester/import process.
+const searchMissSlots = new Semaphore(REFETCH_SEARCH_CONCURRENCY, {
+  label: "catalog_search_miss",
+  maxPending: 64,
+  acquireTimeoutMs: 60_000,
+});
+
+export const getSearchAdmissionState = () => ({
+  missActive: searchMissSlots.active,
+  missPending: searchMissSlots.pending,
+  warmingActive: searchSlots.active,
+  warmingPending: searchSlots.pending,
+});
+
 export async function searchBooks({
   query,
   ctx,
@@ -47,72 +63,81 @@ export async function searchBooks({
   const combinedIds = await readThroughCache<HiveId[]>(
     ctx.kv,
     `search:${query}`,
-    async () => {
-      let goodreadsIds: HiveId[] = [];
+    () =>
+      searchMissSlots
+        .run(async () => {
+          let goodreadsIds: HiveId[] = [];
 
-      const upstreamStarted = performance.now();
-      const res = await findBookDetails(query);
-      ctx.addWideEventContext({ search_upstream_ms: performance.now() - upstreamStarted });
-      const persistStarted = performance.now();
-      if (res.success) {
-        goodreadsIds = await ctx.db
-          .insertInto("hive_book")
-          .values(res.data)
-          .onConflict((oc) =>
-            oc.column("id").doUpdateSet((c) => {
-              return {
-                rating: c.ref("excluded.rating"),
-                ratingsCount: c.ref("excluded.ratingsCount"),
-                updatedAt: c.ref("excluded.updatedAt"),
-                rawTitle: c.ref("excluded.rawTitle"),
-              };
-            }),
-          )
-          .execute()
-          .then(() => res.data.map((book) => book.id));
+          const upstreamStarted = performance.now();
+          const res = await findBookDetails(query);
+          ctx.addWideEventContext({ search_upstream_ms: performance.now() - upstreamStarted });
+          const persistStarted = performance.now();
+          if (res.success) {
+            goodreadsIds = await ctx.db
+              .insertInto("hive_book")
+              .values(res.data)
+              .onConflict((oc) =>
+                oc.column("id").doUpdateSet((c) => {
+                  return {
+                    rating: c.ref("excluded.rating"),
+                    ratingsCount: c.ref("excluded.ratingsCount"),
+                    updatedAt: c.ref("excluded.updatedAt"),
+                    rawTitle: c.ref("excluded.rawTitle"),
+                  };
+                }),
+              )
+              .execute()
+              .then(() => res.data.map((book) => book.id));
 
-        try {
-          await upsertBookIdentifiersBatch(ctx.db, res.data);
-        } catch (error) {
+            try {
+              await upsertBookIdentifiersBatch(ctx.db, res.data);
+            } catch (error) {
+              ctx.addWideEventContext({
+                search_book_identifiers_persist: "failed",
+                error: errorMessage(error),
+              });
+            }
+
+            // Queue enrichment instead of scraping here — fanning out a solver
+            // Worker per result with dropped promises previously caused OOM kills.
+            try {
+              await enqueueEnrichmentBatch(
+                ctx.db,
+                res.data.map((book) => book.id),
+              );
+            } catch (error) {
+              // Distinct key: the identifier-persist failure above also reports
+              // through `error`, and the last writer would win.
+              ctx.addWideEventContext({
+                enrichment_enqueue: "failed",
+                enrichment_enqueue_error: errorMessage(error),
+              });
+            }
+          }
+
+          ctx.addWideEventContext({ search_persist_ms: performance.now() - persistStarted });
+
+          // Backfill from the local DB to reach up to 20 results, via the FTS5
+          // index (migration 019) rather than a `LIKE` scan.
+          const localStarted = performance.now();
+          const localIds = await searchLocalCatalog({ db: ctx.db, q: query });
+
+          ctx.addWideEventContext({ search_local_ms: performance.now() - localStarted });
+          const combined = [...goodreadsIds];
+          for (const id of localIds) {
+            if (combined.length >= 20) break;
+            if (!combined.includes(id)) combined.push(id);
+          }
+
+          return combined;
+        })
+        .catch((error) => {
           ctx.addWideEventContext({
-            search_book_identifiers_persist: "failed",
-            error: errorMessage(error),
+            search_miss: "failed",
+            search_miss_error: errorMessage(error),
           });
-        }
-
-        // Queue enrichment instead of scraping here — fanning out a solver
-        // Worker per result with dropped promises previously caused OOM kills.
-        try {
-          await enqueueEnrichmentBatch(
-            ctx.db,
-            res.data.map((book) => book.id),
-          );
-        } catch (error) {
-          // Distinct key: the identifier-persist failure above also reports
-          // through `error`, and the last writer would win.
-          ctx.addWideEventContext({
-            enrichment_enqueue: "failed",
-            enrichment_enqueue_error: errorMessage(error),
-          });
-        }
-      }
-
-      ctx.addWideEventContext({ search_persist_ms: performance.now() - persistStarted });
-
-      // Backfill from the local DB to reach up to 20 results, via the FTS5
-      // index (migration 019) rather than a `LIKE` scan.
-      const localStarted = performance.now();
-      const localIds = await searchLocalCatalog({ db: ctx.db, q: query });
-
-      ctx.addWideEventContext({ search_local_ms: performance.now() - localStarted });
-      const combined = [...goodreadsIds];
-      for (const id of localIds) {
-        if (combined.length >= 20) break;
-        if (!combined.includes(id)) combined.push(id);
-      }
-
-      return combined;
-    },
+          throw error;
+        }),
     [] as HiveId[],
     {
       requestsPerSecond: 5,

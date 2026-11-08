@@ -27,6 +27,7 @@ function success(fields: Partial<UserBookView> = {}): BookWriteResult {
       uri: "at://fixture/book/1",
       cid: "cid",
       owned: false,
+      review: book.review ?? null,
       bookProgress: null,
       previousReads: null,
       indexedAt: book.createdAt,

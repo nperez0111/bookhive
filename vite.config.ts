@@ -59,6 +59,12 @@ function standaloneBundles(): Plugin {
       name: "convert-worker.js",
       label: "EPUB convert worker",
     },
+    {
+      entrypoint: "./src/workers/export-worker.ts",
+      outdir: "./.output/server/workers",
+      name: "export-worker.js",
+      label: "Database export worker",
+    },
   ];
 
   /**

@@ -5,41 +5,62 @@
  */
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
-import { ImportType, type ImportRequest, type ImportWorkerMessage } from "../workers/import/types";
+import {
+  ImportType,
+  type ImportRequest,
+  type ImportWorkerMessage,
+  type ImportSseAck,
+} from "../workers/import/types";
 import { env } from "../env";
 import { activeOperations, importBatchDuration, LABEL } from "../metrics";
 import { jsonUnauthorized } from "./authResponse";
+import type { StoredSession } from "@atcute/oauth-node-client";
+import { Semaphore, SemaphoreFullError } from "../lib/semaphore";
+import {
+  readBoundedMultipart,
+  MultipartTooLargeError,
+  MultipartTimeoutError,
+} from "./boundedMultipart";
 
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
+const MULTIPART_SLACK = 64 * 1024;
+const importSlots = new Semaphore(1, { label: "csv-import", maxPending: 0 });
+
+export const getImportAdmissionState = () => ({
+  active: importSlots.active,
+  pending: importSlots.pending,
+});
+
+type ImportEnv = AppEnv & {
+  Variables: AppEnv["Variables"] & {
+    importAdmission: { did: string; release: () => void; running: boolean };
+  };
+};
 
 const formSchema = z.object({ export: z.instanceof(File) });
 
-async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRequest["type"]) {
-  // Reject oversized uploads before reading the full body into memory
+async function handleImport(c: Context<ImportEnv>, exportFile: File, type: ImportRequest["type"]) {
+  // Multipart bytes are already bounded; enforce the file-only 50 MB limit
+  // before making the transferable ArrayBuffer for the worker.
   if (exportFile.size > MAX_UPLOAD_BYTES) {
     return c.json({ success: false, error: "Upload too large (max 50 MB)" }, 413);
   }
   const ctx = c.get("ctx");
-  const agent = await ctx.getSessionAgent();
-  if (!agent) {
-    return jsonUnauthorized(c);
-  }
-
-  const storedSession = await ctx.kv.get<import("@atcute/oauth-node-client").StoredSession>(
-    `auth_session:${agent.did}`,
-  );
-  if (!storedSession) {
-    return jsonUnauthorized(c);
-  }
+  const admission = c.get("importAdmission");
 
   const csvData = await exportFile.arrayBuffer();
+  // Uploading can outlive an OAuth refresh. The worker has an isolated store,
+  // so give it the latest grant rather than the pre-upload snapshot.
+  const storedSession = await ctx.kv.get<StoredSession>(`auth_session:${admission.did}`);
+  if (!storedSession) return jsonUnauthorized(c);
 
+  admission.running = true;
   return streamSSE(c, async (stream) => {
     // default to goodreads
     const importKey =
@@ -52,115 +73,149 @@ async function handleImport(c: Context<AppEnv>, exportFile: File, type: ImportRe
     const end = importBatchDuration.startTimer(importKey);
     activeOperations.inc(LABEL.op.import);
 
-    const ac = new AbortController();
-    const timeout = setTimeout(() => ac.abort(), IMPORT_TIMEOUT_MS);
-
-    const isBundled = import.meta.url.includes(".output/");
-    const workerUrl = isBundled
-      ? new URL("./workers/import-worker.js", import.meta.url).href
-      : new URL("../workers/import/index.ts", import.meta.url).href;
-    const worker = new Worker(workerUrl);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      worker.terminate();
-    };
-
-    ac.signal.addEventListener("abort", () => {
-      cleanup();
-      stream
-        .writeSSE({
+    let worker: Worker | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    try {
+      const isBundled = import.meta.url.includes(".output/");
+      const workerUrl = isBundled
+        ? new URL("./workers/import-worker.js", import.meta.url).href
+        : new URL("../workers/import/index.ts", import.meta.url).href;
+      const importWorker = (worker = new Worker(workerUrl));
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const writeError = (error: string, message: string) =>
+        stream.writeSSE({
           data: JSON.stringify({
             event: "import-error",
             stage: "error",
-            stageProgress: { message: "Import timed out after 5 minutes" },
-            error: "Import timed out after 5 minutes",
+            stageProgress: { message },
+            error,
           }),
-        })
-        .catch(() => {});
-    });
+        });
 
-    stream.onAbort(() => {
-      if (!ac.signal.aborted) ac.abort();
-    });
+      stream.onAbort(finish);
+      timeout = setTimeout(() => {
+        void writeError(
+          "Import timed out after 5 minutes",
+          "Import timed out after 5 minutes",
+        ).catch(() => {});
+        finish();
+      }, IMPORT_TIMEOUT_MS);
 
-    // Promise that resolves when the worker finishes (done, error, or timeout)
-    const done = new Promise<void>((resolve) => {
-      ac.signal.addEventListener("abort", () => resolve());
-
-      worker.onmessage = async (event: MessageEvent<ImportWorkerMessage>) => {
-        const msg = event.data;
-        if (msg.type === "wide-event") {
-          // Worker observability events — merge into request-scoped wide event
-          ctx.addWideEventContext(msg.context);
-          return;
-        } else if (msg.type === "sse") {
-          await stream.writeSSE({ data: msg.data });
-        } else if (msg.type === "done") {
-          if (msg.error) {
-            await stream.writeSSE({
-              data: JSON.stringify({
-                event: "import-error",
-                stage: "error",
-                stageProgress: { message: `Import failed: ${msg.error}` },
-                error: msg.error,
-              }),
-            });
+      importWorker.onmessage = async (event: MessageEvent<ImportWorkerMessage>) => {
+        try {
+          const msg = event.data;
+          if (msg.type === "wide-event") {
+            ctx.addWideEventContext(msg.context);
+          } else if (msg.type === "sse") {
+            await stream.writeSSE({ data: msg.data });
+            importWorker.postMessage({ type: "sse-ack" } satisfies ImportSseAck);
+          } else if (msg.type === "done") {
+            if (msg.error) await writeError(msg.error, `Import failed: ${msg.error}`);
+            finish();
           }
-          cleanup();
-          resolve();
+        } catch {
+          // Failed stream writes must terminate work too; otherwise a worker
+          // waiting for its ACK could retain the CSV until the five-minute cap.
+          finish();
+        }
+      };
+      importWorker.onerror = async (event) => {
+        try {
+          await writeError(event.message || "Worker error", "Import worker crashed");
+        } catch {
+          // A disconnected reader cannot receive the error event.
+        } finally {
+          finish();
         }
       };
 
-      worker.onerror = async (event) => {
-        await stream.writeSSE({
-          data: JSON.stringify({
-            event: "import-error",
-            stage: "error",
-            stageProgress: { message: "Import worker crashed" },
-            error: event.message || "Worker error",
-          }),
-        });
-        cleanup();
-        resolve();
+      // Only one outstanding keepalive too: don't build a queue behind a slow
+      // progress/report write. This doesn't drop any application events.
+      let heartbeatPending = false;
+      heartbeat = setInterval(() => {
+        if (heartbeatPending) return;
+        heartbeatPending = true;
+        void stream
+          .writeSSE({ data: "", event: "keepalive" })
+          .catch(finish)
+          .finally(() => {
+            heartbeatPending = false;
+          });
+      }, 5_000);
+      const request: ImportRequest = {
+        type,
+        storedSession,
+        csvData,
+        dbPath: env.DB_PATH,
+        kvPath: env.KV_DB_PATH,
       };
-    });
-
-    const request: ImportRequest = {
-      type,
-      storedSession,
-      csvData,
-      dbPath: env.DB_PATH,
-      kvPath: env.KV_DB_PATH,
-    };
-
-    // Keepalives prevent Bun's idle timeout from killing the connection while the worker starts up.
-    const heartbeat = setInterval(() => {
-      stream.writeSSE({ data: "", event: "keepalive" }).catch(() => {});
-    }, 5_000);
-
-    try {
       worker.postMessage(request, [csvData]);
       await done;
     } finally {
       clearInterval(heartbeat);
+      clearTimeout(timeout);
+      worker?.terminate();
       end();
       activeOperations.dec(LABEL.op.import);
+      // The response is returned before the SSE callback finishes. The
+      // admission belongs to the worker/stream lifetime, not middleware next().
+      admission.release();
     }
   });
 }
 
-const importApp = new Hono<AppEnv>();
+const importApp = new Hono<ImportEnv>();
 
-importApp.post("/goodreads", zValidator("form", formSchema), async (c) =>
+// Must precede zValidator("form"): validation itself calls formData().
+const admitImport: MiddlewareHandler<ImportEnv> = async (c, next) => {
+  const ctx = c.get("ctx");
+  const agent = await ctx.getSessionAgent();
+  if (!agent) return jsonUnauthorized(c);
+  const storedSession = await ctx.kv.get<StoredSession>(`auth_session:${agent.did}`);
+  if (!storedSession) return jsonUnauthorized(c);
+
+  let release: () => void;
+  try {
+    release = await importSlots.acquireSlot();
+  } catch (error) {
+    if (!(error instanceof SemaphoreFullError)) throw error;
+    ctx.addWideEventContext({ import_admission: "busy" });
+    return c.json({ success: false, error: "Server is busy — try again in a moment" }, 503);
+  }
+  const admission = { did: agent.did, release, running: false };
+  c.set("importAdmission", admission);
+  try {
+    try {
+      await readBoundedMultipart(c.req, MAX_UPLOAD_BYTES + MULTIPART_SLACK);
+    } catch (error) {
+      if (error instanceof MultipartTimeoutError) {
+        return c.json({ success: false, error: "Upload timed out. Try again." }, 408);
+      }
+      if (error instanceof MultipartTooLargeError) {
+        return c.json({ success: false, error: "Upload too large (max 50 MB)" }, 413);
+      }
+      return c.json({ success: false, error: "Invalid upload form" }, 400);
+    }
+    await next();
+    return;
+  } finally {
+    if (!admission.running) release();
+  }
+};
+
+importApp.post("/goodreads", admitImport, zValidator("form", formSchema), async (c) =>
   handleImport(c, c.req.valid("form").export, ImportType.goodreads),
 );
 
-importApp.post("/storygraph", zValidator("form", formSchema), async (c) =>
+importApp.post("/storygraph", admitImport, zValidator("form", formSchema), async (c) =>
   handleImport(c, c.req.valid("form").export, ImportType.storygraph),
 );
 
-importApp.post("/hardcover", zValidator("form", formSchema), async (c) =>
+importApp.post("/hardcover", admitImport, zValidator("form", formSchema), async (c) =>
   handleImport(c, c.req.valid("form").export, ImportType.hardcover),
 );
 

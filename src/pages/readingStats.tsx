@@ -1,5 +1,5 @@
 import { type FC } from "hono/jsx";
-import type { Book } from "../types";
+import type { ReadingStatsBook as Book } from "../types";
 import type { ProfileViewDetailed } from "../types";
 import type { ReadingStats } from "../data/readingStats";
 import { coverImageUrl, sourceCoverImageUrl } from "../core/imageUrl";
@@ -15,7 +15,6 @@ export const ReadingStatsPage: FC<{
   profile: ProfileViewDetailed | null;
   isOwnProfile: boolean;
   availableYears: number[];
-  books: Book[];
   allTimeStats?: ReadingStats;
   showYearInBooks: boolean;
 }> = ({

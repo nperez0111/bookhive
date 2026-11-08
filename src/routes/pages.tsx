@@ -12,7 +12,7 @@ import type { AppEnv } from "../context";
 import { BOOKHIVE_DID } from "../constants";
 import { Error as ErrorPage } from "../pages/error";
 import { MyBooks } from "../pages/myBooks";
-import { listAllUserBooks } from "../data/userShelves";
+import { listTrackedBooks } from "../data/userShelves";
 import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
@@ -49,7 +49,7 @@ const app = new Hono<AppEnv>()
     const ctx = c.get("ctx");
     const profile = await ctx.getProfile();
     if (!profile) return c.redirect("/login", 302);
-    const books = await listAllUserBooks({ db: ctx.db, userDid: profile.did });
+    const books = await listTrackedBooks({ db: ctx.db, userDid: profile.did });
     return c.render(<MyBooks books={books} />, {
       title: "BookHive | My Books",
     });

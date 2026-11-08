@@ -63,6 +63,7 @@ Worker threads (bundled to .output/server/workers/):
   import-worker       — CSV import processing              (src/workers/)
   parse-worker        — ebook metadata parse + cover raster (single-shot, src/workers/)
   convert-worker      — MOBI/AZW3 to EPUB conversion       (single-shot, src/workers/)
+  export-worker       — bounded database export preparation (short-lived, src/workers/)
   waf-solver-worker   — AWS WAF challenge solve            (src/scrapers/waf/)
 ```
 
@@ -234,7 +235,7 @@ Other client components: `bookActions.tsx`, `ProgressBar.tsx`. Client hooks/util
 
 ### Database (`src/db.ts`)
 
-SQLite via Kysely. Schema + all migrations (001–031) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`). Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
+SQLite via Kysely. Schema + all migrations (001–032) in one file. `createDb` sets WAL/perf PRAGMAs. `mmap_size` defaults to 0 (see `DB_MMAP_SIZE` in `src/env.ts`); `DB_TEMP_STORE` is opt-in `FILE` or the unchanged `MEMORY` default. Kysely talks to `bun:sqlite` through `src/bun-sqlite-kysely.ts`, which rewrites `begin` to `BEGIN IMMEDIATE` (deferred transactions fail with `SQLITE_BUSY_SNAPSHOT` across cluster processes) and decides `statement.reader` by asking SQLite (`stmt.columnNames`) rather than pattern-matching the SQL — a regex anchored on `SELECT` misclassifies `WITH cte AS (…) SELECT …` as a write.
 
 | Table                 | Purpose                   | Key columns                                                                                                                                                                                              |
 | --------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -398,7 +399,7 @@ In this Paseo workspace, start the managed `dev` script (`paseo script start dev
 | `bun run lexgen`     | Regenerate AT Protocol XRPC types from lexicons                                                     |
 | `bun run build:boko` | Rebuild the vendored boko WASM in `vendor/boko/` (needs Rust + wasm-pack; only to bump the version) |
 
-**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 7 worker entry points into `.output/server/workers/`. Type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`** — `vite.config.ts` maps it but the root `tsconfig.json` doesn't, so tsgo can't resolve it even though bundling works; `app/`'s own `@/*` → `app/*` alias is unrelated. Runtime requires `bun >= 1.4.0`. Pre-commit hook runs `vp staged` → `vp check --fix`.
+**Build pipeline**: Vite+ wrapping Vite 8 + Rolldown + Nitro (preset `bun`). Production builds use custom entry `server/entry.bun.mjs` (adds `reusePort: true`). Docker CMD is `server/cluster.ts` under `tini` init. The `standaloneBundles()` Vite plugin builds 8 worker entry points into `.output/server/workers/`. Type checking via **tsgo** (TS 6.x); linting via **oxlint**, formatting via **oxfmt**, both through the `vp` CLI. **Do not use `@/…` in `src/` or `server/`** — `vite.config.ts` maps it but the root `tsconfig.json` doesn't, so tsgo can't resolve it even though bundling works; `app/`'s own `@/*` → `app/*` alias is unrelated. Runtime requires `bun >= 1.4.0`. Pre-commit hook runs `vp staged` → `vp check --fix`.
 
 The dev server binds loopback by default. `PORT` (default 8080), `DEV_HOST` (default `127.0.0.1`), `DEV_HMR_CLIENT_PORT`, and `DEV_HMR_PROTOCOL` (default `wss` when a client port is set) let a TLS-terminating proxy publish it without editing `vite.config.ts`. An explicit `PORT` enables `strictPort`; `allowedHosts` is derived from `PUBLIC_URL` rather than disabled. `PUBLIC_URL` also selects the public OAuth client metadata URL, so it must match the browser origin and be reachable by the user's PDS. The pinned Paseo hostname avoids invalidating the host-only session cookie on every restart.
 
@@ -440,6 +441,7 @@ Full notes on scopes, re-consent, and `atproto-proxy`'s current limits: `docs/no
 | `src/workers/open-observe-worker.ts` | pino → OpenObserve log shipping                            |
 | `src/workers/import/`                | CSV import processing                                      |
 | `src/workers/singleShot.ts`          | The one spawn-ask-terminate Worker driver (parse, convert) |
+| `src/workers/export-client.ts`       | Export worker ACK/cancellation; see memory notes           |
 | `src/logger/index.ts`                | pino logger; redacts cookies                               |
 | `src/metrics.ts`                     | Prometheus metrics                                         |
 | `src/pds/client.ts`                  | Self-hosted PDS support                                    |

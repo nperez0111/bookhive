@@ -2,8 +2,96 @@ import { sql } from "kysely";
 
 import { BookFields, type Database } from "../db";
 import { BOOK_STATUS } from "../constants";
-import { hydrateUserBook } from "../core/bookProgress";
+import { hydrateUserBook, parseBookProgress } from "../core/bookProgress";
 import { monthStartIso, yearStartIso } from "../core/readingYear";
+
+const ShelfFields = [
+  "user_book.hiveId",
+  "user_book.title",
+  "user_book.authors",
+  "user_book.status",
+  "user_book.stars",
+  "user_book.review",
+  "user_book.createdAt",
+  "user_book.startedAt",
+  "user_book.finishedAt",
+  "user_book.indexedAt",
+  "user_book.owned",
+  "user_book.bookProgress",
+  "user_book.previousReads",
+  "hive_book.cover",
+  "hive_book.thumbnail",
+  "hive_book.rating",
+  "hive_book.ratingsCount",
+  "hive_book.meta",
+] as const;
+
+const TrackedFields = [
+  "user_book.hiveId",
+  "user_book.title",
+  "user_book.authors",
+  "user_book.status",
+  "user_book.stars",
+  "user_book.createdAt",
+  "user_book.startedAt",
+  "user_book.finishedAt",
+  "user_book.owned",
+  "user_book.bookProgress",
+  "hive_book.cover",
+  "hive_book.thumbnail",
+  "hive_book.meta",
+] as const;
+
+const StatsFields = [
+  "user_book.hiveId",
+  "user_book.title",
+  "user_book.authors",
+  "user_book.status",
+  "user_book.stars",
+  "user_book.finishedAt",
+  "user_book.bookProgress",
+  "hive_book.cover",
+  "hive_book.thumbnail",
+  "hive_book.rating",
+  "hive_book.ratingsCount",
+  "hive_book.meta",
+] as const;
+
+type UserBooksOptions = {
+  db: Database;
+  userDid: string;
+  orderBy?: "indexedAt" | "createdAt";
+  limit?: number;
+};
+
+function userBooksQuery({ db, userDid, orderBy = "createdAt", limit = 10_000 }: UserBooksOptions) {
+  return db
+    .selectFrom("user_book")
+    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+    .where("user_book.userDid", "=", userDid)
+    .orderBy(`user_book.${orderBy}`, "desc")
+    .orderBy("user_book.uri", "desc")
+    .limit(limit);
+}
+
+/** Preserve complete reviews and history for HTML profile cards and year counts. */
+export async function listProfileBooks(options: UserBooksOptions) {
+  return (await userBooksQuery(options).select(ShelfFields).execute()).map(hydrateUserBook);
+}
+
+export async function listTrackedBooks(options: UserBooksOptions) {
+  return (await userBooksQuery(options).select(TrackedFields).execute()).map((row) => ({
+    ...row,
+    bookProgress: parseBookProgress(row.bookProgress),
+  }));
+}
+
+export async function listReadingStatsBooks(options: UserBooksOptions) {
+  return (await userBooksQuery(options).select(StatsFields).execute()).map((row) => ({
+    ...row,
+    bookProgress: parseBookProgress(row.bookProgress),
+  }));
+}
 
 /**
  * A signed-in user's own books, as `/home` and the profile shelf list need
@@ -36,7 +124,7 @@ export async function listShelf({
   const rows = await db
     .selectFrom("user_book")
     .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
+    .select(ShelfFields)
     .where("user_book.userDid", "=", userDid)
     .where("user_book.status", "=", status)
     .orderBy(`user_book.${orderBy}`, "desc")

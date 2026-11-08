@@ -55,7 +55,7 @@ export function toPercent(fraction: number): number {
  * An array is rejected too: `JSON.parse("[]")` succeeds and would otherwise
  * hand every reader an array typed as a `BookProgress`.
  */
-function parseProgress(json: string | null): BookProgress | null {
+export function parseBookProgress(json: string | null): BookProgress | null {
   if (!json) return null;
   try {
     const parsed = JSON.parse(json);
@@ -98,7 +98,7 @@ export function hydrateUserBook<
 } {
   return {
     ...row,
-    bookProgress: parseProgress(row.bookProgress),
+    bookProgress: parseBookProgress(row.bookProgress),
     previousReads: parseArray(row.previousReads),
     record: parseRecord(row.record),
   };

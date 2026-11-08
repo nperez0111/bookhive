@@ -22,6 +22,10 @@ void mock.module("../../services/getBook", () => ({
   getBookRecord: mock(async () => null),
 }));
 
+void mock.module("../../services/importBookRecords", () => ({
+  getImportBookRecords: mockGetUserRepoRecords,
+}));
+
 // Stub `searchBooks` (real impl scrapes Goodreads) so matching relies only on
 // seeded local `hive_book` rows and the test never touches the network.
 void mock.module("../../services/searchBooks", () => ({
@@ -206,6 +210,40 @@ describe("processGoodreadsImport", () => {
     const complete = sseEvents.find((e) => e.event === "import-complete");
     expect(complete.failedBooks).toHaveLength(2);
     expect(complete.stageProgress.current).toBe(0);
+  });
+
+  it("streams across small parser chunks without changing totals, Unicode, order or full unmatched reports", async () => {
+    const { db } = await createTestDb();
+    const [header, template] = STORYGRAPH_CSV.split("\n");
+    const titles = Array.from(
+      { length: 301 },
+      (_, i) => `José book ${i} ${"x".repeat(i === 150 ? 40 * 1024 : 30)}`,
+    );
+    const csv = [header, ...titles.map((title) => template!.replace("Old Man's War", title))].join(
+      "\n",
+    );
+    const loaded: string[] = [];
+    let complete: any;
+    try {
+      await processStorygraphImport({
+        csvData: new TextEncoder().encode(csv).buffer as ArrayBuffer,
+        ctx: createMockCtx(db),
+        agent: createMockAgent(),
+        onSSE: async (data) => {
+          const event = JSON.parse(data);
+          if (event.event === "book-load") {
+            loaded.push(event.title);
+            expect(event.total).toBe(301);
+          } else if (event.event === "import-complete") complete = event;
+          await Promise.resolve();
+        },
+      });
+      expect(loaded).toEqual(titles);
+      expect(complete.stageProgress.total).toBe(301);
+      expect(complete.failedBooks.map((book: { title: string }) => book.title)).toEqual(titles);
+    } finally {
+      await db.destroy();
+    }
   });
 
   it("handles empty CSV gracefully", async () => {

@@ -25,11 +25,16 @@ export const env = cleanEnv(process.env, {
   }),
   DB_CACHE_KB: num({
     default: 16384,
-    desc: "SQLite page cache per connection, in KB. Kept small because each worker process (and its ingester/import worker threads) gets its own.",
+    desc: "Suggested private SQLite page-cache target per main DB connection, in KiB; not a total memory limit. Web processes and ingester/import threads each open a connection. KV connections use separate settings.",
+  }),
+  DB_TEMP_STORE: str({
+    default: "MEMORY",
+    choices: ["MEMORY", "FILE"],
+    desc: "Main DB connection temp_store; MEMORY keeps temporary B-trees in RAM, FILE permits disk spill but is not a memory cap. For FILE, set SQLITE_TMPDIR to an existing writable directory on real disk, not tmpfs, before startup. Does not configure KV connections.",
   }),
   DB_MMAP_SIZE: num({
     default: 0,
-    desc: "SQLite mmap_size in bytes; 0 disables mmap and reads via pread. Mapped pages are charged to the cgroup and each process faults in its own working set, so a large mmap under a memory-limited container trades a modest per-scan speedup for constant reclaim/swap thrash. Raise only if the DB comfortably fits the cgroup alongside every worker's anonymous memory.",
+    desc: "SQLite mmap_size in bytes; 0 disables main DB mmap. Maps at most the first N bytes on demand, subject to SQLite's runtime/build limit; not a resident-memory cap. File-cache pages are shared across processes, and buffered reads also populate that cache. Benchmark the hot working set alongside anonymous memory and host/cgroup headroom before raising.",
   }),
   EXPORT_SHARED_SECRET: str({
     default: "",

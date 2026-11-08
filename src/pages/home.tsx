@@ -1,13 +1,13 @@
 import { type FC } from "hono/jsx";
 import { useRequestContext } from "hono/jsx-renderer";
 import { endTime, startTime } from "hono/timing";
-import type { Book } from "../types";
+import type { ShelfBook } from "../types";
 import { BOOK_STATUS } from "../constants";
 import { BookCard, normalizeBookData } from "./components/BookCard";
 import { getReadingCounts, listShelf } from "../data/userShelves";
 import { actorLinkId } from "./utils/actorLinkId";
 
-function BookGrid({ books }: { books: Book[] }) {
+function BookGrid({ books }: { books: ShelfBook[] }) {
   return (
     <ul class="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 lg:gap-x-5">
       {books.map((book) => (
@@ -28,7 +28,7 @@ function ReadingSection({
 }: {
   title: string;
   description: string;
-  books: Book[];
+  books: ShelfBook[];
   emptyMessage: string;
   action?: { href: string; label: string };
 }) {
@@ -147,7 +147,7 @@ export const Home: FC = async () => {
       <ReadingSection
         title="Currently Reading"
         description="Pick up where you left off."
-        books={currentlyReading as Book[]}
+        books={currentlyReading}
         emptyMessage="You're not reading anything right now. Your next chapter is waiting."
         action={
           wantToRead.length
@@ -158,14 +158,14 @@ export const Home: FC = async () => {
       <ReadingSection
         title="Want to Read"
         description="Good books to look forward to."
-        books={wantToRead as Book[]}
+        books={wantToRead}
         emptyMessage="Keep a book here whenever it catches your eye."
         action={{ href: "/explore", label: "Explore books" }}
       />
       <ReadingSection
         title="Finished Reading"
         description="Your latest finishes, most recent first."
-        books={finished as Book[]}
+        books={finished}
         emptyMessage="Books you finish will appear here. Every reading journey starts with one."
       />
     </div>

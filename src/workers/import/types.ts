@@ -21,6 +21,9 @@ export type ImportRequest = {
   kvPath: string;
 };
 
+/** Main thread → worker: the last SSE event has passed stream backpressure. */
+export type ImportSseAck = { type: "sse-ack" };
+
 /** Worker → main thread: relay an SSE event. */
 export type ImportProgressMessage = {
   type: "sse";

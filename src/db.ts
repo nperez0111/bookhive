@@ -1304,6 +1304,17 @@ migrations["031"] = {
   },
 };
 
+migrations["032"] = {
+  async up(db: Kysely<unknown>) {
+    // Reverse follow membership probes and avatar lists must not scan all follows.
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_follows_reverse_active
+      ON user_follows(followsDid, isActive, followedAt DESC, userDid DESC)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_user_follows_reverse_active`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {
@@ -1312,12 +1323,16 @@ export const createDb = (location: string): { db: Database; sqlite: DatabaseSync
   sqlite.exec("PRAGMA busy_timeout = 10000");
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL"); // safe with WAL; skips redundant fsyncs
-  // Private page cache is per connection and multiplies across worker processes
-  // — keep it small.
-  sqlite.exec(`PRAGMA cache_size = -${env.DB_CACHE_KB}`); // default 16 MB
-  sqlite.exec("PRAGMA temp_store = MEMORY"); // temp B-trees (sorts, GROUP BY) in RAM
-  // Default 0 (off) — mapping the whole database into every worker caused
-  // memory reclaim thrash. See DB_MMAP_SIZE in src/env.ts.
+  // Suggested private page-cache target per main DB connection (including
+  // ingester/import threads), not a bound on total SQLite or process memory.
+  sqlite.exec(`PRAGMA cache_size = -${env.DB_CACHE_KB}`); // default 16 MiB
+  // MEMORY (default) keeps temporary B-trees outside the main cache target. FILE
+  // permits disk spill, but still uses memory and needs a non-tmpfs temp directory.
+  sqlite.exec(`PRAGMA temp_store = ${env.DB_TEMP_STORE}`);
+  // Off by default. A nonzero limit demand-maps the first N bytes, not the N
+  // hottest bytes or a resident-memory budget. File pages are physically shared
+  // across processes; buffered reads also populate the OS file cache. Benchmark
+  // working-set pressure and latency before enabling; SQLite may clamp the limit.
   sqlite.exec(`PRAGMA mmap_size = ${env.DB_MMAP_SIZE}`);
 
   const db = new Kysely<DatabaseSchema>({

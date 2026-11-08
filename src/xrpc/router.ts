@@ -78,6 +78,7 @@ import { getTopGenres } from "../data/exploreGenres";
 import { resolveLanguage } from "../data/getLanguages";
 import { getAvailableLanguages } from "../data/getLanguages";
 import { getReadingStatsForYear } from "../data/readingStats";
+import { listReadingStatsBooks } from "../data/userShelves";
 import { errorMessage, toErrorPayload } from "../lib/errors";
 import {
   hydrateSearchResults,
@@ -997,15 +998,11 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
         });
       }
 
-      const books = await ctx.db
-        .selectFrom("user_book")
-        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .select(BookFields)
-        .where("user_book.userDid", "=", did)
-        .orderBy("user_book.indexedAt", "desc")
-        .limit(10_000)
-        .execute();
-      const parsedBooks = books.map((b) => hydrateUserBook(b));
+      const parsedBooks = await listReadingStatsBooks({
+        db: ctx.db,
+        userDid: did,
+        orderBy: "indexedAt",
+      });
 
       // Shares the year filter, genre aggregate and available-years window with the web page and OG card.
       // NOTE: `getReadingStatsForYear` also returns an all-time fallback this lexicon has no field for, so

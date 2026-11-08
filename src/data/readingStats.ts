@@ -1,4 +1,4 @@
-import type { Book } from "../types";
+import type { ReadingStatsBook as Book } from "../types";
 import { BOOK_STATUS } from "../constants";
 import { sql } from "kysely";
 import type { Database } from "../db";

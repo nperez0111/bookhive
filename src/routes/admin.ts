@@ -4,12 +4,8 @@ import path from "node:path";
 
 import type { AppEnv } from "../context";
 import { env } from "../env";
-import {
-  cleanupExportPaths,
-  createTgzReadStream,
-  prepareSanitizedExportFiles,
-  isAuthorizedExportRequest,
-} from "../data/dbExport";
+import { isAuthorizedExportRequest } from "../data/dbExport";
+import { createExportDownload } from "../services/dbExport";
 import { backfillCatalogBooks, getBackfillProgress } from "../services/catalogBookService";
 import { createActorResolver } from "../bsky/id-resolver";
 import { ids, Book as BookRecord, Buzz as BuzzRecord } from "../bsky/lexicon";
@@ -115,27 +111,27 @@ const admin = new Hono<AppEnv>()
       });
 
       const startTimeExport = Date.now();
-      let prepared: {
-        tmpDir: string;
-        filename: string;
-        files: string[];
-      };
-
-      try {
-        await fs.promises.mkdir(exportDir, { recursive: true });
-
-        const includeKv =
-          Boolean(env.KV_DB_PATH) && env.KV_DB_PATH !== ":memory:" && fs.existsSync(env.KV_DB_PATH);
-
-        prepared = await prepareSanitizedExportFiles({
+      const includeKv =
+        Boolean(env.KV_DB_PATH) && env.KV_DB_PATH !== ":memory:" && fs.existsSync(env.KV_DB_PATH);
+      const download = await createExportDownload(
+        {
           dbPath: env.DB_PATH,
           kvPath: includeKv ? env.KV_DB_PATH : undefined,
           exportDir,
           includeKv,
+        },
+        c.req.raw.signal,
+      );
+      if (download.status === "busy") {
+        ctx.addWideEventContext({ admin_export: "busy", client_ip: clientIp });
+        return c.json({ message: "Another database export is already in progress" }, 503, {
+          "Retry-After": "60",
+          "Cache-Control": "no-store",
         });
-      } catch (err) {
+      }
+      if (download.status === "error") {
         const duration = Date.now() - startTimeExport;
-        c.set("requestError", err);
+        c.set("requestError", download.error);
         ctx.addWideEventContext({
           admin_export: "failed",
           client_ip: clientIp,
@@ -146,31 +142,23 @@ const admin = new Hono<AppEnv>()
 
       // Stream tar stdout directly to the response so bytes start flowing
       // immediately, avoiding proxy timeouts on large databases.
-      const stream = createTgzReadStream(prepared.tmpDir, prepared.files, {
-        onClose: () => {
-          const duration = Date.now() - startTimeExport;
+      void download.done
+        .then((error) => {
           ctx.addWideEventContext({
-            admin_export: "completed",
+            admin_export: error ? "failed" : "completed",
             client_ip: clientIp,
-            filename: prepared.filename,
-            duration_ms: duration,
+            filename: download.filename,
+            duration_ms: Date.now() - startTimeExport,
+            ...(error ? { admin_export_stream: "error", error: error.message } : {}),
           });
-          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
-        },
-        onError: (err) => {
-          ctx.addWideEventContext({
-            admin_export_stream: "error",
-            client_ip: clientIp,
-            filename: prepared.filename,
-            error: err.message,
-          });
-          void cleanupExportPaths({ tmpDir: prepared.tmpDir });
-        },
-      });
+        })
+        .catch((error) => {
+          c.get("appLogger").error({ err: error }, "[admin/export] Completion failed");
+        });
 
-      return c.body(stream, 200, {
+      return c.body(download.stream, 200, {
         "Content-Type": "application/gzip",
-        "Content-Disposition": `attachment; filename="${prepared.filename}"`,
+        "Content-Disposition": `attachment; filename="${download.filename}"`,
         "Cache-Control": "no-store",
       });
     } catch (err) {

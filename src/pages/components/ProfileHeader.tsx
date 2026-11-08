@@ -11,7 +11,7 @@ export const ProfileHeader: FC<{
   handle: string;
   did: string;
   profile: ProfileViewDetailed | null;
-  books: Book[];
+  books: Pick<Book, "status" | "review" | "createdAt">[];
   isFollowing?: boolean;
   canFollow?: boolean;
   isOwnProfile?: boolean;

@@ -7,7 +7,18 @@ import { parseHtmlToText } from "../../lib/htmlToText";
 import { hiveRatingToDisplayRating, starsToDisplayRating } from "../../core/rating";
 
 export const BookReview: FC<{
-  book: Book;
+  book: Pick<
+    Book,
+    | "hiveId"
+    | "title"
+    | "authors"
+    | "cover"
+    | "thumbnail"
+    | "stars"
+    | "rating"
+    | "review"
+    | "status"
+  >;
 }> = ({ book }) => {
   const bookData = normalizeBookData(book);
   const communityRating = hiveRatingToDisplayRating(book.rating) ?? 0;

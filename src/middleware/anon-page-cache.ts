@@ -18,6 +18,19 @@ export const PAGE_CACHE_TTL_MS = 60 * 60 * 1000; // matches Cache-Control max-ag
 const MAX_STORED_BYTES = 256 * 1024;
 // Separate ceiling on the pre-compression buffer, purely to bound per-response memory.
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+// Optional cache extraction must not multiply its raw-body buffers across a stampede.
+const MAX_ACTIVE_FILLS = 2;
+let activeFills = 0;
+let bufferedBytes = 0;
+let skippedFills = 0;
+
+export function getPageCacheMemoryStats() {
+  return {
+    page_cache_active_fills: activeFills,
+    page_cache_buffered_bytes: bufferedBytes,
+    page_cache_skipped_fills: skippedFills,
+  };
+}
 
 // Fallback when the route's own Cache-Control doesn't survive to the final response; keeps the CDN TTL aligned with this cache's TTL.
 const DEFAULT_CACHE_CONTROL = "public, max-age=3600, stale-while-revalidate=600";
@@ -54,32 +67,43 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
   if (res.status !== 200 || res.headers.has("set-cookie")) return null;
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) return null;
-  const reader = res.clone().body?.getReader();
-  if (!reader) return null;
+  if (activeFills >= MAX_ACTIVE_FILLS) {
+    skippedFills++;
+    return null;
+  }
+  activeFills++;
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > MAX_BODY_BYTES) {
-        // Awaiting cancellation of a tee can wait for the live response to be consumed.
-        void reader.cancel().catch(() => {});
-        return null;
+    const reader = res.clone().body?.getReader();
+    if (!reader) return null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (bytes + value.byteLength > MAX_BODY_BYTES) {
+          // Awaiting cancellation of a tee can wait for the live response to be consumed.
+          void reader.cancel().catch(() => {});
+          return null;
+        }
+        chunks.push(value);
+        bytes += value.byteLength;
+        bufferedBytes += value.byteLength;
       }
-      chunks.push(value);
+    } finally {
+      reader.releaseLock();
     }
+    const gzipped = Bun.gzipSync(Buffer.concat(chunks, bytes));
+    if (gzipped.byteLength > MAX_STORED_BYTES) return null;
+    return {
+      bodyGzipB64: Buffer.from(gzipped).toString("base64"),
+      contentType,
+      cacheControl: res.headers.get("cache-control") || DEFAULT_CACHE_CONTROL,
+    };
   } finally {
-    reader.releaseLock();
+    bufferedBytes -= bytes;
+    activeFills--;
   }
-  const gzipped = Bun.gzipSync(Buffer.concat(chunks, bytes));
-  if (gzipped.byteLength > MAX_STORED_BYTES) return null;
-  return {
-    bodyGzipB64: Buffer.from(gzipped).toString("base64"),
-    contentType,
-    cacheControl: res.headers.get("cache-control") || DEFAULT_CACHE_CONTROL,
-  };
 }
 
 export function anonPageCache(kv: Storage) {

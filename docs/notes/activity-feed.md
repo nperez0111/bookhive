@@ -33,6 +33,12 @@ Three things hold this together, and only work together:
 
 ## Bursts are collapsed by actor alone, in JS, after the fetch
 
+Feed batches select their bounded, ordered user-book IDs before catalogue hydration, and use
+the feed-specific projection rather than retaining catalogue descriptions, metadata or reading
+history that cards never render. This is a memory optimization only: filtering, raw-row cursor
+consumption, burst completion and the 2,500-row refill safety cap remain unchanged. RSS uses
+`data/rssActivity.ts` without the unused catalogue join, retaining full review text.
+
 One user's CSV import held 19 of 25 slots on feed page 1; the worst measured burst was 513 books
 in one minute. Grouping by `(actor, verb)` doesn't work — a live re-sync interleaves "finished" and
 "wants to read" row by row, so a verb-sensitive key breaks the run every one or two rows and leaves

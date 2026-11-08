@@ -3,10 +3,8 @@ import { z } from "zod";
 import { isValid, parseISO } from "date-fns";
 
 import type { AppContext } from "../context";
-import { BookFields } from "../db";
 import { BOOK_STATUS_FEED_VERB_MAP } from "../constants";
 import type { Book, ProfileViewDetailed } from "../types";
-import { hydrateUserBook } from "../core/bookProgress";
 import { getProfiles } from "../services/getProfile";
 
 /**
@@ -106,7 +104,22 @@ export type FeedItem = {
   ts: string;
   actorDid: string;
   verb: string;
-  book: Book;
+  book: Pick<
+    Book,
+    | "uri"
+    | "hiveId"
+    | "title"
+    | "authors"
+    | "status"
+    | "stars"
+    | "review"
+    | "createdAt"
+    | "indexedAt"
+    | "userDid"
+    | "cover"
+    | "thumbnail"
+    | "rating"
+  >;
 };
 
 export type FeedGroup =
@@ -299,8 +312,7 @@ export function buildFeedQuery({
 }) {
   let query = ctx.db
     .selectFrom("user_book")
-    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-    .select(BookFields)
+    .select(["user_book.uri", "user_book.indexedAt"])
     .orderBy("user_book.indexedAt", "desc")
     .orderBy("user_book.uri", "desc")
     .limit(rawLimit + 1);
@@ -332,7 +344,29 @@ export function buildFeedQuery({
     ) as typeof query;
   }
 
-  return query;
+  // Sort only IDs/timestamps across friends/tracked books; hydrate the bounded
+  // page afterwards, never catalogue blobs or full reviews in the temp B-tree.
+  return ctx.db
+    .selectFrom(query.as("page"))
+    .innerJoin("user_book", "user_book.uri", "page.uri")
+    .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
+    .select([
+      "user_book.uri",
+      "user_book.hiveId",
+      "user_book.title",
+      "user_book.authors",
+      "user_book.status",
+      "user_book.stars",
+      "user_book.review",
+      "user_book.createdAt",
+      "user_book.indexedAt",
+      "user_book.userDid",
+      "hive_book.cover",
+      "hive_book.thumbnail",
+      "hive_book.rating",
+    ])
+    .orderBy("page.indexedAt", "desc")
+    .orderBy("page.uri", "desc");
 }
 
 function fetchFeedRows(args: Parameters<typeof buildFeedQuery>[0]) {
@@ -373,7 +407,7 @@ export async function getActivityFeed({
     const rows = await fetchFeedRows({ ctx, viewerDid, tab, cursor, rawLimit });
     hasMoreRaw = rows.length > rawLimit;
     for (const row of rows.slice(0, rawLimit)) {
-      const book = hydrateUserBook(row) as Book;
+      const book = row;
       items.push({
         uri: book.uri,
         ts: book.indexedAt,

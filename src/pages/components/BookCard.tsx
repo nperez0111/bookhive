@@ -21,10 +21,15 @@ export type BookCardData = {
   review?: string | null;
 };
 
-export function normalizeBookData(book: Book | HiveBook): BookCardData {
+type CardBook = Pick<
+  Book,
+  "hiveId" | "title" | "authors" | "cover" | "thumbnail" | "stars" | "status" | "review"
+> & { rating?: number | null };
+
+export function normalizeBookData(book: CardBook | HiveBook): BookCardData {
   const isUserBook = "hiveId" in book;
   const hiveId = isUserBook ? book.hiveId : book.id;
-  const stars = isUserBook ? (book as Book).stars : null;
+  const stars = isUserBook ? book.stars : null;
   // `rating` on the card is always a *display* rating (0-5) regardless of which stored scale it came from — the only place either conversion happens for a card, so consumers pass it to `StarDisplay` unconverted.
   const rating =
     starsToDisplayRating(stars) ??
@@ -37,9 +42,9 @@ export function normalizeBookData(book: Book | HiveBook): BookCardData {
     cover: book.cover,
     thumbnail: book.thumbnail,
     rating,
-    status: "status" in book ? (book as Book).status : null,
+    status: "status" in book ? book.status : null,
     stars,
-    review: "review" in book ? (book as Book).review : null,
+    review: "review" in book ? book.review : null,
   };
 }
 

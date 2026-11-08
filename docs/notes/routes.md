@@ -25,6 +25,24 @@ remain stripped from page metadata. Local HTTP origins remain HTTP when configur
 - `/debug/*` → `src/routes/debug.ts` (gated by `EXPORT_SHARED_SECRET`)
 - `/import` (POST `/goodreads`, `/storygraph`) → `src/routes/import.ts` — CSV import handler
 
+`/admin/export` prepares its sanitized files in a short-lived worker and streams tar/gzip.
+A dedicated SQLite lock spans preparation, download, child termination and cleanup across
+web processes; contention returns `503` with `Retry-After: 60`. Cancellation waits for the
+worker to acknowledge native SQLite completion rather than assuming termination stopped it.
+Unexpected worker failure keeps ownership fail-closed; see `memory-and-runtime.md` before
+clearing crash leftovers or restarting a holder. Authentication and auth-table exclusion remain
+unchanged.
+
+Multipart ebook uploads and CSV imports authenticate and acquire separate, zero-wait,
+one-job-per-web-process admissions before parsing their bodies. Actual received bytes are
+bounded before `formData()` materializes a file, including requests without Content-Length.
+Admissions span upload processing or the import worker/SSE lifetime, not just parsing.
+CSV processing counts in a first pass, then processes bounded row groups; its unmatched report
+is still complete. Imports enumerate only book records from the PDS in pages, preserving their
+original record keys. Worker progress messages await SSE acknowledgement, so slow readers
+cannot accumulate an unbounded cross-thread message queue. Remaining retained input/report
+limits and runtime resource counters are described in `memory-and-runtime.md`.
+
 ### Mounted in `src/app.ts` (after `mainRouter`)
 
 - `/sitemap.xml` → static sitemap
