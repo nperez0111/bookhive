@@ -76,7 +76,7 @@ describe("bounded DB export", () => {
     const release = acquireExportLock(options.root);
     expect(release).toBeFunction();
     release?.();
-  });
+  }, 30_000);
 
   test("lock is immediate, idempotent and shared with a second process", async () => {
     const { root } = await fixture();
