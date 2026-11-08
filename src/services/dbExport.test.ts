@@ -47,7 +47,20 @@ describe("bounded DB export", () => {
     if (download.status !== "ready") throw new Error(JSON.stringify(download));
     expect((await createExportDownload(options)).status).toBe("busy");
     const archive = path.join(options.root, "download.tgz");
-    await Bun.write(archive, new Response(download.stream));
+    // Bun 1.4.0's Bun.write(Response(stream)) stalls even for a plain synthetic
+    // stream. Consume incrementally instead, as an HTTP download client does.
+    const file = await fsp.open(archive, "w");
+    const reader = download.stream.getReader();
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        await file.writeFile(chunk.value);
+      }
+    } finally {
+      reader.releaseLock();
+      await file.close();
+    }
     expect(await download.done).toBeUndefined();
     const unpack = path.join(options.root, "unpacked");
     await fsp.mkdir(unpack);
