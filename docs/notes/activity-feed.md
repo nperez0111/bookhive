@@ -43,6 +43,15 @@ scan depends on.
 **The cursor must come from the last raw row consumed, never the last display row** — a cursor
 taken from a collapsed burst's newest row re-serves that burst forever.
 
+**Page size counts visible groups, not raw records or elapsed time.** A fixed overfetch could
+collapse an import into just one or two cards despite plenty of older activity remaining. The
+shared reader now refills with older keyset batches until it has the requested number of cards
+or reaches the end. It re-collapses across batch boundaries, including finishing an open last
+burst, and still derives the returned cursor from the last row actually consumed, not fetched.
+Each query reads at most 250 rows plus lookahead; the whole request scans at most 2,500 records
+to bound synchronous SQLite work and expanded XRPC payloads. Only exhaustion or this safety cap
+can leave a short page; at the cap an open burst retains its `truncated` flag and a continuation.
+
 ## RSS (`/rss/*`) is dated and ordered by the same `indexedAt`
 
 `activityRows` mirrors `buildFeedQuery` exactly, including the `uri` tiebreaker. Emitting

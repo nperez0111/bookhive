@@ -339,6 +339,136 @@ describe("getActivityFeed", () => {
     expect(all.ok).toBe(true);
   });
 
+  it("fills friends pages after a large import and preserves every activity across refills", async () => {
+    await db
+      .insertInto("user_follows")
+      .values(
+        [ALICE, BOB].map((followsDid) => ({
+          userDid: ME,
+          followsDid,
+          followedAt: iso(0),
+          syncedAt: iso(0),
+          lastSeenAt: iso(0),
+          isActive: 1,
+        })),
+      )
+      .execute();
+    for (let i = 0; i < 300; i++) {
+      await insertBook({
+        userDid: ALICE,
+        hiveId: `bk_import${i}`,
+        createdAt: iso(1000),
+        indexedAt: iso(1000),
+      });
+    }
+    // Older activity spans days, rather than filling an arbitrary time window.
+    for (let i = 0; i < 40; i++) {
+      await insertBook({
+        userDid: BOB,
+        hiveId: `bk_older${i}`,
+        createdAt: iso(900 - i * 100),
+        indexedAt: iso(900 - i * 100),
+      });
+    }
+    const first = await getActivityFeed({ ctx: ctxFor(), viewerDid: ME, tab: "friends" });
+    if (!first.ok) throw new Error("auth");
+    expect(first.groups).toHaveLength(25);
+    expect(first.groups[0]).toMatchObject({ kind: "burst", total: 300, truncated: false });
+    expect(first.nextCursor).not.toBeNull();
+    const second = await getActivityFeed({
+      ctx: ctxFor(),
+      viewerDid: ME,
+      tab: "friends",
+      cursor: first.nextCursor!,
+    });
+    if (!second.ok) throw new Error("auth");
+    expect(second.groups).toHaveLength(16);
+    expect(second.nextCursor).toBeNull();
+    const uris = [...first.groups, ...second.groups].flatMap((g) =>
+      g.kind === "single" ? [g.item.uri] : g.items.map((item) => item.uri),
+    );
+    expect(uris).toHaveLength(340);
+    expect(new Set(uris).size).toBe(340);
+  });
+
+  it("bounds refill work for an enormous burst and continues without losing rows", async () => {
+    for (let i = 0; i < 2501; i++) {
+      await insertBook({
+        userDid: ALICE,
+        hiveId: `bk_import${i}`,
+        createdAt: iso(1),
+        indexedAt: iso(1),
+      });
+    }
+    const first = await getActivityFeed({ ctx: ctxFor(), viewerDid: ME, tab: "all" });
+    if (!first.ok) throw new Error("auth");
+    expect(first.groups).toHaveLength(1);
+    expect(first.groups[0]).toMatchObject({ kind: "burst", total: 2500, truncated: true });
+    expect(first.nextCursor).not.toBeNull();
+    const second = await getActivityFeed({
+      ctx: ctxFor(),
+      viewerDid: ME,
+      tab: "all",
+      cursor: first.nextCursor!,
+    });
+    if (!second.ok) throw new Error("auth");
+    expect(second.groups).toHaveLength(1);
+    expect(second.groups[0]?.kind).toBe("single");
+    expect(second.nextCursor).toBeNull();
+    const firstUris = first.groups.flatMap((g) =>
+      g.kind === "single" ? [g.item.uri] : g.items.map((item) => item.uri),
+    );
+    if (second.groups[0]?.kind === "single")
+      expect(firstUris).not.toContain(second.groups[0].item.uri);
+  });
+
+  it("finishes the last visible burst before returning a full page", async () => {
+    for (let i = 0; i < 10; i++) {
+      await insertBook({
+        userDid: ALICE,
+        hiveId: `bk_burst${i}`,
+        createdAt: iso(2),
+        indexedAt: iso(2),
+      });
+    }
+    await insertBook({ userDid: BOB, hiveId: "bk_after", createdAt: iso(1), indexedAt: iso(1) });
+    const page = await getActivityFeed({ ctx: ctxFor(), viewerDid: ME, tab: "all", limit: 1 });
+    if (!page.ok) throw new Error("auth");
+    expect(page.groups).toHaveLength(1);
+    expect(page.groups[0]).toMatchObject({ kind: "burst", total: 10, truncated: false });
+    const cursor = decodeFeedCursor(page.nextCursor);
+    expect(cursor?.uri).toBe(`at://${ALICE}/buzz.bookhive.book/000001`);
+  });
+
+  it("keeps flat, uncollapsed pages at the requested row count", async () => {
+    for (let i = 0; i < 9; i++) {
+      await insertBook({
+        userDid: ALICE,
+        hiveId: `bk_flat${i}`,
+        createdAt: iso(1),
+        indexedAt: iso(1),
+      });
+    }
+    let cursor: string | undefined;
+    const seen: string[] = [];
+    for (const size of [4, 4, 1]) {
+      const page = await getActivityFeed({
+        ctx: ctxFor(),
+        viewerDid: ME,
+        tab: "all",
+        limit: 4,
+        collapse: false,
+        cursor,
+      });
+      if (!page.ok) throw new Error("auth");
+      expect(page.groups).toHaveLength(size);
+      for (const group of page.groups) if (group.kind === "single") seen.push(group.item.uri);
+      cursor = page.nextCursor ?? undefined;
+    }
+    expect(cursor).toBeUndefined();
+    expect(new Set(seen).size).toBe(9);
+  });
+
   it("treats a malformed cursor as page 1", async () => {
     await insertBook({ userDid: ALICE, hiveId: "bk_a", createdAt: iso(1), indexedAt: iso(1) });
     const res = await getActivityFeed({

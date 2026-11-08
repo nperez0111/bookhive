@@ -51,6 +51,8 @@ export const MAX_FEED_LIMIT = 50;
 const RAW_OVERFETCH = 4;
 /** Hard ceiling on one query's row count, whatever `limit` asks for. */
 const RAW_MAX = 250;
+/** Bound refill work even when thousands of imported records collapse to one card. */
+const RAW_SCAN_MAX = 2_500;
 /** A library sync or CSV import lands well inside this. */
 const BURST_WINDOW_MS = 5 * 60_000;
 /** Two books is not a burst, it's a Tuesday. */
@@ -358,30 +360,45 @@ export async function getActivityFeed({
   }
 
   const pageSize = Math.min(MAX_FEED_LIMIT, Math.max(1, limit));
-  const cursor = decodeFeedCursor(rawCursor);
-  const rawLimit = collapse ? Math.min(RAW_MAX, pageSize * RAW_OVERFETCH) : pageSize;
+  let cursor = decodeFeedCursor(rawCursor);
+  let rawLimit = collapse ? Math.min(RAW_MAX, pageSize * RAW_OVERFETCH) : pageSize;
+  const items: FeedItem[] = [];
+  let groups: FeedGroup[] = [];
+  let consumed = 0;
+  let hasMoreRaw = false;
 
-  const rows = await fetchFeedRows({ ctx, viewerDid, tab, cursor, rawLimit });
-  const hasMoreRaw = rows.length > rawLimit;
-  const raw = rows.slice(0, rawLimit);
+  // Page by visible cards, not by the number of records an import happens to
+  // contain. Re-collapse across fetch boundaries so a burst stays one card.
+  do {
+    const rows = await fetchFeedRows({ ctx, viewerDid, tab, cursor, rawLimit });
+    hasMoreRaw = rows.length > rawLimit;
+    for (const row of rows.slice(0, rawLimit)) {
+      const book = hydrateUserBook(row) as Book;
+      items.push({
+        uri: book.uri,
+        ts: book.indexedAt,
+        actorDid: book.userDid,
+        verb: feedVerbFor(book),
+        book: { ...book, review: excerpt(book.review) },
+      });
+    }
 
-  const items: FeedItem[] = raw.map((row) => {
-    const book = hydrateUserBook(row) as Book;
-    return {
-      uri: book.uri,
-      ts: book.indexedAt,
-      actorDid: book.userDid,
-      verb: feedVerbFor(book),
-      book: { ...book, review: excerpt(book.review) },
-    };
-  });
+    ({ groups, consumed } = collapse
+      ? collapseBursts(items, pageSize, { hasMoreRaw })
+      : {
+          groups: items.map((item) => ({ kind: "single" as const, item })),
+          consumed: items.length,
+        });
 
-  const { groups, consumed } = collapse
-    ? collapseBursts(items, pageSize, { hasMoreRaw })
-    : {
-        groups: items.slice(0, pageSize).map((item) => ({ kind: "single" as const, item })),
-        consumed: Math.min(items.length, pageSize),
-      };
+    const lastGroup = groups.at(-1);
+    const pageClosed =
+      groups.length >= pageSize && !(lastGroup?.kind === "burst" && lastGroup.truncated);
+    if (!hasMoreRaw || pageClosed || items.length >= RAW_SCAN_MAX) break;
+
+    const lastFetched = items.at(-1)!;
+    cursor = { ts: lastFetched.ts, uri: lastFetched.uri };
+    rawLimit = Math.min(RAW_MAX, RAW_SCAN_MAX - items.length);
+  } while (collapse);
 
   // The cursor points at the last raw row consumed, never at the last display
   // row — a collapsed burst of 47 must advance past all 47.
