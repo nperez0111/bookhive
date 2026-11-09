@@ -84,8 +84,10 @@ export const Layout: FC<
   return html`<!doctype html>
     <html lang="en" class="bg-background text-foreground h-full">
       <head>
-        ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${title}</title>
+        ${isDevVite ? raw("<!-- INJECT_VITE_DEV -->") : ""}
         <style>
           @view-transition {
             navigation: auto;
@@ -143,7 +145,6 @@ export const Layout: FC<
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
         <link rel="manifest" href="/site.webmanifest" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="${description}" />
         <meta name="robots" content="index, follow" />
         <meta name="author" content="BookHive" />
@@ -152,7 +153,6 @@ export const Layout: FC<
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="canonical" href="${metaUrl}" />
-        <title>${title}</title>
         <script type="application/ld+json">
           {
             "@context": "https://schema.org",

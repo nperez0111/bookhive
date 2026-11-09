@@ -104,6 +104,13 @@ light-dismiss backdrop can cover the viewport.
 
 ## View transition names identify one rendered element
 
+Layout emits charset, viewport and title before any scripts or styles (including the Vite
+development injection marker). Keep these ahead of the potentially large inlined production
+stylesheet: viewport must be known before layout, not discovered after the CSS payload.
+The theme bootstrap and view-transition setup intentionally remain early, before the main CSS
+and module scripts, to avoid a theme flash and register snapshot listeners in time. No head
+manager dependency is needed for this static template.
+
 The genre directory repeats featured genres in its full list. Giving both labels the same
 `view-transition-name` made Chromium reject the destination snapshot with “Transition was skipped”.
 Featured labels own their names; their duplicate directory rows stay unnamed. All genre labels
