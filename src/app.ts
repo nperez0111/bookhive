@@ -18,6 +18,7 @@ import { anonPageCache, getPageCacheMemoryStats } from "./middleware/anon-page-c
 import { errorCaptureMiddleware } from "./middleware/error-capture";
 import { opentelemetryMiddleware } from "./middleware/index.ts";
 import { wideEventMiddleware } from "./middleware/wide-event";
+import { createResponseAdmission } from "./middleware/response-admission";
 import adminRoutes from "./routes/admin";
 import debugRoutes from "./routes/debug";
 import importRoutes, { getImportAdmissionState } from "./routes/import";
@@ -33,6 +34,7 @@ export type CreateAppOptions = {
 export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
   const responseStages = { preparing: 0, etag: 0 };
+  const responseAdmission = createResponseAdmission(env.RESPONSE_PREPARATION_CONCURRENCY);
 
   app.use(timing({ autoEnd: false }));
 
@@ -56,6 +58,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   app.use("*", createContextMiddleware(deps));
   app.use("*", wideEventMiddleware());
   app.use("*", errorCaptureMiddleware());
+  app.use("*", responseAdmission.middleware);
   app.use("*", async (c, next) => {
     startTime(c, "vite_manifest");
     const manifest = await loadViteManifest();
@@ -146,6 +149,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
           multipart_upload: getMultipartUploadAdmissionState(),
           csv_import: getImportAdmissionState(),
           response_stages: { ...responseStages },
+          response_admission: responseAdmission.getStats(),
         },
         build_sha: env.BUILD_SHA,
       },

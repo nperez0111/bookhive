@@ -19,6 +19,36 @@ the container hit its own limit. The host has about 7.6 GiB RAM, versus BookHive
 other containers compete for the same host memory. This does not establish which workload
 initiated the pressure, and no host/container limits were changed during investigation.
 
+## Aggregate response admission
+
+The November 9 global OOM followed a distributed burst: Caddy recorded 168 failed proxy
+connections from 168 forwarded client addresses within roughly five seconds; surviving workers
+later reported over 1,200 concurrent requests each. Completed application logs omit failed proxy
+connections and requests killed with a worker. Local renders showed substantial transient memory
+growth under concurrency, but did not reproduce the initial multi-minute stall. This is overload
+containment, not proof that a particular renderer, digest or compression operation caused it.
+
+`RESPONSE_PREPARATION_CONCURRENCY` defaults to **32 per web worker** (a positive integer).
+`response-admission.ts` admits GET/HEAD work before asset lookup, routing and anonymous-cache
+handling. At capacity it returns **503**, `Retry-After: 5`, and `Cache-Control: private, no-store`
+immediately, without an application waiting queue or per-IP assumptions. Slots remain owned until
+actual downstream rendering/cache extraction, ETag hashing and compression setup settle, including
+errors; a timeout never releases still-running work. Requests recover as slots become available.
+Nitro's final cache-header hook preserves `private, no-store` for every 503, including paths
+ending in an image extension that would otherwise receive the static-asset cache policy.
+
+Health, metrics, `/import`, `/admin/export`, `/library/books`, `/opds/books` and the binary XRPC
+personal-book file/cover methods are segment-aware exemptions. Non-GET/HEAD writes retain their
+existing domain-specific admission rules. Three deployed workers can therefore prepare up to 96
+ordinary responses concurrently; this is not a cluster-wide semaphore, byte/RAM cap, streaming
+body-lifetime limit, or protection against a blocked event loop. Static files served before Hono
+are outside this gate. No SQLite mmap/cache, host memory or worker-count settings change.
+
+`runtime_sample.resources.response_admission` reports `active`, `limit`, and cumulative `rejected`
+per application/worker; rejected request events carry `response_admission: "rejected"`. Sampling
+can be delayed by an event-loop stall. Monitor these rejections together with health, anonymous
+memory, host PSI and response stages before considering a capacity adjustment.
+
 ## Local instrumentation
 
 - Response timings distinguish `response_prepare` (downstream route work, JSX serialization and

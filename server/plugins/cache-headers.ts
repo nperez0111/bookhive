@@ -15,12 +15,18 @@ import { definePlugin } from "nitro";
 import {
   cacheControlForHtml,
   hasSessionCookie,
+  NO_STORE,
   staticAssetCacheControl,
 } from "../../src/core/cacheHeaders";
 
 export default definePlugin((nitroApp) => {
   nitroApp.hooks.hook("response", (response, event) => {
     if (event.req.method !== "GET" && event.req.method !== "HEAD") return;
+    // Overload must never become a cached outage, including image-looking URLs.
+    if (response.status === 503) {
+      response.headers.set("Cache-Control", NO_STORE);
+      return;
+    }
     const { pathname } = new URL(event.req.url);
     const contentType = response.headers.get("content-type") ?? "";
 

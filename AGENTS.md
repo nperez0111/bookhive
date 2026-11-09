@@ -97,7 +97,10 @@ Worker threads (bundled to .output/server/workers/):
 
 `src/app.ts` mounts infra/admin routes, then `/` → `src/routes/main.tsx` (`mainRouter`), which registers standalone pages, the image proxy, feature route modules, and the XRPC router. **Full route-by-route breakdown (every path, method, and per-route gotcha): `docs/notes/routes.md`.**
 
-**Middleware order** in `createApp`: `timing` → `prettyJSON` (dev) → context → wide-event logging → error capture → asset URLs (Vite manifest) → `/images/*` + `/og/*` CORP override → `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → default `Cache-Control: private, no-store` → Prometheus `registerMetrics` → `etag` → anon page cache (prod).
+**Middleware order** in `createApp`: `timing` → `prettyJSON` (dev) → context → wide-event logging → error capture → response admission → asset URLs (Vite manifest) → `/images/*` + `/og/*` CORP override → `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → default `Cache-Control: private, no-store` → Prometheus `registerMetrics` → `etag` → anon page cache (prod).
+
+Response admission bounds aggregate GET/HEAD preparation per worker, without a waiting queue;
+overload returns retryable 503s. Exemptions and limits: `docs/notes/memory-and-runtime.md`.
 
 - **`etag()` never sees a large or streamed body** — `/library/books/*`, `/opds/books/*` and `/import` are excluded by prefix in `src/app.ts` (`ETAG_EXCLUDED_PREFIXES`). Those routes must answer `If-None-Match`/`Range` themselves; `streamPersonalBook` (`src/data/personalLibrary.ts`) owns that for all three callers. Details: `docs/notes/e-reader-and-sync.md`.
 - **Anonymous page cache** (`src/middleware/anon-page-cache.ts`, prod-only) serves signed-out GETs on `/books/*`, `/explore*`, `/authors/*` from KV. Key-encoding and size-limit gotchas: `docs/notes/data-and-caching.md`.

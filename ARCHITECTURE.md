@@ -29,6 +29,8 @@ KV page-cache schema/short-timeout connection and batched maintenance live in `s
 `context.ts`; optional cache failures preserve rendered responses. See `docs/notes/data-and-caching.md`.
 Runtime/active-request samples (`metrics.ts`, wide-event middleware) complement independent
 supervisor procfs/cgroup sampling; see `docs/notes/memory-and-runtime.md` for diagnostic boundaries.
+`middleware/response-admission.ts` bounds concurrent GET/HEAD preparation before rendering/cache
+work, holding ownership through ETag hashing and compression setup; it does not queue excess work.
 Follow synchronization stages remote pages before a revision-fenced atomic mirror commit; cursor completion,
 freshness and concurrency boundaries are in `docs/notes/domain-rules-and-write-paths.md`.
 

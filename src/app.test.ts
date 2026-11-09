@@ -1,7 +1,51 @@
 import { expect, test } from "bun:test";
 import pino from "pino";
+import { env } from "./env";
 import { createApp } from "./app";
 import { createTestDb, testContext } from "./test/db";
+
+test("application admission remains occupied while ETag consumes a response body", async () => {
+  const { db, close } = await createTestDb();
+  const ctx = testContext({ db });
+  const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+  try {
+    const app = createApp({
+      startTime: new Date().toISOString(),
+      deps: { ...ctx, logger: pino({ level: "silent" }), stopEnrichmentDrain() {} },
+    });
+    let started = 0;
+    let ready!: () => void;
+    const allStarted = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    app.get("/__admission-probe/:id", (c) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controllers.push(controller);
+          controller.enqueue(new TextEncoder().encode("fixture"));
+        },
+      });
+      if (++started === env.RESPONSE_PREPARATION_CONCURRENCY) ready();
+      return c.body(body, 200, { "Content-Type": "text/html" });
+    });
+    const pending = Array.from({ length: env.RESPONSE_PREPARATION_CONCURRENCY }, (_, i) =>
+      Promise.resolve(app.request(`/__admission-probe/${i}`)),
+    );
+    await allStarted;
+    expect((await app.request("/__admission-probe/overflow")).status).toBe(503);
+    expect((await app.request("/healthcheck")).status).toBe(200);
+    for (const controller of controllers.splice(0)) controller.close();
+    for (const response of await Promise.all(pending)) {
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("fixture");
+    }
+    expect((await app.request("/healthcheck")).status).toBe(200);
+  } finally {
+    for (const controller of controllers) controller.close();
+    await ctx.kv.dispose();
+    await close();
+  }
+});
 
 test("response stages separate route work, ETag hashing and compression setup", async () => {
   const { db, close } = await createTestDb();

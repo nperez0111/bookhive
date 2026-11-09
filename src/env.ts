@@ -9,6 +9,10 @@ export const env = cleanEnv(process.env, {
     choices: ["development", "production", "test"],
   }),
   PORT: port({ default: 8080 }),
+  RESPONSE_PREPARATION_CONCURRENCY: num({
+    default: 32,
+    desc: "Per-web-process GET/HEAD response preparation limit, with no queue. Excess requests receive retryable 503s. Excludes health, metrics and existing file/SSE/export streams; not a total memory or open-connection limit.",
+  }),
   PUBLIC_URL: str({
     default: "http://127.0.0.1:8080",
     devDefault: `http://127.0.0.1:${process.env["PORT"] ?? 8080}`,
