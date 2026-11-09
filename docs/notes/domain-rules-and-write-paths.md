@@ -64,8 +64,10 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   no exact counts are supplied. Exact counts take precedence over rounded percentages: 657/658
   can display 100% but must remain Reading. The shared lifecycle stamps the finish date in both
   the PDS write and optimistic paint, preserves explicit status choices and terminal statuses,
-  and only rotates a re-read on an explicit Reading selection. KOReader's fraction-derived
-  rounded percentage alone still infers Reading through `statusFromProgress` without counts.
+  and only rotates a re-read on an explicit Reading selection. The sync bridge also passes its
+  percentage to `statusFromProgress`: percentage-only 100% infers Finished, while existing
+  Finished/Abandoned states remain unchanged. A rounded percentage without exact counts cannot
+  distinguish a nearly finished page count from actual completion.
 - **The `book_lock` is enforced by the core, checked by the client.** `withBookLock`
   (`services/getBook.ts`) owns check-then-set-then-release and returns `{locked}` rather than
   throwing (adapters answer differently: an error page for the form, a JSON 429 for the API route).
@@ -82,7 +84,9 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   `DELETE /books/:hiveId` and `DELETE /comments/:commentId` check `deleteRecord.ok` before removing
   `user_book` or `buzz`; an HTTP-successful
   XRPC response can still contain a rejected PDS operation. Clearing the mirror in that case
-  made the deleted book reappear on the next re-sync.
+  made the deleted book reappear on the next re-sync. Comment deletion negotiates HTML/JSON for
+  rejected operations and transport exceptions as well as success; JSON Accept lists and quality
+  values must not accidentally receive a redirect or a generic HTML error.
 - **A re-sync's cleanup must handle the empty case** — `pruneMirroredRecords`
   (`data/repoMirror.ts`). A re-sync deletes `user_book`/`buzz` mirrors the PDS didn't return, and
   `uri not in ()` isn't expressible — the admin backfill used to guard the whole delete on
@@ -145,6 +149,9 @@ Reject repeated cursors and cap each collection scan at 500 pages before pruning
 Failed/malformed scans reject so manual refresh can report failure; login observes failures
 without blocking authentication. Earlier page upserts are not rolled back on a later scan failure.
 This is a recovery path for stream gaps, not proof that a particular Jetstream outage caused one.
+Buzz pruning keeps every validated remote URI even when its book reference cannot currently be
+resolved; failure to hydrate a comment is not evidence of remote deletion. Book re-sync also
+narrows wire `hiveId` values before mirroring or scheduling identifier backfills.
 
 ### Follow synchronization stages before committing
 
@@ -156,6 +163,9 @@ cursor even for users following more than 1,000 accounts. Short pages do not imp
 Incremental sync stages only the prefix before the first already-active follow; inactive rows
 before that boundary are reactivated. Existing rows retain their `syncedAt` ordering timestamp.
 A failed incremental scan publishes none of its staged rows.
+Completion telemetry distinguishes fetched records from the staged prefix actually synchronized.
+Login follow-sync failures emit an independent application error log, since the request's wide
+event may already have been emitted when this nonblocking recovery work fails.
 
 `follow_sync_state` (migration 034) stores a durable per-user revision, independent of graph rows
 so even an empty graph has a publication fence. Each scan reads its baseline before remote I/O;
@@ -195,7 +205,10 @@ all PDS collection cleanups succeed. The local deletions, including `progress_hi
 transaction. File removal errors propagate rather than claiming success; the settings adapter
 retains the session so the user can retry. Earlier PDS deletions are not rolled back on a later
 collection failure. Cleanup also deletes `sync_write_queue` entries and sets the durable legacy
-import marker, preventing old KV progress from being re-imported. This is not a lease against
+import marker, preventing old KV progress from being re-imported. It then removes the legacy
+`sync_pending:<did>` payload before filesystem cleanup; KV removal failure propagates and retains
+the session for retry, rather than treating logical invalidation as physical account-data deletion.
+This is not a lease against
 concurrent ingestion/uploads or a PDS write already running; those need separate deletion ownership.
 
 ## Listing order — every paginated listing ends on a unique key

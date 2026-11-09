@@ -117,6 +117,8 @@ marker. Existing SQL progress wins over legacy values. Only then is the old key 
 failed removal leaves an inert key, not a permanent cleanup retry on subsequent drains. A stale read
 or failed removal cannot re-import acknowledged work. Account cleanup deletes SQL
 queue entries and retains the minimal import marker so leftover legacy work cannot resurrect them.
+Unlike best-effort migration cleanup, account deletion must also remove the legacy KV payload;
+failure leaves the session available to retry cleanup, with the SQL import marker still committed.
 Deploy by restarting the worker set together: old binaries must not continue producing/acknowledging
 KV arrays after a DID's import marker is committed. No downgrade synchronization is provided.
 

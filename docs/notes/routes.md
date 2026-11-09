@@ -34,7 +34,9 @@ remain stripped from page metadata. Local HTTP origins remain HTTP when configur
   cancelling its underlying reader so blocked writes settle without client consumption. Merely
   returning would leave Hono's `close()` blocked and disable its later disconnect cancellation.
   Hono observes disconnects via `onAbort` (its underlying writer swallows transport rejections).
-  Client EOF without a terminal event is an error, not completion.
+  Client EOF without a terminal event is an error, not completion. The first terminal event
+  stops client reads and triggers best-effort cancellation without waiting for transport
+  settlement; trailing events or cancellation errors cannot overwrite that terminal UI.
   Worker progress messages await acknowledgement after each SSE write, bounding the cross-thread
   backlog for slow clients; heartbeat writes also allow only one outstanding write.
 
@@ -120,6 +122,9 @@ OAuth handle resolution.
 ### `src/routes/comments.tsx` (mounted at `/comments`)
 
 - POST `/` → create/update buzz; DELETE `/:commentId` → delete buzz
+  Deletion negotiates HTML/JSON consistently for success, PDS rejection and transport errors.
+  Accept ranges, quality values and explicit `q=0` exclusions are respected, with HTML as the
+  fallback. Failed remote deletion leaves the local mirror intact.
 
 ### `src/routes/shelves.tsx` (mounted at `/shelves`)
 

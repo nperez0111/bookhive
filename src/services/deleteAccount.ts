@@ -2,6 +2,7 @@ import type { SessionClient } from "../auth/client";
 import { ids } from "../bsky/lexicon/index";
 import type { Database } from "../db";
 import { sql } from "kysely";
+import type { Storage } from "unstorage";
 import { removeUserDir } from "../data/personalLibrary";
 
 type ListRecordsOut = {
@@ -60,9 +61,11 @@ async function batchDeleteFromPds(
 export async function deleteAccountData({
   agent,
   db,
+  kv,
 }: {
   agent: SessionClient;
   db: Database;
+  kv: Storage;
 }): Promise<void> {
   // PDS cleanup first (order: items before parents)
   const collections = [
@@ -111,6 +114,10 @@ export async function deleteAccountData({
       .onConflict((oc) => oc.column("userDid").doUpdateSet({ legacyImported: 1 }))
       .execute();
   });
+
+  // Commit the no-resurrection marker before removing legacy personal data.
+  // Unlike opportunistic drain cleanup, account deletion must surface failure for retry.
+  await kv.removeItem(`sync_pending:${did}`);
 
   // Remove uploaded library files from disk
   // The settings adapter retains the session on failure so a retry can finish cleanup.

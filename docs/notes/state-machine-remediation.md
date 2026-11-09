@@ -33,8 +33,9 @@ Regression tests accompany these changes. Detailed invariants live in
    Releasing it at a caller-only deadline would permit overlapping live remote writes; recovery
    needs transport-enforced cancellation or process replacement, not an unsafe timer unlock.
 2. **Implemented: sync association winners** (`data/syncBridge.ts`); see `e-reader-and-sync.md`.
-   Still open: shared progress inference across mirror and canonical PDS flush, and partial
-   commits in manual linking that creates a new tracked book.
+   Optimistic progress now uses the canonical percentage-aware status inference, including 100%
+   completion and preservation of terminal statuses. Still open: partial commits in manual linking
+   that creates a new tracked book and the wider association/publication races below.
 3. **Book write concurrency** (`services/getBook.ts`, `routes/lib.ts`): bulk overwrite and
    hiveBookUri backfill need fresh-record CAS/remerge, not stale whole-record updates. Existing
    interactive `bookRecordWrite` is the model. Advisory book locks need atomic ownership and
@@ -61,7 +62,9 @@ Regression tests accompany these changes. Detailed invariants live in
   Buffer events or establish hydration readiness before inline import events are emitted.
 - **Implemented:** import SSE has one idempotent terminal cleanup owner for timeout/abort/error/complete/postMessage
   failure; cleanup must survive failed stream writes. Client EOF without terminal event is failure,
-  not an indefinitely running import. Partial/per-book outcomes remain distinct from pipeline completion.
+  not an indefinitely running import. The client stops reading after a terminal event so trailing
+  events or transport errors cannot overwrite completion. Partial/per-book outcomes remain
+  distinct from pipeline completion.
   Terminal errors get a bounded 1s output drain before Hono closes the response; worker/heartbeat
   cleanup stays immediate, and disconnect/deadline interrupts existing drains. Real Hono streaming
   regression tests cover callback-close ordering and underlying blocked-write settlement without

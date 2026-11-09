@@ -3,7 +3,8 @@
  * Parent must run methodOverride for /comments/:commentId before mounting this router.
  */
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { accepts } from "hono/accepts";
 import { z } from "zod";
 
 import type { AppEnv } from "../context";
@@ -12,6 +13,42 @@ import { Error as ErrorPage } from "../pages/error";
 import type { HiveId } from "../types";
 import { upsertBuzz } from "../services/buzzWrite";
 import { renderError } from "./errorPage";
+
+function wantsJson(c: Context<AppEnv>): boolean {
+  return (
+    accepts(c, {
+      header: "Accept",
+      supports: ["text/html", "application/json"],
+      default: "text/html",
+      // The installed helper's default matcher ignores wildcards and accepts q=0.
+      // Specific exclusions must beat broader ranges; HTML wins an otherwise equal tie.
+      match: (ranges, { supports, default: fallback }) => {
+        const choices = supports.map((type) => {
+          const best = ranges
+            .map((range) => ({
+              q: range.q,
+              specificity:
+                range.type.toLowerCase() === type
+                  ? 2
+                  : range.type.toLowerCase() === type.split("/")[0] + "/*"
+                    ? 1
+                    : range.type === "*/*"
+                      ? 0
+                      : -1,
+            }))
+            .filter((range) => range.specificity >= 0)
+            .sort((a, b) => b.specificity - a.specificity || b.q - a.q)[0];
+          return { type, q: best?.q ?? 0, specificity: best?.specificity ?? -1 };
+        });
+        return (
+          choices
+            .filter((choice) => choice.q > 0)
+            .sort((a, b) => b.q - a.q || b.specificity - a.specificity)[0]?.type ?? fallback
+        );
+      },
+    }) === "application/json"
+  );
+}
 
 const app = new Hono<AppEnv>()
   .post(
@@ -83,6 +120,7 @@ const app = new Hono<AppEnv>()
         { title: "Unauthorized" },
       );
     }
+    const json = wantsJson(c);
     const commentId = c.req.param("commentId") as string;
     const commentUri = `at://${agent.did}/${ids.BuzzBookhiveBuzz}/${commentId}`;
 
@@ -98,16 +136,12 @@ const app = new Hono<AppEnv>()
       return c.json({ success: false, commentId, book: null });
     }
 
-    const deleted = await agent.post("com.atproto.repo.deleteRecord", {
-      input: {
-        repo: agent.did,
-        collection: ids.BuzzBookhiveBuzz,
-        rkey: commentId,
-      },
-    });
-    if (!deleted.ok) {
-      c.set("requestError", new Error("PDS rejected comment deletion"));
-      if (c.req.header("accept") === "application/json") {
+    const deletionFailed = (error: unknown) => {
+      c.set(
+        "requestError",
+        error instanceof Error ? error : new Error("PDS comment deletion failed", { cause: error }),
+      );
+      if (json) {
         return c.json({ success: false, commentId, message: "Failed to delete comment" }, 500);
       }
       return renderError(c, {
@@ -115,6 +149,20 @@ const app = new Hono<AppEnv>()
         message: "Failed to delete comment",
         description: "The comment could not be deleted. Please try again.",
       });
+    };
+    try {
+      const deleted = await agent.post("com.atproto.repo.deleteRecord", {
+        input: {
+          repo: agent.did,
+          collection: ids.BuzzBookhiveBuzz,
+          rkey: commentId,
+        },
+      });
+      if (!deleted.ok) {
+        return deletionFailed(new Error("PDS rejected comment deletion"));
+      }
+    } catch (error) {
+      return deletionFailed(error);
     }
     await c
       .get("ctx")
@@ -129,7 +177,7 @@ const app = new Hono<AppEnv>()
       hiveId: comment[0]!.hiveId,
       userDid: agent.did,
     });
-    if (c.req.header()["accept"] === "application/json") {
+    if (json) {
       return c.json({ success: true, commentId, comment: comment[0] });
     }
     // A buzz can carry a null hiveId; redirecting blindly produced /books/null.

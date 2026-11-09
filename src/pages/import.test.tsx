@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { LibraryImport } from "./import";
 
 test("CSV input label contains instructions, with import code outside its accessible name", async () => {
@@ -25,7 +25,7 @@ test("CSV input label contains instructions, with import code outside its access
 // Execute the rendered inline script so tests exercise the same handlers browsers receive.
 async function importControlHarness(
   service: string | null = "goodreads",
-  responseBody = 'data: {"event":"import-complete"}\n\n',
+  responseBody: string | (() => Response) = 'data: {"event":"import-complete"}\n\n',
 ) {
   class Element {
     listeners = new Map<string, (event: any) => unknown>();
@@ -78,7 +78,7 @@ async function importControlHarness(
     { removeItem: () => {} },
     async (endpoint: string, options: { body: FormData }) => {
       requests.push({ endpoint, file: options.body.get("export") as File });
-      return new Response(responseBody);
+      return typeof responseBody === "function" ? responseBody() : new Response(responseBody);
     },
     Element,
   );
@@ -133,6 +133,96 @@ test.each([
   expect(events).toHaveLength(2);
   expect(events[1]).toMatchObject(JSON.parse(body.slice(6).trim()));
 });
+
+test.each(["import-complete", "import-error"])(
+  "stops reading after %s, ignores trailing events, and observes cancellation rejection",
+  async (terminal) => {
+    const read = mock(async () => {
+      if (read.mock.calls.length > 1) throw new Error("trailing transport failure");
+      return {
+        done: false as const,
+        value:
+          `data: ${JSON.stringify({ event: terminal, stage: "error", error: "original" })}\n\n` +
+          'data: {"event":"import-error","stage":"error","error":"late"}\n\n' +
+          'data: {"event":"book-load","title":"late"}\n\n',
+      };
+    });
+    const cancel = mock(async () => {
+      throw new Error("cancellation failed");
+    });
+    const releaseLock = mock(() => {});
+    const { getElement, events } = await importControlHarness("goodreads", () =>
+      readerResponse({ read, cancel, releaseLock }),
+    );
+    const input = getElement("import-file");
+    input.files = [new File(["Title,Author"], "export.csv")];
+    await input.dispatchEvent(new Event("change"));
+    expect(events.map((event) => event.event)).toEqual(["import-start", terminal]);
+    expect(events[1].error).toBe("original");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(releaseLock).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe("");
+  },
+);
+
+test("completion preserves failed-book details and permits retry without awaiting cancellation", async () => {
+  const terminal = {
+    event: "import-complete",
+    failedBooks: [{ title: "Unmatched" }],
+    failedBookDetails: [{ author: "Author" }],
+  };
+  const read = mock(async () => ({
+    done: false as const,
+    value: `data: ${JSON.stringify(terminal)}\n\n`,
+  }));
+  const cancel = mock(() => new Promise<void>(() => {}));
+  const releaseLock = mock(() => {});
+  const { getElement, events } = await importControlHarness("goodreads", () =>
+    readerResponse({ read, cancel, releaseLock }),
+  );
+  const input = getElement("import-file");
+  input.files = [new File(["Title,Author"], "export.csv")];
+  await input.dispatchEvent(new Event("change"));
+  expect(events.map((event) => event.event)).toEqual([
+    "import-start",
+    "import-complete",
+    "book-failed",
+  ]);
+  expect(events[2].failedBook).toEqual({ title: "Unmatched", author: "Author" });
+  expect(input.value).toBe("");
+  await input.dispatchEvent(new Event("change"));
+  expect(events.filter((event) => event.event === "import-start")).toHaveLength(2);
+  expect(cancel).toHaveBeenCalledTimes(2);
+  expect(releaseLock).toHaveBeenCalledTimes(2);
+});
+
+test("a read failure before any terminal event still reports one terminal error", async () => {
+  const read = mock(async () => {
+    throw new Error("transport failure");
+  });
+  const cancel = mock(async () => {});
+  const releaseLock = mock(() => {});
+  const { getElement, events } = await importControlHarness("goodreads", () =>
+    readerResponse({ read, cancel, releaseLock }),
+  );
+  const input = getElement("import-file");
+  input.files = [new File(["Title,Author"], "export.csv")];
+  await input.dispatchEvent(new Event("change"));
+  expect(events.map((event) => event.event)).toEqual(["import-start", "import-error"]);
+  expect(events[1].stage).toBe("error");
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(releaseLock).toHaveBeenCalledTimes(1);
+});
+
+function readerResponse(
+  reader: Pick<ReadableStreamDefaultReader<string>, "read" | "cancel" | "releaseLock">,
+): Response {
+  return {
+    ok: true,
+    body: { pipeThrough: () => ({ getReader: () => reader }) },
+  } as unknown as Response;
+}
 
 test("dropping a CSV prevents navigation and imports through the picker change handler", async () => {
   const { getElement, requests, events } = await importControlHarness();

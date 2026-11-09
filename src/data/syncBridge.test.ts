@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 
 import type { Database } from "../db";
-import { READING, WANTTOREAD } from "../constants";
+import { ABANDONED, FINISHED, READING, WANTTOREAD } from "../constants";
 import type { HiveId } from "../types";
 import { bridgeProgressToUserBook } from "./syncBridge";
 import { NO_HIVE_MATCH } from "./syncMatching";
@@ -51,6 +51,31 @@ describe("bridgeProgressToUserBook", () => {
     const pending = await db.selectFrom("sync_write_queue").selectAll().execute();
     expect(pending?.[0]?.hiveId).toBe(HIVE_ID);
   });
+
+  it.each([
+    { fraction: 0, status: WANTTOREAD, expected: WANTTOREAD, percent: 0 },
+    { fraction: 0.42, status: READING, expected: READING, percent: 42 },
+    { fraction: 0.99, status: WANTTOREAD, expected: READING, percent: 99 },
+    { fraction: 1, status: WANTTOREAD, expected: FINISHED, percent: 100 },
+    { fraction: 1, status: READING, expected: FINISHED, percent: 100 },
+    { fraction: 0.999, status: READING, expected: FINISHED, percent: 100 },
+    { fraction: 1, status: ABANDONED, expected: ABANDONED, percent: 100 },
+    { fraction: 0.42, status: FINISHED, expected: FINISHED, percent: 42 },
+  ])(
+    "infers $status at $fraction as $expected using queued progress",
+    async ({ fraction, status, expected, percent }) => {
+      await db.updateTable("user_book").set({ status }).where("uri", "=", URI).execute();
+
+      await bridgeProgressToUserBook(db, DID, HIVE_ID, fraction);
+
+      const row = await readUserBook();
+      expect(row?.status).toBe(expected);
+      expect(JSON.parse(row?.bookProgress ?? "{}").percent).toBe(percent);
+      const pending = await db.selectFrom("sync_write_queue").selectAll().execute();
+      expect(pending).toHaveLength(1);
+      expect(pending[0]?.bookProgress).toBe(row?.bookProgress ?? "");
+    },
+  );
 
   it("ignores the dismissed sentinel even if a user_book somehow carries it", async () => {
     // The lookup would normally miss anyway, so seed the pathological row that

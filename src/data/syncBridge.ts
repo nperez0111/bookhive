@@ -51,7 +51,7 @@ export async function bridgeProgressToUserBook(
 
     const updates: Record<string, unknown> = { bookProgress };
     // Zero percent is excluded: an e-reader reports it for a book merely opened, not yet reading.
-    const inferred = percent > 0 ? statusFromProgress(userBook.status) : undefined;
+    const inferred = percent > 0 ? statusFromProgress(userBook.status, { percent }) : undefined;
     if (inferred) {
       updates["status"] = inferred;
     }

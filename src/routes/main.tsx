@@ -77,7 +77,7 @@ export function mainRouter(deps: AppDeps): HonoServer {
       if (!agent) return;
       void Promise.allSettled([
         refetchBooks({ agent, ctx }).then(() => refetchBuzzes({ agent, ctx })),
-        syncFollowsIfNeeded({ agent, ctx }),
+        syncFollowsIfNeeded({ agent, ctx, logger: deps.logger }),
         refetchLists({ agent, ctx }),
       ]).then((results) => {
         for (const result of results) {

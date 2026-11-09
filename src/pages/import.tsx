@@ -230,6 +230,8 @@ export const LibraryImport: FC = () => {
                   stageProgress: { message: "Starting import..." },
                 });
 
+                let receivedTerminalEvent = false;
+                let reader: ReadableStreamDefaultReader<string> | undefined;
                 try {
                   const response = await fetch(endpoint, {
                     method: "POST",
@@ -239,9 +241,8 @@ export const LibraryImport: FC = () => {
                     throw new Error("Failed to import books");
                   }
 
-                  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+                  reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
 
-                  let receivedTerminalEvent = false;
                   const processEvent = (event: any) => {
                     if (receivedTerminalEvent) return;
                     // Forward book-load events for progress tracking
@@ -308,7 +309,7 @@ export const LibraryImport: FC = () => {
                   };
 
                   let buffer = "";
-                  while (true) {
+                  while (!receivedTerminalEvent) {
                     const { value, done } = await reader.read();
                     if (done) {
                       if (buffer.trim()) {
@@ -327,6 +328,7 @@ export const LibraryImport: FC = () => {
                     const messages = buffer.split("\n\n");
                     buffer = messages.pop() || "";
                     for (const message of messages) {
+                      if (receivedTerminalEvent) break;
                       if (!message.trim()) continue;
                       const data = parseSseMessage(message);
                       if (!data) continue;
@@ -341,13 +343,23 @@ export const LibraryImport: FC = () => {
                     throw new Error("Import stream ended before completion");
                   }
                 } catch (e) {
-                  console.error("Stream reading failed:", e);
-                  dispatchImportEvent({
-                    event: "import-error",
-                    stage: "error",
-                    error: "An error occurred during import. Please try again.",
-                  });
+                  if (!receivedTerminalEvent) {
+                    console.error("Stream reading failed:", e);
+                    dispatchImportEvent({
+                      event: "import-error",
+                      stage: "error",
+                      error: "An error occurred during import. Please try again.",
+                    });
+                  }
                 } finally {
+                  // Cancellation is best effort: a stalled/rejected transport must not hold
+                  // the finished UI (or the next import) hostage.
+                  if (reader) {
+                    try {
+                      void reader.cancel().catch(() => {});
+                      reader.releaseLock();
+                    } catch {}
+                  }
                   importing = false;
                   importFile.value = "";
                 }

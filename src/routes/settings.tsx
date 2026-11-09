@@ -62,7 +62,7 @@ const app = new Hono<AppEnv>()
       try {
         c.get("ctx").addWideEventContext({ account_delete: "started", userDid: agent.did });
 
-        await deleteAccountData({ agent, db: c.get("ctx").db });
+        await deleteAccountData({ agent, db: c.get("ctx").db, kv: c.get("ctx").kv });
 
         c.get("ctx").addWideEventContext({ account_delete: "completed" });
       } catch (e) {

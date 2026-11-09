@@ -85,7 +85,7 @@ async function fetchAndCommitFollows(
   const staged = new Map<string, Follow>();
   const cursors = new Set<string>();
   let cursor: string | undefined;
-  let totalSynced = 0;
+  let totalFetched = 0;
   let complete = false;
   // An absent row is revision zero, including for an empty graph. Publication
   // must compete with both other scans and acknowledged interactive writes.
@@ -126,7 +126,7 @@ async function fetchAndCommitFollows(
     if (out.cursor && (cursors.has(out.cursor) || follows.length === 0)) {
       throw new Error("Incomplete follows scan: invalid cursor traversal");
     }
-    totalSynced += follows.length;
+    totalFetched += follows.length;
 
     let existingDids = new Set<string>();
     if (syncType === "incremental" && follows.length > 0) {
@@ -218,7 +218,8 @@ async function fetchAndCommitFollows(
     [syncType === "full" ? "follows_full_sync_completed" : "follows_incremental_sync_completed"]:
       true,
     userDid,
-    total_synced: totalSynced,
+    total_fetched: totalFetched,
+    total_synced: staged.size,
     removed,
   });
 }

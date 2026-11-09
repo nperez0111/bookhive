@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { SessionClient } from "../auth/client";
 import { type Database } from "../db";
 import { WANTTOREAD } from "../constants";
 import { createTestDb, testContext } from "../test/db";
-import { refetchBooks, refetchBuzzes } from "./lib";
+import { refetchBooks, refetchBuzzes, syncFollowsIfNeeded } from "./lib";
 
 const did = "did:plc:alice";
 const bookDefaults = {
@@ -198,3 +198,128 @@ for (const [table, sync] of [
     });
   });
 }
+
+describe("re-sync domain boundaries", () => {
+  const createdAt = "2026-01-01T00:00:00.000Z";
+  const cid = "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku";
+  const bookUri = `at://${did}/buzz.bookhive.book/3m4tfwok4ns2c`;
+
+  it("retains a remotely present buzz when its book is not in the mirror", async () => {
+    const uri = `at://${did}/buzz.bookhive.buzz/3m4tfwok4ns2c`;
+    const row = {
+      uri,
+      cid,
+      userDid: did,
+      hiveId: "bk_a" as const,
+      comment: "Previously resolved",
+      createdAt,
+      indexedAt: createdAt,
+      bookUri,
+      bookCid: cid,
+      parentUri: bookUri,
+      parentCid: cid,
+    };
+    await db
+      .insertInto("buzz")
+      .values([row, { ...row, uri: `${uri}-deleted` }])
+      .execute();
+    const ctx = testContext({ db, addWideEventContext: mock() });
+    await refetchBuzzes({
+      ctx,
+      agent: {
+        did,
+        get: async () => ({
+          ok: true,
+          data: {
+            records: [
+              {
+                uri,
+                cid,
+                value: {
+                  $type: "buzz.bookhive.buzz",
+                  comment: "Remote edit cannot yet resolve",
+                  createdAt,
+                  book: { uri: bookUri, cid },
+                  parent: { uri: bookUri, cid },
+                },
+              },
+            ],
+          },
+        }),
+      } as unknown as SessionClient,
+    });
+    expect(await db.selectFrom("buzz").selectAll().execute()).toEqual([row]);
+    expect(ctx.addWideEventContext).toHaveBeenCalledWith({
+      refetch_buzz_hive_id_missing: true,
+      record_uri: uri,
+    });
+  });
+
+  it.each(["", "null", "bk_bad-id"])(
+    "does not mirror, deduplicate or backfill records with an invalid hive id: %j",
+    async (hiveId) => {
+      const ctx = testContext({ db, addWideEventContext: mock() });
+      // Keep even the regressed path offline if it attempts catalogue warming.
+      await ctx.kv.set("search:Invalid", []);
+      await ctx.kv.setMeta("search:Invalid", { timestamp: Date.now() });
+      const post = mock(async () => ({ ok: true, data: {} }));
+      const selectFrom = spyOn(db, "selectFrom");
+      await refetchBooks({
+        ctx,
+        agent: {
+          did,
+          post,
+          get: async () => ({
+            ok: true,
+            data: {
+              records: ["3m4tfwok4ns2c", "3m4tfwok4ns2d"].map((rkey) => ({
+                uri: `at://${did}/buzz.bookhive.book/${rkey}`,
+                cid,
+                value: {
+                  $type: "buzz.bookhive.book",
+                  title: "Invalid",
+                  authors: "Author",
+                  hiveId,
+                  createdAt,
+                },
+              })),
+            },
+          }),
+        } as unknown as SessionClient,
+      });
+      // Invalid records must never enter the hiveBookUri backfill lookup.
+      expect(selectFrom).not.toHaveBeenCalledWith("hive_book");
+      selectFrom.mockRestore();
+      expect(await db.selectFrom("user_book").selectAll().execute()).toEqual([]);
+      expect(post).not.toHaveBeenCalled();
+      expect(ctx.addWideEventContext).toHaveBeenCalledWith({
+        refetch_book_hive_id_invalid: true,
+        record_uri: bookUri,
+      });
+    },
+  );
+
+  it("logs follow sync failure independently and still fulfills the best-effort helper", async () => {
+    const error = new Error("AppView unavailable");
+    const logger = { error: mock() };
+    // A late wide-event write cannot be relied on to publish this failure.
+    const ctx = testContext({ db, addWideEventContext: () => {} });
+    const result = await syncFollowsIfNeeded({
+      ctx,
+      logger,
+      agent: {
+        did,
+        get: async () => {
+          throw error;
+        },
+      } as unknown as SessionClient,
+    });
+    expect(result).toBeUndefined();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: error, follows_sync: "failed", userDid: did },
+      "Follow sync failed",
+    );
+    expect(await ctx.kv.get(`follows_sync:${did}`)).toBeNull();
+  });
+});

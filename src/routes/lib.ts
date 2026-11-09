@@ -4,6 +4,7 @@
  */
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import type { Logger } from "pino";
 
 import type { SessionClient } from "../auth/client";
 import type { AppEnv, AppContext } from "../context";
@@ -25,6 +26,7 @@ import { bookListItemUpsertSet, bookListUpsertSet, buzzUpsertSet, userBookUpsert
 import { listRecordFields } from "../core/listRecord";
 import { upsertBookIdentifiers } from "../data/bookIdentifiers";
 import { errorMessage } from "../lib/errors";
+import { asHiveId } from "../core/hiveId";
 
 /**
  * Sets Cache-Control on successful responses; never overrides a header the
@@ -80,9 +82,11 @@ export async function ensureBookIdentifiersCurrent({
 export async function syncFollowsIfNeeded({
   agent,
   ctx,
+  logger,
 }: {
   agent: SessionClient;
   ctx: AppContext;
+  logger: Pick<Logger, "error">;
 }) {
   if (!agent) {
     return;
@@ -98,6 +102,9 @@ export async function syncFollowsIfNeeded({
       });
     }
   } catch (error) {
+    // This helper also runs after the response: the request's wide event may
+    // already have been emitted, so failure needs an independent log.
+    logger.error({ err: error, follows_sync: "failed", userDid: agent.did }, "Follow sync failed");
     ctx.addWideEventContext({
       follows_sync: "failed",
       userDid: agent.did,
@@ -164,6 +171,8 @@ export async function refetchBuzzes({ agent, ctx }: { agent: SessionClient; ctx:
     const buzzValues = [];
 
     for (const record of validRecords) {
+      // Remote presence, not successful local reference resolution, owns pruning.
+      uris.push(record.uri);
       const book = record.value as BuzzRecord.Record;
       const hiveId = uriToHiveId.get(book.book.uri);
 
@@ -175,7 +184,6 @@ export async function refetchBuzzes({ agent, ctx }: { agent: SessionClient; ctx:
         continue;
       }
 
-      uris.push(record.uri);
       buzzValues.push({
         uri: record.uri,
         cid: record.cid,
@@ -210,9 +218,16 @@ export async function refetchBooks({ agent, ctx }: { agent: SessionClient; ctx: 
   const booksNeedingHiveUri: Array<{ rkey: string; hiveId: HiveId; record: BookRecord.Record }> =
     [];
   for await (const records of repoRecordPages(agent, ids.BuzzBookhiveBook, 10)) {
-    const bookRecords = records
-      .filter((record) => BookRecord.validateRecord(record.value).success)
-      .map((r) => ({ ...r, value: r.value as BookRecord.Record }));
+    const bookRecords = records.flatMap((record) => {
+      if (!BookRecord.validateRecord(record.value).success) return [];
+      const book = record.value as BookRecord.Record;
+      const hiveId = asHiveId(book.hiveId);
+      if (!hiveId) {
+        ctx.addWideEventContext({ refetch_book_hive_id_invalid: true, record_uri: record.uri });
+        return [];
+      }
+      return [{ ...record, value: { ...book, hiveId } }];
+    });
 
     const duplicatesByHiveId = new Map<string, typeof bookRecords>();
     bookRecords.forEach((record) => {
@@ -270,7 +285,7 @@ export async function refetchBooks({ agent, ctx }: { agent: SessionClient; ctx: 
 
       if (!book.hiveBookUri) {
         const rkey = record.uri.split("/").at(-1)!;
-        booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId as HiveId, record: book });
+        booksNeedingHiveUri.push({ rkey, hiveId: book.hiveId, record: book });
       }
 
       return serializeUserBook({
@@ -281,7 +296,7 @@ export async function refetchBooks({ agent, ctx }: { agent: SessionClient; ctx: 
         title: book.title,
         authors: book.authors,
         indexedAt,
-        hiveId: book.hiveId as HiveId,
+        hiveId: book.hiveId,
         status: book.status,
         owned: book.owned ? 1 : 0,
         startedAt: book.startedAt,
@@ -313,23 +328,23 @@ export async function refetchBooks({ agent, ctx }: { agent: SessionClient; ctx: 
 
   // Backfill hiveBookUri on user's book records if any are missing it
   if (booksNeedingHiveUri.length > 0) {
-    const hiveIds = [...new Set(booksNeedingHiveUri.map((b) => b.hiveId as HiveId))];
+    const hiveIds = [...new Set(booksNeedingHiveUri.map((b) => b.hiveId))];
     const hiveBookRows = await ctx.db
       .selectFrom("hive_book")
       .select(["id", "hiveBookAtUri"])
       .where("id", "in", hiveIds)
       .execute();
     const hiveBookUriMap = new Map(
-      hiveBookRows.filter((r) => r.hiveBookAtUri).map((r) => [r.id as HiveId, r.hiveBookAtUri!]),
+      hiveBookRows.filter((r) => r.hiveBookAtUri).map((r) => [r.id, r.hiveBookAtUri!]),
     );
 
     const writes = booksNeedingHiveUri
-      .filter((b) => hiveBookUriMap.has(b.hiveId as HiveId))
+      .filter((b) => hiveBookUriMap.has(b.hiveId))
       .map((b) => ({
         $type: "com.atproto.repo.applyWrites#update",
         collection: ids.BuzzBookhiveBook,
         rkey: b.rkey,
-        value: { ...b.record, hiveBookUri: hiveBookUriMap.get(b.hiveId as HiveId) },
+        value: { ...b.record, hiveBookUri: hiveBookUriMap.get(b.hiveId) },
       }));
 
     for (let i = 0; i < writes.length; i += 200) {

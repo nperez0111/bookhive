@@ -258,6 +258,13 @@ describe("follow sync completion and atomicity", () => {
     expect((await rows()).find((row) => row.followsDid === "inactive")?.syncedAt).toBe(oldTime);
     expect(metadata?.lastFullSync).toBeTruthy();
     expect(await shouldSyncFollows(ctx, userDid)).toBe(false);
+    expect(ctx.addWideEventContext).toHaveBeenCalledWith({
+      follows_full_sync_completed: true,
+      userDid,
+      total_fetched: 2,
+      total_synced: 2,
+      removed: 1,
+    });
   });
 
   it("accepts a terminal empty page and prunes only this user", async () => {
@@ -368,6 +375,28 @@ describe("follow sync completion and atomicity", () => {
     expect(stored.find((row) => row.followsDid === "inactive")?.syncedAt).toBe(oldTime);
     expect(stored.find((row) => row.followsDid === "old")?.lastSeenAt).toBe(oldTime);
     expect(metadata?.lastIncrementalSync).not.toBe(oldTime);
+    expect(ctx.addWideEventContext).toHaveBeenCalledWith({
+      follows_incremental_sync_completed: true,
+      userDid,
+      total_fetched: 4,
+      total_synced: 2,
+      removed: 0,
+    });
+  });
+
+  it("counts fetched duplicates separately from uniquely staged follows", async () => {
+    const get = mock()
+      .mockResolvedValueOnce(page(["new", "new"], "next"))
+      .mockResolvedValueOnce(page(["new", "inactive"]));
+    await syncUserFollows(ctx, agent(get));
+    expect((await rows()).map((row) => row.followsDid)).toEqual(["inactive", "new"]);
+    expect(ctx.addWideEventContext).toHaveBeenCalledWith({
+      follows_full_sync_completed: true,
+      userDid,
+      total_fetched: 4,
+      total_synced: 2,
+      removed: 1,
+    });
   });
 
   it("rolls back stale marking when the commit fails and does not mark fresh", async () => {
