@@ -19,6 +19,23 @@ import { yearStartIso } from "../core/readingYear";
 /** Cover columns, in the order the card renderer prefers them. */
 type CoverRow = { cover: string | null; thumbnail: string | null };
 
+/** Sort covering IDs first; only the selected card covers touch catalogue rows. */
+export function buildGenreCardCoversQuery(genre: string, limit: number) {
+  return sql<CoverRow>`
+    SELECT book.cover, book.thumbnail
+    FROM (
+      SELECT hive_book.id, hive_book.ratingsCount
+      FROM hive_book INDEXED BY idx_hive_book_stats
+      INNER JOIN hive_book_genre ON hive_book.id = hive_book_genre.hiveId
+      WHERE hive_book_genre.genre = ${genre}
+      ORDER BY hive_book.ratingsCount DESC, hive_book.id ASC
+      LIMIT ${limit}
+    ) AS selected
+    INNER JOIN hive_book AS book ON book.id = selected.id
+    ORDER BY selected.ratingsCount DESC, selected.id ASC
+  `;
+}
+
 export async function getBookCardStats({
   db,
   hiveId,
@@ -187,15 +204,9 @@ export async function getGenreCardStats({
       .select(sql<number>`COUNT(DISTINCT user_book.userDid)`.as("count"))
       .where("hive_book_genre.genre", "=", genre)
       .executeTakeFirst(),
-    db
-      .selectFrom("hive_book")
-      .innerJoin("hive_book_genre", "hive_book.id", "hive_book_genre.hiveId")
-      .select(["hive_book.cover", "hive_book.thumbnail"])
-      .where("hive_book_genre.genre", "=", genre)
-      .orderBy("hive_book.ratingsCount", "desc")
-      .orderBy("hive_book.id", "asc")
-      .limit(coverLimit)
-      .execute(),
+    buildGenreCardCoversQuery(genre, coverLimit)
+      .execute(db)
+      .then(({ rows }) => rows),
   ]);
 
   return {

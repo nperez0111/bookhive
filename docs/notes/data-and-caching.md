@@ -139,6 +139,14 @@ versus 825ms for covering IDs plus hydration, with identical ordered IDs (warm-c
 applies). Preserve exact author identity, pre-LIMIT language preference/exclusion, reviews versus
 popularity ordering, unique ID ties, and listing offsets. No new index or result cache is added.
 
+`socialCards.ts` applies the same bounded hydration to genre OG covers: a covering-ID subquery
+sorts and limits to six before reading cover columns. Keep ratings-count descending / ID ascending
+order, including null ratings, and leave both headline counts and the deliberate no-server-OG-cache
+policy unchanged. The November 9 production plan fetched wide catalogue rows before that limit;
+a 60k-book local fixture with 4KiB descriptions measured 30.6ms → 25.2ms median over three runs
+(8MiB SQLite cache, mmap off, warm OS cache). This confirms bounded cover hydration, not that this
+query alone caused the observed 23.9s OG request or a production speedup of that magnitude.
+
 ## Profile and PDS directory refresh must not block stale readers
 
 The October 25 audit found profile and `/pds` requests taking roughly 10–12s. The batch profile
