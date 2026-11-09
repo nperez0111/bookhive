@@ -168,6 +168,39 @@ shutdown: native VACUUM must finish before ownership is released. An unexpected 
 fails closed rather than assuming termination stopped native work; `failedClosed` exposes this
 condition. Crash leftovers require deliberate cleanup, not a sweep of other jobs' directories.
 
+## Bounded read materialization and statement lifetimes
+
+Shelf directory previews select at most ten item IDs per shelf before catalogue hydration,
+instead of loading every membership and discarding most in JavaScript. Metadata editing avoids
+items entirely. Migration 035 adds the covering preview index; counts and complete ranked shelf
+reads remain unchanged. XRPC profile projections omit unused catalogue metadata and record
+columns, but retain all public descriptions, reviews and reading history and the existing
+10,000-book/50-friend-activity limits. These reduce intermediate allocations, not response size
+or the number of shelves. See the shared `data/bookLists.ts` and `data/profileBooks.ts` readers.
+
+The Bun/Kysely adapter prepares native statements lazily and finalizes each execution in
+`finally`, including errors and early iterator termination. Reusing a wrapper prepares a fresh
+statement on later executions; callers must supply complete bindings on every execution rather
+than relying on a native statement's previous bindings. Simultaneous iterators own independent cursors. Merely creating
+an unused/rejected stream allocates no native statement. A metadata-only `reader` access can
+still retain one pending statement until execution or GC. SQL syntax errors now surface at
+first metadata access/execution rather than wrapper creation. Reader detection uses Bun's
+native boolean, with a column-name fallback; `BEGIN IMMEDIATE` behavior is unchanged.
+
+A bounded 10,000-query local microbenchmark reduced peak anonymous memory from 40.64 to
+31.52 MiB and elapsed time from 142.42 to 122.23 ms. Both versions prepared the same number of
+statements; the old version reclaimed them at GC, so this is shorter transient lifetime, not
+proof of a persistent leak. These tiny-fixture results do not establish real-route p99 gains
+or explain the production OOMs. SQLite mmap, page-cache and temporary-store defaults are unchanged.
+
+Anonymous cache hits reuse stored gzip and a weak validator instead of expanding HTML solely
+to hash and compress it again. In three fresh local runs of eight near-1-MiB cached responses,
+prepared-but-unconsumed anonymous-memory growth fell from 36.15–39.77 to 1.71–2.98 MiB;
+median preparation time fell from 10.55 to 1.74 ms. Identity and deflate fallbacks also used
+less memory; measured deflate drain time was essentially unchanged (19.08 versus 19.39 ms).
+The benchmark includes the final stored-byte hash check, but not SSR or network sockets;
+it is not a production guarantee or a linear prediction for 32 concurrent requests.
+
 ## Upload, import and search admission
 
 Each web process admits one multipart ebook upload and one CSV import, with no waiting queue,

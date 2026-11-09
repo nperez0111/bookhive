@@ -13,6 +13,7 @@ import type { HiveId } from "../types";
 import { loadGenresForHiveBook } from "../data/hiveBookGenres.js";
 import { parseAuthors } from "../core/authors";
 import { listRecordFields } from "../core/listRecord";
+import { userListsQuery } from "../data/bookLists";
 
 type ListDeps = {
   agent: SessionClient;
@@ -469,19 +470,7 @@ export async function reorderListItems({
 }
 
 export async function getUserLists({ db, userDid }: { db: Database; userDid: string }) {
-  return db
-    .selectFrom("book_list")
-    .selectAll()
-    .select((eb) => [
-      eb
-        .selectFrom("book_list_item")
-        .select(eb.fn.countAll<number>().as("count"))
-        .whereRef("book_list_item.listUri", "=", "book_list.uri")
-        .as("itemCount"),
-    ])
-    .where("userDid", "=", userDid)
-    .orderBy("createdAt", "desc")
-    .execute();
+  return userListsQuery({ db, userDid }).selectAll("book_list").execute();
 }
 
 export async function getListWithItems({ db, listUri }: { db: Database; listUri: string }) {

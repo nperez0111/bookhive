@@ -59,7 +59,6 @@ import {
   transformBookWithIdentifiers,
 } from "../bsky/bookLookup";
 import { BOOK_STATUS } from "../constants";
-import { BookFields } from "../db";
 import type { Database } from "../db";
 import type { HiveId } from "../types";
 import { hydrateUserBook } from "../core/bookProgress";
@@ -79,6 +78,7 @@ import { resolveLanguage } from "../data/getLanguages";
 import { getAvailableLanguages } from "../data/getLanguages";
 import { getReadingStatsForYear } from "../data/readingStats";
 import { listReadingStatsBooks } from "../data/userShelves";
+import { listProfileWireBooks } from "../data/profileBooks";
 import { errorMessage, toErrorPayload } from "../lib/errors";
 import {
   hydrateSearchResults,
@@ -669,31 +669,17 @@ export function createXrpcRouter<E extends XrpcContext, V extends { ctx: E } = {
 
       // Ordered by `indexedAt`, matching `/profile/:handle` — `createdAt` is frozen at PDS-record creation.
       // Limit is 10_000 to match the web page; a smaller cap truncated a heavy user's library before `booksRead`/`reviews` were counted.
-      const books = await ctx.db
-        .selectFrom("user_book")
-        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .select(BookFields)
-        .where("user_book.userDid", "=", did)
-        .orderBy("user_book.indexedAt", "desc")
-        .orderBy("user_book.uri", "desc")
-        .limit(10_000)
-        .execute();
+      const books = await listProfileWireBooks({ db: ctx.db, userDid: did, scope: "library" });
       const profile = await deps.getProfile({
         ctx: ctx as unknown as E,
         did,
       });
       // Same key (`indexedAt`) — here it decides which 50 rows you see, not just their order.
-      const friendsBuzzes = await ctx.db
-        .selectFrom("user_book")
-        .leftJoin("hive_book", "user_book.hiveId", "hive_book.id")
-        .innerJoin("user_follows", "user_book.userDid", "user_follows.followsDid")
-        .select(BookFields)
-        .where("user_follows.userDid", "=", did)
-        .where("user_follows.isActive", "=", 1)
-        .orderBy("user_book.indexedAt", "desc")
-        .orderBy("user_book.uri", "desc")
-        .limit(50)
-        .execute();
+      const friendsBuzzes = await listProfileWireBooks({
+        db: ctx.db,
+        userDid: did,
+        scope: "friends",
+      });
       const parsedBooks = books.map((book) => hydrateUserBook(book));
       const parsedFriendsBuzzes = friendsBuzzes.map((book) => hydrateUserBook(book));
 

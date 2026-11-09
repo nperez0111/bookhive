@@ -75,7 +75,7 @@ describe("upgrade from origin/main b1b55b8 through migration 032", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("applies only 033/034, preserving historical rows, history and reverse-follow index", async () => {
+  it("applies later migrations, preserving historical rows, history and reverse-follow index", async () => {
     const { db, sqlite } = connection;
     const history = () => sqlite.query("SELECT * FROM kysely_migration ORDER BY name").all();
     const oldHistory = history();
@@ -131,11 +131,13 @@ describe("upgrade from origin/main b1b55b8 through migration 032", () => {
     expect(await migrateToLatest(db, sqlite)).toEqual([
       { migrationName: "033", direction: "Up", status: "Success" },
       { migrationName: "034", direction: "Up", status: "Success" },
+      { migrationName: "035", direction: "Up", status: "Success" },
     ]);
     expect(history().slice(0, 32)).toEqual(oldHistory);
     expect(history().slice(32)).toEqual([
       { name: "033", timestamp: expect.any(String) },
       { name: "034", timestamp: expect.any(String) },
+      { name: "035", timestamp: expect.any(String) },
     ]);
     expect(reverseIndex()).toEqual(oldIndex);
     expect(ftsTriggers()).toEqual(oldFtsTriggers);

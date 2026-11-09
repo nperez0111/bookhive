@@ -3,6 +3,8 @@ import pino from "pino";
 import { env } from "./env";
 import { createApp } from "./app";
 import { createTestDb, testContext } from "./test/db";
+import { NO_STORE, PUBLIC_HTML } from "./core/cacheHeaders";
+import cacheHeadersPlugin from "../server/plugins/cache-headers";
 
 test("application admission remains occupied while ETag consumes a response body", async () => {
   const { db, close } = await createTestDb();
@@ -75,6 +77,53 @@ test("response stages separate route work, ETag hashing and compression setup", 
       headers: { "If-None-Match": tag! },
     });
     expect(unchanged.status).toBe(304);
+  } finally {
+    await ctx.kv.dispose();
+    await close();
+  }
+});
+
+test("cookie-setting responses bypass conditional ETags and retain final no-store privacy", async () => {
+  const { db, close } = await createTestDb();
+  const ctx = testContext({ db });
+  try {
+    const app = createApp({
+      startTime: new Date().toISOString(),
+      deps: { ...ctx, logger: pino({ level: "silent" }), stopEnrichmentDrain() {} },
+    });
+    app.get("/__cookie-etag-probe.png", (c) => {
+      c.header("Set-Cookie", "sid=new; HttpOnly; Path=/");
+      c.header("Cache-Control", PUBLIC_HTML);
+      return c.html("<html>session established</html>");
+    });
+    const req = new Request("https://test.local/__cookie-etag-probe.png", {
+      headers: { "If-None-Match": "*" },
+    });
+    const response = await app.request(req);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Set-Cookie")).toBe("sid=new; HttpOnly; Path=/");
+    expect(response.headers.has("ETag")).toBe(false);
+    const timings = response.headers.get("Server-Timing") ?? "";
+    expect(timings).toContain("response_prepare;dur=");
+    expect(timings).not.toContain("response_etag;dur=");
+
+    // Run the actual final hook, replacing only Nitro's hook-registration host.
+    type ResponseHook = (response: Response, event: { req: Request }) => void;
+    let responseHook: ResponseHook | undefined;
+    const host = {
+      hooks: {
+        hook(name: string, callback: ResponseHook) {
+          expect(name).toBe("response");
+          responseHook = callback;
+        },
+      },
+    };
+    cacheHeadersPlugin(host as unknown as Parameters<typeof cacheHeadersPlugin>[0]);
+    expect(responseHook).toBeDefined();
+    responseHook!(response, { req });
+    expect(response.headers.get("Cache-Control")).toBe(NO_STORE);
+    expect(response.headers.get("Set-Cookie")).toBe("sid=new; HttpOnly; Path=/");
+    expect(await response.text()).toBe("<html>session established</html>");
   } finally {
     await ctx.kv.dispose();
     await close();

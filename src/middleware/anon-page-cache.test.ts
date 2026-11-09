@@ -1,6 +1,9 @@
 // The anon page cache is prod-only, so nothing else exercises it; the size guard fails silently, so this is the only coverage for it.
 import { describe, it, expect, beforeEach, spyOn } from "bun:test";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
+import { etag } from "hono/etag";
+import { inflateSync } from "node:zlib";
 import { createStorage, type Storage } from "unstorage";
 
 import sqliteKv, { createSharedKvDb } from "../sqlite-kv";
@@ -13,6 +16,242 @@ beforeEach(() => {
   // The real driver, not unstorage's memory one: freshness reads `getMeta().mtime`, which the memory driver never returns.
   const { db } = createSharedKvDb(":memory:");
   kv = createStorage({ driver: sqliteKv({ table: "page_cache", db }) });
+});
+
+describe("anonPageCache negotiated representations", () => {
+  const body = `<html><head><link rel="canonical" href="https://test.local/p/a"></head><body>${'<a href="/books/bk_a">A &amp; B &quot; é 📖</a>'.repeat(100)}</body></html>`;
+  type Page = { bodyGzipB64: string; contentType: string; cacheControl: string; etag?: string };
+
+  function negotiatedApp(options: { noTransform?: boolean; stream?: boolean; vary?: string } = {}) {
+    let renders = 0;
+    const app = new Hono();
+    app.use(compress());
+    app.use(etag());
+    app.use(anonPageCache(kv) as any);
+    app.get("/p/:name", (c) => {
+      renders++;
+      if (options.noTransform) c.header("cache-control", "public, max-age=3600, no-transform");
+      if (options.vary) c.header("vary", options.vary);
+      if (options.stream) {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(body.slice(0, 200)));
+              controller.enqueue(new TextEncoder().encode(body.slice(200)));
+              controller.close();
+            },
+          }),
+          { headers: { "content-type": "text/html" } },
+        );
+      }
+      return c.html(body);
+    });
+    return { app, renders: () => renders };
+  }
+
+  async function decoded(response: Response) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const encoding = response.headers.get("content-encoding");
+    return Buffer.from(
+      encoding === "gzip"
+        ? Bun.gunzipSync(bytes)
+        : encoding === "deflate"
+          ? inflateSync(bytes)
+          : bytes,
+    ).toString();
+  }
+
+  it("shares one weak validator across cold fills, gzip hits and raw/deflate fallbacks", async () => {
+    const { app, renders } = negotiatedApp({ stream: true });
+    const cold = await get(app, "/p/a", { "accept-encoding": "gzip" });
+    const tag = cold.headers.get("etag");
+    expect(tag).toMatch(/^W\/"page-v1-[0-9a-f]{64}"$/);
+    expect(await decoded(cold)).toBe(body);
+    const page = await kv.getItem<Page>("page:/p/a");
+    expect(page?.etag).toBe(tag!);
+    for (const [accept, expected] of [
+      [undefined, null],
+      ["identity", null],
+      ["gzip;q=0", null],
+      ["br", null],
+      ["gzip", "gzip"],
+      ["*;q=0.5", "gzip"],
+      ["gzip;q=0, *;q=0.5", "deflate"],
+      ["deflate;q=1, gzip;q=0.5", "deflate"],
+      ["identity;q=1, gzip;q=0.5", "gzip"],
+    ] as const) {
+      const response = await get(app, "/p/a", accept ? { "accept-encoding": accept } : undefined);
+      expect(response.headers.get("content-encoding")).toBe(expected);
+      expect(response.headers.get("etag")).toBe(tag);
+      expect(response.headers.get("content-length")).toBeNull();
+      expect(response.headers.get("vary")).toBe("Cookie, Accept-Encoding");
+      expect(response.headers.get("x-page-cache")).toBe("hit");
+      if (accept === "gzip") {
+        expect(new Uint8Array(await response.clone().arrayBuffer())).toEqual(
+          Buffer.from(page!.bodyGzipB64, "base64"),
+        );
+      }
+      expect(await decoded(response)).toBe(body);
+    }
+    expect(renders()).toBe(1);
+  });
+
+  it("returns bodyless 304s for weak/strong/list/star conditions, without representation headers", async () => {
+    const { app } = negotiatedApp();
+    const first = await get(app, "/p/a");
+    const tag = first.headers.get("etag")!;
+    await first.text();
+    for (const condition of [
+      tag,
+      tag.replace(/^W\//, ""),
+      `"absent", ${tag}`,
+      `${tag}  , "absent"`,
+      "*",
+    ]) {
+      const response = await get(app, "/p/a", {
+        "accept-encoding": "gzip",
+        "if-none-match": condition,
+      });
+      expect(response.status).toBe(304);
+      expect(await response.text()).toBe("");
+      expect(response.headers.get("etag")).toBe(tag);
+      expect(response.headers.get("cache-control")).toContain("public");
+      expect(response.headers.get("vary")).toBe("Cookie, Accept-Encoding");
+      for (const header of ["content-type", "content-encoding", "content-length", "x-page-cache"])
+        expect(response.headers.has(header)).toBe(false);
+    }
+    const miss = await get(app, "/p/a", { "if-none-match": '"absent"' });
+    expect(miss.status).toBe(200);
+    expect(await miss.text()).toBe(body);
+  });
+
+  it("reads legacy entries without trusting a validator for already-encoded bytes", async () => {
+    const { app, renders } = negotiatedApp();
+    await kv.setItem("page:/p/a", {
+      bodyGzipB64: Buffer.from(Bun.gzipSync(body)).toString("base64"),
+      contentType: "text/html",
+      cacheControl: "public, max-age=3600",
+    });
+    const response = await get(app, "/p/a", { "accept-encoding": "gzip" });
+    expect(response.headers.get("x-page-cache")).toBe("hit");
+    expect(response.headers.get("etag")).not.toContain("page-v1");
+    expect(await decoded(response)).toBe(body);
+    expect(renders()).toBe(0);
+  });
+
+  it("fails open for malformed/mismatched metadata and detectable gzip corruption", async () => {
+    const { app, renders } = negotiatedApp();
+    await (await get(app, "/p/a")).text();
+    const valid = (await kv.getItem<Page>("page:/p/a"))!;
+    const changed = Buffer.from(valid.bodyGzipB64, "base64");
+    changed[20] = changed[20]! ^ 1;
+    for (const page of [
+      { ...valid, etag: '"untrusted"' },
+      { ...valid, bodyGzipB64: changed.toString("base64") },
+      { ...valid, etag: undefined, bodyGzipB64: "not gzip" },
+    ]) {
+      await kv.setItem("page:/p/a", page);
+      const response = await get(app, "/p/a", { "accept-encoding": "gzip" });
+      expect(response.headers.get("x-page-cache")).toBe("miss");
+      expect(await decoded(response)).toBe(body);
+    }
+    expect(renders()).toBe(4);
+  });
+
+  it("respects no-transform even when gzip is available in storage", async () => {
+    const { app } = negotiatedApp({ noTransform: true });
+    for (let n = 0; n < 2; n++) {
+      const response = await get(app, "/p/a", { "accept-encoding": "gzip" });
+      expect(response.headers.has("content-encoding")).toBe(false);
+      expect(await response.text()).toBe(body);
+    }
+  });
+
+  it("does not inflate gzip hits or conditional hits, and avoids a second cold-fill clone", async () => {
+    const { app } = negotiatedApp();
+    const clone = spyOn(Response.prototype, "clone");
+    let tag: string;
+    try {
+      const cold = await get(app, "/p/a");
+      tag = cold.headers.get("etag")!;
+      expect(clone).toHaveBeenCalledTimes(1);
+      await cold.text();
+    } finally {
+      clone.mockRestore();
+    }
+    const inflate = spyOn(Bun, "gunzipSync").mockImplementation(() => {
+      throw new Error("must not expand");
+    });
+    try {
+      const gzip = await get(app, "/p/a", { "accept-encoding": "gzip" });
+      expect(gzip.headers.get("x-page-cache")).toBe("hit");
+      expect(gzip.headers.get("content-encoding")).toBe("gzip");
+      await gzip.arrayBuffer();
+      const conditional = await get(app, "/p/a", { "if-none-match": tag! });
+      expect(conditional.status).toBe(304);
+      expect(await conditional.text()).toBe("");
+      expect(inflate).not.toHaveBeenCalled();
+    } finally {
+      inflate.mockRestore();
+    }
+  });
+
+  it("has the same weak validator regardless of source chunk boundaries", async () => {
+    const first = await get(negotiatedApp().app, "/p/a");
+    const tag = first.headers.get("etag");
+    await first.text();
+    await kv.removeItem("page:/p/a");
+    const second = await get(negotiatedApp({ stream: true }).app, "/p/a");
+    expect(second.headers.get("etag")).toBe(tag);
+    expect(await second.text()).toBe(body);
+  });
+
+  it("continues to bypass the anonymous cache for HEAD", async () => {
+    const { app, renders } = negotiatedApp();
+    await (await get(app, "/p/a")).text();
+    const response = await app.request("http://test.local/p/a", {
+      method: "HEAD",
+      headers: { "accept-encoding": "gzip" },
+    });
+    expect(response.headers.has("x-page-cache")).toBe(false);
+    expect(response.headers.has("content-encoding")).toBe(false);
+    expect(await response.text()).toBe("");
+    expect(renders()).toBe(2);
+  });
+
+  it("preserves existing and wildcard Vary on the cold rendered response", async () => {
+    for (const vary of ["Origin, Cookie", "*"]) {
+      const { app } = negotiatedApp({ vary });
+      const response = await get(app, `/p/vary-${encodeURIComponent(vary)}`);
+      expect(response.headers.get("vary")).toBe(vary === "*" ? "*" : `${vary}, Accept-Encoding`);
+      expect(await response.text()).toBe(body);
+    }
+  });
+
+  it("does not cache 503s or already-encoded HTML", async () => {
+    for (const [status, encoding] of [
+      [503, undefined],
+      [200, "gzip"],
+    ] as const) {
+      const app = new Hono();
+      app.use(anonPageCache(kv) as any);
+      app.get(
+        "/p/:name",
+        () =>
+          new Response(encoding ? Bun.gzipSync(body) : body, {
+            status,
+            headers: {
+              "content-type": "text/html",
+              ...(encoding ? { "content-encoding": encoding } : {}),
+            },
+          }),
+      );
+      const response = await get(app, `/p/status-${status}`);
+      expect(response.headers.has("x-page-cache")).toBe(false);
+      expect(await kv.getItem(`page:/p/status-${status}`)).toBeNull();
+      await response.arrayBuffer();
+    }
+  });
 });
 
 // Hono app with the cache in front of a handler that counts its renders.
@@ -148,8 +387,12 @@ describe("anonPageCache storage", () => {
     // Let the second request finish its asynchronous metadata lookup and join the render.
     await Bun.sleep(0);
     release.resolve();
+    let sharedTag: string | null = null;
     for (const res of await Promise.all([first, second])) {
       expect(res.status).toBe(200);
+      expect(res.headers.get("etag")).toMatch(/^W\/"page-v1-[0-9a-f]{64}"$/);
+      sharedTag ??= res.headers.get("etag");
+      expect(res.headers.get("etag")).toBe(sharedTag);
       expect(await res.text()).toBe("<html>shared render</html>");
     }
     expect(renders).toBe(1);

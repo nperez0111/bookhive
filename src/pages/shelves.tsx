@@ -381,7 +381,7 @@ export const ShelfCreatePage: FC = () => {
 };
 
 export const ShelfEditPage: FC<{
-  list: BookListRow;
+  list: Pick<BookListRow, "uri" | "userDid" | "name" | "description" | "ordered">;
   handle: string;
 }> = ({ list, handle }) => {
   const rkey = list.uri.split("/").at(-1)!;

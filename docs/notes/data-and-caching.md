@@ -226,6 +226,16 @@ their real transports and SQLite busy waits.
 Serves GET requests without a `sid` cookie on `/books/*`, `/explore*`, `/authors/*` from KV
 (gzipped HTML, 1h TTL). Prod-only.
 
+New entries carry one weak `page-v1` ETag derived from their stored gzip bytes. Conditional hits
+can return a bodyless 304 before decompression; clients negotiating gzip receive the stored
+bytes directly rather than gunzip → clone/hash → recompress. Identity/deflate clients retain
+the raw-body path, with the same weak validator for equivalent decoded HTML. Explicit gzip
+`q=0`, preferred deflate and `no-transform` are respected. Old entries without the validator
+remain readable through the original path until expiry; no KV migration is needed. The stored
+hash detects byte/metadata mismatch, not arbitrary gzip validity. Cold fills set the validator
+before outer ETag middleware, avoiding its second clone, and avoid concatenation for one chunk.
+All representations and 304s vary on Cookie and Accept-Encoding.
+
 - **The key percent-encodes the query; never join it with a literal `?`.** unstorage's
   `normalizeKey` discards everything after `?`. A `?`-joined key collapses every variant of a path
   onto one entry — `/explore?lang=French` served the English render, `/authors/X?page=2` served
@@ -281,6 +291,13 @@ aggressively** so Cloudflare absorbs scraper load. Applied by `cacheControl()`/`
 (`src/routes/lib.ts`), the anon page cache's bypass, and `server/plugins/cache-headers.ts` (the
 nitro `response` hook — authoritative, since it runs on the final `Response`). It also adds
 `Vary: Cookie` to all HTML and owns the long TTL for files under `public/`.
+
+An outgoing `Set-Cookie` forces private/no-store before public HTML/static policy, even if the
+request arrived without a session cookie. Otherwise a session-establishing response could be
+made public by the final hook after the inner page cache correctly declined to store it.
+The app skips ETag processing for cookie-setting responses: Hono's conditional 304 conversion
+otherwise removes that cookie before the final hook can see it. Such responses retain their
+body/cookie and have no `response_etag` timing; the final hook still owns no-store enforcement.
 
 Two traps this encodes:
 

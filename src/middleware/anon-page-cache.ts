@@ -3,7 +3,9 @@
  * bot-heavy public routes (/books/:hiveId, /explore*, /authors/*), stored in
  * the shared SQLite KV so one render per URL per TTL serves every worker.
  */
+import { createHash } from "node:crypto";
 import { createMiddleware } from "hono/factory";
+import { parseAccept } from "hono/utils/accept";
 import type { Storage } from "unstorage";
 
 import type { AppEnv } from "../context";
@@ -40,6 +42,9 @@ type CachedPage = {
   bodyGzipB64: string;
   contentType: string;
   cacheControl: string;
+  // Weak across identity/gzip/deflate: all represent the same decoded HTML.
+  // Optional so entries written before this format remain readable until expiry.
+  etag?: string;
 };
 
 // In-flight renders keyed by cache key, so a stampede of requests for the same URL (per process) collapses to a single render.
@@ -48,14 +53,68 @@ const inflight = new Map<string, Promise<CachedPage | null>>();
 // Guards against overlapping route mounts (e.g. "/explore/*" also matching "/explore") running this middleware twice for one request — the inner run would await the outer's in-flight promise and deadlock.
 const activeRequests = new WeakSet<Request>();
 
-function serveCached(page: CachedPage): Response | null {
+function pageEtag(gzip: Uint8Array): string {
+  return `W/"page-v1-${createHash("sha256").update(gzip).digest("hex")}"`;
+}
+
+function matchesEtag(header: string | null, tag: string): boolean {
+  return (
+    header?.trim() === "*" ||
+    (header
+      ?.split(",")
+      .some((value) => value.trim().replace(/^W\//, "") === tag.replace(/^W\//, "")) ??
+      false)
+  );
+}
+
+// Match the pinned Hono compressor's choice, including explicit q=0 overriding
+// a wildcard and preferring deflate over a lower-quality gzip. Do not send gzip
+// merely because it appears somewhere in Accept-Encoding.
+function selectsGzip(header: string | null): boolean {
+  if (header === null) return false;
+  const accepts = parseAccept(header);
+  const wildcard = accepts.find((accept) => accept.type === "*")?.q;
+  let best: { encoding: string; q: number } | undefined;
+  for (const encoding of ["gzip", "deflate"]) {
+    const explicit = accepts.find((accept) => accept.type.toLowerCase() === encoding);
+    const q = explicit ? explicit.q : (wildcard ?? 0);
+    if (q === 1) return encoding === "gzip";
+    if (q > 0 && (!best || q > best.q)) best = { encoding, q };
+  }
+  return best?.encoding === "gzip";
+}
+
+function serveCached(page: CachedPage, requestHeaders: Headers): Response | null {
   try {
-    const body = Bun.gunzipSync(Buffer.from(page.bodyGzipB64, "base64"));
+    const gzip = Buffer.from(page.bodyGzipB64, "base64");
+    if (gzip.byteLength > MAX_STORED_BYTES) return null;
     const headers: Record<string, string> = {
       "content-type": page.contentType,
       "x-page-cache": "hit",
+      vary: "Cookie, Accept-Encoding",
     };
     if (page.cacheControl) headers["cache-control"] = page.cacheControl;
+    if (page.etag !== undefined) {
+      // Check consistency with the bytes we generated on fill, without expanding
+      // them. This detects changed storage bytes, not arbitrary gzip validity.
+      if (page.etag !== pageEtag(gzip)) return null;
+      headers["etag"] = page.etag;
+      if (matchesEtag(requestHeaders.get("if-none-match"), page.etag)) {
+        delete headers["content-type"];
+        delete headers["x-page-cache"];
+        return new Response(null, { status: 304, headers });
+      }
+      if (
+        selectsGzip(requestHeaders.get("accept-encoding")) &&
+        !/(?:^|,)\s*no-transform\s*(?:,|$)/i.test(page.cacheControl)
+      ) {
+        headers["content-encoding"] = "gzip";
+        return new Response(gzip, { status: 200, headers });
+      }
+    }
+    // Legacy entries have no validator: leave the outer ETag/compression path
+    // intact until they expire. Identity/deflate clients still need raw bytes.
+    const body = Bun.gunzipSync(gzip);
     return new Response(body, { status: 200, headers });
   } catch {
     return null;
@@ -65,6 +124,7 @@ function serveCached(page: CachedPage): Response | null {
 // Extract a storable page from the live response, or null if uncacheable.
 async function extractCacheable(res: Response): Promise<CachedPage | null> {
   if (res.status !== 200 || res.headers.has("set-cookie")) return null;
+  if (res.headers.has("content-encoding")) return null;
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) return null;
   if (activeFills >= MAX_ACTIVE_FILLS) {
@@ -72,7 +132,7 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
     return null;
   }
   activeFills++;
-  const chunks: Uint8Array[] = [];
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
   let bytes = 0;
   try {
     const reader = res.clone().body?.getReader();
@@ -93,12 +153,16 @@ async function extractCacheable(res: Response): Promise<CachedPage | null> {
     } finally {
       reader.releaseLock();
     }
-    const gzipped = Bun.gzipSync(Buffer.concat(chunks, bytes));
+    const body = chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, bytes);
+    const gzipped = Bun.gzipSync(body);
     if (gzipped.byteLength > MAX_STORED_BYTES) return null;
     return {
-      bodyGzipB64: Buffer.from(gzipped).toString("base64"),
+      bodyGzipB64: Buffer.from(gzipped.buffer, gzipped.byteOffset, gzipped.byteLength).toString(
+        "base64",
+      ),
       contentType,
       cacheControl: res.headers.get("cache-control") || DEFAULT_CACHE_CONTROL,
+      etag: pageEtag(gzipped),
     };
   } finally {
     bufferedBytes -= bytes;
@@ -144,7 +208,7 @@ export function anonPageCache(kv: Storage) {
       if (meta?.mtime && Date.now() - new Date(meta.mtime).getTime() < PAGE_CACHE_TTL_MS) {
         const page = await kv.getItem<CachedPage>(key);
         if (page?.bodyGzipB64) {
-          const cached = serveCached(page);
+          const cached = serveCached(page, c.req.raw.headers);
           if (cached) {
             c.res = cached;
             return;
@@ -163,7 +227,7 @@ export function anonPageCache(kv: Storage) {
         return c.text("Service temporarily unavailable", 503);
       }
       if (result) {
-        const cached = serveCached(result);
+        const cached = serveCached(result, c.req.raw.headers);
         if (cached) {
           c.res = cached;
           return;
@@ -183,6 +247,17 @@ export function anonPageCache(kv: Storage) {
       }
       if (page) {
         c.res.headers.set("cache-control", page.cacheControl);
+        c.res.headers.set("etag", page.etag!);
+        // The outer ETag middleware must retain these on conditional responses.
+        for (const field of ["Cookie", "Accept-Encoding"]) {
+          const vary = c.res.headers.get("vary");
+          if (
+            vary !== "*" &&
+            !vary?.split(",").some((value) => value.trim().toLowerCase() === field.toLowerCase())
+          ) {
+            c.res.headers.set("vary", vary ? `${vary}, ${field}` : field);
+          }
+        }
         try {
           await kv.setItem(key, page);
           c.res.headers.set("x-page-cache", "miss");

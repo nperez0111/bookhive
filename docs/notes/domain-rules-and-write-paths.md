@@ -101,6 +101,14 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
 
 ## Ranked shelf order lives on the list
 
+Shelf directory previews are deliberately **recent additions**, not ranked order. The shared
+`data/bookLists.ts` reader selects at most ten item URIs per shelf before catalogue joins;
+migration 035 supplies `(listUri, addedAt DESC, uri ASC)` for those bounded probes. Equal-date
+cutoffs now use URI ascending rather than an unspecified tie. Counts still include all items,
+and full shelf reads/reordering retain their complete ranked order. Summary and edit-metadata
+reads do not load the potentially large `itemOrder` JSON. The index has a one-time build cost
+and ongoing storage/write cost; it is not a cap on shelf size or the number of shelves.
+
 Popfeed's canonical order is the list record's `itemOrder`, not the items' `position` fields.
 Migration 029 adds `book_list.itemOrder` (JSON); discovery backfill, Jetstream and `refetchLists` mirror it.
 `getListWithItems` applies it for ranked shelves, appending new/unlisted books in stable

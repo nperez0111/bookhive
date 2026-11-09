@@ -2,7 +2,7 @@
  * Wraps Bun's built-in `bun:sqlite` Database so it can be used with
  * Kysely's built-in SqliteDialect (which expects a better-sqlite3-like interface).
  */
-import { Database as DatabaseSync } from "bun:sqlite";
+import { Database as DatabaseSync, type SQLQueryBindings } from "bun:sqlite";
 
 export interface KyselySqliteDatabase {
   close(): void;
@@ -26,20 +26,33 @@ export interface KyselySqliteStatement {
  * (SQLite >= 3.35), which otherwise executes fine but hands Kysely zero rows, so
  * `.returning(...).executeTakeFirstOrThrow()` fails with "no result".
  *
- * SQLite answers this exactly, so ask it rather than pattern-matching the text:
- * a prepared statement's `columnNames` is empty for anything that doesn't
- * produce rows. The regex below is only a fallback for a runtime that doesn't
- * expose it.
+ * Bun 1.4.4's native `reader` asks SQLite for the column count without allocating
+ * column-name arrays. The installed Bun types predate that getter, so keep the
+ * typed `columnNames` fallback for runtimes without it.
  *
  * This used to be `/^\s*SELECT\b/` plus a RETURNING check, which got
  * `WITH cte AS (...) SELECT ...` wrong — a leading CTE is extremely common for
  * window-function queries, and misclassifying one produces **zero rows with no
- * error at all**. `columnNames` also gets the converse right, where a regex
+ * error at all**. SQLite also gets the converse right, where a regex
  * struggles: `WITH cte AS (...) INSERT INTO ...` is not a reader.
  */
-function isReaderStatement(stmt: { columnNames?: string[] }, sql: string): boolean {
-  if (Array.isArray(stmt.columnNames)) return stmt.columnNames.length > 0;
-  return /^\s*(?:SELECT|WITH)\b/i.test(sql) || /\bRETURNING\b/i.test(sql);
+function isReaderStatement(stmt: {
+  readonly reader?: boolean;
+  readonly columnNames: string[];
+}): boolean {
+  const reader = stmt.reader;
+  return typeof reader === "boolean" ? reader : stmt.columnNames.length > 0;
+}
+
+type NativeStatement = ReturnType<DatabaseSync["prepare"]>;
+
+function finalizeStatement(stmt: NativeStatement, executionFailed: boolean): void {
+  try {
+    stmt.finalize();
+  } catch (error) {
+    // Cleanup must not replace the SQL/binding/iteration error that caused it.
+    if (!executionFailed) throw error;
+  }
 }
 
 /**
@@ -66,20 +79,68 @@ export function wrapBunSqliteForKysely(db: DatabaseSync): KyselySqliteDatabase {
     },
     prepare(rawSql: string): KyselySqliteStatement {
       const sql = toImmediateTransaction(rawSql);
-      const stmt = db.prepare(sql);
-      const reader = isReaderStatement(stmt, sql);
+      // Kysely normally asks for reader, then executes once. Defer preparation
+      // so rejected/nonstarted streams allocate nothing; reuse a metadata-only
+      // statement on that first execution. Later calls get independent cursors
+      // and fresh bindings; callers must supply each invocation's parameters.
+      let pending: NativeStatement | undefined;
+      let reader: boolean | undefined;
+      const takeStatement = (): NativeStatement => {
+        const stmt = pending ?? db.prepare(sql);
+        pending = undefined;
+        return stmt;
+      };
       return {
         get reader() {
+          if (reader === undefined) {
+            const stmt = (pending ??= db.prepare(sql));
+            try {
+              reader = isReaderStatement(stmt);
+            } catch (error) {
+              pending = undefined;
+              finalizeStatement(stmt, true);
+              throw error;
+            }
+          }
           return reader;
         },
         all(parameters: ReadonlyArray<unknown>) {
-          return stmt.all(...(parameters as (null | number | bigint | string | Uint8Array)[]));
+          const stmt = takeStatement();
+          let failed = false;
+          try {
+            return stmt.all(...(parameters as SQLQueryBindings[]));
+          } catch (error) {
+            failed = true;
+            throw error;
+          } finally {
+            finalizeStatement(stmt, failed);
+          }
         },
         run(parameters: ReadonlyArray<unknown>) {
-          return stmt.run(...(parameters as (null | number | bigint | string | Uint8Array)[]));
+          const stmt = takeStatement();
+          let failed = false;
+          try {
+            return stmt.run(...(parameters as SQLQueryBindings[]));
+          } catch (error) {
+            failed = true;
+            throw error;
+          } finally {
+            finalizeStatement(stmt, failed);
+          }
         },
-        iterate(parameters: ReadonlyArray<unknown>) {
-          return stmt.iterate(...(parameters as (null | number | bigint | string | Uint8Array)[]));
+        *iterate(parameters: ReadonlyArray<unknown>) {
+          // This runs on first next(), not when the deferred iterator is made.
+          // yield* closes/resets Bun's cursor before our finally finalizes it.
+          const stmt = takeStatement();
+          let failed = false;
+          try {
+            yield* stmt.iterate(...(parameters as SQLQueryBindings[]));
+          } catch (error) {
+            failed = true;
+            throw error;
+          } finally {
+            finalizeStatement(stmt, failed);
+          }
         },
       };
     },

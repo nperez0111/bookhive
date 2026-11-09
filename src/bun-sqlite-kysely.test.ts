@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database as DatabaseSync } from "bun:sqlite";
 import { Kysely, SqliteDialect, sql, type Generated } from "kysely";
 
@@ -22,6 +22,10 @@ describe("wrapBunSqliteForKysely", () => {
 
   beforeEach(() => {
     db = createDb();
+  });
+
+  afterEach(async () => {
+    await db.destroy();
   });
 
   // Kysely picks all() vs run() from `statement.reader`. Classifying

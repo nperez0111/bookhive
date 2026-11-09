@@ -15,12 +15,21 @@ import { definePlugin } from "nitro";
 import {
   cacheControlForHtml,
   hasSessionCookie,
+  isPublicallyCachedRoute,
   NO_STORE,
   staticAssetCacheControl,
 } from "../../src/core/cacheHeaders";
 
 export default definePlugin((nitroApp) => {
   nitroApp.hooks.hook("response", (response, event) => {
+    // A request can establish/refresh a session even without an incoming sid.
+    // This must win before public HTML/static policy, including image-like URLs.
+    if (response.headers.has("set-cookie")) {
+      response.headers.set("Cache-Control", NO_STORE);
+      appendVary(response, "Cookie");
+      appendVary(response, "Accept-Encoding");
+      return;
+    }
     if (event.req.method !== "GET" && event.req.method !== "HEAD") return;
     // Overload must never become a cached outage, including image-looking URLs.
     if (response.status === 503) {
@@ -30,10 +39,16 @@ export default definePlugin((nitroApp) => {
     const { pathname } = new URL(event.req.url);
     const contentType = response.headers.get("content-type") ?? "";
 
-    if (!contentType.includes("text/html")) {
+    if (
+      !contentType.includes("text/html") &&
+      !(response.status === 304 && isPublicallyCachedRoute(pathname))
+    ) {
       const staticAsset = staticAssetCacheControl(pathname);
-      if (staticAsset) response.headers.set("Cache-Control", staticAsset);
-      return;
+      if (staticAsset) {
+        response.headers.set("Cache-Control", staticAsset);
+        return;
+      }
+      if (response.status !== 304) return;
     }
 
     const directive = cacheControlForHtml({
@@ -44,7 +59,8 @@ export default definePlugin((nitroApp) => {
     if (directive) response.headers.set("Cache-Control", directive);
 
     appendVary(response, "Cookie");
-    if (response.headers.has("content-encoding")) appendVary(response, "Accept-Encoding");
+    // Identity and bodyless 304s also vary by the requested representation.
+    appendVary(response, "Accept-Encoding");
   });
 });
 

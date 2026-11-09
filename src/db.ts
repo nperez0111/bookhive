@@ -1367,6 +1367,16 @@ migrations["034"] = {
   },
 };
 
+migrations["035"] = {
+  async up(db: Kysely<unknown>) {
+    await sql`CREATE INDEX IF NOT EXISTS idx_book_list_item_preview
+      ON book_list_item(listUri, addedAt DESC, uri ASC)`.execute(db);
+  },
+  async down(db: Kysely<unknown>) {
+    await sql`DROP INDEX IF EXISTS idx_book_list_item_preview`.execute(db);
+  },
+};
+
 // APIs
 
 export const createDb = (location: string): { db: Database; sqlite: DatabaseSync } => {

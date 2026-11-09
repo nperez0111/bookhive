@@ -20,13 +20,13 @@ import {
   removeBookFromList,
   reorderListItems,
   type ListFailure,
-  getUserLists,
   getListWithItems,
 } from "../services/lists";
 import type { HiveBook, HiveId } from "../types";
 import { getProfile } from "../services/getProfile";
 import { searchBooks } from "../services/searchBooks";
 import { hydrateSearchResults, searchLocalCatalog } from "../data/catalogBooks";
+import { getShelfMetadata, listShelfPreviews, listShelfSummaries } from "../data/bookLists";
 
 /**
  * The core's refusal reasons → an error page. Mirrors `listErrorFor` in the
@@ -161,7 +161,7 @@ const app = new Hono<AppEnv>()
     startTime(c, "getUserLists");
     startTime(c, "getProfile");
     const [lists, profile, sessionAgent] = await Promise.all([
-      getUserLists({ db: c.get("ctx").db, userDid: did }).then((r) => {
+      listShelfSummaries({ db: c.get("ctx").db, userDid: did }).then((r) => {
         endTime(c, "getUserLists");
         return r;
       }),
@@ -187,31 +187,12 @@ const app = new Hono<AppEnv>()
       }>
     >();
     if (lists.length > 0) {
-      const listUris = lists.map((l) => l.uri);
       startTime(c, "shelfPreviews");
-      const previewItems = await c
-        .get("ctx")
-        .db.selectFrom("book_list_item")
-        .leftJoin("hive_book", "book_list_item.hiveId", "hive_book.id")
-        .select([
-          "book_list_item.listUri",
-          "book_list_item.hiveId",
-          "book_list_item.embeddedTitle",
-          "book_list_item.embeddedAuthor",
-          "book_list_item.embeddedCoverUrl",
-          "hive_book.cover",
-          "hive_book.thumbnail",
-          "hive_book.title",
-          "hive_book.authors",
-          "hive_book.rating",
-        ])
-        .where("book_list_item.listUri", "in", listUris)
-        .orderBy("book_list_item.addedAt", "desc")
-        .execute();
+      const previewItems = await listShelfPreviews({ db: c.get("ctx").db, userDid: did });
       endTime(c, "shelfPreviews");
       for (const item of previewItems) {
         const arr = previewsByList.get(item.listUri) ?? [];
-        if (arr.length < 10) arr.push(item);
+        arr.push(item);
         previewsByList.set(item.listUri, arr);
       }
     }
@@ -334,13 +315,13 @@ const app = new Hono<AppEnv>()
 
     const listUri = `at://${did}/social.popfeed.feed.list/${rkey}`;
     startTime(c, "getList");
-    const result = await getListWithItems({
+    const list = await getShelfMetadata({
       db: c.get("ctx").db,
       listUri,
     });
     endTime(c, "getList");
 
-    if (!result) {
+    if (!list) {
       return renderError(c, {
         status: 404,
         message: "Shelf not found",
@@ -349,8 +330,8 @@ const app = new Hono<AppEnv>()
       });
     }
 
-    return c.render(<ShelfEditPage list={result.list} handle={handle} />, {
-      title: `BookHive | Edit ${result.list.name}`,
+    return c.render(<ShelfEditPage list={list} handle={handle} />, {
+      title: `BookHive | Edit ${list.name}`,
     });
   })
 
@@ -579,7 +560,7 @@ const app = new Hono<AppEnv>()
   );
 
 import type { FC } from "hono/jsx";
-import type { BookListRow, ProfileViewDetailed } from "../types";
+import type { ProfileViewDetailed } from "../types";
 import { BookCard, type BookCardData } from "../pages/components/BookCard";
 import { hiveRatingToDisplayRating } from "../core/rating";
 import { jsonUnauthorized } from "./authResponse";
@@ -598,7 +579,7 @@ type ShelfPreviewItem = {
 
 const ShelvesListPage: FC<{
   handle: string;
-  lists: Array<BookListRow & { itemCount: number | null }>;
+  lists: Awaited<ReturnType<typeof listShelfSummaries>>;
   isOwnProfile: boolean;
   profile: ProfileViewDetailed | null;
   previewsByList: Map<string, ShelfPreviewItem[]>;

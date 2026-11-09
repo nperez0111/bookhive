@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { Hono } from "hono";
+import { jsxRenderer } from "hono/jsx-renderer";
+import { timing } from "hono/timing";
 import type { AppEnv } from "../context";
 import type { SessionClient } from "../auth/client";
 import { createTestDb, testContext } from "../test/db";
@@ -69,15 +71,20 @@ describe("ranked shelf ordering", () => {
 
   function app(owner: string | null = did) {
     const app = new Hono<AppEnv>();
+    app.use(timing());
+    app.use(jsxRenderer());
     app.use("*", async (c, next) => {
-      c.set(
-        "ctx",
-        testContext({
-          db: testDb.db,
-          getSessionAgent: async () =>
-            owner ? ({ did: owner, get, post } as unknown as SessionClient) : null,
-        }),
-      );
+      const ctx = testContext({
+        db: testDb.db,
+        getSessionAgent: async () =>
+          owner ? ({ did: owner, get, post } as unknown as SessionClient) : null,
+      });
+      // Directory rendering must not fetch a profile over the network.
+      await ctx.kv.setItem(`profile:pub:${did}`, {
+        profile: { did, handle: "shelfowner.test" },
+        fetchedAt: Date.now(),
+      });
+      c.set("ctx", ctx);
       await next();
     });
     app.route("/shelves", shelves);
@@ -89,6 +96,44 @@ describe("ranked shelf ordering", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ itemUris }),
     });
+
+  it("renders complete counts but only ten deterministic embedded previews", async () => {
+    await testDb.db
+      .insertInto("book_list_item")
+      .values(
+        Array.from({ length: 9 }, (_, index) => ({
+          uri: `at://${did}/social.popfeed.feed.listItem/z${index}`,
+          cid: "cid",
+          userDid: did,
+          listUri,
+          addedAt: now,
+          indexedAt: now,
+          embeddedTitle: `Extra title ${index}`,
+          embeddedAuthor: "Fallback author",
+          embeddedCoverUrl: "https://example.test/fallback.jpg",
+        })),
+      )
+      .execute();
+    const response = await app().request(`/shelves/${did}`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("12 books");
+    expect(html).toContain("Extra title 6");
+    expect(html).not.toContain("Extra title 7");
+    expect(html).not.toContain("Extra title 8");
+    expect(html).toContain("Book 1");
+    expect(html).toContain("Fallback author");
+  });
+
+  it("edits only metadata, preserving ownership and missing-shelf responses", async () => {
+    testDb.sqlite.exec("DROP TABLE book_list_item; DROP TABLE hive_book");
+    const response = await app().request(`/shelves/${did}/test/edit`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('value="Ranked"');
+    expect((await app(null).request(`/shelves/${did}/test/edit`)).status).toBe(302);
+    expect((await app("did:plc:stranger").request(`/shelves/${did}/test/edit`)).status).toBe(403);
+    expect((await app().request(`/shelves/${did}/missing/edit`)).status).toBe(404);
+  });
 
   it("saves Popfeed itemOrder and reads it ahead of item positions, even after re-sync", async () => {
     const order = [uris[2]!, uris[0]!, uris[1]!];

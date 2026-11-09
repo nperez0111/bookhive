@@ -196,6 +196,9 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
       responseStages.preparing--;
       endTime(c, "response_prepare");
     }
+    // Hono's conditional 304 conversion drops Set-Cookie. Preserve session
+    // changes and let the final Nitro hook enforce no-store on this response.
+    if (c.res.headers.has("Set-Cookie")) return;
     responseStages.etag++;
     startTime(c, "response_etag");
     try {
