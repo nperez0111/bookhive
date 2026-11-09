@@ -21,6 +21,13 @@ initiated the pressure, and no host/container limits were changed during investi
 
 ## Local instrumentation
 
+- Response timings distinguish `response_prepare` (downstream route work, JSX serialization and
+  anonymous-cache handling), `response_etag` (response-clone consumption and digest), and
+  `response_compress_setup` (installing the compression stream, not body delivery or compression
+  CPU). The historical `compress` timer encloses all downstream work and must not be interpreted
+  as isolated compression time. `resources.response_stages` counts requests currently preparing
+  responses or awaiting ETags in each application's runtime sample; stalled event loops can delay
+  those samples. Excluded download/SSE routes retain their existing streaming exclusions.
 - `src/metrics.ts` exports the worker-labelled `bookhive_requests_in_flight` gauge, maintained
   in the wide-event middleware's `try/finally`, including requests excluded from completion logs.
   It measures Hono execution, not streaming response consumption or pre-Hono failures.

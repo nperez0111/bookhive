@@ -32,6 +32,7 @@ export type CreateAppOptions = {
 
 export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions): HonoServer {
   const app = new Hono<AppEnv>();
+  const responseStages = { preparing: 0, etag: 0 };
 
   app.use(timing({ autoEnd: false }));
 
@@ -76,7 +77,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
   }
   app.use(secureHeaders());
 
-  // Wrap compress() to measure time spent in compression
+  // Historical enclosing timer: includes all downstream work, not compression CPU.
   app.use("*", async (c, next) => {
     startTime(c, "compress");
     await next();
@@ -88,7 +89,14 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     // for ~nothing — and for FB2, which does match hono's compressible-type
     // regex, it would drop the Content-Length a client's progress bar relies on.
     if (isBookDownloadPath(c.req.path)) return next();
-    return compressMiddleware(c, next);
+    await next();
+    startTime(c, "response_compress_setup");
+    try {
+      // Compression is streamed after this returns; this measures setup, not body delivery.
+      return await compressMiddleware(c, async () => {});
+    } finally {
+      endTime(c, "response_compress_setup");
+    }
   });
 
   app.use(jsxRenderer());
@@ -137,6 +145,7 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
           search: getSearchAdmissionState(),
           multipart_upload: getMultipartUploadAdmissionState(),
           csv_import: getImportAdmissionState(),
+          response_stages: { ...responseStages },
         },
         build_sha: env.BUILD_SHA,
       },
@@ -175,7 +184,22 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     if (isEtagExcluded(c.req.path)) {
       return next();
     }
-    return etagMiddleware(c, next);
+    responseStages.preparing++;
+    startTime(c, "response_prepare");
+    try {
+      await next();
+    } finally {
+      responseStages.preparing--;
+      endTime(c, "response_prepare");
+    }
+    responseStages.etag++;
+    startTime(c, "response_etag");
+    try {
+      return await etagMiddleware(c, async () => {});
+    } finally {
+      responseStages.etag--;
+      endTime(c, "response_etag");
+    }
   });
 
   // Serve anonymous traffic on bot-heavy public pages from the shared KV page
