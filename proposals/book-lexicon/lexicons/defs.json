@@ -43,7 +43,7 @@
         },
         "role": {
           "type": "string",
-          "description": "Nature of the contribution, stored as an ONIX Codelist 17 code. The code-to-role mapping is at https://ns.editeur.org/onix/en/17 and in DESIGN.md under Contributor role mapping. For example, A01 means author, B06 translator, and E03 narrator. Known values include all 124 codes from Issue 75. If omitted, A01 (author) is assumed. Additional values remain permitted.",
+          "description": "Nature of the contribution, stored as an ONIX Codelist 17 code. The code-to-role mapping is at https://ns.editeur.org/onix/en/17. For example, A01 means author, B06 translator, and E03 narrator. Known values include all 124 codes from Issue 75. If omitted, A01 (author) is assumed. Additional values remain permitted.",
           "default": "A01",
           "knownValues": [
             "A01",
