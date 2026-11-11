@@ -77,6 +77,7 @@ it("coalesces same-tick imports before React Query enters pending and releases a
 it.each(["unmount", "session"])(
   "aborts its only active request on %s and ignores late progress",
   async (reason) => {
+    const invalidate = jest.spyOn(client, "invalidateQueries");
     const { result, unmount } = renderHook(useCsvImport, { wrapper: queryWrapper(() => client) });
     let pending!: ReturnType<typeof result.current.mutateAsync>;
     act(() => {
@@ -84,9 +85,10 @@ it.each(["unmount", "session"])(
     });
     const rejected = expect(pending).rejects.toThrow("Import stopped");
     await waitFor(() => expect(requests[0]?.send).toHaveBeenCalled());
+    expect(requests[0].setRequestHeader).toHaveBeenCalledWith("cookie", "sid=sid-a");
     act(() => {
       if (reason === "unmount") unmount();
-      else mockSession.replace(null);
+      else mockSession.replace({ did: "did:plc:b", handle: "b.test", sid: "sid-b" });
     });
     await act(async () => {
       await rejected;
@@ -94,6 +96,7 @@ it.each(["unmount", "session"])(
     expect(requests[0].abort).toHaveBeenCalledTimes(1);
     act(() => requests[0].upload.onprogress?.({ lengthComputable: true, loaded: 10, total: 10 }));
     expect(result.current.uploadProgress).toBe(0);
+    if (reason === "session") expect(invalidate).not.toHaveBeenCalled();
   },
 );
 

@@ -36,28 +36,18 @@ jest.mock("@/components/GradientView", () => ({
 }));
 jest.mock("@/components/BookCard", () => ({
   BookCard: ({ title }: { title: string }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    return React.createElement(
-      jest.requireActual<typeof import("react-native")>("react-native").Text,
-      null,
-      title,
-    );
+    const { Text } = jest.requireActual("react-native");
+    return <Text>{title}</Text>;
   },
 }));
 jest.mock("@/components/QueryErrorHandler", () => ({
   QueryErrorHandler: ({ error, onRetry }: { error: Error; onRetry: () => void }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    const { View, Text, Pressable } =
-      jest.requireActual<typeof import("react-native")>("react-native");
-    return React.createElement(
-      View,
-      null,
-      React.createElement(Text, null, error.message),
-      React.createElement(
-        Pressable,
-        { onPress: onRetry },
-        React.createElement(Text, null, "Retry"),
-      ),
+    const { Text, Pressable } = jest.requireActual("react-native");
+    return (
+      <Pressable onPress={onRetry}>
+        <Text>{error.message}</Text>
+        <Text>Retry</Text>
+      </Pressable>
     );
   },
 }));

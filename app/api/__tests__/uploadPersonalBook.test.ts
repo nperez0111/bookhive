@@ -79,20 +79,3 @@ test("preserves quota prose and typed metadata but rejects object-valued errors"
     );
   }
 });
-
-test("accepts a complete private-file response", async () => {
-  const book = {
-    contentHash: "hash",
-    title: "Book",
-    format: "epub",
-    mime: "application/epub+zip",
-    sizeBytes: 42,
-    createdAt: "2026-01-01",
-    updatedAt: "2026-01-01",
-  };
-  const pending = uploadBookFile({ uri: "file:///a.epub", name: "a.epub" }, authSession.capture());
-  xhr.responseText = JSON.stringify({ book });
-  xhr.onload!();
-  xhr.onloadend!();
-  await expect(pending).resolves.toEqual({ book });
-});

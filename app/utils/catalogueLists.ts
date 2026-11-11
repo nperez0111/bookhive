@@ -1,5 +1,3 @@
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
-
 /** Public catalogue lists use AT URIs, never personal ebook shelf IDs. */
 export function parseListTags(value: string): string[] {
   const tags = [
@@ -40,15 +38,6 @@ export function moveListItem<T extends { uri: string }>(
   const next = [...items];
   [next[index], next[target]] = [next[target]!, next[index]!];
   return next;
-}
-
-export function restoreListSnapshots(
-  client: Pick<QueryClient, "setQueryData">,
-  snapshots: [QueryKey, unknown][],
-) {
-  for (const [key, data] of snapshots) {
-    client.setQueryData(key, data);
-  }
 }
 
 /** Router params may already be decoded; malformed percent escapes must not crash a screen. */

@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { QueryClient } from "@tanstack/react-query";
-import { queryWrapper } from "../../test/queryHelpers";
+import { deferred, queryWrapper } from "../../test/queryHelpers";
 import { authFetch, authSession } from "@/context/auth";
 import { useFeed, useGenreBooks, useSearchBooks } from "../useBookhiveQuery";
 
@@ -17,15 +17,6 @@ jest.mock("@/utils/networkErrorHandler", () => ({
 }));
 
 const fetchMock = authFetch as jest.Mock;
-function deferredValue() {
-  let resolve!: (value: unknown) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<unknown>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
-}
 let client: QueryClient;
 const Wrapper = queryWrapper(() => client);
 
@@ -69,26 +60,17 @@ describe("mobile discovery queries", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("retains feed pages and exposes failures fetching later pages", async () => {
-    fetchMock.mockResolvedValueOnce({ activities: [], hasMore: true, cursor: "next" });
-    fetchMock.mockRejectedValueOnce(new Error("Later page unavailable"));
-    const { result } = renderHook(() => useFeed("all"), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    await act(async () => {
-      await result.current.fetchNextPage();
-    });
-    await waitFor(() => expect(result.current.isFetchNextPageError).toBe(true));
-    expect(result.current.data?.pages).toHaveLength(1);
-    expect(result.current.error?.message).toBe("Later page unavailable");
-  });
-
   it("keeps both cached pages through a failed refresh, then replaces them with a fresh first page", async () => {
     fetchMock.mockResolvedValueOnce({
       activities: [{ title: "Old first" }],
       hasMore: true,
       cursor: "opaque/next",
     });
-    fetchMock.mockResolvedValueOnce({ activities: [{ title: "Old second" }], hasMore: false });
+    fetchMock.mockResolvedValueOnce({
+      activities: [{ title: "Old second" }],
+      hasMore: true,
+      cursor: "third",
+    });
     const { result } = renderHook(() => useFeed("all"), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     await act(async () => {
@@ -97,13 +79,20 @@ describe("mobile discovery queries", () => {
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
     expect(fetchMock.mock.calls[1][0]).toContain("cursor=opaque%2Fnext");
     const cached = result.current.data;
-    const offline = deferredValue();
+    fetchMock.mockRejectedValueOnce(new Error("Later page unavailable"));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.isFetchNextPageError).toBe(true));
+    expect(result.current.error?.message).toBe("Later page unavailable");
+    expect(result.current.data).toEqual(cached);
+    const offline = deferred<unknown>();
     fetchMock.mockReturnValueOnce(offline.promise);
     let refresh!: Promise<void>;
     act(() => {
       refresh = result.current.refresh();
     });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(result.current.data).toEqual(cached);
     await act(async () => {
       offline.reject(new Error("Offline"));
@@ -112,12 +101,12 @@ describe("mobile discovery queries", () => {
     await waitFor(() => expect(result.current.error?.message).toBe("Offline"));
     expect(result.current.data).toEqual(cached);
     expect(result.current.isRefetchError).toBe(true);
-    const next = deferredValue();
+    const next = deferred<unknown>();
     fetchMock.mockReturnValueOnce(next.promise);
     act(() => {
       refresh = result.current.refresh();
     });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(result.current.data).toEqual(cached);
     await act(async () => {
       next.resolve({ activities: [{ title: "Fresh first" }], hasMore: true, cursor: "fresh-next" });
@@ -127,7 +116,7 @@ describe("mobile discovery queries", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.data?.pageParams).toEqual([""]);
     expect(result.current.data?.pages[0]?.cursor).toBe("fresh-next");
-    expect(fetchMock.mock.calls.slice(2).map(([url]) => url)).toEqual([
+    expect(fetchMock.mock.calls.slice(3).map(([url]) => url)).toEqual([
       "/xrpc/buzz.bookhive.getFeed?tab=all",
       "/xrpc/buzz.bookhive.getFeed?tab=all",
     ]);

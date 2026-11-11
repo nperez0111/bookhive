@@ -108,7 +108,7 @@ Implementations import domain modules directly, never the compatibility file.
 | `catalogueLists.ts`       | Public AT-URI shelves, owner-keyed snapshots and ordering                     |
 | `personalLibrary.ts`      | Private files/numeric shelves, upload and quota refresh                       |
 | `sync.ts`                 | Documents, matching/dismissal and non-persisted credentials                   |
-| `personalLibraryCache.ts` | Session-fenced invalidation shared by file/sync writes                        |
+| `personalLibraryCache.ts` | Session-fenced invalidation and simple POST writes shared by file/sync hooks  |
 
 ### Canonical book state and drafts
 
@@ -150,7 +150,9 @@ not unrelated concurrent edits; counts change only for items actually present.
 Ordering uses item AT URIs. Private-file and sync-document rollbacks likewise
 restore only their target/counts. Their shared optimistic boundary starts before
 async cancellation, rejects same-target conflicts and defers refetch until all
-targets settle. File/progress linking refreshes tracked detail through the book
+targets settle. Simple library writes share `useLibraryWrite` (captured-session
+POST, no retries, deferred invalidation); optimistic writes and linking retain
+their domain-specific callbacks. File/progress linking refreshes tracked detail through the book
 coordinator, retaining pending book edits until its queue drains.
 
 Search debounces before selecting keys; filter changes reset pagination, pages

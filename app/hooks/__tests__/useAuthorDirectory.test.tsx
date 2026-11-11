@@ -29,9 +29,16 @@ afterEach(() => {
 });
 
 describe("useAuthorDirectory", () => {
-  it("appends pages and honours explicit exhaustion instead of assuming a full last page means more", async () => {
-    fetchMock.mockResolvedValueOnce(page(0, 50, true)).mockResolvedValueOnce(page(50, 1, false));
-    const { result } = renderHook(() => useAuthorDirectory("   ", "en"), { wrapper: Wrapper });
+  it("retains pages on failure, retries the offset, stops at exhaustion and resets for a new language", async () => {
+    fetchMock
+      .mockResolvedValueOnce(page(0, 50, true))
+      .mockRejectedValueOnce(new Error("Directory unavailable"))
+      .mockResolvedValueOnce(page(50, 1, false))
+      .mockResolvedValueOnce({ ...page(0, 1, false), total: 1 });
+    const { result, rerender } = renderHook(
+      ({ language }: { language: string }) => useAuthorDirectory("   ", language),
+      { initialProps: { language: "en" }, wrapper: Wrapper },
+    );
     await waitFor(() => expect(result.current.authors).toHaveLength(50));
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=0&language=en",
@@ -40,9 +47,23 @@ describe("useAuthorDirectory", () => {
     await act(async () => {
       await result.current.fetchNextPage();
     });
+    await waitFor(() => expect(result.current.isFetchNextPageError).toBe(true));
+    expect(result.current.error?.message).toBe("Directory unavailable");
+    expect(result.current.authors).toHaveLength(50);
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
     await waitFor(() => expect(result.current.authors).toHaveLength(51));
-    expect(fetchMock.mock.calls[1][0]).toContain("limit=50&offset=50&language=en");
+    expect(fetchMock.mock.calls.slice(1, 3).map(([url]) => url)).toEqual([
+      "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=50&language=en",
+      "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=50&language=en",
+    ]);
     expect(result.current.hasNextPage).toBe(false);
+    rerender({ language: "fr" });
+    expect(result.current.authors).toEqual([]);
+    await waitFor(() => expect(result.current.authors).toHaveLength(1));
+    expect(result.current.data?.pages).toHaveLength(1);
+    expect(fetchMock.mock.calls[3][0]).toContain("offset=0&language=fr");
   });
 
   it("debounces normalized search keys and requests, cancels old work, and skips collapsed-directory requests", async () => {
@@ -74,47 +95,6 @@ describe("useAuthorDirectory", () => {
     const secondSignal = fetchMock.mock.calls[1][1].signal as AbortSignal;
     rerender({ q: "Borges", enabled: false });
     expect(secondSignal.aborted).toBe(true);
-  });
-
-  it("resets pages and offset when the selected language changes", async () => {
-    fetchMock
-      .mockResolvedValueOnce(page(0, 50, true))
-      .mockResolvedValueOnce(page(50, 1, false))
-      .mockResolvedValueOnce({ ...page(0, 1, false), total: 1 });
-    const { result, rerender } = renderHook(
-      ({ language }: { language: string }) => useAuthorDirectory("", language),
-      { initialProps: { language: "en" }, wrapper: Wrapper },
-    );
-    await waitFor(() => expect(result.current.authors).toHaveLength(50));
-    await act(async () => {
-      await result.current.fetchNextPage();
-    });
-    await waitFor(() => expect(result.current.authors).toHaveLength(51));
-    rerender({ language: "fr" });
-    expect(result.current.authors).toEqual([]);
-    await waitFor(() => expect(result.current.authors).toHaveLength(1));
-    expect(result.current.data?.pages).toHaveLength(1);
-    expect(fetchMock.mock.calls[2][0]).toContain("offset=0&language=fr");
-  });
-
-  it("retains loaded authors on a later-page error and retries that offset", async () => {
-    fetchMock
-      .mockResolvedValueOnce(page(0, 50, true))
-      .mockRejectedValueOnce(new Error("Directory unavailable"))
-      .mockResolvedValueOnce(page(50, 1, false));
-    const { result } = renderHook(() => useAuthorDirectory(""), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.authors).toHaveLength(50));
-    await act(async () => {
-      await result.current.fetchNextPage();
-    });
-    await waitFor(() => expect(result.current.isFetchNextPageError).toBe(true));
-    expect(result.current.error?.message).toBe("Directory unavailable");
-    expect(result.current.authors).toHaveLength(50);
-    await act(async () => {
-      await result.current.fetchNextPage();
-    });
-    await waitFor(() => expect(result.current.authors).toHaveLength(51));
-    expect(fetchMock.mock.calls[2][0]).toContain("offset=50");
   });
 
   it("rejects a non-advancing next offset even when hasMore is incorrectly true", async () => {

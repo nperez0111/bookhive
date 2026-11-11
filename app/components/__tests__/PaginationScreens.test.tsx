@@ -57,33 +57,24 @@ jest.mock("@/components/StorageMeter", () => ({ StorageMeter: () => null }));
 jest.mock("@/components/ProgressBar", () => ({ ProgressBar: () => null }));
 jest.mock("@/components/BackNavigationHeader", () => ({
   BackNavigationHeader: ({ onBackPress }: { onBackPress: () => void }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    const { Pressable, Text } = jest.requireActual<typeof import("react-native")>("react-native");
-    return React.createElement(
-      Pressable,
-      { accessibilityRole: "button", accessibilityLabel: "Back", onPress: onBackPress },
-      React.createElement(Text, null, "Back"),
+    const { Pressable, Text } = jest.requireActual("react-native");
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBackPress}>
+        <Text>Back</Text>
+      </Pressable>
     );
   },
 }));
 jest.mock("@/components/PersonalBookCard", () => ({
   PersonalBookCard: ({ book }: { book: { title: string } }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    return React.createElement(
-      jest.requireActual<typeof import("react-native")>("react-native").Text,
-      null,
-      book.title,
-    );
+    const { Text } = jest.requireActual("react-native");
+    return <Text>{book.title}</Text>;
   },
 }));
 jest.mock("@/components/QueryErrorHandler", () => ({
   QueryErrorHandler: ({ onRetry }: { onRetry: () => void }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    return React.createElement(
-      jest.requireActual<typeof import("react-native")>("react-native").Text,
-      { onPress: onRetry },
-      "Retry page",
-    );
+    const { Text } = jest.requireActual("react-native");
+    return <Text onPress={onRetry}>Retry page</Text>;
   },
 }));
 

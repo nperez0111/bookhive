@@ -1,5 +1,5 @@
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { authSession } from "@/context/auth";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { authSession, createSessionFetch } from "@/context/auth";
 
 type Boundary = { targets: Set<string>; invalidations: Map<string, () => void> };
 const boundaries = new WeakMap<QueryClient, Boundary>();
@@ -50,4 +50,18 @@ export function useInvalidateLibrary(
     }
     flush(state);
   };
+}
+
+/** Simple file/shelf/document writes; optimistic and multi-step writes stay in their domains. */
+export function useLibraryWrite<
+  Input extends Record<string, unknown>,
+  Output = Record<string, never>,
+>(url: string, keys?: string[]) {
+  const request = createSessionFetch();
+  const invalidate = useInvalidateLibrary(keys);
+  return useMutation({
+    mutationFn: (input: Input) => request<Output>(url, { method: "POST", body: input }),
+    onSuccess: invalidate,
+    retry: false,
+  });
 }
