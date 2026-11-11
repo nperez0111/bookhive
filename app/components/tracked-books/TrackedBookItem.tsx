@@ -101,13 +101,13 @@ export function TrackedBookItem({
           }}
         >
           {update.isPending ? (
-            <ActivityIndicator size="small" color={colors.primary} />
+            <ActivityIndicator size="small" color={colors.accentForeground} />
           ) : (
-            <ThemedText type="label" style={{ color: colors.primary, flexShrink: 1 }}>
+            <ThemedText type="label" style={{ color: colors.accentForeground, flexShrink: 1 }}>
               {book.status ? statusLabel : "Set status"}
             </ThemedText>
           )}
-          <Ionicons name="chevron-down" size={14} color={colors.primary} />
+          <Ionicons name="chevron-down" size={14} color={colors.accentForeground} />
         </Pressable>
       </View>
       <ActionSheet
