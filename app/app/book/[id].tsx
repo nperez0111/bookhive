@@ -35,12 +35,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import Animated, {
-  FadeInDown,
-  FadeInUp,
-  LinearTransition,
-  ReduceMotion,
-} from "react-native-reanimated";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import type { HiveId } from "../../../src/types";
 import { type BookStatus } from "@/constants/index";
 
@@ -320,11 +315,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       <ScrollView ref={scrollViewRef} style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
-          <Animated.View
-            style={styles.bookSection}
-            entering={FadeInDown.delay(40).duration(220)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
-          >
+          <Animated.View style={styles.bookSection} entering={FadeInDown.delay(40).duration(220)}>
             <View style={styles.coverContainer}>
               <FadeInImage
                 source={{
@@ -426,7 +417,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
           <Animated.View
             style={styles.actionsContainer}
             entering={FadeInDown.delay(140).duration(220)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
           >
             <BookActionCard
               type="rating"
@@ -470,11 +460,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             )}
           </Animated.View>
 
-          <Animated.View
-            style={styles.actionButtons}
-            entering={FadeInDown.delay(80).duration(220)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
-          >
+          <Animated.View style={styles.actionButtons} entering={FadeInDown.delay(80).duration(220)}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Share book"
@@ -532,7 +518,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
           <Animated.View
             style={styles.descriptionSection}
             entering={FadeInDown.delay(110).duration(220)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
           >
             <ThemedText
               style={[
@@ -566,7 +551,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             <Animated.View
               style={styles.genreSection}
               entering={FadeInDown.delay(115).duration(220)}
-              layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
             >
               <ScrollView
                 horizontal
@@ -611,7 +595,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             <Animated.View
               style={styles.whoIsReadingSection}
               entering={FadeInDown.delay(120).duration(220)}
-              layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
             >
               <ThemedText
                 style={[
@@ -678,7 +661,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
           <Animated.View
             style={styles.activitySection}
             entering={FadeInDown.delay(160).duration(220)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
           >
             <ThemedText
               style={[
@@ -755,10 +737,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
             />
           )}
 
-          <Animated.View
-            entering={FadeInUp.delay(180).duration(240)}
-            layout={LinearTransition.duration(140).reduceMotion(ReduceMotion.System)}
-          >
+          <Animated.View entering={FadeInUp.delay(180).duration(240)}>
             <CommentsSection
               comments={comments}
               hiveId={hiveId}

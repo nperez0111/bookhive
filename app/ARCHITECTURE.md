@@ -52,6 +52,10 @@ before a failed request returns. Ownership is independent of reading status and
 edited on book detail. Home/profile refresh failures retain cached content;
 profile refresh reloads both reader data and public shelves.
 
+Book-detail sections use normal layout flow when editors expand. Do not add sibling
+layout-position transitions: retained native-stack screens can leave later controls
+overlapping an already-expanded progress editor when the page is reopened.
+
 ## Authentication and session isolation
 
 `context/auth.tsx` owns `authFetch` (ofetch, `sid` cookie and app/platform headers);
