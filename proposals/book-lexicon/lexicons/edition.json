@@ -1,7 +1,7 @@
 {
   "lexicon": 1,
-  "id": "community.lexicon.book.edition",
-  "description": "A specific published instance of a book, such as one printing, translation, or audiobook production. Not a work: distinct editions of the same underlying text are distinct records.",
+  "id": "community.lexicon.media.book.edition",
+  "description": "A specific published instance of a book, including comic books and graphic novels, such as one printing, translation, or audiobook production. Not a work: distinct editions of the same underlying text are distinct records. New metadata fields should follow the corresponding names, meaning, and shape in https://schema.org/Book, including inherited properties; document any adaptations or extensions.",
   "defs": {
     "main": {
       "type": "record",
@@ -9,7 +9,7 @@
       "description": "Optional repository publication of an edition. Its fields mirror defs#edition; publishing a catalog on AT Protocol is not required.",
       "record": {
         "type": "object",
-        "description": "Full edition metadata for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
+        "description": "Full edition metadata for books, including comic books and graphic novels, for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
         "required": ["title", "identifiers", "contributors", "createdAt"],
         "properties": {
           "title": {
@@ -22,7 +22,7 @@
             "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
             "items": {
               "type": "ref",
-              "ref": "community.lexicon.book.defs#identifier"
+              "ref": "community.lexicon.media.book.defs#identifier"
             },
             "minLength": 1
           },
@@ -31,7 +31,7 @@
             "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
             "items": {
               "type": "ref",
-              "ref": "community.lexicon.book.defs#contributor"
+              "ref": "community.lexicon.media.book.defs#contributor"
             }
           },
           "cover": {
@@ -60,13 +60,13 @@
           },
           "publishedDate": {
             "type": "string",
-            "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+            "description": "Publication date in ISO 8601 format at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
             "minLength": 4,
             "maxLength": 10
           },
           "publisher": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#publisher"
+            "ref": "community.lexicon.media.book.defs#publisher"
           },
           "format": {
             "type": "string",
@@ -89,12 +89,8 @@
             "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
           },
           "series": {
-            "type": "string",
-            "description": "Name of the series."
-          },
-          "seriesPosition": {
-            "type": "string",
-            "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+            "type": "ref",
+            "ref": "community.lexicon.media.book.defs#series"
           },
           "bookEdition": {
             "type": "string",

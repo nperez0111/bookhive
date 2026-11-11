@@ -1,22 +1,22 @@
 {
   "lexicon": 1,
-  "id": "community.lexicon.book.defs",
-  "description": "Shared book definitions: identifiers, contributors, publishers, editions, edition references, and result pages.",
+  "id": "community.lexicon.media.book.defs",
+  "description": "Shared book definitions: identifiers, contributors, publishers, editions, edition references, and result pages. New edition metadata fields should follow the corresponding names, meaning, and shape in https://schema.org/Book, including inherited properties; document any adaptations or extensions.",
   "defs": {
     "identifier": {
       "type": "object",
       "description": "A global or provider-scoped identifier. Shared provider identifiers may express that provider's grouping of editions.",
-      "required": ["type", "value"],
+      "required": ["issuer", "value"],
       "properties": {
-        "type": {
+        "issuer": {
           "type": "string",
           "description": "Identifier namespace: a well-known global scheme token or a provider domain. Providers may use subdomains to distinguish namespaces. Compare this string exactly. Writers use lowercase global tokens and lowercase ASCII provider domains (IDNA A-labels for internationalized domains), without a scheme, path, or trailing dot.",
           "minLength": 1,
-          "knownValues": ["isbn", "issn", "doi", "asin", "oclc", "lccn"]
+          "knownValues": ["isbn13", "issn", "doi", "asin", "oclc", "lccn"]
         },
         "value": {
           "type": "string",
-          "description": "Opaque identifier in its namespace's canonical form, defined in the proposal's identifier writing table. For isbn, write hyphenless ISBN-13, converting ISBN-10 on write. Matching compares type and value exactly without parsing or normalization.",
+          "description": "Opaque identifier in its namespace's canonical form, defined in the proposal's identifier writing table. For isbn13, write hyphenless ISBN-13, converting ISBN-10 on write. Matching compares issuer and value exactly without parsing or normalization.",
           "minLength": 1
         },
         "url": {
@@ -29,25 +29,155 @@
     "contributor": {
       "type": "object",
       "description": "Someone who contributed to the work or edition in some capacity.",
-      "required": ["name"],
+      "required": ["displayName"],
       "properties": {
-        "name": {
+        "displayName": {
           "type": "string",
-          "description": "The contributor's full known name; no particular order is required.",
+          "description": "The contributor's name as it should be displayed, preserving the supplied name order. Used for display and human disambiguation; identifiers are the matching mechanism.",
+          "minLength": 1
+        },
+        "nameInverted": {
+          "type": "string",
+          "description": "Optional name in filing or sorting order, when known, such as Le Guin, Ursula K. May be identical to displayName where the name is already in that order. Consumers should not infer this field by rearranging displayName.",
           "minLength": 1
         },
         "role": {
           "type": "string",
-          "description": "Nature of the contribution. If omitted, author is assumed.",
-          "default": "author",
-          "knownValues": ["author", "co-author", "editor", "translator", "narrator", "illustrator"]
+          "description": "Nature of the contribution, stored as an ONIX Codelist 17 code. The code-to-role mapping is at https://ns.editeur.org/onix/en/17 and in DESIGN.md under Contributor role mapping. For example, A01 means author, B06 translator, and E03 narrator. Known values include all 124 codes from Issue 75. If omitted, A01 (author) is assumed. Additional values remain permitted.",
+          "default": "A01",
+          "knownValues": [
+            "A01",
+            "A02",
+            "A03",
+            "A04",
+            "A05",
+            "A06",
+            "A07",
+            "A08",
+            "A09",
+            "A10",
+            "A11",
+            "A12",
+            "A13",
+            "A14",
+            "A15",
+            "A16",
+            "A17",
+            "A18",
+            "A19",
+            "A20",
+            "A21",
+            "A22",
+            "A23",
+            "A24",
+            "A25",
+            "A26",
+            "A27",
+            "A28",
+            "A29",
+            "A30",
+            "A31",
+            "A32",
+            "A33",
+            "A34",
+            "A35",
+            "A36",
+            "A37",
+            "A38",
+            "A39",
+            "A40",
+            "A41",
+            "A42",
+            "A43",
+            "A44",
+            "A45",
+            "A46",
+            "A47",
+            "A48",
+            "A49",
+            "A50",
+            "A51",
+            "A52",
+            "A56",
+            "A99",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B10",
+            "B11",
+            "B12",
+            "B13",
+            "B14",
+            "B15",
+            "B16",
+            "B17",
+            "B18",
+            "B19",
+            "B20",
+            "B21",
+            "B22",
+            "B23",
+            "B24",
+            "B25",
+            "B26",
+            "B27",
+            "B28",
+            "B29",
+            "B30",
+            "B31",
+            "B32",
+            "B33",
+            "B34",
+            "B35",
+            "B36",
+            "B99",
+            "C01",
+            "C02",
+            "C03",
+            "C04",
+            "C99",
+            "D01",
+            "D02",
+            "D03",
+            "D04",
+            "D99",
+            "E01",
+            "E02",
+            "E03",
+            "E04",
+            "E05",
+            "E06",
+            "E07",
+            "E08",
+            "E09",
+            "E10",
+            "E11",
+            "E99",
+            "F01",
+            "F02",
+            "F99",
+            "Z01",
+            "Z02",
+            "Z03",
+            "Z04",
+            "Z05",
+            "Z06",
+            "Z98",
+            "Z99"
+          ]
         },
         "identifiers": {
           "type": "array",
-          "description": "Identifiers denoting this contributor in global or provider namespaces, compared exactly by type and value.",
+          "description": "Identifiers denoting this contributor in global or provider namespaces, compared exactly by issuer and value.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#identifier"
+            "ref": "community.lexicon.media.book.defs#identifier"
           }
         },
         "ref": {
@@ -69,10 +199,10 @@
         },
         "identifiers": {
           "type": "array",
-          "description": "Identifiers denoting this publisher in global or provider namespaces, compared exactly by type and value.",
+          "description": "Identifiers denoting this publisher in global or provider namespaces, compared exactly by issuer and value.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#identifier"
+            "ref": "community.lexicon.media.book.defs#identifier"
           }
         }
       }
@@ -92,7 +222,7 @@
           "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#identifier"
+            "ref": "community.lexicon.media.book.defs#identifier"
           },
           "minLength": 1
         },
@@ -101,7 +231,7 @@
           "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#contributor"
+            "ref": "community.lexicon.media.book.defs#contributor"
           }
         },
         "cover": {
@@ -116,9 +246,31 @@
         }
       }
     },
+    "series": {
+      "type": "object",
+      "description": "Name of the series and the edition's placement within it.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the series.",
+          "minLength": 1
+        },
+        "position": {
+          "type": "string",
+          "description": "Numeric position within the series, stored as a decimal string such as 6, 1.5, or 0.5. Sort numerically, not lexicographically. Applications must validate the numeric representation.",
+          "minLength": 1
+        },
+        "display": {
+          "type": "string",
+          "description": "Human-readable position label preserving forms such as Vol. VI.",
+          "minLength": 1
+        }
+      }
+    },
     "edition": {
       "type": "object",
-      "description": "Full edition metadata for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
+      "description": "Full edition metadata for books, including comic books and graphic novels, for embedding and optional repository publication. Provider APIs use editionView, which carries covers as URLs only.",
       "required": ["title", "identifiers", "contributors", "createdAt"],
       "properties": {
         "title": {
@@ -131,7 +283,7 @@
           "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#identifier"
+            "ref": "community.lexicon.media.book.defs#identifier"
           },
           "minLength": 1
         },
@@ -140,7 +292,7 @@
           "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#contributor"
+            "ref": "community.lexicon.media.book.defs#contributor"
           }
         },
         "cover": {
@@ -169,13 +321,13 @@
         },
         "publishedDate": {
           "type": "string",
-          "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+          "description": "Publication date in ISO 8601 format at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
           "minLength": 4,
           "maxLength": 10
         },
         "publisher": {
           "type": "ref",
-          "ref": "community.lexicon.book.defs#publisher"
+          "ref": "community.lexicon.media.book.defs#publisher"
         },
         "format": {
           "type": "string",
@@ -198,12 +350,8 @@
           "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
         },
         "series": {
-          "type": "string",
-          "description": "Name of the series."
-        },
-        "seriesPosition": {
-          "type": "string",
-          "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+          "type": "ref",
+          "ref": "community.lexicon.media.book.defs#series"
         },
         "bookEdition": {
           "type": "string",
@@ -217,7 +365,7 @@
     },
     "editionView": {
       "type": "object",
-      "description": "Full edition metadata for API responses. Covers are represented only by optional coverUrl; providers omit cover and coverDid. The URL may point to a blob download endpoint.",
+      "description": "Full edition metadata for books, including comic books and graphic novels, in API responses. Covers are represented only by optional coverUrl; providers omit cover and coverDid. The URL may point to a blob download endpoint.",
       "required": ["title", "identifiers", "contributors", "createdAt"],
       "properties": {
         "title": {
@@ -230,7 +378,7 @@
           "description": "Known identifiers for this edition, including provider grouping identifiers. Include the writing provider's identifier where available.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#identifier"
+            "ref": "community.lexicon.media.book.defs#identifier"
           },
           "minLength": 1
         },
@@ -239,7 +387,7 @@
           "description": "Contributors credited on the edition. May be empty for anonymous or unknown contributions.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#contributor"
+            "ref": "community.lexicon.media.book.defs#contributor"
           }
         },
         "coverUrl": {
@@ -263,13 +411,13 @@
         },
         "publishedDate": {
           "type": "string",
-          "description": "Publication date at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
+          "description": "Publication date in ISO 8601 format at its known precision: YYYY, YYYY-MM, or YYYY-MM-DD. Preserve available precision without inventing a month or day. Applications must validate the date; this is not a datetime.",
           "minLength": 4,
           "maxLength": 10
         },
         "publisher": {
           "type": "ref",
-          "ref": "community.lexicon.book.defs#publisher"
+          "ref": "community.lexicon.media.book.defs#publisher"
         },
         "format": {
           "type": "string",
@@ -292,12 +440,8 @@
           "description": "Total chapter count, when known. This is an extent, not the reader's progress or a table of contents."
         },
         "series": {
-          "type": "string",
-          "description": "Name of the series."
-        },
-        "seriesPosition": {
-          "type": "string",
-          "description": "Position within the series, preserving forms such as 1.5 or Vol. II."
+          "type": "ref",
+          "ref": "community.lexicon.media.book.defs#series"
         },
         "bookEdition": {
           "type": "string",
@@ -319,7 +463,7 @@
           "description": "Full edition views in provider-defined relevance order, with URL-only covers. Preserve known identifiers, including the provider's identifiers; do not reduce them to only those supplied in the request.",
           "items": {
             "type": "ref",
-            "ref": "community.lexicon.book.defs#editionView"
+            "ref": "community.lexicon.media.book.defs#editionView"
           }
         },
         "hasMore": {

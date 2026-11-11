@@ -1,6 +1,6 @@
 {
   "lexicon": 1,
-  "id": "community.lexicon.book.searchEditions",
+  "id": "community.lexicon.media.book.searchEditions",
   "description": "Search a provider's catalog using text and structured hints. Fuzzy matching, field interpretation, and ranking are provider-specific. This operation does not write user records.",
   "defs": {
     "main": {
@@ -33,7 +33,7 @@
               "description": "Structured identifier relevance hints; search matching and ranking are provider-defined.",
               "items": {
                 "type": "ref",
-                "ref": "community.lexicon.book.defs#identifier"
+                "ref": "community.lexicon.media.book.defs#identifier"
               },
               "minLength": 1
             },
@@ -57,7 +57,7 @@
         "encoding": "application/json",
         "schema": {
           "type": "ref",
-          "ref": "community.lexicon.book.defs#editionResults"
+          "ref": "community.lexicon.media.book.defs#editionResults"
         }
       },
       "errors": [

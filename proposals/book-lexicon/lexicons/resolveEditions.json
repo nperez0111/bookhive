@@ -1,11 +1,11 @@
 {
   "lexicon": 1,
-  "id": "community.lexicon.book.resolveEditions",
-  "description": "Resolve one book by exact equality of at least one identifier type/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
+  "id": "community.lexicon.media.book.resolveEditions",
+  "description": "Resolve one book by exact equality of at least one identifier issuer/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
   "defs": {
     "main": {
       "type": "procedure",
-      "description": "Resolve one book by exact equality of at least one identifier type/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
+      "description": "Resolve one book by exact equality of at least one identifier issuer/value pair. Shared grouping identifiers may match several editions. Results are in provider-defined relevance order. This operation does not write user records.",
       "input": {
         "encoding": "application/json",
         "schema": {
@@ -15,10 +15,10 @@
           "properties": {
             "identifiers": {
               "type": "array",
-              "description": "Identifiers describing one book. An edition qualifies when at least one supplied type/value pair matches exactly. Unknown identifiers do not invalidate other matches.",
+              "description": "Identifiers describing one book. An edition qualifies when at least one supplied issuer/value pair matches exactly. Unknown identifiers do not invalidate other matches.",
               "items": {
                 "type": "ref",
-                "ref": "community.lexicon.book.defs#identifier"
+                "ref": "community.lexicon.media.book.defs#identifier"
               },
               "minLength": 1
             },
@@ -42,7 +42,7 @@
         "encoding": "application/json",
         "schema": {
           "type": "ref",
-          "ref": "community.lexicon.book.defs#editionResults"
+          "ref": "community.lexicon.media.book.defs#editionResults"
         }
       }
     }
