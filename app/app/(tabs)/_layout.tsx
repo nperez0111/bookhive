@@ -10,8 +10,6 @@ import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
-// TODO consider using a drawer for navigation instead of tabs
-// Then we can use tabs for bookshelf, search, etc.
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { isAuthenticated } = useAuth();
@@ -23,8 +21,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      backBehavior="history"
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
+        tabBarActiveTintColor: Colors[colorScheme ?? "light"].accentForeground,
         tabBarInactiveTintColor: Colors[colorScheme ?? "light"].icon,
         headerShown: false,
         tabBarButton: HapticTab,
@@ -42,7 +41,7 @@ export default function TabLayout() {
         },
         tabBarStyle: Platform.select({
           ios: {
-            // Use a transparent background on iOS to show the blur effect
+            // The opaque themed background is supplied by TabBarBackground.
             position: "absolute",
             paddingBottom: bottom,
             height: 56 + bottom,
@@ -65,102 +64,30 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="feed"
+        name="my-books"
         options={{
-          title: "Feed",
+          title: "My Books",
           tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon name="person.2.fill" color={color} focused={focused} />
+            <AnimatedTabIcon name="book.fill" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: "Explore",
+          title: "Discover",
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon name="safari.fill" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
-        name="search"
-        options={{
-          title: "Search",
-          tabBarIcon: ({ color, focused }) => (
-            <AnimatedTabIcon name="magnifyingglass" color={color} focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
+        name="me"
         options={{
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
             <AnimatedTabIcon name="person.circle.fill" color={color} focused={focused} />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="book/[id]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen name="my-books" options={{ href: null }} />
-      <Tabs.Screen name="account" options={{ href: null }} />
-      <Tabs.Screen name="import" options={{ href: null }} />
-      <Tabs.Screen
-        name="books/[status]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/[did]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="explore/genres/[genre]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="explore/authors/[author]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/[did]/stats"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="lists/index"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="lists/[uri]"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="library/index"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="sync/index"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

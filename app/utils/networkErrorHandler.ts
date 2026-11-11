@@ -1,13 +1,6 @@
 import type { NetworkError } from "@/components/NetworkErrorView";
 import { isCancelledError } from "@tanstack/react-query";
 
-export interface ApiError {
-  message: string;
-  status?: number;
-  code?: string;
-  name?: string;
-}
-
 export const classifyNetworkError = (error: any): NetworkError => {
   const message = typeof error?.message === "string" ? error.message : "";
   const status = error?.status ?? error?.response?.status;
@@ -47,7 +40,7 @@ export const classifyNetworkError = (error: any): NetworkError => {
         };
       case 403:
         return {
-          type: "unauthorized",
+          type: "forbidden",
           message: "You do not have permission to access this resource.",
           retryable: false,
           statusCode: 403,
@@ -150,29 +143,4 @@ export const shouldRetryQuery = (failureCount: number, error: any): boolean => {
     return false;
   }
   return failureCount < 3 && (error?.networkError ?? classifyNetworkError(original)).retryable;
-};
-
-export const isRetryableError = (error: NetworkError): boolean => {
-  return error.retryable;
-};
-
-export const getRetryDelay = (attempt: number): number => {
-  // Exponential backoff with jitter
-  const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
-  const jitter = Math.random() * 0.1 * baseDelay;
-  return baseDelay + jitter;
-};
-
-export const shouldRetry = (
-  error: NetworkError,
-  attempt: number,
-  maxAttempts: number = 3,
-): boolean => {
-  if (!isRetryableError(error)) return false;
-  if (attempt >= maxAttempts) return false;
-
-  // Don't retry authentication errors
-  if (error.type === "unauthorized") return false;
-
-  return true;
 };

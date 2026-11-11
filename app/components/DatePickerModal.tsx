@@ -12,6 +12,8 @@ interface DatePickerModalProps {
   initialDate?: Date;
   minimumDate?: Date;
   maximumDate?: Date;
+  isPending?: boolean;
+  error?: string | null;
   onConfirm: (date: Date) => void;
   onCancel: () => void;
 }
@@ -22,6 +24,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   initialDate,
   minimumDate,
   maximumDate,
+  isPending = false,
+  error,
   onConfirm,
   onCancel,
 }) => {
@@ -31,29 +35,28 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   const [tempDate, setTempDate] = useState<Date | null>(() => initialDate ?? new Date());
 
   // Initialize temp date when modal opens
-  const initialTime = initialDate?.getTime();
-  const [previous, setPrevious] = useState({ visible, initialTime });
-  if (previous.visible !== visible || previous.initialTime !== initialTime) {
-    setPrevious({ visible, initialTime });
+  const [previousVisible, setPreviousVisible] = useState(visible);
+  if (previousVisible !== visible) {
+    setPreviousVisible(visible);
     if (visible) {
       setTempDate(initialDate || new Date());
     }
   }
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (selectedDate) {
+    if (selectedDate && !isPending) {
       setTempDate(selectedDate);
     }
   };
 
   const handleConfirm = () => {
-    if (tempDate) {
+    if (tempDate && !isPending) {
       onConfirm(tempDate);
     }
   };
 
   const handleCancel = () => {
-    setTempDate(null);
+    if (isPending) return;
     onCancel();
   };
 
@@ -63,11 +66,17 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
     <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={handleCancel}>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.cardBorder }]}>
             <ThemedText style={[styles.modalTitle, { color: colors.primaryText }]} type="heading">
               {title}
             </ThemedText>
-            <Pressable onPress={handleCancel} style={styles.closeButton}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close date picker"
+              disabled={isPending}
+              onPress={handleCancel}
+              style={styles.closeButton}
+            >
               <Ionicons name="close" size={24} color={colors.primaryText} />
             </Pressable>
           </View>
@@ -77,18 +86,28 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               value={tempDate || new Date()}
               mode="date"
               display={Platform.OS === "ios" ? "spinner" : "default"}
+              themeVariant={colorScheme ?? "light"}
+              textColor={colors.text}
               onChange={handleDateChange}
               minimumDate={minimumDate}
               maximumDate={maximumDate}
               style={styles.datePicker}
+              disabled={isPending}
             />
           </View>
+          {error && (
+            <ThemedText accessibilityRole="alert" style={{ color: colors.errorText }}>
+              {error}
+            </ThemedText>
+          )}
 
           {/* Action Buttons */}
           <View style={styles.modalActions}>
             <Pressable
               style={[styles.cancelButton, { borderColor: colors.buttonBorder }]}
               onPress={handleCancel}
+              accessibilityRole="button"
+              disabled={isPending}
             >
               <ThemedText style={[styles.cancelButtonText, { color: colors.primaryText }]}>
                 Cancel
@@ -98,9 +117,12 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
             <Pressable
               style={[styles.confirmButton, { backgroundColor: colors.primary }]}
               onPress={handleConfirm}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isPending, busy: isPending }}
+              disabled={isPending}
             >
-              <ThemedText style={[styles.confirmButtonText, { color: colors.background }]}>
-                Confirm
+              <ThemedText style={[styles.confirmButtonText, { color: Colors.light.primaryText }]}>
+                {isPending ? "Saving…" : "Confirm"}
               </ThemedText>
             </Pressable>
           </View>
@@ -130,13 +152,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0, 0, 0, 0.1)",
   },
   modalTitle: {
     flex: 1,
   },
   closeButton: {
-    padding: 4,
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   pickerContainer: {
     alignItems: "center",
@@ -152,6 +176,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cancelButton: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -164,6 +189,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   confirmButton: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 20,

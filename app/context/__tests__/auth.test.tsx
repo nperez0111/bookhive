@@ -6,6 +6,19 @@ const mockFetch = jest.fn();
 const mockOpenBrowser = jest.fn();
 const mockSecureSet = jest.fn().mockResolvedValue(undefined);
 const mockSecureDelete = jest.fn().mockResolvedValue(undefined);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+const callback = (account: string) => ({
+  type: "success",
+  url: `bookhive://oauth-callback?did=did:plc:${account}&handle=${account}.test&sid=sid-${account}`,
+});
 jest.mock("ofetch", () => ({
   ofetch: {
     create:
@@ -86,4 +99,96 @@ it("restores offline, keeps cancellation signed out, and never sends A's delayed
   expect(remounted.result.current.isRestoring).toBe(false);
   expect(remounted.result.current.isAuthenticated).toBe(false);
   expect(getAuthState()).toBeNull();
+});
+
+it("a newer OAuth attempt supersedes an older callback even if the newer attempt cancels", async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  const older = deferred<ReturnType<typeof callback>>();
+  mockOpenBrowser.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ type: "cancel" });
+  const first = result.current.signIn({ handle: "a.test" });
+  await expect(result.current.signIn({ handle: "b.test" })).resolves.toBe("cancelled");
+  older.resolve(callback("a"));
+  await expect(first).resolves.toBe("cancelled");
+  expect(getAuthState()).toBeNull();
+});
+
+it("removes obsolete credentials when a newer attempt starts during a SecureStore write", async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  const write = deferred<void>();
+  mockSecureSet.mockReturnValueOnce(write.promise);
+  mockOpenBrowser.mockResolvedValueOnce(callback("a")).mockResolvedValueOnce({ type: "cancel" });
+  const first = result.current.signIn({ handle: "a.test" });
+  await waitFor(() => expect(mockSecureSet.mock.results.at(-1)?.value).toBe(write.promise));
+  await expect(result.current.signIn({ handle: "b.test" })).resolves.toBe("cancelled");
+  const deletes = mockSecureDelete.mock.calls.length;
+  write.resolve();
+  await expect(first).resolves.toBe("cancelled");
+  expect(mockSecureDelete).toHaveBeenCalledTimes(deletes + 1);
+  expect(getAuthState()).toBeNull();
+});
+
+it("logout clears live credentials even when deleting stored credentials fails", async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  mockOpenBrowser.mockResolvedValueOnce(callback("a"));
+  await act(async () => {
+    await result.current.signIn({ handle: "a.test" });
+  });
+  const oldFetch = createSessionFetch();
+  mockSecureDelete.mockRejectedValueOnce(new Error("storage unavailable"));
+  await act(async () => {
+    const logout = result.current.signOut();
+    expect(getAuthState()).toBeNull();
+    await expect(logout).rejects.toThrow("storage unavailable");
+  });
+  expect(result.current.isAuthenticated).toBe(false);
+  await expect(oldFetch("/private")).rejects.toThrow("session changed");
+  mockOpenBrowser.mockResolvedValueOnce(callback("b"));
+  await act(async () => {
+    await result.current.signIn({ handle: "b.test" });
+  });
+  expect(getAuthState()?.sid).toBe("sid-b");
+  await act(async () => {
+    await result.current.signOut();
+  });
+});
+
+it("an OAuth callback arriving after logout cannot restore the old session", async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  const browser = deferred<ReturnType<typeof callback>>();
+  mockOpenBrowser.mockReturnValueOnce(browser.promise);
+  const login = result.current.signIn({ handle: "a.test" });
+  await act(async () => {
+    await result.current.signOut();
+  });
+  browser.resolve(callback("a"));
+  await expect(login).resolves.toBe("cancelled");
+  expect(getAuthState()).toBeNull();
+});
+
+it("an older OAuth callback cannot replace a newer successful login", async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  const browser = deferred<ReturnType<typeof callback>>();
+  mockOpenBrowser.mockReturnValueOnce(browser.promise).mockResolvedValueOnce(callback("b"));
+  const older = result.current.signIn({ handle: "a.test" });
+  await act(async () => {
+    await expect(result.current.signIn({ handle: "b.test" })).resolves.toBe("success");
+  });
+  browser.resolve(callback("a"));
+  await expect(older).resolves.toBe("cancelled");
+  expect(getAuthState()?.sid).toBe("sid-b");
+  await act(async () => {
+    await result.current.signOut();
+  });
+});
+
+it.each([
+  "bookhive://wrong-callback?did=did:plc:a&handle=a.test&sid=sid-a",
+  "bookhive://oauth-callback?did=did:plc:a&handle=a.test",
+])("rejects malformed OAuth callback %s without storing credentials", async (url) => {
+  const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+  const writes = mockSecureSet.mock.calls.length;
+  mockOpenBrowser.mockResolvedValueOnce({ type: "success", url });
+  await expect(result.current.signIn({ handle: "a.test" })).rejects.toThrow();
+  expect(getAuthState()).toBeNull();
+  expect(mockSecureSet).toHaveBeenCalledTimes(writes);
 });

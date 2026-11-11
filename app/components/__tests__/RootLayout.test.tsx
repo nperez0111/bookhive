@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { StatusBar } from "expo-status-bar";
 import RootLayout from "../../app/_layout";
 import { Colors } from "@/constants/Colors";
 
@@ -7,6 +8,7 @@ import { Colors } from "@/constants/Colors";
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn().mockResolvedValue("dark"),
   removeItem: jest.fn().mockResolvedValue(undefined),
+  setItem: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("expo-router", () => {
   const React = jest.requireActual<typeof import("react")>("react");
@@ -57,18 +59,49 @@ jest.mock("expo-splash-screen", () => ({
   hideAsync: async () => {},
 }));
 jest.mock("expo-updates", () => ({}));
-jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
+jest.mock("expo-status-bar", () => ({ StatusBar: jest.fn(() => null) }));
 jest.mock("react-native-reanimated", () => ({}));
-jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
+jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 62 }) }));
 jest.mock("@/components/NetworkErrorBoundary", () => ({
   NetworkErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock("@/components/NetworkStatusIndicator", () => ({ NetworkStatusIndicator: () => null }));
+jest.mock("@/components/NetworkStatusIndicator", () => ({
+  NetworkStatusIndicator: () => {
+    const React = jest.requireActual<typeof import("react")>("react");
+    const { Pressable, Text } = jest.requireActual<typeof import("react-native")>("react-native");
+    const { useTheme } = jest.requireActual<typeof import("@/context/theme")>("@/context/theme");
+    const { setThemeMode, isDark } = useTheme();
+    return React.createElement(
+      Pressable,
+      { accessibilityRole: "button", onPress: () => setThemeMode(isDark ? "light" : "dark") },
+      React.createElement(Text, null, "Toggle test theme"),
+    );
+  },
+}));
 
-it("starts with the real theme provider above every native color-scheme consumer", async () => {
+it("updates the iOS status background and system glyph tone with the theme, reserving the inset once", async () => {
   render(<RootLayout />);
-  await waitFor(() => expect(screen.getByTestId("navigation-theme")).toBeTruthy());
+  await waitFor(() =>
+    expect(screen.getByTestId("ios-status-area")).toHaveStyle({
+      backgroundColor: Colors.dark.background,
+      height: 62,
+    }),
+  );
   expect(screen.getByTestId("navigation-theme")).toHaveStyle({
     backgroundColor: Colors.dark.background,
   });
+  expect(screen.getByTestId("app-safe-area")).toHaveStyle({
+    paddingTop: 62,
+    backgroundColor: Colors.dark.background,
+  });
+  expect(jest.mocked(StatusBar).mock.calls.at(-1)?.[0]).toMatchObject({ style: "light" });
+  fireEvent.press(screen.getByRole("button", { name: "Toggle test theme" }));
+  expect(screen.getByTestId("ios-status-area")).toHaveStyle({
+    backgroundColor: Colors.light.background,
+  });
+  expect(screen.getByTestId("app-safe-area")).toHaveStyle({
+    paddingTop: 62,
+    backgroundColor: Colors.light.background,
+  });
+  expect(jest.mocked(StatusBar).mock.calls.at(-1)?.[0]).toMatchObject({ style: "dark" });
 });

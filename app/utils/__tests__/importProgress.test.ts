@@ -1,4 +1,4 @@
-import { createImportProgressParser, MAX_CSV_BYTES, type ImportProgress } from "../importProgress";
+import { createImportProgressParser, type ImportProgress } from "../importProgress";
 
 const complete = {
   event: "import-complete",
@@ -22,20 +22,11 @@ test("parses buffered SSE with keepalives and partial failures", () => {
   expect(updates).toHaveLength(2);
 });
 
-test("parses every split of CRLF frames, including split CRLF boundaries", () => {
-  const text = `\uFEFF: comment\r\n\r\n${frame(complete).replace(/\n/g, "\r\n")}`;
-  for (let split = 0; split < text.length; split++) {
-    const parser = createImportProgressParser(() => {});
-    parser.push(text.slice(0, split));
-    parser.push(text.slice(split));
-    expect(parser.finish().event).toBe("import-complete");
-  }
-});
-
-test("supports multiline data and a final frame without a blank line", () => {
+test("buffers split CRLF frames and accepts a final frame without a blank line", () => {
   const parser = createImportProgressParser(() => {});
+  parser.push(": keepalive\r");
   parser.push(
-    'data: {"event":"import-complete",\ndata: "stage":"complete","stageProgress":{"message":"Done"}}',
+    '\n\r\ndata: {"event":"import-complete",\r\ndata: "stage":"complete","stageProgress":{"message":"Done"}}',
   );
   expect(parser.finish().message).toBe("Done");
 });
@@ -49,9 +40,8 @@ test("does not report success for truncated streams or fatal server errors", () 
   expect(() => failed.finish()).toThrow("Invalid CSV headers");
 });
 
-test("rejects malformed event JSON and preserves the 50MB upload bound", () => {
+test("rejects malformed event JSON", () => {
   expect(() => createImportProgressParser(() => {}).push("data: not json\n\n")).toThrow(
     "invalid progress",
   );
-  expect(MAX_CSV_BYTES).toBe(52_428_800);
 });

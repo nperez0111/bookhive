@@ -1,10 +1,14 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
-import SearchScreen from "../../app/(tabs)/search";
-import LibraryScreen from "../../app/(tabs)/library";
+import SearchScreen from "../../app/search";
+import LibraryScreen from "../../app/library";
+import { router } from "expo-router";
+import { FlatList } from "react-native";
 
 let mockQuery: any;
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  router: { push: jest.fn(), canGoBack: jest.fn(() => true), back: jest.fn(), navigate: jest.fn() },
+}));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
 jest.mock("expo-document-picker", () => ({}));
 jest.mock("expo-haptics", () => ({}));
@@ -51,7 +55,17 @@ jest.mock("@/components/BookSearchModal", () => ({ BookSearchModal: () => null }
 jest.mock("@/components/TextPromptModal", () => ({ TextPromptModal: () => null }));
 jest.mock("@/components/StorageMeter", () => ({ StorageMeter: () => null }));
 jest.mock("@/components/ProgressBar", () => ({ ProgressBar: () => null }));
-jest.mock("@/components/BackNavigationHeader", () => ({ BackNavigationHeader: () => null }));
+jest.mock("@/components/BackNavigationHeader", () => ({
+  BackNavigationHeader: ({ onBackPress }: { onBackPress: () => void }) => {
+    const React = jest.requireActual<typeof import("react")>("react");
+    const { Pressable, Text } = jest.requireActual<typeof import("react-native")>("react-native");
+    return React.createElement(
+      Pressable,
+      { accessibilityRole: "button", accessibilityLabel: "Back", onPress: onBackPress },
+      React.createElement(Text, null, "Back"),
+    );
+  },
+}));
 jest.mock("@/components/PersonalBookCard", () => ({
   PersonalBookCard: ({ book }: { book: { title: string } }) => {
     const React = jest.requireActual<typeof import("react")>("react");
@@ -100,7 +114,10 @@ test.each([SearchScreen, LibraryScreen])(
   (Screen) => {
     const view = render(<Screen />);
     if (Screen === SearchScreen)
-      fireEvent.changeText(view.getByPlaceholderText(/Search for books/), "Earthsea");
+      fireEvent.changeText(
+        view.getByLabelText("Search catalogue by title, author or ISBN"),
+        "Earthsea",
+      );
     expect(view.getByText("Earthsea")).toBeTruthy();
     mockQuery.isFetching = true;
     view.rerender(<Screen />);
@@ -122,3 +139,39 @@ test.each([SearchScreen, LibraryScreen])(
     expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
   },
 );
+
+test("search retains its controls while results scroll and allows first-tap navigation with a keyboard", () => {
+  const view = render(<SearchScreen />);
+  fireEvent.changeText(
+    view.getByLabelText("Search catalogue by title, author or ISBN"),
+    "Earthsea",
+  );
+  const list = view.UNSAFE_getByType(FlatList);
+  expect(list.props.keyboardShouldPersistTaps).toBe("handled");
+  expect(list.props.keyboardDismissMode).toBe("on-drag");
+  expect(view.getByText("1+ results")).toBeTruthy();
+  expect(view.getByText("Book language: en")).toBeTruthy();
+  fireEvent.press(view.getByText("Earthsea"));
+  expect(router.push).toHaveBeenCalledWith("/book/bk_one");
+  fireEvent.press(view.getByRole("button", { name: "Clear search" }));
+  expect(view.getByText("Find your next book, or one you already read.")).toBeTruthy();
+  fireEvent.press(view.getByRole("button", { name: "Back" }));
+  expect(router.back).toHaveBeenCalled();
+});
+
+test("search hides stale counts and page actions while the next query debounces", () => {
+  const view = render(<SearchScreen />);
+  fireEvent.changeText(
+    view.getByLabelText("Search catalogue by title, author or ISBN"),
+    "Earthsea",
+  );
+  expect(view.getByText("Book language: en")).toBeTruthy();
+  expect(view.getByText("1+ results")).toBeTruthy();
+  mockQuery.isDebouncing = true;
+  view.rerender(<SearchScreen />);
+  fireEvent.changeText(view.getByLabelText("Search catalogue by title, author or ISBN"), "Dune");
+  expect(view.queryByText("1+ results")).toBeNull();
+  expect(view.queryByText("Load more")).toBeNull();
+  expect(view.queryByText("Earthsea")).toBeNull();
+  expect(view.getByText("Searching for books...")).toBeTruthy();
+});

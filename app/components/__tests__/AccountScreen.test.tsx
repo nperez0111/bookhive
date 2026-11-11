@@ -1,6 +1,6 @@
 import { Alert } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import AccountScreen from "../../app/(tabs)/account";
+import AccountScreen from "../../app/account";
 
 const mockDid = "did:plc:reader";
 const mockDelete = jest.fn();
@@ -85,3 +85,4 @@ test.each(["delete", "resync"])("pending %s blocks DID deletion", (pending) => {
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(mockDelete).not.toHaveBeenCalled();
 });
+jest.mock("@/hooks/useScreenTopInset", () => ({ useScreenTopInset: () => 0 }));

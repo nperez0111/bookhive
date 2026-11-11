@@ -31,12 +31,12 @@ export function ListItem({
 
   return (
     <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
       onPress={onPress}
       disabled={disabled}
       style={[
         styles.container,
         {
-          backgroundColor: colors.cardBackground,
           borderColor: colors.cardBorder,
           opacity: disabled ? 0.6 : 1,
         },
@@ -47,8 +47,8 @@ export function ListItem({
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatar} />
         ) : icon ? (
-          <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
-            <Ionicons name={icon} size={18} color={colors.primary} />
+          <View style={styles.iconContainer}>
+            <Ionicons name={icon} size={20} color={colors.secondaryText} />
           </View>
         ) : null}
         <View style={styles.texts}>
@@ -75,9 +75,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 52,
+    paddingHorizontal: 4,
     paddingVertical: 12,
   },
   left: {

@@ -27,7 +27,7 @@ export function InfinitePaginationFooter({
   loadMoreLabel = "Load more",
   loadingLabel = "Loading…",
 }: Props) {
-  const color = useThemeColor({}, "primary");
+  const color = useThemeColor({}, "accentForeground");
   if (error) {
     return (
       <QueryErrorHandler

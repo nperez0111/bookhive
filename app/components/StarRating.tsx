@@ -26,8 +26,8 @@ export const StarRating: React.FC<StarRatingProps> = ({
 
   return (
     <View style={[{ alignItems: "center", gap: 8 }, style]}>
-      <ThemedText style={{ color: colors.primary, fontWeight: "600" }}>
-        {((rating ?? 0) / 2).toFixed(1)} / 5.0
+      <ThemedText style={{ color: colors.primaryText, fontWeight: "600" }}>
+        {rating ? `${(rating / 2).toFixed(1)} / 5.0` : "Not rated"}
       </ThemedText>
       {/* Explicit targets avoid mixing screen-space gestures with parent-relative layout.
           Two rows keep all ten half-star choices tappable on narrow screens. */}
@@ -47,11 +47,13 @@ export const StarRating: React.FC<StarRatingProps> = ({
                   if (!inactive) onRate?.(value);
                 }}
                 style={({ pressed }) => ({
-                  minWidth: 40,
-                  minHeight: 48,
+                  minWidth: 52,
+                  minHeight: 64,
                   alignItems: "center",
                   justifyContent: "center",
                   borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: selected ? colors.text : colors.tertiaryText,
                   backgroundColor: selected ? colors.activeBackground : "transparent",
                   opacity: inactive ? 0.6 : 1,
                   transform: [{ scale: pressed ? 0.96 : 1 }],
@@ -59,8 +61,8 @@ export const StarRating: React.FC<StarRatingProps> = ({
               >
                 <Ionicons
                   name={value % 2 ? "star-half-sharp" : "star"}
-                  size={Math.min(starSize, 24)}
-                  color={selected ? colors.primary : colors.tertiaryText}
+                  size={Math.min(starSize, 32)}
+                  color={selected ? colors.text : colors.tertiaryText}
                 />
                 <ThemedText type="caption">{value / 2}</ThemedText>
               </Pressable>
@@ -76,7 +78,13 @@ export const StarRating: React.FC<StarRatingProps> = ({
         onPress={() => {
           if (!inactive) onRate?.(0);
         }}
-        style={{ minHeight: 40, justifyContent: "center", opacity: inactive || !rating ? 0.5 : 1 }}
+        style={{
+          minWidth: 44,
+          minHeight: 44,
+          paddingHorizontal: 12,
+          justifyContent: "center",
+          opacity: inactive || !rating ? 0.5 : 1,
+        }}
       >
         <ThemedText type="caption">Clear rating</ThemedText>
       </Pressable>

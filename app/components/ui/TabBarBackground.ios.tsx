@@ -13,7 +13,7 @@ export default function BlurTabBarBackground() {
       style={[
         StyleSheet.absoluteFill,
         {
-          backgroundColor: colorScheme === "dark" ? "#000000" : "#ffffff",
+          backgroundColor: colors.background,
           borderTopColor: colors.cardBorder,
           borderTopWidth: StyleSheet.hairlineWidth,
         },

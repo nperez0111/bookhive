@@ -1,454 +1,267 @@
 # BookHive Mobile App — Architecture
 
-Expo/React Native app (SDK 57, React 19.2, RN 0.86). Bun workspace, TypeScript strict mode, file-based routing via expo-router. See `../docs/notes/mobile-feature-parity.md` for the web/native audit and release checklist.
-
-## Entry Points
-
-| File                     | Purpose                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| `app/_layout.tsx`        | Root layout — Theme wraps the themed content, Auth, Query and Navigation providers |
-| `app/(auth)/_layout.tsx` | Auth stack for unauthenticated users                                               |
-| `app/(tabs)/_layout.tsx` | 5-tab bottom navigation for authenticated users                                    |
-
-## Navigation
-
-**Root** waits for `isRestoring`, then splits on `isAuthenticated`:
-
-- **Auth Stack** → Login, Register
-- **Tabs Stack** → Home, Feed, Explore, Search, Profile
-
-### Bottom Tabs
-
-| Tab     | File                  | Purpose                                                             |
-| ------- | --------------------- | ------------------------------------------------------------------- |
-| Home    | `(tabs)/index.tsx`    | Library overview — stats, shelves (Reading, Want to Read, Finished) |
-| Feed    | `(tabs)/feed.tsx`     | Activity feed with Friends/All/Tracking tabs                        |
-| Explore | `(tabs)/explore.tsx`  | Featured genres/authors and searchable genre/author directories     |
-| Search  | `(tabs)/search.tsx`   | Book search with debounce & collapsible header                      |
-| Profile | `(tabs)/settings.tsx` | User profile, theme toggle, sign out                                |
-
-### Detail Routes (hidden from tab bar)
-
-| Route                       | File                                  | Purpose                                                                      |
-| --------------------------- | ------------------------------------- | ---------------------------------------------------------------------------- |
-| `/book/[id]`                | `(tabs)/book/[id].tsx`                | Book detail — cover, description, status, rating, review, progress, comments |
-| `/books/[status]`           | `(tabs)/books/[status].tsx`           | Shelf filtered by status with sort options                                   |
-| `/profile/[did]`            | `(tabs)/profile/[did].tsx`            | Other user's profile with follow button                                      |
-| `/profile/[did]/stats`      | `(tabs)/profile/[did]/stats.tsx`      | Reading statistics by year                                                   |
-| `/explore/genres/[genre]`   | `(tabs)/explore/genres/[genre].tsx`   | Books by genre, sortable & paginated                                         |
-| `/explore/authors/[author]` | `(tabs)/explore/authors/[author].tsx` | Books by author, sortable & paginated                                        |
-| `/library`                  | `(tabs)/library/index.tsx`            | Personal library — uploads, shelves, synced-document triage                  |
-| `/sync`                     | `(tabs)/sync/index.tsx`               | E-Reader sync — KOSync/OPDS credentials and KOReader setup                   |
-| `/my-books`                 | `(tabs)/my-books.tsx`                 | Search/filter/sort tracked books, list/grid views and owned toggles          |
-| `/lists`                    | `(tabs)/lists/index.tsx`              | Own or another user's public catalogue shelves                               |
-| `/lists/[uri]`              | `(tabs)/lists/[uri].tsx`              | Public shelf items; owner metadata, tags and ordering controls               |
-| `/import`                   | `(tabs)/import.tsx`                   | Goodreads, StoryGraph and Hardcover CSV import with progress/results         |
-| `/account`                  | `(tabs)/account.tsx`                  | Re-sync records and explicitly confirm BookHive account deletion             |
-
-My Books (tracked AT Protocol records), catalogue shelves (public AT URIs), and
-ebook shelves (private numeric IDs) are three distinct domains, not interchangeable
-views of one library. Home's My Books action and the Profile tab expose the new
-management screens. The language picker is searchable and scrollable on both
-platforms; never use a many-button Android alert for this.
-
-Account deletion requires an exactly typed displayed handle or the signed-in DID
-before opening its destructive confirmation alert. Always expose the DID option,
-even with a cached profile or stored handle: only the server knows whether its
-profile lookup is unavailable. The server accepts the DID only in that case;
-otherwise it requires the exact current handle. Pending mutations disable submission.
-
-### Personal Library & E-Reader Sync
-
-Two screens over the server's personal-library and KOSync features. `/library`
-is "the files"; `/sync` is "how to connect a device". Both are reachable from
-the Profile tab; `/library` also has a Home-tab quick action showing the file
-count.
-
-**`/library`** is a 2-column `FlatList` of `PersonalBookCard`s with a shelf-pill
-header, an amber triage strip for synced documents that need a match, and an
-"Also tracking" footer for documents with no uploaded file. Tapping a card opens
-an `ActionSheet` (download/share, match/unmatch, shelves, delete). There is no
-in-app reader: the OS share sheet hands the authenticated download to another
-app. Search/sort and shelf changes reset the cursor. Uploads go through
-`expo-document-picker` → `POST /library/upload` as multipart, which lets React
-Native stream the file off disk and drive a determinate progress bar from
-`XMLHttpRequest.upload.onprogress`.
-
-**Storage quota.** Every `getPersonalLibrary` page carries a `storage`
-`{usedBytes, quotaBytes}`, so `StorageMeter` stays current off the queries the
-screen already runs — there is no separate usage request and nothing extra to
-invalidate. Three guards hang off it, in increasing order of how much they cost
-the user to hit:
-
-- The upload button dims and explains itself when the library is full, rather
-  than being `disabled` — a dead control in a header answers no questions.
-- A picked file larger than the remaining quota is refused before a byte goes
-  over the wire. This is a _hint_, not the rule: `storage` is as old as the last
-  fetch, and the server evaluates the quota inside the INSERT.
-- A 413 that gets through arrives as an `UploadError` with
-  `code: "QuotaExceeded"`, whose message is the server's own prose (rendered
-  verbatim) and which triggers a library refetch, because a rejection means the
-  meter was showing room that wasn't there.
-
-`quotaBytes <= 0` means the deployment has quotas switched off, and so does an
-older server that sends no `storage` at all; both must read as "no ceiling",
-never as "full", or every upload on such a server would be blocked client-side.
-
-**`/sync`** shows a connection-status card (derived from whether any documents
-have synced), the KOSync server URL, OPDS catalog URL, username and derived
-password with reveal/copy/reset, and the seven KOReader setup steps. One of those
-steps is load-bearing rather than cosmetic: KOReader's "Send document metadata"
-toggle defaults to **off**, and with it off a sync request identifies the book by
-a single partial-MD5 hash, so a book the user never uploaded here has nothing to
-match against. The web setup instructions say the same thing — keep the two lists
-in step.
-
-Sync documents are surfaced in three places by state: `hasFile` → folded into
-the grid card that shares its content hash; unmatched → triage strip; matched or
-dismissed → "Also tracking".
-
-## State Management
-
-### TanStack React Query (data fetching & caching)
-
-- GC time: 24 hours
-- The root query retry policy handles raw fetch errors and enhanced network errors:
-  401/403/404 and cancellations never retry; transient failures use bounded backoff.
-  Hooks inherit this policy; mutation retries are disabled by default
-  because replaying a PDS write can create duplicates or rotate reread history twice.
-- A new QueryClient is created for each session epoch. Persisted non-sensitive
-  queries are partitioned by API origin and DID; mutations and sync credentials
-  are never persisted. Legacy shared cache is removed.
-- Each epoch-scoped client owns one book-mutation coordinator; there is no second
-  account-keyed coordinator map. Guarded sign-out owns cancellation/cache teardown,
-  including after account deletion, so a delayed completion cannot sign out a new
-  session.
-- Every mutation captures `createSessionFetch()` during render/before any async
-  `onMutate`: clearing a QueryClient does not cancel a running mutation. Requests
-  bound to an old session abort/reject rather than use a later account's cookie.
-
-### Query Hooks (`hooks/useBookhiveQuery.ts`)
-
-| Hook                    | Purpose                               |
-| ----------------------- | ------------------------------------- |
-| `useProfile(did?)`      | User profile (books, stats, activity) |
-| `useSearchBooks(query)` | Book search (300ms debounce)          |
-| `useBookInfo(hiveId)`   | Book with comments, reviews, progress |
-| `useFeed(tab)`          | Infinite cursor activity feed by tab  |
-| `useExplore()`          | Top genres & authors                  |
-| `useUpdateBook()`       | Mutation: update status/rating/review |
-| `useUpdateComment()`    | Mutation: add/edit comments           |
-| `useDeleteBook()`       | Mutation: delete book                 |
-| `useFollow()`           | Mutation: follow user                 |
-| `useUnfollow()`         | Mutation: unfollow user               |
-
-Book updates/deletes are serialized per viewer/book and reconcile the canonical
-`UserBookView` from `/api/update-book`; application-level failures must roll back,
-not masquerade as successful HTTP responses. Owned inputs are boolean (the read
-model may contain numeric SQLite booleans). Progress-only writes omit status so
-the server owns lifecycle transitions. Review/status/date clearing uses explicit
-empty values. `BookActionCard` keeps date-clear controls; `ReadingHistory` shows
-previous reads and the newest viewer-scoped progress entries. Book detail also
-links to public catalogue shelves. User `stars` in My Books/profile/detail divide
-the stored 1–10 value by two. Stats' domain `averageRating` is already 0–5, but
-XRPC encodes it as a fixed-point integer ×10 (`42` means `4.2`); native yearly and
-all-time stats divide that wire value by ten, not by two.
-
-Catalogue list mutations use exact owner-keyed snapshots, owner-only ordering by
-item AT URI, optional tags, explicit description clearing and visible failures.
-Search/discovery debounce before selecting query keys, append pages, and reset on
-filter changes. Feed refresh starts with a fresh cursor; render activity time from
-the indexed-time contract, not the user's backdated reading dates.
-
-`hooks/useAuthorDirectory.ts` separately owns debounced name search, language-keyed
-infinite pages and retries for the web-equivalent top-500 author directory. Its
-`listAuthors` response supplies the next offset and total after filtering; the UI
-does not infer a whole-catalogue author count from that bounded directory.
-
-`hooks/useDebounce.ts` owns only the delayed string value shared by book search
-and the author directory. Normalization, cancellation, query keys and empty-query
-behavior remain in the callers (empty book search is disabled; empty author search
-loads the directory).
-
-Author/genre detail routes share `components/DiscoveryBooksScreen.tsx`, a
-presentation-only results grid with loading/error/retry and load-more controls.
-Each route retains its own query hook, language reset key and count contract:
-server total for authors, loaded unique count plus a more indicator for genres.
-`components/InfinitePaginationFooter.tsx` shares next-page/retry presentation across
-that grid, search, discovery directories and the ebook library. Callers retain
-visibility/reset rules and loaded cards; errors retry the failed page, and any
-fetch blocks another load-more.
-
-Catalogue list query/cache shapes use the generated `getList`/`getUserLists`
-types. Metadata edits build one presence-sensitive patch for detail and owner-list
-caches, preserving explicit empty description/tags and false ordering. Session
-fences and exact-key rollback snapshots remain in the mutation hooks.
-
-Book detail holds progress inputs and their canonical source key in one local
-draft object. Canonical progress changes replace all draft fields together;
-unrelated updates preserve them. Manual percent `null` means auto-calculation,
-whereas an empty string remains intentional; editing pages/chapters restores auto.
-Page/chapter inputs share typed descriptors and one change handler, while manual
-percentage stays separate. My Books, status shelves and profiles reuse `BookCard`
-rows; ownership controls remain outside navigation. Cards/comments use the shared
-`StarDisplay` rather than separate rating renderers.
-
-#### Personal library & sync hooks
-
-| Hook                                                       | Purpose                                        |
-| ---------------------------------------------------------- | ---------------------------------------------- |
-| `usePersonalLibrary(shelfId?)`                             | Infinite query of uploaded books (24/page)     |
-| `storageFromLibrary(data)`                                 | Storage usage out of a library result (helper) |
-| `usePersonalShelves()`                                     | Shelves with book counts                       |
-| `useSyncDocuments()`                                       | Synced e-reader documents                      |
-| `useSyncPassword()` / `useRotateSyncPassword()`            | Derived KOSync/OPDS password, and rotating it  |
-| `useUploadPersonalBook()`                                  | Multipart upload with progress (XHR)           |
-| `useDeletePersonalBook()`                                  | Delete a file (optimistic)                     |
-| `useLinkPersonalBook()` / `useUnlinkPersonalBook()`        | Match a file to a catalog entry                |
-| `useCreate/Update/DeletePersonalShelf()`                   | Shelf CRUD                                     |
-| `useAddToPersonalShelf()` / `useRemoveFromPersonalShelf()` | Shelf membership                               |
-| `useLinkSyncDocument()` / `useDismissSyncDocument()`       | Match a document, or mark it "not on BookHive" |
-| `useRenameSyncDocument()` / `useDeleteSyncDocument()`      | Rename / forget a document (both optimistic)   |
-
-Exported types: `PersonalBook`, `PersonalShelf`, `PersonalStorage`, `SyncDoc`, and
-`UploadError` (a real class — it carries the server's `code`, so a caller can
-tell a quota rejection from a dropped connection and act on it).
-
-### Context Providers
-
-| Provider        | File                | Persists to                      | Purpose                                               |
-| --------------- | ------------------- | -------------------------------- | ----------------------------------------------------- |
-| `AuthProvider`  | `context/auth.tsx`  | Native SecureStore (`authState`) | DID, handle, session ID; migrates legacy AsyncStorage |
-| `ThemeProvider` | `context/theme.tsx` | AsyncStorage                     | Light/dark/system preference                          |
-
-The root `ThemeProvider` must wrap `RootLayoutContent` before its first
-`useColorScheme()` call. A provider returned by that same consumer cannot supply
-its context. The root-layout startup test deliberately uses the real theme hook
-and provider so this cannot be hidden by screen-level mocks.
-
-## API Layer
-
-**HTTP client**: `authFetch` (ofetch wrapper in `context/auth.tsx`)
-
-- Base URL: `EXPO_PUBLIC_API_URL`, defaulting to `https://bookhive.buzz` even in dev.
-  Set an explicit reachable development origin; localhost on a phone is the phone.
-- Auto-attaches session cookie (`sid=`)
-- Sends app version, platform, platform version headers
-
-### Endpoints
-
-| Endpoint                                                                                      | Method | Purpose                                             |
-| --------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------- |
-| `/xrpc/buzz.bookhive.searchBooks?q=`                                                          | GET    | Search books                                        |
-| `/xrpc/buzz.bookhive.getBook?id=`                                                             | GET    | Book detail with comments                           |
-| `/xrpc/buzz.bookhive.getProfile?did=`                                                         | GET    | User profile                                        |
-| `/xrpc/buzz.bookhive.getFeed?tab=&cursor=`                                                    | GET    | Cursor activity feed                                |
-| `/xrpc/buzz.bookhive.getExplore`                                                              | GET    | Genres & top authors                                |
-| `/xrpc/buzz.bookhive.listAuthors`                                                             | GET    | Paged language-aware web author directory (top 500) |
-| `/api/update-book`                                                                            | POST   | Update book status/rating/review                    |
-| `/api/update-comment`                                                                         | POST   | Add/edit comments                                   |
-| `/books/:hiveId`                                                                              | DELETE | Delete book                                         |
-| `/api/follow`                                                                                 | POST   | Follow user                                         |
-| `/api/unfollow`                                                                               | POST   | Unfollow user                                       |
-| `/xrpc/buzz.bookhive.{getUserLists,getList}`                                                  | GET    | Public catalogue shelves                            |
-| `/xrpc/buzz.bookhive.{createList,updateList,deleteList,addToList,removeFromList,reorderList}` | POST   | Catalogue shelf writes                              |
-| `/xrpc/buzz.bookhive.getReadingStats`                                                         | GET    | Yearly stats plus additive all-time fallback        |
-| `/xrpc/buzz.bookhive.getPersonalLibrary`                                                      | GET    | Uploaded books (paginated)                          |
-| `/xrpc/buzz.bookhive.getPersonalBook`                                                         | GET    | Single personal book detail                         |
-| `/xrpc/buzz.bookhive.uploadPersonalBook`                                                      | POST   | Upload a personal book                              |
-| `/xrpc/buzz.bookhive.deletePersonalBook`                                                      | POST   | Delete a personal book file                         |
-| `/xrpc/buzz.bookhive.linkPersonalBook`                                                        | POST   | Link file to a hive book                            |
-| `/xrpc/buzz.bookhive.unlinkPersonalBook`                                                      | POST   | Unlink file from a hive book                        |
-| `/xrpc/buzz.bookhive.*PersonalShelf`                                                          | POST   | Shelf CRUD & membership                             |
-| `/library/upload`                                                                             | POST   | Multipart ebook upload                              |
-| `/library/covers/:hash`                                                                       | GET    | Cover extracted from a file                         |
-| `/library/shelves`                                                                            | GET    | Shelves with book counts                            |
-| `/library/sync/documents`                                                                     | GET    | Synced e-reader documents                           |
-| `/library/sync/{link,dismiss,rename,delete}`                                                  | POST   | Manage a synced document                            |
-| `/settings/sync/password`                                                                     | GET    | Derived KOSync/OPDS password                        |
-| `/settings/sync/rotate`                                                                       | POST   | Rotate the sync password                            |
-| `/mobile/login?handle=&redirect_uri=`                                                         | GET    | OAuth login                                         |
-| `/mobile/refresh-token`                                                                       | GET    | Refresh session                                     |
-| `/xrpc/buzz.bookhive.resyncAccount`                                                           | POST   | Re-fetch BookHive records; strict JSON `{}`         |
-| `/xrpc/buzz.bookhive.deleteAccount`                                                           | POST   | Delete BookHive data; strict JSON `{confirmHandle}` |
-| `/import/{goodreads,storygraph,hardcover}`                                                    | POST   | Multipart `export` CSV, streamed progress/results   |
-
-## Authentication
-
-1. User enters Bluesky handle on login screen
-2. App opens browser → `/mobile/login?handle=X&redirect_uri=bookhive://oauth-callback`
-3. Bluesky OAuth completes → redirects to `bookhive://oauth-callback?did=X&handle=X&sid=X`
-4. Validated callback stores `{ did, handle, sid }` in AuthContext + native SecureStore
-5. On app launch: `/mobile/refresh-token` refreshes session
-6. Logout immediately clears the global session, aborts old requests, removes the
-   viewer's query client and stored credentials, then redirects to login.
-
-Canceled OAuth is not a successful sign-in. Refresh returns terminal 401 only for
-invalid credentials, including the SDK's missing/deleted-session errors; temporary
-restore failures and timeouts return 503 and preserve the saved session/offline
-cache. App launch exposes an explicit restoring state. On web,
-native session credentials are not persisted into insecure browser storage.
-
-The error screen's explicit **Sign In** action calls `signOut()` and lets the root
-protected navigation present login; pushing an auth route while credentials still
-exist is blocked. Displaying an error alone never clears the session, including
-transient server/network failures. The navigation regression uses the real root
-guards and AuthProvider with a restored account, and checks that stale navigation
-cannot send the signed-out viewer back into tabs. Jest transforms the router's
-ESM `standard-navigation` dependency for this integration test.
-The Jest module mapper also replaces Expo's development message socket for every
-Bun peer instance. The preset's instance-local mock can miss the router's Expo
-copy on CI, causing it to read a null native bundle URL before tests even run.
-
-Account deletion removes BookHive PDS records as well as local indexes/personal
-files; it does **not** delete a Bluesky account or unrelated posts. The native
-adapter shares the web deletion core and revokes/destroys the OAuth session only
-after cleanup succeeds. CSV import reuses the existing server pipeline and limit,
-supports incremental SSE or buffered native XHR responses, and reports partial
-failures without retrying a potentially accepted import.
-
-## Components
-
-### Themed Primitives
-
-| Component         | Variants                                       |
-| ----------------- | ---------------------------------------------- |
-| `ThemedView`      | default, card, surface                         |
-| `ThemedText`      | title, heading, label, body, caption, overline |
-| `ThemedButton`    | primary, secondary, outline, ghost × sm/md/lg  |
-| `ThemedTextInput` | Themed text input wrapper                      |
-| `ThemedCard`      | elevated, outlined                             |
-| `GradientView`    | primary, secondary, warm, cool                 |
-
-### Book Components
-
-| Component                 | Purpose                         |
-| ------------------------- | ------------------------------- |
-| `BookCard`                | Book with cover, title, authors |
-| `BookGridItem`            | Grid variant of book card       |
-| `BookActionCard`          | Status/rating action card       |
-| `StarRating`              | Interactive 1–5 star selector   |
-| `CommentsSection`         | Comments/reviews list           |
-| `StatusSelectionModal`    | Modal for changing book status  |
-| `DeleteConfirmationModal` | Delete confirmation dialog      |
-| `DatePickerModal`         | Date picker for reading dates   |
-| `PersonalBookCard`        | Grid card for an uploaded file  |
-| `StorageMeter`            | Library storage used vs. quota  |
-| `BookSearchModal`         | Catalog picker for matching     |
-
-### Layout & Navigation
-
-| Component              | Purpose                          |
-| ---------------------- | -------------------------------- |
-| `BackNavigationHeader` | Header with back button          |
-| `ParallaxScrollView`   | Scroll view with parallax header |
-| `SectionHeader`        | Section title with icon          |
-| `ListItem`             | Settings list item with chevron  |
-| `Divider`              | Visual divider                   |
-| `ActionSheet`          | Themed bottom sheet of actions   |
-| `TextPromptModal`      | Single-field prompt sheet        |
-| `ProgressBar`          | Animated 0–1 progress bar        |
-
-`ActionSheet` is the house menu — prefer it over `Alert.alert` with more than
-two buttons, which reads as a warning and stacks badly on Android.
-`TextPromptModal` exists because `Alert.prompt` is iOS-only.
-
-### Animation
-
-| Component          | Purpose                       |
-| ------------------ | ----------------------------- |
-| `FadeInImage`      | Image with fade-in            |
-| `AnimatedListItem` | Staggered list item animation |
-| `AnimatedTabIcon`  | Tab icon with scale on focus  |
-| `HapticTab`        | Tab with haptic feedback      |
-
-### Error Handling
-
-| Component                | Purpose                      |
-| ------------------------ | ---------------------------- |
-| `NetworkStatusIndicator` | Banner showing connectivity  |
-| `NetworkErrorView`       | Full-screen error with retry |
-| `NetworkErrorBoundary`   | Error boundary wrapper       |
-| `QueryErrorHandler`      | TanStack Query error display |
-
-## Styling
-
-- **Color system**: Light & dark palettes in `constants/Colors.ts` (amber/gold primary)
-- **Typography**: SpaceMono-Regular custom font, variant system via ThemedText
-- **Spacing**: 16px base unit
-- **Shadows**: Platform-specific (iOS shadow, Android elevation)
-- **Theme**: `useColorScheme()` and `useThemeColor()` hooks, system preference detection
-
-## Utilities
-
-Native runtime imports may share platform-neutral modules from `src/core` and
-`src/lib` (for example, book lifecycle rules and status constants). Keep those
-imports free of Bun, database, filesystem and server-environment dependencies;
-generated API contracts are type-only imports. Verify boundary changes with both
-native bundle exports. The byte-identical `formatBytes` copy in
-`utils/personalLibrary.ts` is intentionally retained, not a Metro limitation.
-
-| File                                          | Purpose                                                                          |
-| --------------------------------------------- | -------------------------------------------------------------------------------- |
-| `utils/htmlToText.tsx`                        | Parse HTML → React Native Text with nested tags                                  |
-| `utils/calculatePercentFromProgressValues.ts` | Progress percentage calculation                                                  |
-| `utils/networkErrorHandler.ts`                | Error classification (network/timeout/server/auth/404) & retry logic             |
-| `utils/navigation.ts`                         | Navigation helpers                                                               |
-| `utils/personalLibrary.ts`                    | Cover source resolution (incl. the `sid` cookie), size/author/percent formatting |
-
-## Key Dependencies
-
-| Package                                   | Version          | Purpose                            |
-| ----------------------------------------- | ---------------- | ---------------------------------- |
-| expo                                      | 57.0.31          | Framework                          |
-| expo-router                               | 57.0.29          | File-based routing                 |
-| @tanstack/react-query                     | ^5.100.10        | Data fetching & caching            |
-| react-native                              | 0.86.3           | Runtime                            |
-| react-native-reanimated                   | 4.5.1            | Animations                         |
-| ofetch                                    | 1.5.1            | HTTP client                        |
-| @react-native-async-storage/async-storage | 2.2.0            | Persistent storage                 |
-| date-fns                                  | ^4.1.0           | Date formatting                    |
-| @react-native-community/netinfo           | 12.0.1           | Network detection                  |
-| expo-document-picker                      | 57.0.3           | Picking ebook/CSV files            |
-| expo-clipboard                            | 57.0.2           | Copying sync credentials           |
-| expo-secure-store                         | 57.0.4           | Native credential storage          |
-| expo-file-system / expo-sharing           | 57.0.7 / 57.0.24 | Authenticated ebook download/share |
-
-## Build & Deploy
-
-| Command                              | Purpose                         |
-| ------------------------------------ | ------------------------------- |
-| `bun run start`                      | Expo dev server                 |
-| `bun run ios`                        | iOS simulator                   |
-| `bun run android`                    | Android emulator                |
-| `bun run test`                       | Jest tests                      |
-| `bun run test:run`                   | Non-watch CI Jest tests         |
-| `bun run typecheck` / `bun run lint` | Native TypeScript / ESLint      |
-| `bun run export:check`               | Export iOS and Android bundles  |
-| `bun run ios:build`                  | EAS build for iOS               |
-| `bun run ios:submit`                 | Submit to App Store             |
-| `bun run android:build`              | EAS build for Android           |
-| `bun run android:submit`             | Submit to Google Play           |
-| `bun run update:production`          | OTA update (production channel) |
-| `bun run update:staging`             | OTA update (staging channel)    |
-
-**EAS Profiles** (`eas.json`):
-
-- `development` — dev client, internal distribution
-- `preview` — staging channel, internal distribution
-- `production` — production channel, auto-increment version
-
-**App Config** (`app.json`):
-
-- Bundle ID: `buzz.bookhive.app`
-- Version: 1.3.0 (native runtime changes require new binaries)
-- Deep link scheme: `bookhive://`
-- New Architecture enabled
-
-SDK 57 is the conservative supported upgrade, including the newer Hermes/RN
-patch line rather than the SDK 56 baseline. Exact compatible versions live in
-`package.json`/`bun.lock`; use `expo install --check` before changing native deps.
-Release commands pin EAS CLI. Version bumps never stage or commit changes.
-Foreground OTA checks may download an update but do not automatically reload and
-discard unsaved edits; activation waits for the next cold start (or an explicit
-user-approved reload). See `README.md` for device/build commands.
+Expo SDK 57 / React 19.2 / React Native 0.86, strict TypeScript and expo-router.
+Exact versions live in `package.json` and the shared root `bun.lock`.
+See [README.md](README.md) for setup/build commands and
+[release checks](../docs/notes/mobile-feature-parity.md) before shipping.
+Paths below are relative to `app/`.
+
+## Navigation and screen ownership
+
+`app/_layout.tsx` puts `ThemeProvider` above the first `useColorScheme()` consumer,
+then supplies authentication, the epoch-scoped QueryClient and navigation. A
+provider returned by its consumer cannot supply that consumer's context.
+The root waits for session restoration before choosing protected auth/main routes.
+
+| Route/module                                                      | Owns                                                                  |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `app/(auth)/`                                                     | Login and registration                                                |
+| `app/(tabs)/index.tsx`                                            | Home reading overview                                                 |
+| `app/(tabs)/my-books.tsx`                                         | Tracked books; Library tools opens shelves, stats, imports and Ebooks |
+| `app/(tabs)/explore.tsx`                                          | Discover: search, community feed, genre/author browsing               |
+| `app/(tabs)/me.tsx`                                               | Signed-in reader's profile; gear opens settings                       |
+| `app/book/[id].tsx`, `app/books/[status].tsx`                     | Book detail and complete status shelves                               |
+| `app/profile/[did].tsx`, `app/profile/[did]/stats.tsx`            | Public profiles and reading stats                                     |
+| `app/search.tsx`, `app/feed.tsx`, `app/explore/{genres,authors}/` | Search, feed and catalogue results                                    |
+| `app/lists/`                                                      | Public catalogue shelves and owner editing                            |
+| `app/library/`, `app/sync/`                                       | Private Ebooks and e-reader setup                                     |
+| `app/settings.tsx`, `app/account.tsx`, `app/import.tsx`           | Preferences, account maintenance and CSV imports                      |
+
+Only the four primary screens belong to `(tabs)`. Secondary routes push onto the
+authenticated root native Stack above the retained tab shell. Hidden tab entries
+do **not** provide native stack gestures. iOS swipe-back and Android Back pop real
+history; direct links without history use `BackNavigationHeader`'s Home fallback.
+Sign-out must protect every secondary route as well as the tabs.
+
+Three domains must stay distinct: My Books tracks public AT Protocol book records;
+catalogue shelves use public AT URIs; ebook shelves use private numeric IDs.
+Public profile previews never import editable tracked-book rows.
+
+| Component folder/module     | Boundary                                                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/tracked-books/` | `TrackedBooksContent` owns query/filter/sort/refresh and collection-level write feedback; `TrackedBookItem` uses existing mutation hooks |
+| `components/home/`          | Four-book read-only previews and public shelf entry points                                                                               |
+| `components/profile/`       | `ReaderProfileScreen` serves own/public routes; three-book previews and expandable shelves/reviews                                       |
+| `components/book-detail/`   | Progress/review drafts and progress editor presentation                                                                                  |
+| `components/discovery/`     | Genre/author presentation; route retains language/category/search state and enables queries                                              |
+| `components/ebooks/`        | Upload workflow, sync-document presentation and explicit progress selection                                                              |
+
+My Books keeps navigation available through loading/errors. Write errors belong
+to the collection: optimistic status changes can remove a row from its filter
+before a failed request returns. Ownership is independent of reading status and
+edited on book detail. Home/profile refresh failures retain cached content;
+profile refresh reloads both reader data and public shelves.
+
+## Authentication and session isolation
+
+`context/auth.tsx` owns `authFetch` (ofetch, `sid` cookie and app/platform headers);
+`context/authSession.ts` owns session identity and request fencing. The API origin
+is `EXPO_PUBLIC_API_URL`, defaulting to production even in development. Explicitly
+set a reachable origin: localhost on a physical phone refers to that phone.
+
+1. Login opens `/mobile/login?handle=…&redirect_uri=bookhive://oauth-callback`.
+2. A validated callback supplies `{ did, handle, sid }`, stored in native
+   SecureStore (`authState`), migrating legacy AsyncStorage credentials.
+3. Launch refreshes via `/mobile/refresh-token` with an explicit restoring state.
+4. Logout clears live credentials immediately, aborts old requests and tears down
+   the viewer's client/storage, even if storage deletion fails.
+
+Native credentials are not persisted to insecure web storage. Canceled OAuth is
+not success. OAuth attempts have their own generation before a session epoch
+exists: newer attempts, including canceled ones, invalidate older callbacks.
+Credential writes/repairs use one serialized storage queue.
+
+Terminal credential failures return 401; transient restore/network failures return
+503 and preserve saved sessions/offline caches. A 403 means permission denial,
+not expiry. Merely showing an error never signs out. `NetworkErrorView`'s explicit
+Sign In action calls guarded sign-out and lets protected navigation show login;
+pushing an auth route while credentials remain is blocked.
+
+Login accepts only a runtime-string handle parameter; remembered handles cannot
+overwrite typing. Login/registration submissions have synchronous duplicate guards.
+Registration completions must retain screen focus and session identity before OAuth.
+
+## Queries, caches and writes
+
+- Each session epoch creates a new QueryClient with its own book coordinator.
+  There is no additional account-keyed coordinator map.
+- Non-sensitive persisted queries are partitioned by API origin and DID; legacy
+  shared caches are removed. Mutations and sync credentials are never persisted.
+  Query GC is 24 hours.
+- The root retry policy handles raw/enhanced network errors: no retries for
+  401/403/404 or cancellation, bounded backoff for transient queries. Mutation
+  retries are disabled: replaying PDS writes can duplicate records/reread history.
+- Every mutation captures `createSessionFetch()` during render, **before** async
+  `onMutate`, picker or cancellation work. Clearing a QueryClient does not cancel
+  running mutations. Old-session requests abort/reject, never acquire a new cookie.
+- Guarded sign-out and completion callbacks check the captured epoch, including
+  account-deletion completion, so old work cannot sign out a new account.
+
+`hooks/useBookhiveQuery.ts` is a compatibility re-export, not an implementation.
+Implementations import domain modules directly, never the compatibility file.
+
+| `hooks/queries/` module   | Owns                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `trackedBooks.ts`         | Detail, book writes/deletion and comments; queues in `utils/bookMutations.ts` |
+| `discovery.ts`            | Search, featured discovery, genre directory and author/genre results          |
+| `readers.ts`              | Profiles, follows, cursor feed and stats                                      |
+| `catalogueLists.ts`       | Public AT-URI shelves, owner-keyed snapshots and ordering                     |
+| `personalLibrary.ts`      | Private files/numeric shelves, upload and quota refresh                       |
+| `sync.ts`                 | Documents, matching/dismissal and non-persisted credentials                   |
+| `personalLibraryCache.ts` | Session-fenced invalidation shared by file/sync writes                        |
+
+### Canonical book state and drafts
+
+`utils/bookMutations.ts` serializes updates/deletion per viewer/book and reconciles
+the server's `UserBookView`. Application-level failures roll back even on HTTP 2xx.
+Ownership writes use booleans; progress-only writes omit status so the server owns
+lifecycle transitions. Clearing review/status/dates requires explicit empty values;
+clearing status is not deleting the personal record. Settled writes invalidate
+profile/My Books caches. Screen-local synchronous guards block overlapping writes
+and deletion before hook state rerenders.
+
+`useReadingProgressDraft.ts` stores all fields and canonical source identity together.
+Reconcile on canonical progress changes, not unrelated updates; never move this into
+an effect or mount the hook only when expanded. Identity uses an ordered tuple, not
+wire-object property order. Manual percent `null` means automatic calculation;
+empty text is intentional; page/chapter edits restore auto. `progressDraft.ts` owns
+descriptors, parsing and presence-sensitive validation; `ReadingProgressCard.tsx`
+renders without queries/writes. `useReviewDraft.ts` distinguishes untouched from
+intentionally blank reviews. Failed optimistic saves restore submitted drafts,
+including blanks. Progress summaries use saved values; collapsed reviews retain
+their draft preview. Date confirmation awaits the write, retains selection/error
+on failure and cannot be overwritten by canonical changes while open; reopening
+uses the current date.
+
+Comment/review keys use record URIs, not positions. Legacy fallbacks use stable
+comment facts or reviewer DID (one review per reader/book). Comment edit/reply
+guards fence cancellation, reopening and late feedback by mount/session identity.
+`ReadingHistory` shows previous reads and viewer-scoped recent progress.
+
+User `stars` is 1–10 and displays `/ 2`. Domain stats `averageRating` is already
+five-star, but XRPC encodes fixed-point ×10 (`42` means `4.2`): decode `/ 10`.
+Yearly stats never silently substitute all-time data; expose scope explicitly.
+
+### Collections and pagination
+
+Catalogue shelf patches preserve presence: empty descriptions/tags and false
+ordering are intentional. Owner-keyed rollbacks restore only the affected shelf,
+not unrelated concurrent edits; counts change only for items actually present.
+Ordering uses item AT URIs. Private-file and sync-document rollbacks likewise
+restore only their target/counts. Their shared optimistic boundary starts before
+async cancellation, rejects same-target conflicts and defers refetch until all
+targets settle. File/progress linking refreshes tracked detail through the book
+coordinator, retaining pending book edits until its queue drains.
+
+Search debounces before selecting keys; filter changes reset pagination, pages
+append, and any fetch blocks duplicate load-more. Failed pages retain loaded rows.
+Feed refresh fetches a replacement first page without discarding cached pages;
+only success resets its cursor. Display indexed activity time, not reading dates.
+
+`hooks/useAuthorDirectory.ts` owns debounced language-keyed directory pages. The
+server's top-500 directory count is not a whole-catalogue author count.
+`useDebounce.ts` only delays strings: callers retain normalization/cancellation and
+empty-query behavior (book search disabled, author directory enabled).
+`DiscoveryBooksScreen`/`InfinitePaginationFooter` share presentation, not query
+contracts: authors use server totals; genres use loaded unique count plus more.
+Hidden genre queries stay disabled; directory access survives featured errors.
+Genre counts remain all-language; author results are language-filtered.
+
+## Ebooks, uploads and e-reader sync
+
+`/library` manages files/private shelves; `/sync` explains external reader setup.
+There is no in-app reader: authenticated downloads go to the OS share sheet.
+File-backed sync documents appear in the matching grid card, unmatched ones in
+triage, and matched/dismissed fileless ones in Also tracking. `utils/syncDocuments.ts`
+owns partitioning/title fallback; `SyncDocumentSections` renders callbacks.
+
+`api/personalLibraryTypes.ts` owns wire contracts. `api/uploadPersonalBook.ts`
+owns captured-session XHR multipart transport to `/library/upload` and `UploadError`.
+String server error prose is preserved; malformed success still refreshes the
+captured viewer's library because the server may have committed.
+`components/ebooks/useEbookUpload.ts` owns picker validation/quota/progress, while
+the screen creates the mutation during render. Single-flight spans picker through
+response; 100% byte transfer means processing, not success. Awaited reconciliation
+survives navigation; UI callbacks remain mount/session fenced. Only picker-owned
+cache copies are removed after settlement, never originals.
+
+Every library page supplies `storage: { usedBytes, quotaBytes }`. Client checks are
+advisory; the server enforces quota at insertion. Full-library actions explain why;
+oversize selections fail before upload. Quota 413 (`QuotaExceeded`) displays server
+prose and refetches the meter. Missing storage or `quotaBytes <= 0` means unlimited,
+**not** full. Changing this wire shape requires an app release.
+
+`SyncProgressPicker` requires selection of an actual returned sync document.
+Filename/title, `hasFile` or a lone result cannot prove file→document identity.
+Zero results permits an explicitly file-only link. File-link then progress-link
+is two-step: retain partial success and retry only the unfinished step. Likewise,
+failed create-then-add preserves the created shelf for membership retry. Await
+continuations across navigation, check session before each step and fence prompt/
+match generations so old work cannot close newer drafts.
+
+Sync history is not proof of a live reader connection. Keep KOReader instructions
+aligned with web, especially **Send document metadata**, which defaults off;
+without it an unuploaded book's partial-MD5 hash cannot be matched. An uncertain
+password rotation re-reads the current credential; never retry rotation itself.
+
+## API and platform boundaries
+
+`api/` holds transport/wire contracts, not React state or caches. `queryFetch.ts`
+decorates read errors, not a second client; `mutationResult.ts` validates PDS-write
+success without coupling follows to book queues. Generated API types are type-only.
+Native runtime imports may share pure `src/core`/`src/lib` modules, never Bun, DB,
+filesystem or server-environment graphs. Validate boundary changes with both exports.
+The byte-identical `utils/personalLibrary.ts` quota formatter is deliberate.
+
+Account maintenance calls live-OAuth `buzz.bookhive.resyncAccount`/`deleteAccount`,
+not service auth. Deletion requires exact displayed handle or DID confirmation;
+always expose DID because only the server knows whether handle lookup failed.
+It removes BookHive PDS records/indexes/files, not Bluesky accounts/posts. Partial
+cross-system failure stays visible/retryable; sign out only after success.
+
+CSV import uses existing `/import/{goodreads,storygraph,hardcover}` multipart/SSE
+(or buffered native XHR), not a parallel mobile API. `useCsvImport.ts` coalesces
+same-tick submissions, aborts on unmount/session replacement and refuses queued
+work after unmount. Never retry a potentially accepted import automatically.
+Only fresh picker copies directly in `Paths.cache/DocumentPicker/` are disposable;
+streaming copies wait for settlement. A retry then requires reselecting the file.
+
+## Presentation gotchas
+
+- The root already reserves iOS top safe area. Screens use `useScreenTopInset`
+  (zero on iOS); adding device top inset again doubles spacing. Tab bars use the
+  bottom device inset. Native modals need their own safe-area provider.
+- Fixed page headers use `ScreenHeader`/`BackNavigationHeader` outside scrolling
+  content; section headings scroll. `HeaderAction` owns outlined header controls,
+  labels and accessible targets. Keep the hairline and 16-point gap below headers,
+  44-point controls, 52×64 rating choices and full text scaling/wrapping.
+- Theme tokens live in `constants/Colors.ts`; `accentForeground` supplies readable
+  text on accent treatments. Explicitly theme the native iOS date spinner.
+- `ActionSheet` replaces many-button alerts (especially Android);
+  `TextPromptModal` replaces iOS-only `Alert.prompt`. Sheets scroll and expose
+  selection state. `LanguagePicker` refreshes supported languages on open and
+  distinguishes loading/error/empty, retaining All Languages and retry.
+- `MotionPressable` owns interruptible press feedback; wait for Reduce Motion
+  preference and stop on cleanup. Avoid long collection-wide entrance staggers.
+- `BookCard`/`StarDisplay` share presentation; nested feed/profile actions remain
+  separately accessible. `utils/catalogueCover.ts` owns public 300×500 proxy URLs;
+  private `personalCoverSource` needs authenticated image headers, and tracked
+  management keeps its distinct 300×450 transform.
+- `src/core/genreEmoji.ts` is the shared mapping. Native image mapping in
+  `components/discovery/genreEmojiImages.ts` uses bundled `assets/genre-emoji/`
+  PNGs because iOS font glyphs can be missing. Keep mapping/fallback and asset
+  provenance complete when adding emoji.
+
+## Validation and delivery
+
+Run commands in [README.md](README.md): Jest, typecheck, lint, dependency checks
+and both native bundle exports. Exports do not validate native compilation/devices.
+Jest supports Bun's isolated peer paths; React/test-renderer versions must match.
+Router integration tests need `standard-navigation` transformed and Expo's dev
+message socket mapped across peer instances (otherwise CI reads a null bundle URL).
+
+Theme preference uses AsyncStorage; credentials use SecureStore. Native modules
+and SDK changes require new binaries, never OTA alone. Foreground OTA checks may
+download, but activation waits for cold start or explicitly approved reload so drafts
+survive. EAS profiles remain development/preview/production; bundle ID is
+`buzz.bookhive.app`, scheme `bookhive://`. Release/version scripts never commit.

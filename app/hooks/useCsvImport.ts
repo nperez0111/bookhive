@@ -17,13 +17,22 @@ export function useCsvImport() {
   // Retained callbacks belong to the render's account, not whoever is signed in when invoked.
   const renderScope = authSession.capture();
   const active = useRef<XMLHttpRequest | null>(null);
+  const mounted = useRef(true);
+  const flight = useRef<Promise<ImportProgress> | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
-  useEffect(() => () => active.current?.abort(), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      active.current?.abort();
+    };
+  }, []);
   const mutation = useMutation({
     retry: false,
     mutationFn: ({ file, provider, scope }: ImportInput & { scope: SessionScope }) => {
       scope.assertCurrent();
+      if (!mounted.current) throw new Error("Import screen closed; request cancelled");
       setUploadProgress(0);
       setProgress(null);
       if ((file.size ?? 0) > MAX_CSV_BYTES) throw new Error("Choose a CSV smaller than 50 MB.");
@@ -31,14 +40,13 @@ export function useCsvImport() {
       if (!sid) throw new Error("Sign in again to import your books.");
       return new Promise<ImportProgress>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        active.current = xhr;
         const abort = () => xhr.abort();
         const cleanup = () => {
           scope.signal.removeEventListener("abort", abort);
           if (active.current === xhr) active.current = null;
         };
         const parser = createImportProgressParser((event) => {
-          if (!scope.signal.aborted) setProgress(event);
+          if (mounted.current && !scope.signal.aborted) setProgress(event);
         });
         let consumed = 0;
         const readProgress = () => {
@@ -51,7 +59,7 @@ export function useCsvImport() {
         xhr.setRequestHeader("cookie", `sid=${sid}`);
         xhr.setRequestHeader("accept", "text/event-stream");
         xhr.upload.onprogress = (event) => {
-          if (scope.signal.aborted) return;
+          if (!mounted.current || scope.signal.aborted) return;
           if (event.lengthComputable && event.total > 0)
             setUploadProgress(event.loaded / event.total);
         };
@@ -121,9 +129,15 @@ export function useCsvImport() {
               type: file.mimeType || "text/csv",
             } as unknown as Blob),
         );
-        scope.assertCurrent();
-        scope.signal.addEventListener("abort", abort, { once: true });
-        xhr.send(form);
+        try {
+          scope.assertCurrent();
+          active.current = xhr;
+          scope.signal.addEventListener("abort", abort, { once: true });
+          xhr.send(form);
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
       });
     },
     // A disconnected import may have saved part of the file, so invalidate on failure too.
@@ -131,10 +145,24 @@ export function useCsvImport() {
       if (!scope.signal.aborted) return queryClient.invalidateQueries();
     },
   });
+  const run = (input: ImportInput) => {
+    renderScope.assertCurrent();
+    if (flight.current) return flight.current;
+    const pending = mutation.mutateAsync({ ...input, scope: renderScope });
+    flight.current = pending;
+    // Both paths release ownership without creating an unhandled rejected promise.
+    const release = () => {
+      if (flight.current === pending) flight.current = null;
+    };
+    void pending.then(release, release);
+    return pending;
+  };
   return {
     ...mutation,
-    mutate: (input: ImportInput) => mutation.mutate({ ...input, scope: renderScope }),
-    mutateAsync: (input: ImportInput) => mutation.mutateAsync({ ...input, scope: renderScope }),
+    mutate: (input: ImportInput) => {
+      void run(input).catch(() => {});
+    },
+    mutateAsync: run,
     uploadProgress,
     progress,
   };

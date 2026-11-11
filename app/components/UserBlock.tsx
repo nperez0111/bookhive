@@ -102,13 +102,18 @@ export function UserBlock({
   );
 
   if (onPress) {
-    return <Pressable onPress={onPress}>{content}</Pressable>;
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} style={styles.profileAction}>
+        {content}
+      </Pressable>
+    );
   }
 
   return content;
 }
 
 const styles = StyleSheet.create({
+  profileAction: { minWidth: 44, minHeight: 44, justifyContent: "center" },
   container: {
     flexDirection: "row",
     alignItems: "center",

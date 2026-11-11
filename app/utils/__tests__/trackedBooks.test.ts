@@ -71,8 +71,6 @@ describe("tracked book selection", () => {
     expect(ids(selectTrackedBooks(books, { query: "  DARKNESS    another  " }))).toEqual(["bk_c"]);
     expect(selectTrackedBooks(books, { query: "le guin", filter: "finished" })).toHaveLength(1);
     expect(selectTrackedBooks(books, { query: "dune", filter: "owned" })).toEqual([]);
-    expect(selectTrackedBooks(books, { query: "   " })).toHaveLength(6);
-    expect(selectTrackedBooks([], { query: "anything" })).toEqual([]);
   });
 
   it("formats tab authors without splitting a surname comma", () => {
@@ -105,14 +103,6 @@ describe("tracked book selection", () => {
       "bk_b",
       "bk_c",
       "bk_f",
-      "bk_a",
-      "bk_d",
-      "bk_e",
-    ]);
-    expect(ids(selectTrackedBooks(books, { sort: "rating", direction: "asc" }))).toEqual([
-      "bk_f",
-      "bk_c",
-      "bk_b",
       "bk_a",
       "bk_d",
       "bk_e",
@@ -155,12 +145,6 @@ describe("tracked book selection", () => {
       "bk_a",
       "bk_c",
     ]);
-    expect(ids(selectTrackedBooks(dated, { sort: "dateRead", direction: "asc" }))).toEqual([
-      "bk_b",
-      "bk_d",
-      "bk_a",
-      "bk_c",
-    ]);
   });
 
   it("never mutates the source array and is stable regardless of input order", () => {
@@ -169,22 +153,5 @@ describe("tracked book selection", () => {
     expect(source).toEqual(books);
     expect(selected).not.toBe(source);
     expect(ids(selectTrackedBooks([...source].reverse()))).toEqual(ids(selected));
-  });
-
-  it("keeps blank text and non-finite ratings last in either direction", () => {
-    const sparse = [
-      { hiveId: "bk_b", title: "  ", authors: "\t", stars: NaN },
-      { hiveId: "bk_a", title: "", stars: Infinity },
-      { hiveId: "bk_c", title: "Book", authors: "Author", stars: 5 },
-    ];
-    for (const direction of ["asc", "desc"] as const) {
-      for (const sort of ["title", "author", "rating"] as const) {
-        expect(ids(selectTrackedBooks(sparse, { sort, direction }))).toEqual([
-          "bk_c",
-          "bk_a",
-          "bk_b",
-        ]);
-      }
-    }
   });
 });

@@ -54,7 +54,7 @@ export function createAuthSessionScope() {
 }
 
 export function isTerminalRefreshStatus(status: number | undefined) {
-  return status === 401 || status === 403;
+  return status === 401;
 }
 
 export function accountCacheKey(origin: string, did: string | undefined) {

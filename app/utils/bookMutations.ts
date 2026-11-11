@@ -3,6 +3,9 @@ import type { BookProgress, GetBook, HiveId } from "../../src/types";
 import type { UserBookView } from "../../src/core/userBookView";
 import { nextReadingState } from "../../src/core/bookLifecycle";
 import { FINISHED } from "../../src/constants";
+import { requireMutationSuccess } from "@/api/mutationResult";
+
+export { requireMutationSuccess } from "@/api/mutationResult";
 
 /** The JSON write contract, not the DB row (whose owned field is numeric). */
 export type BookUpdateInput = {
@@ -18,15 +21,6 @@ export type BookUpdateInput = {
 type BookData = GetBook.$output;
 type Fields = Omit<BookUpdateInput, "hiveId">;
 type Fetch = <T>(url: string, options: Record<string, unknown>) => Promise<T>;
-
-/** HTTP 2xx alone is not a confirmed PDS write. */
-export function requireMutationSuccess<T>(body: T): T {
-  if (!body || typeof body !== "object" || !("success" in body) || body.success !== true) {
-    const message = body && typeof body === "object" && "message" in body ? body.message : null;
-    throw new Error(typeof message === "string" ? message : "The change could not be saved.");
-  }
-  return body;
-}
 
 function isUserBookView(value: unknown, hiveId: HiveId): value is UserBookView {
   if (!value || typeof value !== "object") return false;
@@ -187,6 +181,12 @@ export function createBookMutationQueue(client: QueryClient, isCurrent = () => t
     return promise;
   };
   return {
+    // File/progress linking also changes the tracked record. A pending queue owns
+    // its optimistic view and already refetches every detail when it drains.
+    refresh: (hiveId: string) => {
+      if (!isCurrent() || entries.size) return;
+      void client.invalidateQueries({ queryKey: ["getBook", hiveId], exact: true });
+    },
     update: ({ hiveId, ...fields }: BookUpdateInput, fetch: Fetch) =>
       enqueue(
         hiveId,

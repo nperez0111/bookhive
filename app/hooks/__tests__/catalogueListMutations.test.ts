@@ -105,6 +105,7 @@ test("metadata failure restores exact detail and multiple owner-keyed snapshots"
   const bobKey = ["userLists", bob.did];
   const bobLists = { lists: [{ uri: "at://bob/other", name: "Bob's list" }] };
   client.setQueryData(bobKey, bobLists);
+  client.setQueryData(["listDetails", "at://bob/other"], { items: [] });
   const originalAlice = client.getQueryData(aliceKey);
   const originalDetails = client.getQueryData(["listDetails", uri]);
   const options = optionsFor(useUpdateList);
@@ -114,6 +115,39 @@ test("metadata failure restores exact detail and multiple owner-keyed snapshots"
   expect(client.getQueryData(aliceKey)).toEqual(originalAlice);
   expect(client.getQueryData(bobKey)).toEqual(bobLists);
   expect(client.getQueryData(["listDetails", uri])).toEqual(originalDetails);
+  expect(client.getQueryData(["listDetails", "at://bob/other"])).toEqual({ items: [] });
+});
+
+test.each([useUpdateList, useDeleteList])(
+  "rollback leaves concurrent owner and unrelated reader changes intact",
+  async (hook) => {
+    const sibling = { uri: "at://alice/sibling", name: "Sibling" };
+    client.setQueryData(["userLists", alice.did], { lists: [{ uri, name: "Original" }, sibling] });
+    client.setQueryData(["userLists", bob.did], { lists: [] });
+    const options = optionsFor(hook);
+    const input = { uri, name: "Pending" };
+    const context = await options.onMutate!(input);
+    client.setQueryData<any>(["userLists", alice.did], (old: any) => ({
+      ...old,
+      lists: old.lists.map((list: any) =>
+        list.uri === sibling.uri ? { ...list, name: "Saved concurrently" } : list,
+      ),
+    }));
+    const bobLists = { lists: [{ uri: "at://bob/new", name: "New" }] };
+    client.setQueryData(["userLists", bob.did], bobLists);
+    options.onError!(new Error("Failed"), input, context);
+    expect(client.getQueryData<any>(["userLists", alice.did]).lists).toEqual([
+      { uri, name: "Original" },
+      { ...sibling, name: "Saved concurrently" },
+    ]);
+    expect(client.getQueryData(["userLists", bob.did])).toEqual(bobLists);
+  },
+);
+
+test("removing an item absent from the loaded detail does not decrement its count", async () => {
+  const options = optionsFor(useRemoveFromList);
+  await options.onMutate!({ listUri: uri, itemUri: "at://alice/absent" });
+  expect(client.getQueryData<any>(["listDetails", uri]).list.itemCount).toBe(1);
 });
 
 test.each(writes)(

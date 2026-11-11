@@ -1,5 +1,13 @@
 import React from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,6 +23,8 @@ export type SheetAction = {
   destructive?: boolean;
   disabled?: boolean;
   busy?: boolean;
+  /** Selection rows expose their state without using a decorative icon tile. */
+  selected?: boolean;
   onPress: () => void;
 };
 
@@ -31,6 +41,7 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const { bottom } = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
 
   const visibleActions = actions.filter(Boolean);
 
@@ -45,6 +56,7 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
               backgroundColor: colors.cardBackground,
               borderColor: colors.cardBorder,
               paddingBottom: 16 + bottom,
+              maxHeight: height * 0.85,
             },
           ]}
         >
@@ -67,12 +79,18 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
             </View>
           ) : null}
 
-          <View style={styles.actions}>
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.actions}>
             {visibleActions.map((action) => {
               const tint = action.destructive ? colors.error : colors.primaryText;
               return (
                 <Pressable
                   key={action.key}
+                  accessibilityRole={action.selected !== undefined ? "radio" : "button"}
+                  accessibilityState={{
+                    checked: action.selected,
+                    disabled: action.disabled || action.busy,
+                    busy: action.busy,
+                  }}
                   onPress={action.onPress}
                   disabled={action.disabled || action.busy}
                   style={({ pressed }) => [
@@ -83,21 +101,18 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.actionIcon,
-                      {
-                        backgroundColor: action.destructive
-                          ? "rgba(220, 38, 38, 0.12)"
-                          : colors.activeBackground,
-                      },
-                    ]}
-                  >
+                  <View style={styles.actionIcon}>
                     {action.busy ? (
                       <ActivityIndicator size="small" color={tint} />
                     ) : (
                       <Ionicons
-                        name={action.icon}
+                        name={
+                          action.selected !== undefined
+                            ? action.selected
+                              ? "checkmark"
+                              : "ellipse-outline"
+                            : action.icon
+                        }
                         size={18}
                         color={action.destructive ? colors.error : colors.primary}
                       />
@@ -116,7 +131,7 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           <Pressable
             onPress={onClose}
@@ -148,8 +163,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     borderWidth: 1,
     borderBottomWidth: 0,
     paddingHorizontal: 16,
@@ -173,14 +188,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    paddingVertical: 12,
+    minHeight: 48,
+    paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 14,
   },
   actionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
   },

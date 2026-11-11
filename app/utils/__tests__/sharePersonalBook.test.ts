@@ -1,7 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { sharePersonalBook } from "../sharePersonalBook";
-import type { PersonalBook } from "@/hooks/useBookhiveQuery";
+import type { PersonalBook } from "@/api/personalLibraryTypes";
 import { authSession } from "@/context/auth";
 
 jest.mock("@/context/auth", () => {

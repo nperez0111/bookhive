@@ -31,6 +31,7 @@ type BookSearchModalProps = {
   /** Prefills the query — usually the title we already know for the file. */
   initialQuery?: string;
   isLinking?: boolean;
+  operationKey?: number;
 };
 
 /**
@@ -45,15 +46,20 @@ export function BookSearchModal({
   subjectTitle,
   initialQuery = "",
   isLinking = false,
+  operationKey,
 }: BookSearchModalProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const { bottom } = useSafeAreaInsets();
   const [query, setQuery] = useState(initialQuery);
 
-  const [previous, setPrevious] = useState({ visible, initialQuery });
-  if (previous.visible !== visible || previous.initialQuery !== initialQuery) {
-    setPrevious({ visible, initialQuery });
+  const [previous, setPrevious] = useState({ visible, initialQuery, operationKey });
+  if (
+    previous.visible !== visible ||
+    previous.initialQuery !== initialQuery ||
+    previous.operationKey !== operationKey
+  ) {
+    setPrevious({ visible, initialQuery, operationKey });
     if (visible) setQuery(initialQuery);
   }
 

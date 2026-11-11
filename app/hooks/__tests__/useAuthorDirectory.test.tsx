@@ -29,18 +29,13 @@ afterEach(() => {
 });
 
 describe("useAuthorDirectory", () => {
-  it("loads the directory for an empty normalized query", async () => {
-    fetchMock.mockResolvedValue(page(0, 1, false));
+  it("appends pages and honours explicit exhaustion instead of assuming a full last page means more", async () => {
+    fetchMock.mockResolvedValueOnce(page(0, 50, true)).mockResolvedValueOnce(page(50, 1, false));
     const { result } = renderHook(() => useAuthorDirectory("   ", "en"), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.authors).toHaveLength(50));
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=0&language=en",
     );
-  });
-  it("appends pages and honours explicit exhaustion instead of assuming a full last page means more", async () => {
-    fetchMock.mockResolvedValueOnce(page(0, 50, true)).mockResolvedValueOnce(page(50, 1, false));
-    const { result } = renderHook(() => useAuthorDirectory("", "en"), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.authors).toHaveLength(50));
     expect(result.current.total).toBe(51);
     await act(async () => {
       await result.current.fetchNextPage();
