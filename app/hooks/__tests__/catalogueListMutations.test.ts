@@ -100,32 +100,16 @@ test("metadata patches preserve omitted fields and apply explicit clears in both
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["listDetails", uri] });
 });
 
-test("metadata failure restores exact detail and multiple owner-keyed snapshots", async () => {
-  const aliceKey = ["userLists", alice.did];
-  const bobKey = ["userLists", bob.did];
-  const bobLists = { lists: [{ uri: "at://bob/other", name: "Bob's list" }] };
-  client.setQueryData(bobKey, bobLists);
-  client.setQueryData(["listDetails", "at://bob/other"], { items: [] });
-  const originalAlice = client.getQueryData(aliceKey);
-  const originalDetails = client.getQueryData(["listDetails", uri]);
-  const options = optionsFor(useUpdateList);
-  const input = { uri, description: "", ordered: false, tags: [] };
-  const context = await options.onMutate!(input);
-  options.onError!(new Error("Save failed"), input, context);
-  expect(client.getQueryData(aliceKey)).toEqual(originalAlice);
-  expect(client.getQueryData(bobKey)).toEqual(bobLists);
-  expect(client.getQueryData(["listDetails", uri])).toEqual(originalDetails);
-  expect(client.getQueryData(["listDetails", "at://bob/other"])).toEqual({ items: [] });
-});
-
 test.each([useUpdateList, useDeleteList])(
   "rollback leaves concurrent owner and unrelated reader changes intact",
   async (hook) => {
     const sibling = { uri: "at://alice/sibling", name: "Sibling" };
     client.setQueryData(["userLists", alice.did], { lists: [{ uri, name: "Original" }, sibling] });
     client.setQueryData(["userLists", bob.did], { lists: [] });
+    client.setQueryData(["listDetails", sibling.uri], { items: [] });
+    const originalDetails = client.getQueryData(["listDetails", uri]);
     const options = optionsFor(hook);
-    const input = { uri, name: "Pending" };
+    const input = { uri, name: "Pending", description: "", ordered: false, tags: [] };
     const context = await options.onMutate!(input);
     client.setQueryData<any>(["userLists", alice.did], (old: any) => ({
       ...old,
@@ -141,6 +125,8 @@ test.each([useUpdateList, useDeleteList])(
       { ...sibling, name: "Saved concurrently" },
     ]);
     expect(client.getQueryData(["userLists", bob.did])).toEqual(bobLists);
+    expect(client.getQueryData(["listDetails", uri])).toEqual(originalDetails);
+    expect(client.getQueryData(["listDetails", sibling.uri])).toEqual({ items: [] });
   },
 );
 

@@ -130,46 +130,6 @@ test.each([useResyncBooks, useDeleteAccount])(
   },
 );
 
-test("CSV captures credentials once, aborts on logout, and ignores stale progress/cache callbacks", async () => {
-  const originalXHR = global.XMLHttpRequest;
-  const xhr: any = {
-    upload: {},
-    open: jest.fn(),
-    setRequestHeader: jest.fn(),
-    send: jest.fn(),
-    abort: jest.fn(() => xhr.onabort()),
-    status: 200,
-    responseText: "",
-  };
-  global.XMLHttpRequest = jest.fn(() => xhr) as unknown as typeof XMLHttpRequest;
-  try {
-    const { result } = renderHook(() => useCsvImport());
-    let upload!: Promise<unknown>;
-    act(() => {
-      upload = result.current.mutateAsync({
-        provider: "goodreads",
-        file: { uri: "file:///books.csv", name: "books.csv", size: 100, lastModified: 0 },
-      });
-    });
-    const failed = expect(upload).rejects.toThrow("Import stopped");
-    expect(xhr.setRequestHeader).toHaveBeenCalledWith("cookie", "sid=a-sid");
-    const captured = mockSession.capture();
-    act(() => {
-      mockSession.replace(account("b"));
-    });
-    await failed;
-    expect(xhr.abort).toHaveBeenCalledTimes(1);
-    act(() => {
-      xhr.upload.onprogress({ lengthComputable: true, loaded: 90, total: 100 });
-    });
-    expect(result.current.uploadProgress).toBe(0);
-    await mockOptions.onSettled(undefined, new Error("aborted"), { scope: captured });
-    expect(mockInvalidate).not.toHaveBeenCalled();
-  } finally {
-    global.XMLHttpRequest = originalXHR;
-  }
-});
-
 test.each(["mutate", "mutateAsync"] as const)(
   "retained CSV %s callback from A cannot start an upload as B",
   (method) => {

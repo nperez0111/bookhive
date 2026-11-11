@@ -17,14 +17,10 @@ it("does not reserve the status bar twice on iOS", () => {
   expect(renderHook(() => useScreenTopInset()).result.current).toBe(0);
 });
 
-it("reserves the device top inset on Android", () => {
-  jest.replaceProperty(Platform, "OS", "android");
-  expect(renderHook(() => useScreenTopInset()).result.current).toBe(59);
-});
-
 it("updates Android screen padding when rotation changes the device inset", () => {
   jest.replaceProperty(Platform, "OS", "android");
   const { result, rerender } = renderHook(() => useScreenTopInset());
+  expect(result.current).toBe(59);
   mockTopInset = 0;
   rerender({});
   expect(result.current).toBe(0);

@@ -44,24 +44,8 @@ const mockMutations: Record<
   string,
   { mutateAsync: jest.Mock; mutate: jest.Mock; isPending: boolean; error: null }
 > = {};
-const names = [
-  "AddToPersonalShelf",
-  "CreatePersonalShelf",
-  "DeletePersonalBook",
-  "DeletePersonalShelf",
-  "DeleteSyncDocument",
-  "DismissSyncDocument",
-  "LinkPersonalBook",
-  "LinkSyncDocument",
-  "RemoveFromPersonalShelf",
-  "RenameSyncDocument",
-  "UnlinkPersonalBook",
-  "UpdatePersonalShelf",
-  "UploadPersonalBook",
-];
-jest.mock("@/hooks/useBookhiveQuery", () => {
-  const hooks: Record<string, unknown> = {};
-  for (const name of [
+function mockMutationNames() {
+  return [
     "AddToPersonalShelf",
     "CreatePersonalShelf",
     "DeletePersonalBook",
@@ -75,8 +59,11 @@ jest.mock("@/hooks/useBookhiveQuery", () => {
     "UnlinkPersonalBook",
     "UpdatePersonalShelf",
     "UploadPersonalBook",
-  ])
-    hooks[`use${name}`] = () => mockMutations[name];
+  ];
+}
+jest.mock("@/hooks/useBookhiveQuery", () => {
+  const hooks: Record<string, unknown> = {};
+  for (const name of mockMutationNames()) hooks[`use${name}`] = () => mockMutations[name];
   return {
     ...hooks,
     usePersonalLibrary: (filters: unknown) => ({
@@ -179,7 +166,7 @@ jest.mock("expo-haptics", () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  for (const name of names)
+  for (const name of mockMutationNames())
     mockMutations[name] = {
       mutateAsync: jest.fn().mockResolvedValue({}),
       mutate: jest.fn(),

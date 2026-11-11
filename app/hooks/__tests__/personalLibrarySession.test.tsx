@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { notifyManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { deferred, queryWrapper } from "../../test/queryHelpers";
 import { authSession } from "@/context/auth";
-import * as uploadTransport from "@/api/uploadPersonalBook";
 import {
   useDeletePersonalBook,
   useDeleteSyncDocument,
@@ -14,15 +13,6 @@ import {
 import { bookMutationQueue } from "@/utils/bookMutations";
 
 const mockSent = jest.fn();
-function deferredValue() {
-  let resolve!: (value: unknown) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<unknown>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
-}
 jest.mock("@/utils/catalogueLists", () => ({}));
 jest.mock("@/context/auth", () => {
   const { createAuthSessionScope } = jest.requireActual("../../context/authSession");
@@ -115,29 +105,6 @@ it("captures upload identity before mutation scheduling rather than at XHR send"
   await waitFor(() => expect(result.current.isError).toBe(true));
 });
 
-it("refreshes all library views and the profile after a successful upload", async () => {
-  const book = {
-    contentHash: "hash",
-    title: "Book",
-    format: "epub",
-    mime: "application/epub+zip",
-    sizeBytes: 42,
-    createdAt: "2026-01-01",
-    updatedAt: "2026-01-01",
-  };
-  jest.spyOn(uploadTransport, "uploadBookFile").mockResolvedValue({ book });
-  const invalidate = jest.spyOn(client, "invalidateQueries");
-  const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
-  await act(async () => {
-    await result.current.mutateAsync({ uri: "file:///book.epub", name: "book.epub" });
-  });
-  expect(invalidate.mock.calls).toEqual(
-    ["personalLibrary", "personalShelves", "syncDocuments", "profile"].map((key) => [
-      { queryKey: [key] },
-    ]),
-  );
-});
-
 it("deleting a file preserves counts in unrelated filtered ebook caches", async () => {
   const allKey = ["personalLibrary", null, "", "newest"];
   const shelfKey = ["personalLibrary", 12, "", "newest"];
@@ -187,40 +154,61 @@ it("aborts an in-flight XHR upload when the captured session changes", async () 
   );
 });
 
-it("refetches the library after a malformed 2xx upload because the file may exist", async () => {
-  const xhr = {
-    open: jest.fn(),
-    setRequestHeader: jest.fn(),
-    upload: {},
-    send: jest.fn(),
-    status: 200,
-    responseText: JSON.stringify({ book: {} }),
-    onload: undefined as undefined | (() => void),
-    onloadend: undefined as undefined | (() => void),
-  };
-  Object.defineProperty(globalThis, "XMLHttpRequest", {
-    configurable: true,
-    value: jest.fn(() => xhr),
-  });
-  const invalidate = jest.spyOn(client, "invalidateQueries");
-  const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
-  let pending!: Promise<unknown>;
-  act(() => {
-    pending = result.current
-      .mutateAsync({ uri: "file:///book.epub", name: "book.epub" })
-      .catch((error: Error) => error);
-  });
-  await waitFor(() => expect(xhr.send).toHaveBeenCalled());
-  await act(async () => {
-    xhr.onload!();
-    xhr.onloadend!();
-    await pending;
-  });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["personalLibrary"] });
-  await expect(pending).resolves.toEqual(
-    expect.objectContaining({ message: expect.stringContaining("invalid upload response") }),
-  );
-});
+it.each([
+  {
+    contentHash: "hash",
+    title: "Book",
+    format: "epub",
+    mime: "application/epub+zip",
+    sizeBytes: 42,
+    createdAt: "2026-01-01",
+    updatedAt: "2026-01-01",
+  },
+  {},
+])(
+  "reconciles library caches after a 2xx upload, even when its body is malformed: %p",
+  async (book) => {
+    const xhr = {
+      open: jest.fn(),
+      setRequestHeader: jest.fn(),
+      upload: {},
+      send: jest.fn(),
+      status: 200,
+      responseText: JSON.stringify({ book }),
+      onload: undefined as undefined | (() => void),
+      onloadend: undefined as undefined | (() => void),
+    };
+    Object.defineProperty(globalThis, "XMLHttpRequest", {
+      configurable: true,
+      value: jest.fn(() => xhr),
+    });
+    const invalidate = jest.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current
+        .mutateAsync({ uri: "file:///book.epub", name: "book.epub" })
+        .catch((error: Error) => error);
+    });
+    await waitFor(() => expect(xhr.send).toHaveBeenCalled());
+    await act(async () => {
+      xhr.onload!();
+      xhr.onloadend!();
+      await pending;
+    });
+    expect(invalidate.mock.calls).toEqual(
+      ("contentHash" in book
+        ? ["personalLibrary", "personalShelves", "syncDocuments", "profile"]
+        : ["personalLibrary"]
+      ).map((key) => [{ queryKey: [key] }]),
+    );
+    await expect(pending).resolves.toEqual(
+      "contentHash" in book
+        ? { book }
+        : expect.objectContaining({ message: expect.stringContaining("invalid upload response") }),
+    );
+  },
+);
 
 it("rolls back only the failed file and defers offline refetch until both deletes settle", async () => {
   const key = ["personalLibrary", null, "", "recent"];
@@ -236,8 +224,8 @@ it("rolls back only the failed file and defers offline refetch until both delete
     retry: false,
   });
   const unsubscribe = observer.subscribe(() => {});
-  const a = deferredValue();
-  const b = deferredValue();
+  const a = deferred<unknown>();
+  const b = deferred<unknown>();
   mockSent.mockImplementation((_session, _url, options) =>
     options.body.contentHash === "a" ? a.promise : b.promise,
   );
@@ -281,8 +269,8 @@ it("a failed document deletion preserves another document's successful dismissal
     retry: false,
   });
   const unsubscribe = observer.subscribe(() => {});
-  const a = deferredValue();
-  const b = deferredValue();
+  const a = deferred<unknown>();
+  const b = deferred<unknown>();
   mockSent.mockImplementation((_session, _url, options) =>
     options.body.document === "a" ? a.promise : b.promise,
   );
@@ -327,7 +315,7 @@ it.each([useLinkPersonalBook, useLinkSyncDocument])(
       retry: false,
     });
     const unsubscribe = observer.subscribe(() => {});
-    const response = deferredValue();
+    const response = deferred<unknown>();
     const scope = authSession.capture();
     const queue = bookMutationQueue(client, () => !scope.signal.aborted);
     const edit = queue.update(
@@ -380,7 +368,7 @@ it.each([useLinkPersonalBook, useLinkSyncDocument])(
 it.each([useLinkPersonalBook, useLinkSyncDocument])(
   "late linking cannot invalidate the replacement viewer's caches",
   async (hook) => {
-    const response = deferredValue();
+    const response = deferred<unknown>();
     mockSent.mockReturnValue(response.promise);
     const invalidate = jest.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => hook(), { wrapper: Wrapper });

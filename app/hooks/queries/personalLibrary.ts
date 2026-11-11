@@ -14,7 +14,11 @@ import type {
 } from "@/api/personalLibraryTypes";
 import { UploadError, uploadBookFile } from "@/api/uploadPersonalBook";
 import { personalLibraryQuery, type PersonalLibraryFilters } from "@/utils/personalLibraryQuery";
-import { beginLibraryMutation, useInvalidateLibrary } from "./personalLibraryCache";
+import {
+  beginLibraryMutation,
+  useInvalidateLibrary,
+  useLibraryWrite,
+} from "./personalLibraryCache";
 import { bookMutationQueue } from "@/utils/bookMutations";
 
 export const usePersonalLibrary = (filters?: number | PersonalLibraryFilters) => {
@@ -197,99 +201,37 @@ export const useLinkPersonalBook = () => {
 };
 
 export const useUnlinkPersonalBook = () => {
-  const request = createSessionFetch();
-  const invalidateLibrary = useInvalidateLibrary();
-  return useMutation({
-    mutationFn: async ({ contentHash }: { contentHash: string }) => {
-      return await request<{ book: PersonalBook }>(`/xrpc/buzz.bookhive.unlinkPersonalBook`, {
-        method: "POST",
-        body: { contentHash },
-      });
-    },
-    onSuccess: invalidateLibrary,
-    retry: false,
-  });
+  return useLibraryWrite<{ contentHash: string }, { book: PersonalBook }>(
+    "/xrpc/buzz.bookhive.unlinkPersonalBook",
+  );
 };
 
 export const useCreatePersonalShelf = () => {
-  const request = createSessionFetch();
-  const session = authSession.capture();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { name: string; description?: string }) => {
-      return await request<{ shelf: PersonalShelf }>(`/xrpc/buzz.bookhive.createPersonalShelf`, {
-        method: "POST",
-        body: input,
-      });
-    },
-    onSuccess: () => {
-      if (session.signal.aborted) return;
-      void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
-    },
-    retry: false,
-  });
+  return useLibraryWrite<{ name: string; description?: string }, { shelf: PersonalShelf }>(
+    "/xrpc/buzz.bookhive.createPersonalShelf",
+    ["personalShelves"],
+  );
 };
 
 export const useUpdatePersonalShelf = () => {
-  const request = createSessionFetch();
-  const session = authSession.capture();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { id: number; name?: string; description?: string }) => {
-      return await request<{ shelf: PersonalShelf }>(`/xrpc/buzz.bookhive.updatePersonalShelf`, {
-        method: "POST",
-        body: input,
-      });
-    },
-    onSuccess: () => {
-      if (session.signal.aborted) return;
-      void queryClient.invalidateQueries({ queryKey: ["personalShelves"] });
-    },
-    retry: false,
-  });
+  return useLibraryWrite<
+    { id: number; name?: string; description?: string },
+    { shelf: PersonalShelf }
+  >("/xrpc/buzz.bookhive.updatePersonalShelf", ["personalShelves"]);
 };
 
 export const useDeletePersonalShelf = () => {
-  const request = createSessionFetch();
-  const invalidateLibrary = useInvalidateLibrary();
-  return useMutation({
-    mutationFn: async ({ id }: { id: number }) => {
-      return await request<Record<string, never>>(`/xrpc/buzz.bookhive.deletePersonalShelf`, {
-        method: "POST",
-        body: { id },
-      });
-    },
-    onSuccess: invalidateLibrary,
-    retry: false,
-  });
+  return useLibraryWrite<{ id: number }>("/xrpc/buzz.bookhive.deletePersonalShelf");
 };
 
 export const useAddToPersonalShelf = () => {
-  const request = createSessionFetch();
-  const invalidateLibrary = useInvalidateLibrary();
-  return useMutation({
-    mutationFn: async (input: { shelfId: number; contentHash: string }) => {
-      return await request<Record<string, never>>(`/xrpc/buzz.bookhive.addToPersonalShelf`, {
-        method: "POST",
-        body: input,
-      });
-    },
-    onSuccess: invalidateLibrary,
-    retry: false,
-  });
+  return useLibraryWrite<{ shelfId: number; contentHash: string }>(
+    "/xrpc/buzz.bookhive.addToPersonalShelf",
+  );
 };
 
 export const useRemoveFromPersonalShelf = () => {
-  const request = createSessionFetch();
-  const invalidateLibrary = useInvalidateLibrary();
-  return useMutation({
-    mutationFn: async (input: { shelfId: number; contentHash: string }) => {
-      return await request<Record<string, never>>(`/xrpc/buzz.bookhive.removeFromPersonalShelf`, {
-        method: "POST",
-        body: input,
-      });
-    },
-    onSuccess: invalidateLibrary,
-    retry: false,
-  });
+  return useLibraryWrite<{ shelfId: number; contentHash: string }>(
+    "/xrpc/buzz.bookhive.removeFromPersonalShelf",
+  );
 };

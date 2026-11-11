@@ -8,6 +8,7 @@ import {
 import type { UserBookView } from "../../../src/core/userBookView";
 import type { GetBook, HiveId } from "../../../src/types";
 import { FINISHED, READING } from "../../../src/constants";
+import { deferred } from "../../test/queryHelpers";
 
 const id = "bk_test" as HiveId;
 const key = ["getBook", id];
@@ -29,15 +30,6 @@ const canonical = (patch: Partial<UserBookView> = {}): UserBookView => ({
   indexedAt: "2026-01-01T00:00:00.000Z",
   ...patch,
 });
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
-}
 const tick = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
@@ -58,27 +50,9 @@ describe("mobile book mutation queue", () => {
   afterEach(() => client.clear());
   const data = (client: QueryClient) => client.getQueryData<GetBook.$output>(key)!;
 
-  it("invalidates the My Books profile cache after adding and removing a book", async () => {
+  it("sends serially and rebases newer edits over the complete canonical response", async () => {
     const profileKey = ["profile", "did:plc:reader"];
     client.setQueryData(profileKey, { books: [] });
-    const queue = createBookMutationQueue(client);
-    const fetch = jest
-      .fn()
-      .mockResolvedValueOnce({ success: true, userBook: canonical() })
-      .mockResolvedValueOnce({ success: true });
-
-    await queue.update({ hiveId: id, status: READING }, fetch);
-    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
-    expect(data(client).status).toBe(READING);
-
-    client.setQueryData(profileKey, { books: [canonical()] });
-    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(false);
-    await queue.remove(id, fetch);
-    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
-    expect(data(client).status).toBeUndefined();
-  });
-
-  it("sends serially and rebases newer edits over the complete canonical response", async () => {
     const queue = createBookMutationQueue(client);
     const first = deferred<unknown>();
     const second = deferred<unknown>();
@@ -110,6 +84,7 @@ describe("mobile book mutation queue", () => {
     expect(data(client).previousReads).toEqual([{ finishedAt: "prior-date" }]);
     expect(data(client).book.title).toBe("Catalogue title");
     expect(fetch.mock.calls[0][1].retry).toBe(false);
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
   });
 
   it.each([
@@ -144,6 +119,7 @@ describe("mobile book mutation queue", () => {
   });
 
   it("waits for updates before deletion, blocks edits, and clears only confirmed deletion", async () => {
+    const profileKey = ["profile", "did:plc:reader"];
     const queue = createBookMutationQueue(client);
     const save = deferred<unknown>();
     const remove = deferred<unknown>();
@@ -157,6 +133,8 @@ describe("mobile book mutation queue", () => {
     expect(data(client).status).toBe(READING);
     save.resolve({ success: true, userBook: canonical({ stars: 8 }) });
     await a;
+    client.setQueryData(profileKey, { books: [canonical()] });
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(false);
     await tick();
     expect(fetch.mock.calls[1]).toEqual([
       `/books/${id}`,
@@ -169,6 +147,7 @@ describe("mobile book mutation queue", () => {
     expect(data(client).stars).toBeUndefined();
     expect(data(client).previousReads).toBeUndefined();
     expect(data(client).owned).toBe(false);
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
   });
 
   it("keeps confirmed state after delete failure and allows retry", async () => {

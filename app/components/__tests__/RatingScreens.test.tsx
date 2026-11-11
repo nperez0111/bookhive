@@ -3,7 +3,6 @@ import { router } from "expo-router";
 import ReadingStatsScreen from "../../app/profile/[did]/stats";
 import MyBooksScreen from "../../app/(tabs)/my-books";
 
-let mockAllTime = false;
 const mockUpdateBook = jest.fn();
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => {
@@ -21,8 +20,8 @@ jest.mock("@/hooks/useBookhiveQuery", () => ({
   useReadingStats: () => ({
     data: {
       stats: mockStats,
-      showYearInBooks: !mockAllTime,
-      allTimeStats: mockAllTime ? { ...mockStats, averageRating: 45 } : undefined,
+      showYearInBooks: false,
+      allTimeStats: { ...mockStats, averageRating: 45 },
       availableYears: [2026],
     },
   }),
@@ -51,18 +50,11 @@ jest.mock("@/components/GradientView", () => ({
   GradientView: jest.requireActual<typeof import("react-native")>("react-native").View,
 }));
 
-it("decodes the yearly fixed-point average rating", () => {
-  mockAllTime = false;
-  render(<ReadingStatsScreen />);
-  expect(screen.getByText("4.2")).toBeTruthy();
-  expect(screen.queryByText("42.0")).toBeNull();
-});
-
-it("decodes the all-time fallback fixed-point average rating", () => {
-  mockAllTime = true;
+it("decodes fixed-point ratings and shows all-time statistics only after explicit selection", () => {
   render(<ReadingStatsScreen />);
   expect(screen.queryByText("All-Time Reading")).toBeNull();
   expect(screen.getByText("4.2")).toBeTruthy();
+  expect(screen.queryByText("42.0")).toBeNull();
   fireEvent.press(screen.getByText("All time"));
   expect(screen.getByText("All-Time Reading")).toBeTruthy();
   expect(screen.getByText("4.5")).toBeTruthy();

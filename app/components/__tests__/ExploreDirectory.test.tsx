@@ -29,29 +29,19 @@ jest.mock("@/components/GradientView", () => ({
 jest.mock("@/components/FadeInImage", () => ({ FadeInImage: () => null }));
 jest.mock("@/components/LanguageFilter", () => ({ LanguageFilter: () => null }));
 jest.mock("@/components/SectionHeader", () => ({
-  SectionHeader: ({ title }: { title: string }) =>
-    jest
-      .requireActual<typeof import("react")>("react")
-      .createElement(
-        jest.requireActual<typeof import("react-native")>("react-native").Text,
-        null,
-        title,
-      ),
+  SectionHeader: ({ title }: { title: string }) => {
+    const { Text } = jest.requireActual("react-native");
+    return <Text>{title}</Text>;
+  },
 }));
 jest.mock("@/components/QueryErrorHandler", () => ({
   QueryErrorHandler: ({ error, onRetry }: { error: Error; onRetry: () => void }) => {
-    const React = jest.requireActual<typeof import("react")>("react");
-    const { View, Text, Pressable } =
-      jest.requireActual<typeof import("react-native")>("react-native");
-    return React.createElement(
-      View,
-      null,
-      React.createElement(Text, null, error.message),
-      React.createElement(
-        Pressable,
-        { onPress: onRetry },
-        React.createElement(Text, null, "Retry directory"),
-      ),
+    const { Text, Pressable } = jest.requireActual("react-native");
+    return (
+      <Pressable onPress={onRetry}>
+        <Text>{error.message}</Text>
+        <Text>Retry directory</Text>
+      </Pressable>
     );
   },
 }));
@@ -161,7 +151,6 @@ describe("Explore author directory", () => {
   });
 
   it("shows one browse category at a time without a second page title", () => {
-    directoryMock.mockReturnValue(directory());
     const screen = render(<ExploreScreen />);
     expect(screen.queryByText("Browse books")).toBeNull();
     expect(screen.getByText("Browse all genres")).toBeTruthy();
@@ -179,7 +168,6 @@ describe("Explore author directory", () => {
     expect(screen.getByText("Browse all genres")).toBeTruthy();
   });
   it("opens the shared language picker with a fresh catalogue request", () => {
-    directoryMock.mockReturnValue(directory());
     const screen = render(<ExploreScreen />);
     const language = () => screen.getByLabelText("Change discovery language");
     expect(language().props.accessibilityState.expanded).toBe(false);
@@ -192,7 +180,6 @@ describe("Explore author directory", () => {
     expect(language().props.accessibilityState.expanded).toBe(false);
   });
   it("retains author-directory input across category switches and disables its query while hidden", () => {
-    directoryMock.mockReturnValue(directory());
     const screen = render(<ExploreScreen />);
     fireEvent.press(screen.getByText("Authors"));
     fireEvent.press(screen.getByText("Browse author directory"));
@@ -205,7 +192,6 @@ describe("Explore author directory", () => {
     expect(screen.getByLabelText("Search author directory").props.value).toBe("Le Guin");
   });
   it("makes book search and the community feed available from Discover", () => {
-    directoryMock.mockReturnValue(directory());
     const screen = render(<ExploreScreen />);
     expect(screen.getByText("Discover")).toBeTruthy();
     fireEvent.press(screen.getByLabelText("Search books"));

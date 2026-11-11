@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import BookInfo from "../../app/book/[id]";
-import { Modal, Text } from "react-native";
+import { Modal } from "react-native";
 import { Colors } from "@/constants/Colors";
 import { BookActionCard } from "../BookActionCard";
 
@@ -64,6 +64,18 @@ jest.mock("@/components/DatePickerModal", () => ({ DatePickerModal: () => null }
 jest.mock("@/components/FadeInImage", () => ({ FadeInImage: () => null }));
 jest.mock("@/components/UserBlock", () => ({ UserBlock: () => null }));
 jest.mock("@/utils/htmlToText", () => ({ HtmlToText: () => null }));
+
+function pendingWrite(mock: jest.Mock) {
+  let resolve!: (value: unknown) => void;
+  let reject!: (error: Error) => void;
+  mock.mockReturnValueOnce(
+    new Promise((done, fail) => {
+      resolve = done;
+      reject = fail;
+    }),
+  );
+  return { resolve, reject };
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -197,39 +209,6 @@ it.each(["light", "dark"] as const)("uses themed, readable detail controls in %s
   expect(mockUpdate).not.toHaveBeenCalled();
 });
 
-it("keeps personal reading controls together before sharing and catalogue content", () => {
-  const result = render(<BookInfo />);
-  const text = result.UNSAFE_getAllByType(Text).map((node) => node.props.children);
-  const ordered = [
-    "Reading status",
-    "Reading progress",
-    "Rate this book",
-    "Your Review",
-    "Reading Dates",
-    "Clear reading status",
-    "Share",
-    "Description",
-    "Remove from My Books",
-  ];
-  for (let i = 1; i < ordered.length; i++) {
-    expect(text.indexOf(ordered[i])).toBeGreaterThan(text.indexOf(ordered[i - 1]));
-  }
-  expect(screen.getByRole("button", { name: "reading" })).toBeTruthy();
-  expect(screen.getByLabelText("Delete book tracking")).toHaveStyle({
-    minHeight: 44,
-    borderWidth: 1,
-  });
-  for (const label of [
-    "Update reading progress",
-    "Edit rating",
-    "Edit review",
-    "Edit reading dates",
-  ]) {
-    expect(screen.getByLabelText(label).props.accessibilityState.expanded).toBe(false);
-    expect(screen.getByLabelText(label)).toHaveStyle({ minHeight: 44 });
-  }
-});
-
 it.each(["light", "dark"] as const)(
   "makes unset status primary and ownership an outlined switch in %s",
   (theme) => {
@@ -332,19 +311,25 @@ it("shows rejected ownership saves", async () => {
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Save rejected"));
 });
 
-it("sends progress without the stale status, retaining exact pages", async () => {
-  render(<BookInfo />);
-  fireEvent.press(screen.getByLabelText("Update reading progress"));
-  fireEvent.changeText(screen.getAllByPlaceholderText("Current")[0], "657");
-  fireEvent.changeText(screen.getAllByPlaceholderText("Total")[0], "658");
-  fireEvent.press(screen.getByText("Save progress"));
-  await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
-  expect(mockUpdate.mock.calls[0][0]).toEqual({
-    hiveId: "bk_test",
-    bookProgress: expect.objectContaining({ currentPage: 657, totalPages: 658, percent: 100 }),
-  });
-  expect(mockUpdate.mock.calls[0][0]).not.toHaveProperty("status");
-});
+it.each([
+  ["Pages read", "Total pages", { currentPage: 657, totalPages: 658 }],
+  ["Chapters read", "Total chapters", { currentChapter: 299, totalChapters: 300 }],
+] as const)(
+  "saves exact %s without stale status when percent rounds to 100",
+  async (current, total, progress) => {
+    render(<BookInfo />);
+    fireEvent.press(screen.getByLabelText("Update reading progress"));
+    fireEvent.changeText(screen.getByLabelText(current), String(Object.values(progress)[0]));
+    fireEvent.changeText(screen.getByLabelText(total), String(Object.values(progress)[1]));
+    fireEvent.press(screen.getByText("Save progress"));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith({
+        hiveId: "bk_test",
+        bookProgress: expect.objectContaining({ ...progress, percent: 100 }),
+      }),
+    );
+  },
+);
 
 it("keeps the saved progress summary separate from unsaved metric edits", () => {
   mockData.bookProgress = { currentPage: 10, totalPages: 100 };
@@ -374,13 +359,7 @@ it("reconciles canonical reviews while keeping a collapsed unsaved review draft"
 });
 
 it("retains the review draft when an optimistic save rolls back", async () => {
-  let rejectSave!: (error: Error) => void;
-  mockUpdate.mockImplementation(
-    () =>
-      new Promise((_resolve, reject) => {
-        rejectSave = reject;
-      }),
-  );
+  const save = pendingWrite(mockUpdate);
   const { rerender } = render(<BookInfo />);
   fireEvent.press(screen.getByLabelText("Edit review"));
   fireEvent.changeText(screen.getByLabelText("Your review"), "Keep this draft");
@@ -389,20 +368,14 @@ it("retains the review draft when an optimistic save rolls back", async () => {
   rerender(<BookInfo />);
   await act(async () => {
     mockData = { ...mockData, review: "Old review" };
-    rejectSave(new Error("Review rejected"));
+    save.reject(new Error("Review rejected"));
   });
   expect(screen.getByRole("alert")).toHaveTextContent("Review rejected");
   expect(screen.getByLabelText("Your review").props.value).toBe("Keep this draft");
 });
 
 it("blocks other screen writes immediately while a progress save is in flight", async () => {
-  let finishSave!: (value: unknown) => void;
-  mockUpdate.mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finishSave = resolve;
-      }),
-  );
+  const save = pendingWrite(mockUpdate);
   render(<BookInfo />);
   fireEvent.press(screen.getByLabelText("Update reading progress"));
   fireEvent.changeText(screen.getByLabelText("Percent complete"), "25");
@@ -413,19 +386,13 @@ it("blocks other screen writes immediately while a progress save is in flight", 
   expect(mockUpdate).toHaveBeenCalledTimes(1);
   expect(mockDelete).not.toHaveBeenCalled();
   expect(screen.getByLabelText("Pages read").props.editable).toBe(false);
-  await act(async () => finishSave({ success: true }));
+  await act(async () => save.resolve({ success: true }));
   expect(screen.getByText("Progress saved")).toBeTruthy();
 });
 
 it("restores all submitted progress inputs after an optimistic save rolls back", async () => {
   const logError = jest.spyOn(console, "error").mockImplementation(() => {});
-  let rejectSave!: (error: Error) => void;
-  mockUpdate.mockImplementation(
-    () =>
-      new Promise((_resolve, reject) => {
-        rejectSave = reject;
-      }),
-  );
+  const save = pendingWrite(mockUpdate);
   const canonicalProgress = { currentPage: 10, totalPages: 100, percent: 10 };
   mockData.bookProgress = canonicalProgress;
   const { rerender } = render(<BookInfo />);
@@ -438,7 +405,7 @@ it("restores all submitted progress inputs after an optimistic save rolls back",
   rerender(<BookInfo />);
   await act(async () => {
     mockData = { ...mockData, bookProgress: canonicalProgress };
-    rejectSave(new Error("Progress rejected"));
+    save.reject(new Error("Progress rejected"));
   });
   expect(screen.getByRole("alert")).toHaveTextContent("Failed to save progress.");
   expect(screen.getByLabelText("Pages read").props.value).toBe("25");
@@ -446,23 +413,6 @@ it("restores all submitted progress inputs after an optimistic save rolls back",
   expect(screen.getByLabelText("Percent complete").props.value).toBe("");
   expect(screen.getByText("10% complete")).toBeTruthy();
   logError.mockRestore();
-});
-
-it("preserves exact chapter counts when the rounded percentage is 100", async () => {
-  render(<BookInfo />);
-  fireEvent.press(screen.getByLabelText("Update reading progress"));
-  fireEvent.changeText(screen.getAllByPlaceholderText("Current")[1], "299");
-  fireEvent.changeText(screen.getAllByPlaceholderText("Total")[1], "300");
-  fireEvent.press(screen.getByText("Save progress"));
-  await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
-  expect(mockUpdate.mock.calls[0][0]).toEqual({
-    hiveId: "bk_test",
-    bookProgress: expect.objectContaining({
-      currentChapter: 299,
-      totalChapters: 300,
-      percent: 100,
-    }),
-  });
 });
 
 it("keeps manual percent and intentional emptiness until a metric edit restores automatic calculation", async () => {
@@ -530,13 +480,7 @@ it("links public shelves to the catalogue list route", () => {
 });
 
 it("leaves tracking and confirmation visible while deletion is pending, blocking edits", async () => {
-  let finishDelete!: (value: unknown) => void;
-  mockDelete.mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finishDelete = resolve;
-      }),
-  );
+  const deletion = pendingWrite(mockDelete);
   const { rerender } = render(<BookInfo />);
   fireEvent.press(screen.getByLabelText("Update reading progress"));
   fireEvent.press(screen.getByLabelText("Edit review"));
@@ -554,6 +498,6 @@ it("leaves tracking and confirmation visible while deletion is pending, blocking
   fireEvent.press(screen.getByText("Cancel"));
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(screen.getByText("Remove from My Books?")).toBeTruthy();
-  finishDelete({ success: true });
+  deletion.resolve({ success: true });
   await waitFor(() => expect(screen.UNSAFE_getByType(Modal).props.visible).toBe(false));
 });

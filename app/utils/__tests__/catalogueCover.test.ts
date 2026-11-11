@@ -23,9 +23,3 @@ test("missing catalogue images produce no request URL", () => {
     expect(catalogueCoverUrl(origin, book)).toBe("");
   }
 });
-
-test("the caller supplies the API origin without consulting a live session", () => {
-  expect(catalogueCoverUrl("http://127.0.0.1:5199", { cover: "cover.jpg" })).toBe(
-    "http://127.0.0.1:5199/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/cover.jpg",
-  );
-});

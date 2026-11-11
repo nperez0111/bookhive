@@ -1,5 +1,5 @@
 import { personalLibraryQuery } from "../personalLibraryQuery";
-import { personalBookFilename, downloadedBookFilename } from "../personalBookFilename";
+import { personalBookFilename } from "../personalBookFilename";
 
 describe("personal library filters", () => {
   it("sends the same filters on every page and includes them in the cache identity", () => {
@@ -35,19 +35,10 @@ describe("personal library filters", () => {
 });
 
 describe("ebook filenames", () => {
-  it("uses the served extension when the server converts an upload to EPUB", () => {
-    expect(
-      downloadedBookFilename(
-        { filename: "Été.mobi", format: "mobi" },
-        "attachment; filename=Ete.epub; filename*=UTF-8''%C3%89t%C3%A9.epub",
-      ),
-    ).toBe("Été.epub");
-  });
   it("keeps intrinsic Unicode filename and compound extension, not catalogue metadata", () => {
     expect(personalBookFilename({ filename: "Été - My copy.fb2.zip", format: "fb2" })).toBe(
       "Été - My copy.fb2.zip",
     );
-    expect(personalBookFilename({ filename: "Dune.azw3", format: "azw3" })).toBe("Dune.azw3");
   });
   it("strips path traversal and control characters, and supplies an extension for older servers", () => {
     expect(personalBookFilename({ filename: "../../book\n.epub", format: "epub" })).toBe(

@@ -1,19 +1,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { AuthProvider, authFetch, createSessionFetch, getAuthState, useAuth } from "../auth";
+import { deferred } from "../../test/queryHelpers";
 
 const mockA = { did: "did:plc:a", handle: "a.test", sid: "sid-a" };
 const mockFetch = jest.fn();
 const mockOpenBrowser = jest.fn();
 const mockSecureSet = jest.fn().mockResolvedValue(undefined);
 const mockSecureDelete = jest.fn().mockResolvedValue(undefined);
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 
 const callback = (account: string) => ({
   type: "success",

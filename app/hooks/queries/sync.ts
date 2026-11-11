@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authSession, createSessionFetch } from "@/context/auth";
 import type { SyncDoc } from "@/api/personalLibraryTypes";
-import { beginLibraryMutation, useInvalidateLibrary } from "./personalLibraryCache";
+import {
+  beginLibraryMutation,
+  useInvalidateLibrary,
+  useLibraryWrite,
+} from "./personalLibraryCache";
 import { bookMutationQueue } from "@/utils/bookMutations";
 
 export const useSyncDocuments = () => {
@@ -122,18 +126,10 @@ export const useDismissSyncDocument = () => {
 };
 
 export const useRenameSyncDocument = () => {
-  const request = createSessionFetch();
-  const invalidate = useInvalidateLibrary(["syncDocuments"]);
-  return useMutation({
-    mutationFn: async (input: { document: string; title: string }) => {
-      return await request<{ title: string }>(`/library/sync/rename`, {
-        method: "POST",
-        body: input,
-      });
-    },
-    onSuccess: invalidate,
-    retry: false,
-  });
+  return useLibraryWrite<{ document: string; title: string }, { title: string }>(
+    "/library/sync/rename",
+    ["syncDocuments"],
+  );
 };
 
 export const useDeleteSyncDocument = () => {

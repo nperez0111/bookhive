@@ -46,6 +46,9 @@ beforeEach(() => {
 });
 
 it("authenticates the byte request in headers and shares a local file with its intrinsic name", async () => {
+  jest
+    .mocked(FileSystem.readDirectoryAsync)
+    .mockResolvedValue(["100-old", "200-middle", "300-new"]);
   await sharePersonalBook(book);
   const [url, target, options] = jest.mocked(FileSystem.createDownloadResumable).mock.calls[0];
   expect(url).toBe(
@@ -58,7 +61,10 @@ it("authenticates the byte request in headers and shares a local file with its i
     "file:///cache/book.epub",
     expect.objectContaining({ mimeType: book.mime }),
   );
-  expect(FileSystem.deleteAsync).not.toHaveBeenCalled();
+  expect(FileSystem.deleteAsync).toHaveBeenCalledTimes(1);
+  expect(FileSystem.deleteAsync).toHaveBeenCalledWith("file:///cache/ebook-exports/100-old", {
+    idempotent: true,
+  });
 });
 
 it("never shares an error body and cleans failed downloads", async () => {
@@ -71,17 +77,6 @@ it("never shares an error body and cleans failed downloads", async () => {
   await expect(sharePersonalBook(book)).rejects.toThrow("session expired");
   expect(Sharing.shareAsync).not.toHaveBeenCalled();
   expect(FileSystem.deleteAsync).toHaveBeenCalledWith(expect.stringContaining("ebook-exports/"), {
-    idempotent: true,
-  });
-});
-
-it("prunes only older exports, retaining at most three after success", async () => {
-  jest
-    .mocked(FileSystem.readDirectoryAsync)
-    .mockResolvedValue(["100-old", "200-middle", "300-new"]);
-  await sharePersonalBook(book);
-  expect(FileSystem.deleteAsync).toHaveBeenCalledTimes(1);
-  expect(FileSystem.deleteAsync).toHaveBeenCalledWith("file:///cache/ebook-exports/100-old", {
     idempotent: true,
   });
 });
