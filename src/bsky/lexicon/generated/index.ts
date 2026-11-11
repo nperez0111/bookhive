@@ -6,6 +6,7 @@ export * as BuzzBookhiveCatalogBook from "./types/buzz/bookhive/catalogBook.js";
 export * as BuzzBookhiveCreateList from "./types/buzz/bookhive/createList.js";
 export * as BuzzBookhiveCreatePersonalShelf from "./types/buzz/bookhive/createPersonalShelf.js";
 export * as BuzzBookhiveDefs from "./types/buzz/bookhive/defs.js";
+export * as BuzzBookhiveDeleteAccount from "./types/buzz/bookhive/deleteAccount.js";
 export * as BuzzBookhiveDeleteList from "./types/buzz/bookhive/deleteList.js";
 export * as BuzzBookhiveDeletePersonalBook from "./types/buzz/bookhive/deletePersonalBook.js";
 export * as BuzzBookhiveDeletePersonalShelf from "./types/buzz/bookhive/deletePersonalShelf.js";
@@ -26,6 +27,7 @@ export * as BuzzBookhiveGetSyncProgress from "./types/buzz/bookhive/getSyncProgr
 export * as BuzzBookhiveGetUserLists from "./types/buzz/bookhive/getUserLists.js";
 export * as BuzzBookhiveHiveBook from "./types/buzz/bookhive/hiveBook.js";
 export * as BuzzBookhiveLinkPersonalBook from "./types/buzz/bookhive/linkPersonalBook.js";
+export * as BuzzBookhiveListAuthors from "./types/buzz/bookhive/listAuthors.js";
 export * as BuzzBookhiveListGenres from "./types/buzz/bookhive/listGenres.js";
 export * as BuzzBookhiveListPersonalShelves from "./types/buzz/bookhive/listPersonalShelves.js";
 export * as BuzzBookhiveListSyncDocuments from "./types/buzz/bookhive/listSyncDocuments.js";
@@ -33,6 +35,7 @@ export * as BuzzBookhivePutSyncProgress from "./types/buzz/bookhive/putSyncProgr
 export * as BuzzBookhiveRemoveFromList from "./types/buzz/bookhive/removeFromList.js";
 export * as BuzzBookhiveRemoveFromPersonalShelf from "./types/buzz/bookhive/removeFromPersonalShelf.js";
 export * as BuzzBookhiveReorderList from "./types/buzz/bookhive/reorderList.js";
+export * as BuzzBookhiveResyncAccount from "./types/buzz/bookhive/resyncAccount.js";
 export * as BuzzBookhiveSearchBooks from "./types/buzz/bookhive/searchBooks.js";
 export * as BuzzBookhiveUnlinkPersonalBook from "./types/buzz/bookhive/unlinkPersonalBook.js";
 export * as BuzzBookhiveUpdateList from "./types/buzz/bookhive/updateList.js";

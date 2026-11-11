@@ -154,7 +154,7 @@ Each file exports a Hono JSX component rendered server-side.
 | `explore.tsx`         | Explore hub                                                                   |
 | `genres.tsx`          | Genre directory                                                               |
 | `genreBooks.tsx`      | Books by genre (paginated, sortable)                                          |
-| `genreEmoji.ts`       | Genre → emoji mapping                                                         |
+| `genreEmoji.ts`       | Re-exports shared web/native genre emoji mapping from `core/genreEmoji.ts`    |
 | `authorBooks.tsx`     | Books by author (paginated)                                                   |
 | `authorDirectory.tsx` | Author directory                                                              |
 | `import.tsx`          | CSV import page                                                               |
@@ -296,16 +296,20 @@ Unstorage mounts: `search:` (in-memory LRU), `profile:` (per-process LRU, 10,000
 | `src/bsky/bookLookup.ts`  | Book identifier lookup + transformation                                 |
 | `src/bsky/lexicon/`       | Generated types + validators from lexicon schemas                       |
 | `src/xrpc/router.ts`      | All `/xrpc/*` methods                                                   |
-| `lexicons/*.json`         | AT Protocol lexicon definitions (44 files)                              |
+| `lexicons/*.json`         | AT Protocol lexicon definitions (47 files)                              |
 | `lex.config.ts`           | Lexicon codegen config (`bun run lexgen`)                               |
 
 **Records**: Books `buzz.bookhive.book`, buzzes `buzz.bookhive.buzz`, lists `social.popfeed.feed.list`/`.listItem`, follows `app.bsky.graph.follow`.
 
-**XRPC queries**: `searchBooks`, `listGenres`, `getBookIdentifiers`, `getBook`, `getProfile`, `getLanguages`, `getExplore`, `getFeed`, `getAuthorBooks`, `getReadingStats`, `getUserLists`, `getList`.
+**XRPC queries**: `searchBooks`, `listGenres`, `listAuthors`, `getBookIdentifiers`, `getBook`, `getProfile`, `getLanguages`, `getExplore`, `getFeed`, `getAuthorBooks`, `getReadingStats`, `getUserLists`, `getList`.
 
 `getFeed` paginates by `cursor`, not `page` (`page` stays accepted for old iOS builds — see `docs/notes/activity-feed.md`). `getProfile` deliberately returns `indexedAt` in the `createdAt` field on `activity`/`friendActivity` — don't "fix" this; the shape follows the lexicon, and the lexicon hasn't added `indexedAt` yet. `books` keeps its true `createdAt` for the app's labelled "Date Added" sort. Full reasoning: `docs/notes/activity-feed.md`.
 
 **XRPC list procedures**: `createList`, `updateList`, `deleteList`, `addToList`, `removeFromList`, `reorderList`.
+
+**XRPC account procedures**: `resyncAccount`, `deleteAccount` — require a live OAuth
+session (`pdsWrite`), never service auth alone. Deletion confirms the current handle,
+removes BookHive records/files (not Bluesky posts/account), and destroys the session.
 
 **XRPC personal library queries**: `getPersonalLibrary` (params `limit`/`cursor`/`shelfId`/`q`/`sort`; output carries `storage`), `getPersonalBook`, `getPersonalBookFile`, `getPersonalBookCover`, `listPersonalShelves`, `getSyncProgress`, `listSyncDocuments`.
 
@@ -360,7 +364,11 @@ Two methods declare non-JSON bodies: `uploadPersonalBook` (input MIME list inclu
 
 ### XRPC auth (`src/xrpc/auth.ts`)
 
-`/xrpc/*` accepts the `sid` cookie **or** an atproto inter-service auth JWT (`Authorization: Bearer <token>`, verified with `ServiceJwtVerifier`), which is what makes the personal library usable from a script or e-reader rather than only a browser session. Bearer wins when both are present. A method declares `auth: "identity" | "pdsWrite"`; `identity` methods only need the DID, `pdsWrite` methods (the six book-list procedures) need a live OAuth session — service auth can never satisfy `pdsWrite`, since it proves key control, not that we hold a grant.
+Mobile refresh classifies SDK invalid,
+refresh, revoked, missing-session and unusable-auth-method errors as terminal (401);
+transient failures return 503. See `docs/notes/routes.md`.
+
+`/xrpc/*` accepts the `sid` cookie **or** an atproto inter-service auth JWT (`Authorization: Bearer <token>`, verified with `ServiceJwtVerifier`), which is what makes the personal library usable from a script or e-reader rather than only a browser session. Bearer wins when both are present. A method declares `auth: "identity" | "pdsWrite"`; `identity` methods only need the DID, `pdsWrite` methods (book-list and account procedures) need a live OAuth session — service auth can never satisfy `pdsWrite`, since it proves key control, not that we hold a grant.
 
 Load-bearing specifics — exact-match audience checking, the non-default `SERVICE_AUTH_MAX_AGE_SECONDS`, no prior-relationship gate, no replay protection, and the third-party token-minting example — are in `docs/notes/e-reader-and-sync.md`.
 
@@ -400,6 +408,13 @@ Form controls get a low-alpha white overlay in dark mode rather than `var(--inpu
 
 In this Paseo workspace, start the managed `dev` script (`paseo script start dev`). `paseo.json` explicitly sets `NODE_ENV=development` (including worker threads), pins it to port 5199, binds Vite to `0.0.0.0`, and sets `PUBLIC_URL=https://5199.dev.nickthesick.com` for browser access and OAuth callbacks.
 
+For same-Mac iOS simulator testing without that public proxy, stop `dev` and start
+`dev:local` plus `ios`. Both run in Paseo terminals: backend/OAuth on
+`http://127.0.0.1:5199`, Metro on `http://localhost:8081`, with the app API URL
+explicitly set to the local backend. Use these direct URLs, not the auto-allocated
+Paseo service proxy links. Build/install with `bun run ios --no-bundler` from
+`app/`; see `app/README.md` for simulator selection and restart instructions.
+
 | Command              | What                                                                                                |
 | -------------------- | --------------------------------------------------------------------------------------------------- |
 | `bun run dev`        | Dev server (`bunx --bun vp dev`)                                                                    |
@@ -424,9 +439,15 @@ Notable deps: hono, kysely, zod 4, iron-session, unstorage + ocache, `@atcute/*`
 
 Separate Expo/React Native workspace — see `app/ARCHITECTURE.md`. Consumes personal-library and KOSync surfaces (XRPC `*PersonalBook`/`*PersonalShelf` methods, REST `/library/*`, `/settings/sync/*`, `POST /library/upload`).
 
-The mobile redesign is being handled separately. The November 2026 lifecycle audit handoff is
-`docs/notes/mobile-state-machine-handoff.md`; it records findings and regression criteria, not
-implemented mobile fixes. Do not fold mobile changes into the server audit fix pass.
+The November 2026 lifecycle audit handoff is `docs/notes/mobile-state-machine-handoff.md`;
+it records findings and regression criteria. Implemented native fixes and the release checklist
+are tracked separately in `docs/notes/mobile-feature-parity.md`.
+Read `app/ARCHITECTURE.md` before changing native code: it maps domain components,
+`hooks/queries/` implementations (`useBookhiveQuery.ts` is a compatibility export),
+and `app/api/` transport contracts. It owns session/draft/cache rules, public versus
+private shelf boundaries, root-Stack navigation and the iOS double-inset gotcha.
+The app uses SDK 57 / RN 0.86 with SecureStore and viewer-isolated caches; native
+dependency changes require new binaries, never an OTA-only release.
 
 The app renders `payload.error` verbatim for any non-2xx upload response, which is why the quota rejection (413) carries human prose rather than a bare code. It reads `storage` off `getPersonalLibrary` for its own quota meter, so **anything that changes the quota's wire shape needs an app release**. `app/utils/personalLibrary.ts`'s `formatBytes` is a deliberate byte-for-byte copy of the server's.
 

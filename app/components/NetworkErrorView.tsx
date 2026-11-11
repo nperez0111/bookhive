@@ -4,10 +4,10 @@ import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { useRouter } from "expo-router";
+import { useAuth } from "@/context/auth";
 
 export interface NetworkError {
-  type: "network" | "server" | "timeout" | "unauthorized" | "not_found" | "unknown";
+  type: "network" | "server" | "timeout" | "unauthorized" | "forbidden" | "not_found" | "unknown";
   message: string;
   retryable: boolean;
   statusCode?: number;
@@ -30,10 +30,17 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
 }) => {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
-  const router = useRouter();
+  const { signOut } = useAuth();
 
-  const handleSignIn = () => {
-    router.push("/(auth)/login");
+  const handleSignIn = async () => {
+    // The auth stack is protected while credentials exist. Clear the session
+    // explicitly and let the root guard open login, rather than pushing a blocked route.
+    try {
+      await signOut();
+    } catch (error) {
+      // signOut clears the live session before attempting persistent storage cleanup.
+      console.error("Failed to clear saved session:", error);
+    }
   };
 
   const getErrorIcon = () => {
@@ -45,6 +52,7 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
       case "timeout":
         return "time-outline";
       case "unauthorized":
+      case "forbidden":
         return "lock-closed-outline";
       case "not_found":
         return "search-outline";
@@ -63,6 +71,8 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
         return "Request Timeout";
       case "unauthorized":
         return "Authentication Required";
+      case "forbidden":
+        return "Permission Denied";
       case "not_found":
         return "Not Found";
       default:
@@ -82,6 +92,8 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
         return "The request took too long to complete. Please try again.";
       case "unauthorized":
         return "Please sign in again to continue.";
+      case "forbidden":
+        return "You do not have permission to access this resource.";
       case "not_found":
         return "The requested resource was not found.";
       default:

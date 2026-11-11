@@ -1,264 +1,231 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useState } from "react";
 
-import { FadeInImage } from "@/components/FadeInImage";
-import { GradientView } from "@/components/GradientView";
-import { LanguageFilter } from "@/components/LanguageFilter";
+import { AuthorBrowser } from "@/components/discovery/AuthorBrowser";
+import { GenreBrowser } from "@/components/discovery/GenreBrowser";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { HeaderAction } from "@/components/HeaderAction";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
-import { SectionHeader } from "@/components/SectionHeader";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useLanguage } from "@/context/language";
-import { useExplore } from "@/hooks/useBookhiveQuery";
+import { useExplore, useLanguages } from "@/hooks/useBookhiveQuery";
+import { useAuthorDirectory } from "@/hooks/useAuthorDirectory";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
-
-function formatCount(count: number): string {
-  if (count < 10) return `${count}`;
-  if (count < 100) return `${Math.floor(count / 10) * 10}+`;
-  if (count >= 1000) return `${Math.floor(count / 1000)}k+`;
-  return `${Math.floor(count / 100) * 100}+`;
-}
+import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 export default function ExploreScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
+  const top = useScreenTopInset();
+  const colors = Colors[useColorScheme() ?? "light"];
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ paddingTop: top }}>
+        <ScreenHeader
+          title="Discover"
+          actions={
+            <HeaderAction
+              title="Community"
+              tone="neutral"
+              accessibilityLabel="Community feed"
+              onPress={() => router.push("/feed")}
+            />
+          }
+        />
+        <View style={{ paddingHorizontal: 20 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Search books"
+            onPress={() => router.push("/search")}
+            style={[
+              styles.searchEntry,
+              { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
+            ]}
+          >
+            <Ionicons name="search-outline" size={20} color={colors.secondaryText} />
+            <ThemedText style={{ color: colors.secondaryText }}>Title, author or ISBN</ThemedText>
+          </Pressable>
+        </View>
+      </View>
+      <ExploreContent />
+    </View>
+  );
+}
+
+function ExploreContent() {
+  const colors = Colors[useColorScheme() ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
-  const { top } = useSafeAreaInsets();
-  const { preferredLanguage } = useLanguage();
-  const explore = useExplore(preferredLanguage);
+  const { preferredLanguage, setPreferredLanguage } = useLanguage();
+  const [showAllGenres, setShowAllGenres] = useState(false);
+  const [showAuthorDirectory, setShowAuthorDirectory] = useState(false);
+  const [browse, setBrowse] = useState<"genres" | "authors">("genres");
+  const explore = useExplore(preferredLanguage, browse === "genres" && showAllGenres);
+  const languages = useLanguages();
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [authorQuery, setAuthorQuery] = useState("");
+  const authorDirectory = useAuthorDirectory(
+    authorQuery,
+    preferredLanguage,
+    browse === "authors" && showAuthorDirectory,
+  );
 
-  if (explore.isLoading) {
-    return (
-      <ThemedView style={[styles.loadingContainer, { backgroundColor }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </ThemedView>
-    );
-  }
-
-  if (explore.error) {
-    return (
-      <QueryErrorHandler
-        error={explore.error}
-        onRetry={() => explore.refetch()}
-        showRetryButton
-        showGoBackButton={false}
-      />
-    );
-  }
-
-  const genres = explore.data?.genres ?? [];
-  const topAuthors = explore.data?.topAuthors ?? [];
+  const showingFeatured = browse === "genres" ? !showAllGenres : !showAuthorDirectory;
+  const directory = explore.genreDirectory;
+  const genres = showAllGenres
+    ? (directory.data?.pages.flatMap((page) => page.genres) ?? [])
+    : (explore.data?.genres ?? []).slice(0, 6);
+  const authors = showAuthorDirectory
+    ? authorDirectory.authors
+    : (explore.data?.topAuthors ?? []).slice(0, 5);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
+      <LanguagePicker
+        visible={languageOpen}
+        languages={languages.data ?? []}
+        selected={preferredLanguage}
+        onSelect={setPreferredLanguage}
+        onClose={() => setLanguageOpen(false)}
+        loading={languages.isFetching}
+        failed={languages.isError}
+        onRetry={() => void languages.refetch()}
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 20 + bottom }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
-        <GradientView variant="warm" style={[styles.header, { paddingTop: top + 12 }]}>
-          <ThemedText
-            style={[styles.headerTitle, { color: colorScheme === "dark" ? "#ffffff" : "#1a1a1a" }]}
-            type="title"
-          >
-            Explore
-          </ThemedText>
-          <ThemedText
-            style={[
-              styles.headerSubtitle,
-              { color: colorScheme === "dark" ? "#f7fafc" : "#4a5568" },
-            ]}
-            type="body"
-          >
-            Discover by genre or author
-          </ThemedText>
-        </GradientView>
-
-        {/* Language Filter */}
-        <LanguageFilter style={{ marginTop: 4, marginBottom: 8, marginHorizontal: -20 }} />
-
-        {/* Top Genres */}
-        <View style={styles.section}>
-          <SectionHeader icon={"bookmark" as any} title="Top Genres" style={{ marginBottom: 16 }} />
-          <View style={styles.genreGrid}>
-            {genres.map((item) => (
-              <Pressable
-                key={item.genre}
-                onPress={() =>
-                  router.push(`/explore/genres/${encodeURIComponent(item.genre)}` as any)
-                }
-                style={({ pressed }) => [
-                  styles.genreCard,
-                  {
-                    backgroundColor: colors.cardBackground,
-                    borderColor: colors.cardBorder,
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
+        <View
+          accessibilityRole="tablist"
+          style={[styles.browseSwitch, { backgroundColor: colors.cardBackground }]}
+        >
+          {(["genres", "authors"] as const).map((key) => (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: browse === key }}
+              onPress={() => setBrowse(key)}
+              style={[
+                styles.browseTab,
+                browse === key && { backgroundColor: colors.activeBackground },
+              ]}
+            >
+              <ThemedText
+                type="label"
+                style={{
+                  color: browse === key ? colors.primaryText : colors.secondaryText,
+                  fontWeight: browse === key ? "600" : "500",
+                }}
               >
-                <ThemedText style={[styles.genreCount, { color: colors.primary }]} type="heading">
-                  {formatCount(item.count)}
-                </ThemedText>
-                <ThemedText
-                  style={[styles.genreName, { color: colors.primaryText }]}
-                  type="label"
-                  numberOfLines={2}
-                >
-                  {item.genre}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
+                {key === "genres" ? "Genres" : "Authors"}
+              </ThemedText>
+            </Pressable>
+          ))}
         </View>
-
-        {/* Top Authors */}
-        <View style={styles.section}>
-          <SectionHeader icon={"person" as any} title="Top Authors" style={{ marginBottom: 16 }} />
-          <View
-            style={[
-              styles.authorsCard,
-              {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.cardBorder,
-              },
-            ]}
-          >
-            {topAuthors.map((author, index) => (
-              <Pressable
-                key={author.author}
-                onPress={() =>
-                  router.push(`/explore/authors/${encodeURIComponent(author.author)}` as any)
-                }
-                style={({ pressed }) => [
-                  styles.authorRow,
-                  index < topAuthors.length - 1 && {
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.cardBorder,
-                  },
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                {author.thumbnail ? (
-                  <FadeInImage source={{ uri: author.thumbnail }} style={styles.authorThumbnail} />
-                ) : (
-                  <View
-                    style={[styles.authorInitial, { backgroundColor: colors.activeBackground }]}
-                  >
-                    <ThemedText
-                      style={[styles.authorInitialText, { color: colors.primary }]}
-                      type="heading"
-                    >
-                      {author.author[0]?.toUpperCase() ?? "?"}
-                    </ThemedText>
-                  </View>
-                )}
-                <View style={styles.authorInfo}>
-                  <ThemedText
-                    style={[styles.authorName, { color: colors.primaryText }]}
-                    type="label"
-                    numberOfLines={1}
-                  >
-                    {author.author}
-                  </ThemedText>
-                  <ThemedText
-                    style={[styles.authorMeta, { color: colors.secondaryText }]}
-                    type="caption"
-                  >
-                    {formatCount(author.bookCount)} books
-                    {author.avgRating ? ` · ★ ${(author.avgRating / 10).toFixed(1)}` : ""}
-                  </ThemedText>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.tertiaryText} />
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Change discovery language"
+          accessibilityState={{ expanded: languageOpen }}
+          accessibilityValue={{ text: preferredLanguage || "All languages" }}
+          onPress={() => {
+            setLanguageOpen(true);
+            void languages.refetch();
+          }}
+          style={styles.languageButton}
+        >
+          <Ionicons name="globe-outline" size={16} color={colors.secondaryText} />
+          <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+            {preferredLanguage || "All languages"}
+          </ThemedText>
+          <Ionicons
+            name={languageOpen ? "chevron-up" : "chevron-down"}
+            size={14}
+            color={colors.secondaryText}
+          />
+        </Pressable>
+        <ThemedText style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 20 }}>
+          Book results use your selected language.
+        </ThemedText>
+        {showingFeatured && explore.isLoading && <ActivityIndicator color={colors.primary} />}
+        {showingFeatured && explore.error && (
+          <QueryErrorHandler
+            error={explore.error}
+            onRetry={() => explore.refetch()}
+            showRetryButton
+            showGoBackButton={false}
+          />
+        )}
+        {showingFeatured &&
+          !explore.isLoading &&
+          !explore.isFetching &&
+          !explore.error &&
+          explore.data &&
+          (browse === "genres" ? genres.length === 0 : authors.length === 0) && (
+            <View style={{ gap: 4 }}>
+              <ThemedText type="label">No featured {browse} yet</ThemedText>
+              <ThemedText style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 20 }}>
+                Search books above or browse the directory.
+              </ThemedText>
+            </View>
+          )}
+        {browse === "genres" && (
+          <GenreBrowser
+            genres={genres}
+            expanded={showAllGenres}
+            onToggle={() => setShowAllGenres((value) => !value)}
+            directory={directory}
+          />
+        )}
+        {browse === "authors" && (
+          <AuthorBrowser
+            authors={authors}
+            expanded={showAuthorDirectory}
+            onToggle={() => setShowAuthorDirectory((value) => !value)}
+            query={authorQuery}
+            onQueryChange={setAuthorQuery}
+            directory={authorDirectory}
+          />
+        )}
       </ScrollView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  searchEntry: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  loadingContainer: {
+  browseSwitch: { flexDirection: "row", borderRadius: 14, padding: 4 },
+  browseTab: {
     flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  header: {
-    paddingBottom: 32,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerTitle: {
-    marginBottom: 4,
-  },
-  headerSubtitle: {},
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    gap: 8,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  genreGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  genreCard: {
-    width: "47%",
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    alignItems: "center",
-  },
-  genreCount: {
-    marginBottom: 4,
-  },
-  genreName: {
-    textAlign: "center",
-  },
-  authorsCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  authorRow: {
+  languageButton: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
-    gap: 12,
+    alignSelf: "flex-end",
+    gap: 6,
+    paddingHorizontal: 8,
   },
-  authorThumbnail: {
-    width: 48,
-    height: 64,
-    borderRadius: 8,
-  },
-  authorInitial: {
-    width: 48,
-    height: 64,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  authorInitialText: {},
-  authorInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  authorName: {},
-  authorMeta: {},
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20, paddingTop: 16, gap: 8 },
 });

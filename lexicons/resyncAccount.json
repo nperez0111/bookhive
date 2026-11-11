@@ -1,0 +1,20 @@
+{
+  "lexicon": 1,
+  "id": "buzz.bookhive.resyncAccount",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Re-sync BookHive book records from the signed-in user's PDS. Requires a live OAuth session; service auth is not sufficient. Completes before returning success. Accepts only an empty JSON object.",
+      "input": { "encoding": "application/json", "schema": { "type": "object", "properties": {} } },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["success"],
+          "properties": { "success": { "type": "boolean", "const": true } }
+        }
+      },
+      "errors": [{ "name": "ResyncFailed", "description": "Re-sync failed; retry manually." }]
+    }
+  }
+}

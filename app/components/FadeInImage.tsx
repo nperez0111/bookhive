@@ -13,7 +13,10 @@ export function FadeInImage(props: ImageProps) {
     <AnimatedImage
       {...props}
       onLoadEnd={() => {
+        // Reanimated shared values are mutable animation handles, not React state.
+        // eslint-disable-next-line react-hooks/immutability
         opacity.value = withTiming(1, { duration: 200 });
+        props.onLoadEnd?.();
       }}
       style={[props.style as any, style]}
       fadeDuration={0}

@@ -361,3 +361,10 @@ and an all-catalogue author match from 22–23ms to 11–11.3ms, including the p
 fixture results, not a promise for production's multi-second tail: event-loop/host stalls also
 inflate the logged `search_local_ms`. Check that stage after deployment rather than attributing
 every long search to FTS. No query-result cache or changes to the Goodreads-first search policy.
+
+Language-preferred XRPC search applies preference before limiting the local prefix.
+Broad language queries use covering `idx_hive_book_stats` (which includes language),
+then sort the narrow candidates; ordinary popularity search keeps its ordered covering
+rank index. Both retain the bounded probe and all eligible FTS matches, and hydrate
+only the selected page. Do not use the language-free rank index for language ranking:
+that would require a wide-table lookup for every matching language value.

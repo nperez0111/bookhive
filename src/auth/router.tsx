@@ -14,6 +14,8 @@ import { Login } from "../pages/login";
 import { Signup } from "../pages/signup";
 import { OAUTH_SCOPES, sessionClientFromOAuthSession, type SessionClient } from "./client";
 import { isValidHandle } from "./handle";
+import { guardedRestore, isSessionTerminatingError } from "./restore-guard";
+import { getStoredSessionIssuerHost } from "./storage";
 import {
   isPdsEnabled,
   mintInviteCode,
@@ -145,52 +147,72 @@ export function loginRouter(
     );
   });
 
-  app.get("/mobile/login", async (c) => {
-    let { handle, redirect_uri: redirectUri } = c.req.query();
-    if (typeof handle !== "string" || !isValidHandle(handle)) {
-      return c.html(
-        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
-          <Login error={"Handle '" + handle + "' is invalid"} />
-        </Layout>,
-        400,
-      );
-    }
+  app.get(
+    "/mobile/login",
+    zValidator(
+      "query",
+      z.object({
+        handle: z.string().refine(isValidHandle, "Invalid handle"),
+        redirect_uri: z
+          .string()
+          .url()
+          .refine((value) => {
+            const protocol = new URL(value).protocol;
+            return protocol === "bookhive:" || protocol === "exp:";
+          }, "Redirect uri must be an exp or bookhive url"),
+      }),
+    ),
+    async (c) => {
+      const { handle, redirect_uri: redirectUri } = c.req.valid("query");
+      try {
+        const { url } = await c.get("ctx").oauthClient.authorize({
+          target: { type: "account", identifier: handle as ActorIdentifier },
+          scope: OAUTH_SCOPES,
+          state: { redirectUri, handle },
+        });
+        return c.redirect(url.toString());
+      } catch (err: unknown) {
+        const errMsg =
+          typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Couldn't initiate login";
+        c.get("ctx").addWideEventContext({
+          oauth_authorize: "failed",
+          error: errMsg,
+        });
 
-    try {
-      const { url } = await c.get("ctx").oauthClient.authorize({
-        target: { type: "account", identifier: handle },
-        scope: OAUTH_SCOPES,
-        state: { redirectUri, handle },
-      });
-      return c.redirect(url.toString());
-    } catch (err: unknown) {
-      const errMsg =
-        typeof err === "object" && err !== null && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Couldn't initiate login";
-      c.get("ctx").addWideEventContext({
-        oauth_authorize: "failed",
-        error: errMsg,
-      });
-
-      return c.html(
-        <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
-          <Error message={errMsg} description="Oauth authorization failed" statusCode={400} />
-        </Layout>,
-        400,
-      );
-    }
-  });
+        return c.html(
+          <Layout assetUrls={c.get("assetUrls")} url={c.req.url}>
+            <Error message={errMsg} description="Oauth authorization failed" statusCode={400} />
+          </Layout>,
+          400,
+        );
+      }
+    },
+  );
 
   app.get("/mobile/refresh-token", async (c) => {
+    const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
+    if (!session.did) return c.json({ success: false, error: "SessionExpired" }, 401);
+    const ctx = c.get("ctx");
     try {
-      const session = await getIronSession<Session>(c.req.raw, c.res, getSessionConfig());
-
-      const oauthSession = await c.get("ctx").oauthClient.restore(session.did as Did, {
-        refresh: "auto",
-      });
-      await oauthSession.getTokenInfo("auto");
-      // Keep session TTL fixed at 24 hours for mobile sessions too
+      const key = (await getStoredSessionIssuerHost(ctx.kv, session.did)) ?? session.did;
+      await guardedRestore(
+        key,
+        async () => {
+          const oauthSession = await ctx.oauthClient.restore(session.did as Did, {
+            refresh: "auto",
+          });
+          await oauthSession.getTokenInfo("auto");
+        },
+        (outcome) =>
+          ctx.addWideEventContext({
+            pds_host: outcome.key,
+            pds_breaker: outcome.state,
+            oauth_restore_ms: outcome.durationMs,
+          }),
+      );
+      // Renew the same rolling session TTL used by web sessions.
       session.updateConfig(getSessionConfig());
       await session.save();
 
@@ -201,8 +223,14 @@ export function loginRouter(
           sid: await sealData({ did: session.did }, { password: env.COOKIE_SECRET }),
         },
       });
-    } catch {
-      return c.json({ success: false }, 400);
+    } catch (error) {
+      const terminal = isSessionTerminatingError(error);
+      ctx.addWideEventContext({ oauth_restore: "failed", oauth_restore_terminal: terminal });
+      if (terminal) session.destroy();
+      return c.json(
+        { success: false, error: terminal ? "SessionExpired" : "SessionUnavailable" },
+        terminal ? 401 : 503,
+      );
     }
   });
 

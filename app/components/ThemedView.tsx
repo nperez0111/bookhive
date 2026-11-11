@@ -19,11 +19,12 @@ export function ThemedView({
 }: ThemedViewProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
+  const customBackground = useThemeColor({ light: lightColor, dark: darkColor }, "background");
 
   let backgroundColor;
 
   if (lightColor || darkColor) {
-    backgroundColor = useThemeColor({ light: lightColor, dark: darkColor }, "background");
+    backgroundColor = customBackground;
   } else {
     switch (variant) {
       case "card":

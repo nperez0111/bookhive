@@ -1,17 +1,16 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { View, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { ThemedText } from "./ThemedText";
 
 type SectionHeaderProps = {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
+  icon?: React.ComponentProps<typeof Ionicons>["name"];
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 };
 
 export function SectionHeader({ icon, title, subtitle, right, style }: SectionHeaderProps) {
@@ -19,22 +18,11 @@ export function SectionHeader({ icon, title, subtitle, right, style }: SectionHe
   const colors = Colors[colorScheme ?? "light"];
 
   return (
-    <LinearGradient
-      colors={
-        colorScheme === "dark"
-          ? ["rgba(255,255,255,0.02)", "rgba(255,255,255,0)"]
-          : ["rgba(0,0,0,0.03)", "rgba(0,0,0,0)"]
-      }
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[styles.container, style]}
-    >
+    <View style={[styles.container, style]}>
       <View style={styles.leftGroup}>
-        <View style={[styles.iconContainer, { backgroundColor: colors.activeBackground }]}>
-          <Ionicons name={icon} size={20} color={colors.primary} />
-        </View>
+        {icon ? <Ionicons name={icon} size={18} color={colors.primary} accessible={false} /> : null}
         <View style={styles.texts}>
-          <ThemedText style={[styles.title, { color: colors.primaryText }]} type="heading">
+          <ThemedText style={{ color: colors.primaryText }} type="heading">
             {title}
           </ThemedText>
           {subtitle ? (
@@ -45,7 +33,7 @@ export function SectionHeader({ icon, title, subtitle, right, style }: SectionHe
         </View>
       </View>
       {right}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -64,17 +52,9 @@ const styles = StyleSheet.create({
     gap: 12,
     flex: 1,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   texts: {
     flex: 1,
   },
-  title: {},
   subtitle: {
     marginTop: 2,
   },

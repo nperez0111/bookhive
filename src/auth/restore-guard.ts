@@ -8,6 +8,13 @@
 import { CircuitBreaker } from "../lib/circuitBreaker";
 import { withTimeout } from "../lib/semaphore";
 import { errorMessage } from "../lib/errors";
+import {
+  AuthMethodUnsatisfiableError,
+  OAuthResponseError,
+  TokenInvalidError,
+  TokenRefreshError,
+  TokenRevokedError,
+} from "@atcute/oauth-node-client";
 
 // Deliberately far below the ~30s a user will tolerate — frees the lock and event loop rather than squeezing out a slow success.
 export const RESTORE_TIMEOUT_MS = 5_000;
@@ -84,6 +91,19 @@ export class PdsUnavailableError extends Error {
  * mere network timeout.
  */
 export function isSessionTerminatingError(err: unknown): boolean {
+  // These are the SDK's deleteOnError cases. Messages may be arbitrary PDS prose
+  // or describe a missing local session rather than include an OAuth error code.
+  if (
+    err instanceof TokenRefreshError ||
+    err instanceof TokenInvalidError ||
+    err instanceof TokenRevokedError ||
+    err instanceof AuthMethodUnsatisfiableError
+  ) {
+    return true;
+  }
+  if (err instanceof OAuthResponseError) {
+    return /^(invalid_grant|invalid_client|unauthorized_client|invalid_token)$/.test(err.error);
+  }
   const message = errorMessage(err);
   return /invalid_grant|invalid_client|unauthorized_client|invalid_token|revoked|token has expired/i.test(
     message,

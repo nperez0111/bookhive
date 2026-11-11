@@ -1,13 +1,12 @@
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { Colors } from "@/constants/Colors";
-import { useAuth } from "@/context/auth";
-import { getBaseUrl } from "@/context/auth";
+import { authSession, useAuth, getBaseUrl } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { ofetch } from "ofetch";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
@@ -29,12 +28,24 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const submitting = useRef(false);
+  const flow = useRef(0);
+  const focused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+      return () => {
+        focused.current = false;
+        flow.current++;
+      };
+    }, []),
+  );
 
-  // Animation refs
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const spinValue = useRef(new Animated.Value(0)).current;
+  // Stable animation handles, initialized once for this screen.
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [slideAnim] = useState(() => new Animated.Value(30));
+  const [scaleAnim] = useState(() => new Animated.Value(0.9));
+  const [spinValue] = useState(() => new Animated.Value(0));
 
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
@@ -60,7 +71,7 @@ export default function RegisterScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, scaleAnim, slideAnim]);
 
   const validate = (): string | null => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -79,6 +90,7 @@ export default function RegisterScreen() {
   };
 
   const handleSubmit = async () => {
+    if (submitting.current || !focused.current) return;
     setError("");
     const validationError = validate();
     if (validationError) {
@@ -86,6 +98,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    submitting.current = true;
+    const operation = ++flow.current;
+    const session = authSession.capture();
+    const isCurrent = () =>
+      focused.current && operation === flow.current && !session.signal.aborted;
     setIsLoading(true);
 
     // Start loading animation
@@ -103,9 +120,13 @@ export default function RegisterScreen() {
         {
           baseURL: getBaseUrl(),
           method: "POST",
+          retry: 0,
+          timeout: 30_000,
           body: { email, handle: handle.toLowerCase(), password },
         },
       );
+
+      if (!isCurrent()) return;
 
       if (!result.success) {
         setError(result.error ?? "Failed to create account.");
@@ -113,23 +134,27 @@ export default function RegisterScreen() {
       }
 
       // Account created — kick off OAuth sign-in with the new handle
-      await signIn({ handle: result.handle! });
-
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        router.replace("/(tabs)");
-      });
+      if (!result.handle) throw new Error("Signup response is missing the account handle");
+      try {
+        const signInResult = await signIn({ handle: result.handle });
+        if (signInResult === "success") return;
+      } catch {
+        // The account exists even if opening/finishing OAuth failed.
+      }
+      if (isCurrent())
+        router.replace({ pathname: "/(auth)/login", params: { handle: result.handle } });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const message =
         err && typeof err === "object" && "data" in err
           ? (err as { data?: { error?: string } }).data?.error
           : undefined;
       setError(message ?? "Something went wrong. Please try again.");
     } finally {
-      setIsLoading(false);
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
+      submitting.current = false;
+      if (focused.current) setIsLoading(false);
     }
   };
 
@@ -337,8 +362,8 @@ export default function RegisterScreen() {
                 ]}
               >
                 <ThemedText style={[styles.infoText, { color: colors.secondaryText }]}>
-                  After your account is created, you'll sign in with the password you just chose to
-                  complete setup.
+                  After your account is created, you&apos;ll sign in with the password you just
+                  chose to complete setup.
                 </ThemedText>
               </View>
 
