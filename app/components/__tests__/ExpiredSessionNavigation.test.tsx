@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Text } from "react-native";
+import { Button, Text } from "react-native";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import { router, Slot } from "expo-router";
 import RootLayout from "../../app/_layout";
+import TabLayout from "../../app/(tabs)/_layout";
 import { authSession, getAuthState, useAuth } from "@/context/auth";
 import { NetworkErrorView, type NetworkError } from "../NetworkErrorView";
+import { BackNavigationHeader } from "../BackNavigationHeader";
+import { classifyNetworkError } from "@/utils/networkErrorHandler";
 
 const mockAccount = { did: "did:plc:alice", handle: "alice.test", sid: "saved-session" };
 const mockSecureDelete = jest.fn().mockResolvedValue(undefined);
@@ -41,6 +44,14 @@ jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 jest.mock("react-native-reanimated", () => ({}));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
 jest.mock("@/components/NetworkStatusIndicator", () => ({ NetworkStatusIndicator: () => null }));
+jest.mock("@/components/AnimatedTabIcon", () => ({ AnimatedTabIcon: () => null }));
+jest.mock("@/components/ui/TabBarBackground", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/HapticTab", () => ({
+  HapticTab: (props: React.ComponentProps<typeof import("react-native").Pressable>) => {
+    const { Pressable } = jest.requireActual<typeof import("react-native")>("react-native");
+    return <Pressable {...props} />;
+  },
+}));
 
 function SessionErrorScreen() {
   const { authState } = useAuth();
@@ -53,6 +64,14 @@ function SessionErrorScreen() {
   return (
     <>
       <Text>Signed in as {authState?.handle}</Text>
+      <Button
+        title="Permission failure"
+        onPress={() => setError(classifyNetworkError({ status: 403 }))}
+      />
+      <Button
+        title="Temporary failure"
+        onPress={() => setError(classifyNetworkError({ status: 503 }))}
+      />
       <NetworkErrorView
         error={error}
         onRetry={() =>
@@ -68,24 +87,108 @@ function SessionErrorScreen() {
   );
 }
 
-it("keeps transient failures signed in and explicitly signs out into the protected login route", async () => {
-  // Use the real root Stack.Protected, AuthProvider/session scope and theme provider.
-  // Only leaf screens and native services are replaced, not navigation or auth state.
-  const navigation = renderRouter(
+const detailScreens = Object.fromEntries(
+  [
+    "search",
+    "feed",
+    "book/[id]",
+    "books/[status]",
+    "profile/[did]",
+    "profile/[did]/stats",
+    "explore/genres/[genre]",
+    "explore/authors/[author]",
+    "settings",
+    "account",
+    "import",
+    "lists/index",
+    "lists/[uri]",
+    "library/index",
+    "sync/index",
+  ].map((route) => [
+    route,
+    () => (
+      <>
+        <BackNavigationHeader />
+        <Text>Detail: {route}</Text>
+      </>
+    ),
+  ]),
+);
+
+function MyBooksScreen() {
+  const [count, setCount] = useState(0);
+  return (
+    <>
+      <Text>My Books collection</Text>
+      <Button title={`Local state: ${count}`} onPress={() => setCount(count + 1)} />
+    </>
+  );
+}
+
+function renderNavigation(initialUrl = "/") {
+  return renderRouter(
     {
+      ...detailScreens,
       _layout: RootLayout,
-      "(tabs)/_layout": () => <Slot />,
+      "(tabs)/_layout": TabLayout,
       "(tabs)/index": SessionErrorScreen,
+      "(tabs)/my-books": MyBooksScreen,
+      "(tabs)/explore": () => <Text>Discover books</Text>,
+      "(tabs)/me": () => <Text>Reader profile</Text>,
       "(auth)/_layout": () => <Slot />,
       "(auth)/login": () => <Text>Login screen</Text>,
     },
-    { initialUrl: "/" },
+    { initialUrl },
   );
+}
+
+it("pops detail screens back through their origin instead of switching hidden tabs", async () => {
+  const navigation = renderNavigation();
+  await waitFor(() => expect(screen.getByText("Signed in as alice.test")).toBeTruthy());
+  for (const title of ["Home", "My Books", "Discover", "Profile"]) {
+    expect(screen.getByText(title)).toBeOnTheScreen();
+  }
+  act(() => router.navigate("/my-books"));
+  await waitFor(() => expect(screen.getByText("My Books collection")).toBeTruthy());
+  fireEvent.press(screen.getByText("Local state: 0"));
+  act(() => router.push("/search"));
+  await waitFor(() => expect(navigation.getPathname()).toBe("/search"));
+  act(() => router.push("/book/bk_test"));
+  await waitFor(() => expect(navigation.getPathname()).toBe("/book/bk_test"));
+  expect(router.canGoBack()).toBe(true);
+  act(() => router.back());
+  await waitFor(() => expect(navigation.getPathname()).toBe("/search"));
+  act(() => router.back());
+  await waitFor(() => expect(navigation.getPathname()).toBe("/my-books"));
+  expect(screen.getByText("My Books collection")).toBeTruthy();
+  expect(screen.getByText("Local state: 1")).toBeTruthy();
+});
+
+it("opens a signed-in book deep link without inventing a previous page", async () => {
+  const navigation = renderNavigation("/book/bk_test");
+  await waitFor(() => expect(screen.getByText("Detail: book/[id]")).toBeTruthy());
+  expect(navigation.getPathname()).toBe("/book/bk_test");
+  expect(router.canGoBack()).toBe(false);
+  fireEvent.press(screen.getByRole("button", { name: "Back" }));
+  await waitFor(() => expect(navigation.getPathname()).toBe("/"));
+  expect(screen.getByText("Signed in as alice.test")).toBeTruthy();
+});
+
+it("keeps transient failures signed in and explicitly signs out into the protected login route", async () => {
+  // Use the real root Stack.Protected, AuthProvider/session scope and theme provider.
+  // Only leaf screens and native services are replaced, not navigation or auth state.
+  const navigation = renderNavigation();
   await waitFor(() => expect(screen.getByText("Signed in as alice.test")).toBeTruthy());
   expect(screen.getByText("Temporarily unavailable")).toBeTruthy();
   expect(getAuthState()).toEqual(mockAccount);
   expect(mockSecureDelete).not.toHaveBeenCalled();
   expect(screen.queryByText("Sign In")).toBeNull();
+  fireEvent.press(screen.getByText("Permission failure"));
+  expect(screen.getByText("Permission Denied")).toBeTruthy();
+  expect(screen.queryByText("Sign In")).toBeNull();
+  expect(getAuthState()).toEqual(mockAccount);
+  // Restore the retryable error before testing the explicit expired-session action.
+  fireEvent.press(screen.getByText("Temporary failure"));
   const oldSession = authSession.capture();
 
   fireEvent.press(screen.getByText("Try Again"));
@@ -106,4 +209,10 @@ it("keeps transient failures signed in and explicitly signs out into the protect
   await waitFor(() => expect(navigation.getSegments()).toEqual(["(auth)", "login"]));
   expect(screen.getByText("Login screen")).toBeTruthy();
   expect(getAuthState()).toBeNull();
+  for (const route of Object.keys(detailScreens)) {
+    const path = `/${route.replace(/\/index$/, "").replace(/\[[^\]]+\]/g, "test")}`;
+    act(() => router.replace(path as Parameters<typeof router.replace>[0]));
+    await waitFor(() => expect(navigation.getSegments()).toEqual(["(auth)", "login"]));
+    expect(screen.getByText("Login screen")).toBeTruthy();
+  }
 });

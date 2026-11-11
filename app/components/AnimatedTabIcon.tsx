@@ -6,6 +6,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { IconSymbol, IconSymbolName } from "./ui/IconSymbol";
+import { View } from "react-native";
+import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 
 type AnimatedTabIconProps = {
   name: IconSymbolName;
@@ -15,6 +18,7 @@ type AnimatedTabIconProps = {
 };
 
 export function AnimatedTabIcon({ name, color, size = 28, focused }: AnimatedTabIconProps) {
+  const colors = Colors[useColorScheme() ?? "light"];
   const scale = useSharedValue(1);
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(0.9);
@@ -38,6 +42,23 @@ export function AnimatedTabIcon({ name, color, size = 28, focused }: AnimatedTab
 
   return (
     <Animated.View style={[{ alignItems: "center" }, style]}>
+      {focused && (
+        <View
+          accessible={false}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: -1,
+            bottom: -1,
+            left: -4,
+            right: -4,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.primary,
+            backgroundColor: colors.activeBackground,
+          }}
+        />
+      )}
       <IconSymbol size={size} name={name} color={color} />
     </Animated.View>
   );

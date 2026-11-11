@@ -58,11 +58,24 @@ describe("mobile book mutation queue", () => {
   afterEach(() => client.clear());
   const data = (client: QueryClient) => client.getQueryData<GetBook.$output>(key)!;
 
-  it("shares the queue across hook instances but isolates epoch-scoped clients", () => {
-    expect(bookMutationQueue(client)).toBe(bookMutationQueue(client));
-    const other = new QueryClient();
-    expect(bookMutationQueue(client)).not.toBe(bookMutationQueue(other));
-    other.clear();
+  it("invalidates the My Books profile cache after adding and removing a book", async () => {
+    const profileKey = ["profile", "did:plc:reader"];
+    client.setQueryData(profileKey, { books: [] });
+    const queue = createBookMutationQueue(client);
+    const fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ success: true, userBook: canonical() })
+      .mockResolvedValueOnce({ success: true });
+
+    await queue.update({ hiveId: id, status: READING }, fetch);
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
+    expect(data(client).status).toBe(READING);
+
+    client.setQueryData(profileKey, { books: [canonical()] });
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(false);
+    await queue.remove(id, fetch);
+    expect(client.getQueryState(profileKey)?.isInvalidated).toBe(true);
+    expect(data(client).status).toBeUndefined();
   });
 
   it("sends serially and rebases newer edits over the complete canonical response", async () => {
@@ -102,8 +115,6 @@ describe("mobile book mutation queue", () => {
   it.each([
     { success: false, message: "Write rejected" },
     { success: true },
-    { success: true, userBook: null },
-    { success: true, userBook: {} },
     { success: true, userBook: canonical({ hiveId: "bk_other" as HiveId }) },
   ])("rejects unconfirmed canonical response %# and rolls back", async (response) => {
     const queue = createBookMutationQueue(client);

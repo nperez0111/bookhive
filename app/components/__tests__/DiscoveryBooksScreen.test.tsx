@@ -1,8 +1,9 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { FlatList } from "react-native";
-import AuthorBooksScreen from "../../app/(tabs)/explore/authors/[author]";
-import GenreBooksScreen from "../../app/(tabs)/explore/genres/[genre]";
+import AuthorBooksScreen from "../../app/explore/authors/[author]";
+import GenreBooksScreen from "../../app/explore/genres/[genre]";
+import { DiscoveryBooksScreen } from "../DiscoveryBooksScreen";
 
 let mockLanguage = "en";
 let mockParams = { author: "Le Guin", genre: "Fantasy" };
@@ -10,9 +11,11 @@ let mockQuery: any;
 const mockAuthorBooks = jest.fn<any, unknown[]>(() => mockQuery);
 const mockGenreBooks = jest.fn<any, unknown[]>(() => mockQuery);
 jest.mock("expo-router", () => ({
+  useRouter: () => ({ canGoBack: () => true, back: jest.fn(), navigate: jest.fn() }),
   router: { push: jest.fn(), back: jest.fn() },
   useLocalSearchParams: () => mockParams,
 }));
+jest.mock("@/components/ui/TabBarBackground", () => ({ useBottomTabOverflow: () => 0 }));
 jest.mock("@/context/language", () => ({
   useLanguage: () => ({ preferredLanguage: mockLanguage }),
 }));
@@ -113,6 +116,53 @@ test.each([AuthorBooksScreen, GenreBooksScreen])(
     expect(mockQuery.refetch).toHaveBeenCalledTimes(2);
   },
 );
+
+test.each([AuthorBooksScreen, GenreBooksScreen])(
+  "keeps the back header available during loading and initial errors",
+  (Screen) => {
+    mockQuery.data = undefined;
+    mockQuery.isLoading = true;
+    const view = render(<Screen />);
+    expect(view.getByRole("button", { name: "Back" })).toBeTruthy();
+    expect(view.queryByText("0 books")).toBeNull();
+    mockQuery.isLoading = false;
+    mockQuery.error = new Error("Initial request failed");
+    view.rerender(<Screen />);
+    expect(view.getByRole("button", { name: "Back" })).toBeTruthy();
+    expect(view.queryByText("0 books")).toBeNull();
+    fireEvent.press(view.getByText("Retry"));
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("does not request an image proxy URL for books with no artwork", () => {
+  const view = render(<GenreBooksScreen />);
+  // The presentation boundary must send the same missing-cover value as search.
+  const card = view.UNSAFE_getByType(jest.requireMock("@/components/BookCard").BookCard);
+  expect(card.props.imageUri).toBe("");
+});
+
+test("does not show a successful empty state beside a failed empty-page refresh", () => {
+  const view = render(
+    <DiscoveryBooksScreen
+      title="Fantasy"
+      countLabel="0 books"
+      resetKey="Fantasy"
+      books={[]}
+      hasData
+      isLoading={false}
+      error={new Error("Refresh failed")}
+      hasNextPage={false}
+      isFetching={false}
+      isFetchingNextPage={false}
+      isFetchNextPageError={false}
+      refetch={jest.fn()}
+      fetchNextPage={jest.fn()}
+    />,
+  );
+  expect(view.queryByText("No books found for this selection.")).toBeNull();
+  expect(view.getByText("Refresh failed")).toBeTruthy();
+});
 
 test.each([AuthorBooksScreen, GenreBooksScreen])(
   "guards load more while fetching and remounts the list on language or route change",

@@ -128,12 +128,27 @@ function SessionCache({ children }: { children: React.ReactNode }) {
 function AuthenticatedNavigation() {
   const { isAuthenticated } = useAuth();
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, gestureEnabled: true }}>
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="search" />
+        <Stack.Screen name="feed" />
+        <Stack.Screen name="book/[id]" />
+        <Stack.Screen name="books/[status]" />
+        <Stack.Screen name="profile/[did]" />
+        <Stack.Screen name="profile/[did]/stats" />
+        <Stack.Screen name="explore/genres/[genre]" />
+        <Stack.Screen name="explore/authors/[author]" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="account" />
+        <Stack.Screen name="import" />
+        <Stack.Screen name="lists/index" />
+        <Stack.Screen name="lists/[uri]" />
+        <Stack.Screen name="library/index" />
+        <Stack.Screen name="sync/index" />
       </Stack.Protected>
     </Stack>
   );
@@ -202,27 +217,30 @@ function RootLayoutContent() {
                 {/* iOS status bar background overlay */}
                 {Platform.OS === "ios" && (
                   <View
+                    testID="ios-status-area"
                     style={{
                       position: "absolute",
                       top: 0,
                       left: 0,
                       right: 0,
                       height: top,
-                      backgroundColor: "#000",
+                      backgroundColor: Colors[colorScheme ?? "light"].background,
                       zIndex: 1,
                     }}
                   />
                 )}
                 <View
+                  testID="app-safe-area"
                   style={{
                     flex: 1,
+                    backgroundColor: Colors[colorScheme ?? "light"].background,
                     paddingTop: Platform.OS === "ios" ? top : 0,
                   }}
                 >
                   <NetworkStatusIndicator />
                   <AuthenticatedNavigation />
                 </View>
-                <StatusBar style="light" />
+                <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
               </NavigationThemeProvider>
             </LanguageProvider>
           </AccountCache>

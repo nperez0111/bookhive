@@ -7,7 +7,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useAuth } from "@/context/auth";
 
 export interface NetworkError {
-  type: "network" | "server" | "timeout" | "unauthorized" | "not_found" | "unknown";
+  type: "network" | "server" | "timeout" | "unauthorized" | "forbidden" | "not_found" | "unknown";
   message: string;
   retryable: boolean;
   statusCode?: number;
@@ -52,6 +52,7 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
       case "timeout":
         return "time-outline";
       case "unauthorized":
+      case "forbidden":
         return "lock-closed-outline";
       case "not_found":
         return "search-outline";
@@ -70,6 +71,8 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
         return "Request Timeout";
       case "unauthorized":
         return "Authentication Required";
+      case "forbidden":
+        return "Permission Denied";
       case "not_found":
         return "Not Found";
       default:
@@ -89,6 +92,8 @@ export const NetworkErrorView: React.FC<NetworkErrorViewProps> = ({
         return "The request took too long to complete. Please try again.";
       case "unauthorized":
         return "Please sign in again to continue.";
+      case "forbidden":
+        return "You do not have permission to access this resource.";
       case "not_found":
         return "The requested resource was not found.";
       default:

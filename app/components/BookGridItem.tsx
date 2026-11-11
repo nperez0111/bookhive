@@ -2,12 +2,13 @@ import { BookCard } from "@/components/BookCard";
 import { getBaseUrl } from "@/context/auth";
 import { router } from "expo-router";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { catalogueCoverUrl } from "@/utils/catalogueCover";
 import { UserBook } from "../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 interface BookGridItemProps {
   book: UserBook;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
   status?: string;
   numColumns?: number;
 }
@@ -36,9 +37,9 @@ export function BookGridItem({ book, style, status, numColumns = 2 }: BookGridIt
       <BookCard
         title={book.title}
         authors={book.authors}
-        imageUri={`${getBaseUrl()}/images/s_300x500,fit_cover,extend_5_5_5_5,b_030712/${book.cover || book.thumbnail}`}
+        imageUri={catalogueCoverUrl(getBaseUrl(), book)}
         onPress={handlePress}
-        orientation="horizontal"
+        variant="dense"
         style={styles.bookCard}
       />
     </View>

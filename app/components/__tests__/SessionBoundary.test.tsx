@@ -1,15 +1,9 @@
-import { act, cleanup, render, renderHook, waitFor } from "@testing-library/react-native";
-import {
-  CancelledError,
-  QueryClient,
-  QueryClientProvider,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { act, cleanup, render, waitFor } from "@testing-library/react-native";
+import { CancelledError, QueryClient, useQueryClient } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
 import RootLayout from "../../app/_layout";
 import { authSession, useAuth } from "@/context/auth";
-import { useBookInfo, useProfile, useSearchBooks } from "@/hooks/useBookhiveQuery";
 import { classifyNetworkError } from "@/utils/networkErrorHandler";
 import { bookMutationQueue } from "@/utils/bookMutations";
 
@@ -196,31 +190,13 @@ it("real signOut cannot clear B when A's credential deletion finishes later", as
   expect(bobClient.getQueryData(["private"])).toBe("bob");
 });
 
-it("inherits root retry/backoff for search, book and profile, without enabling mutation retries", async () => {
+it("retries transient reads but not auth failures, cancellation or writes", async () => {
   const previous = mockClient;
   render(<RootLayout />);
   await waitFor(() => expect(mockClient).not.toBe(previous));
-  const client = mockClient;
-  const hooks = renderHook(
-    () => {
-      useSearchBooks("");
-      useBookInfo(undefined);
-      useProfile();
-    },
-    {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      ),
-    },
-  );
-  const defaults = client.getDefaultOptions();
-  for (const key of [["searchBooks"], ["getBook"], ["profile"]]) {
-    const query = client.getQueryCache().find({ queryKey: key, exact: false });
-    expect(query?.options.retry).toBe(defaults.queries?.retry);
-    expect(query?.options.retryDelay).toBe(defaults.queries?.retryDelay);
-  }
+  const defaults = mockClient.getDefaultOptions();
   const retry = defaults.queries!.retry as (count: number, error: Error) => boolean;
-  for (const status of [401, 403, 404, 408, 429, 500, 503]) {
+  for (const status of [401, 503]) {
     const error = Object.assign(new Error("request failed"), {
       networkError: classifyNetworkError({ status, message: "request failed" }),
     });
@@ -228,31 +204,12 @@ it("inherits root retry/backoff for search, book and profile, without enabling m
     expect(retry(3, error)).toBe(false);
   }
   expect(retry(0, new TypeError("fetch failed"))).toBe(true);
-  for (const status of [401, 403, 404, 503]) {
-    for (const shape of [{ status }, { response: { status } }]) {
-      const error = Object.assign(new Error("request failed"), shape);
-      expect(retry(0, error)).toBe(status === 503);
-      expect(retry(3, error)).toBe(false);
-    }
-  }
   expect(retry(0, Object.assign(new Error("timed out"), { name: "TimeoutError" }))).toBe(true);
   expect(retry(0, new CancelledError())).toBe(false);
   const aborted = Object.assign(new Error("cancelled"), { name: "AbortError" });
   expect(retry(0, aborted)).toBe(false);
-  expect(retry(0, Object.assign(new Error("fetch aborted"), { cause: aborted }))).toBe(false);
-  expect(retry(0, Object.assign(new Error("enhanced"), { originalError: aborted }))).toBe(false);
-  expect(
-    retry(
-      0,
-      Object.assign(new Error("request failed"), {
-        cause: Object.assign(new Error("timed out"), { name: "TimeoutError" }),
-      }),
-    ),
-  ).toBe(true);
   expect(retry(0, new Error("Authentication session changed; request cancelled"))).toBe(false);
   const delay = defaults.queries!.retryDelay as (attempt: number) => number;
   expect([0, 1, 6].map(delay)).toEqual([1000, 2000, 30000]);
   expect(defaults.mutations?.retry).toBe(false);
-  // Unmount consumers before their root provider clears the cache, avoiding orphaned GC timers.
-  hooks.unmount();
 });

@@ -94,6 +94,8 @@ function persistAuth(state: AuthState | null, expectedEpoch?: number) {
 
 let restoration: Promise<AuthState | null> | undefined;
 let restorationComplete = false;
+// Login attempts are distinct even before either has established a session epoch.
+let signInAttempt = 0;
 async function restoreAuth(): Promise<AuthState | null> {
   const epoch = authSession.epoch;
   const stored = Platform.OS === "web" ? null : await SecureStore.getItemAsync("authState");
@@ -175,14 +177,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async ({ handle }: { handle: string }): Promise<SignInResult> => {
+    const attempt = ++signInAttempt;
     const epoch = authSession.epoch;
+    const isCurrent = () => attempt === signInAttempt && epoch === authSession.epoch;
     const deepLink = Linking.createURL("/oauth-callback");
     const params = new URLSearchParams({ handle: handle.trim(), redirect_uri: deepLink });
     const result = await WebBrowser.openAuthSessionAsync(
       `${getBaseUrl()}/mobile/login?${params}`,
       deepLink,
     );
-    if (result.type !== "success" || epoch !== authSession.epoch) return "cancelled";
+    if (result.type !== "success" || !isCurrent()) return "cancelled";
     const callback = new URL(result.url);
     const expected = new URL(deepLink);
     if (
@@ -195,11 +199,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const next = parseAuthState(Object.fromEntries(callback.searchParams));
     if (!next) throw new Error("Login response is missing session information");
     await persistAuth(next, epoch);
-    if (epoch !== authSession.epoch) return "cancelled";
+    if (!isCurrent()) {
+      // A newer attempt may have started while SecureStore was writing. Do not
+      // leave the obsolete callback's credentials available on the next launch.
+      await persistAuth(getAuthState(), epoch);
+      return "cancelled";
+    }
     authSession.replace(next);
     return "success";
   };
   const signOut = async () => {
+    signInAttempt++;
     authSession.replace(null);
     await persistAuth(null);
   };

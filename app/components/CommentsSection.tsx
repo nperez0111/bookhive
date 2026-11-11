@@ -1,12 +1,12 @@
 import * as BuzzBookhiveDefs from "@/../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 import { Colors } from "@/constants/Colors";
-import { getBaseUrl, useAuth } from "@/context/auth";
+import { authSession, getBaseUrl, useAuth } from "@/context/auth";
 import { useUpdateBook, useUpdateComment } from "@/hooks/useBookhiveQuery";
 import type { HiveId } from "../../src/types";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { ThemedButton } from "./ThemedButton";
 import { ThemedText } from "./ThemedText";
@@ -45,6 +45,16 @@ const CommentEntry: React.FC<{
   const updateComment = useUpdateComment();
   const updateBook = useUpdateBook();
   const isPending = updateComment.isPending || updateBook.isPending;
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  const session = authSession.capture();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () => mounted.current && !session.signal.aborted;
 
   // Determine if this is a review or comment
   const isReview = "review" in comment;
@@ -54,7 +64,8 @@ const CommentEntry: React.FC<{
   const userHandle = comment.handle;
 
   const handleReply = async () => {
-    if (!replyText.trim() || isPending) return;
+    if (!replyText.trim() || isPending || writing.current || session.signal.aborted) return;
+    writing.current = true;
 
     try {
       // Both comments and reviews can have replies
@@ -66,8 +77,10 @@ const CommentEntry: React.FC<{
           parentUri: comment.uri,
           parentCid: comment.cid,
         });
-        setReplyText("");
-        setShowReplyForm(false);
+        if (isCurrent()) {
+          setReplyText("");
+          setShowReplyForm(false);
+        }
       } else if (!isReview && "uri" in comment && comment.uri && comment.cid) {
         // For comments, use the comment's URI and CID as parent
         await updateComment.mutateAsync({
@@ -76,8 +89,10 @@ const CommentEntry: React.FC<{
           parentUri: comment.uri,
           parentCid: comment.cid,
         });
-        setReplyText("");
-        setShowReplyForm(false);
+        if (isCurrent()) {
+          setReplyText("");
+          setShowReplyForm(false);
+        }
       } else {
         Alert.alert(
           "Cannot reply",
@@ -85,18 +100,24 @@ const CommentEntry: React.FC<{
         );
       }
     } catch {
-      Alert.alert("Error", "Failed to post reply");
+      if (isCurrent()) Alert.alert("Error", "Failed to post reply");
+    } finally {
+      writing.current = false;
     }
   };
 
   const handleEdit = async () => {
-    if (isPending || (!isReview && !editText.trim())) return;
+    if (isPending || writing.current || session.signal.aborted || (!isReview && !editText.trim()))
+      return;
+    writing.current = true;
 
     try {
       if (isReview) {
         await updateBook.mutateAsync({ hiveId: hiveId as HiveId, review: editText });
-        setIsEditing(false);
-        setEditText("");
+        if (isCurrent()) {
+          setIsEditing(false);
+          setEditText("");
+        }
       } else if (
         "uri" in comment &&
         comment.uri &&
@@ -113,8 +134,10 @@ const CommentEntry: React.FC<{
           parentCid: parent.cid,
           uri: comment.uri!,
         });
-        setIsEditing(false);
-        setEditText("");
+        if (isCurrent()) {
+          setIsEditing(false);
+          setEditText("");
+        }
       } else {
         Alert.alert(
           "Cannot edit",
@@ -122,16 +145,21 @@ const CommentEntry: React.FC<{
         );
       }
     } catch {
-      Alert.alert("Error", isReview ? "Failed to save review" : "Failed to edit comment");
+      if (isCurrent())
+        Alert.alert("Error", isReview ? "Failed to save review" : "Failed to edit comment");
+    } finally {
+      writing.current = false;
     }
   };
 
   const startEditing = () => {
+    if (writing.current || isPending) return;
     setEditText(isReview ? comment.review : comment.comment);
     setIsEditing(true);
   };
 
   const handleReplyButtonClick = () => {
+    if (writing.current || isPending) return;
     setShowReplyForm(!showReplyForm);
     if (!showReplyForm && onReplyClick) {
       // Call the callback with the comment ID and ref when opening reply form
@@ -193,7 +221,9 @@ const CommentEntry: React.FC<{
             placeholder="Edit your comment..."
             placeholderTextColor={colors.placeholderText}
             value={editText}
-            onChangeText={setEditText}
+            onChangeText={(value) => {
+              if (!writing.current) setEditText(value);
+            }}
             editable={!isPending}
             accessibilityLabel={isReview ? "Edit your review" : "Edit your comment"}
             multiline
@@ -203,6 +233,7 @@ const CommentEntry: React.FC<{
             <ThemedButton
               title="Cancel"
               onPress={() => {
+                if (writing.current || isPending) return;
                 setIsEditing(false);
                 setEditText("");
               }}
@@ -293,7 +324,9 @@ const CommentEntry: React.FC<{
             placeholder="Write a reply..."
             placeholderTextColor={colors.placeholderText}
             value={replyText}
-            onChangeText={setReplyText}
+            onChangeText={(value) => {
+              if (!writing.current) setReplyText(value);
+            }}
             editable={!isPending}
             multiline
             numberOfLines={3}
@@ -302,11 +335,13 @@ const CommentEntry: React.FC<{
             <ThemedButton
               title="Cancel"
               onPress={() => {
+                if (writing.current || isPending) return;
                 setShowReplyForm(false);
                 setReplyText("");
               }}
               variant="ghost"
               size="small"
+              disabled={isPending}
             />
             <ThemedButton
               title="Reply"

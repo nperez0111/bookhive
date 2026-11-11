@@ -1,7 +1,7 @@
 # 🐝 BookHive - A Better Goodreads
 
 <p align="center">
-    <a href="LICENSE" target="_blank">
+    <a href="../LICENSE" target="_blank">
         <img src="https://img.shields.io/github/license/nperez0111/bookhive.svg" alt="GitHub license">
     </a>
     <a href="https://github.com/nperez0111/bookhive/actions" target="_blank">
@@ -66,7 +66,9 @@ BookHive is your decentralized alternative to Goodreads, offering a beautiful, m
 • Cross-platform sync via Bluesky
 
 **🔒 Your Data, Your Control:**
-Unlike traditional book platforms, BookHive stores all your reading data on Bluesky's decentralized network. This means you can take your books, reviews, and reading history with you to other apps, and you're not locked into a single platform.
+Public reading records live on Bluesky's decentralized network, so your books,
+reviews and reading history remain portable. Uploaded ebooks and reader-sync data
+are private BookHive storage, not public PDS records.
 
 **🌟 Join the Hive:**
 Start building your reading community today! BookHive is actively developed with regular updates and new features. Have a feature request? We'd love to hear from you!
@@ -111,6 +113,43 @@ Install with Bun from the repository root; `bun.lock` is shared with the server.
    - **Android Emulator**: Press `a` in the terminal
    - **Physical Device**: Use a matching SDK 57 development build. A newer Expo Go may not support SDK 57.
 
+### Local iOS simulator testing in Paseo
+
+Start these workspace scripts from Paseo, or run the commands at the repository root:
+
+```bash
+paseo script start dev:local
+paseo script start ios
+```
+
+Both servers run in supervised Paseo terminals. The backend and OAuth callback use
+`http://127.0.0.1:5199`; Metro uses `http://localhost:8081`. The `ios` script sets
+`EXPO_PUBLIC_API_URL` explicitly so testing never silently uses production.
+Loopback OAuth needs no public tunnel or hosted client metadata. This setup is for
+the simulator on this Mac, not physical devices. Stop the regular `dev` script
+first because it also uses port 5199. Open the direct URLs above rather than
+Paseo's automatically allocated proxy links for these fixed-port scripts.
+
+For the first install, or after changing native dependencies, run in a Paseo
+terminal with `app/` as its working directory:
+
+```bash
+bun run ios --device "iPhone 17 Pro" --no-bundler
+```
+
+This generates the ignored `ios/` project, installs CocoaPods, compiles the native
+development client and opens Simulator. Xcode and CocoaPods must be installed.
+Do not combine `--port` with `--no-bundler`; Expo rejects that combination. Metro
+already runs separately on its default port 8081. For later sessions, start both
+scripts and press `i` in the Metro terminal to reopen the installed client.
+JavaScript edits use Fast Refresh; native dependency/config changes need a rebuild.
+
+If Xcode rejects all build destinations with an "iOS … is not installed" error,
+install the simulator runtime matching the selected Xcode under
+Xcode > Settings > Components, then retry the build. The existing simulator may
+boot even when Xcode cannot yet use it as a build destination. Runtime downloads
+can be several GB; check free disk space first.
+
 ### Running Tests
 
 ```bash
@@ -154,11 +193,6 @@ selects major. The script never stages or commits files. Review changes and refr
 the root lockfile with `bun install` after a version bump. EAS manages production
 build numbers remotely; local build-number fields are version-derived defaults.
 
-File handling uses the modern `File`/`Directory`/`Paths` API from
-`expo-file-system`. Old `downloadAsync` callers must import
-`expo-file-system/legacy`, not the package root. SecureStore's asynchronous API
-stores native credentials; sharing uses `expo-sharing`'s `shareAsync`.
-
 On Bun's isolated workspace install, Expo Doctor currently reports same-version
 duplicates for Constants, FileSystem, Font, Linking, and Symbols in different
 peer-context directories. Expo's autolinking/Metro resolution is enabled and both
@@ -168,10 +202,9 @@ Do not delete the shared lockfile or change server React just to silence Doctor.
 
 ## 🏗️ Architecture
 
-- **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
-- **Frontend**: Mostly static HTML, with some Hono JSX for dynamic content (Fast as possible)
-- **Mobile App**: React Native with Expo, using file-based routing
-- **Database**: SQLite, with Kyesly as the ORM
+See [native architecture](ARCHITECTURE.md) for module/session/navigation rules,
+[server architecture](../ARCHITECTURE.md) for the shared backend, and
+[release checks](../docs/notes/mobile-feature-parity.md) before shipping.
 
 ## 📱 App Store Links
 

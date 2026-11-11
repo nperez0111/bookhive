@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import { ThemedCard } from "@/components/ThemedCard";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { Colors } from "@/constants/Colors";
 import { ThemedText } from "@/components/ThemedText";
 
 export function AccountSection({
@@ -12,16 +13,19 @@ export function AccountSection({
   description: string;
   children: ReactNode;
 }) {
+  const colors = Colors[useColorScheme() ?? "light"];
   return (
-    <ThemedCard style={styles.card}>
+    <View style={[styles.card, { borderColor: colors.cardBorder }]}>
       <ThemedText type="heading">{title}</ThemedText>
-      <ThemedText type="body">{description}</ThemedText>
+      <ThemedText type="body" style={{ color: colors.secondaryText }}>
+        {description}
+      </ThemedText>
       <View style={styles.actions}>{children}</View>
-    </ThemedCard>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 20, gap: 12, borderRadius: 24 },
+  card: { paddingVertical: 12, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   actions: { gap: 12 },
 });

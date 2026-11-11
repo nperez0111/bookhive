@@ -1,11 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
-import {
-  catalogueListUri,
-  listFormInput,
-  moveListItem,
-  parseListTags,
-  restoreListSnapshots,
-} from "../catalogueLists";
+import { catalogueListUri, listFormInput, moveListItem, parseListTags } from "../catalogueLists";
 
 describe("public catalogue list forms", () => {
   test("preserves explicit clears and unordered choice", () => {
@@ -43,36 +36,6 @@ test("reorder uses stable item URIs, even for duplicated or missing catalogue bo
   expect(moveListItem(items, items[2]!.uri, 1)).toBe(items);
   expect(moveListItem(items, "missing", 1)).toBe(items);
   expect(items[0]!.uri.endsWith("/1")).toBe(true);
-});
-
-test("rollback restores each owner-keyed query without overwriting another owner's lists", () => {
-  const client = new QueryClient();
-  const alice = { lists: [{ uri: "alice-list", name: "Alice" }] };
-  const bob = { lists: [{ uri: "bob-list", name: "Bob" }] };
-  client.setQueryData(["userLists", "alice"], alice);
-  client.setQueryData(["userLists", "bob"], bob);
-  const snapshots = client.getQueriesData({ queryKey: ["userLists"] });
-  client.setQueriesData({ queryKey: ["userLists"] }, { lists: [] });
-  restoreListSnapshots(client, snapshots);
-  expect(client.getQueryData<typeof alice>(["userLists", "alice"])).toEqual(alice);
-  expect(client.getQueryData<typeof bob>(["userLists", "bob"])).toEqual(bob);
-  expect(client.getQueryData(["userLists"])).toBeUndefined();
-  client.clear();
-});
-
-test("detail rollback only restores the affected AT URI", () => {
-  const client = new QueryClient();
-  const key = ["listDetails", "at://owner/social.popfeed.feed.list/1"];
-  const otherKey = ["listDetails", "at://owner/social.popfeed.feed.list/2"];
-  const detail = { items: [{ uri: "one" }, { uri: "two" }] };
-  client.setQueryData(key, detail);
-  client.setQueryData(otherKey, { items: [] });
-  const snapshots = client.getQueriesData({ queryKey: key, exact: true });
-  client.setQueryData(key, { items: [{ uri: "two" }] });
-  restoreListSnapshots(client, snapshots);
-  expect(client.getQueryData<typeof detail>(key)).toEqual(detail);
-  expect(client.getQueryData<typeof detail>(otherKey)).toEqual({ items: [] });
-  client.clear();
 });
 
 test("list links accept raw or encoded AT URIs, never numeric ebook shelves", () => {

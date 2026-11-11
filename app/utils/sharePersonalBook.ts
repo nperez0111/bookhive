@@ -3,7 +3,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import { authSession, getBaseUrl } from "@/context/auth";
-import type { PersonalBook } from "@/hooks/useBookhiveQuery";
+import type { PersonalBook } from "@/api/personalLibraryTypes";
 import { personalBookFilename, downloadedBookFilename } from "@/utils/personalBookFilename";
 
 let sharing = false;

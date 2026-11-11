@@ -1,12 +1,12 @@
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { Colors } from "@/constants/Colors";
-import { useAuth, getBaseUrl } from "@/context/auth";
+import { authSession, useAuth, getBaseUrl } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { ofetch } from "ofetch";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
@@ -28,6 +28,18 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const submitting = useRef(false);
+  const flow = useRef(0);
+  const focused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+      return () => {
+        focused.current = false;
+        flow.current++;
+      };
+    }, []),
+  );
 
   // Stable animation handles, initialized once for this screen.
   const [fadeAnim] = useState(() => new Animated.Value(0));
@@ -78,6 +90,7 @@ export default function RegisterScreen() {
   };
 
   const handleSubmit = async () => {
+    if (submitting.current || !focused.current) return;
     setError("");
     const validationError = validate();
     if (validationError) {
@@ -85,6 +98,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    submitting.current = true;
+    const operation = ++flow.current;
+    const session = authSession.capture();
+    const isCurrent = () =>
+      focused.current && operation === flow.current && !session.signal.aborted;
     setIsLoading(true);
 
     // Start loading animation
@@ -108,6 +126,8 @@ export default function RegisterScreen() {
         },
       );
 
+      if (!isCurrent()) return;
+
       if (!result.success) {
         setError(result.error ?? "Failed to create account.");
         return;
@@ -121,8 +141,10 @@ export default function RegisterScreen() {
       } catch {
         // The account exists even if opening/finishing OAuth failed.
       }
-      router.replace({ pathname: "/(auth)/login", params: { handle: result.handle } });
+      if (isCurrent())
+        router.replace({ pathname: "/(auth)/login", params: { handle: result.handle } });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const message =
         err && typeof err === "object" && "data" in err
           ? (err as { data?: { error?: string } }).data?.error
@@ -131,7 +153,8 @@ export default function RegisterScreen() {
     } finally {
       spinValue.stopAnimation();
       spinValue.setValue(0);
-      setIsLoading(false);
+      submitting.current = false;
+      if (focused.current) setIsLoading(false);
     }
   };
 

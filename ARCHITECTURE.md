@@ -71,6 +71,9 @@ keys, network access, or database writes. See `docs/notes/enrichment-and-scrapin
 `mock.module("../../utils/...")` paths after any move; failures surface in unrelated files that
 pass in isolation, since `mock.module` is process-wide.
 
+`core/genreEmoji.ts` owns genre artwork for web and native Discover. The page-level
+`pages/genreEmoji.ts` re-export preserves existing website imports.
+
 ## Shared read layer (`src/data/`)
 
 **Every read that more than one transport answers lives here, and the transports are thin adapters

@@ -1,44 +1,11 @@
-import React, { useCallback } from "react";
-import {
-  Animated,
-  Pressable,
-  StyleSheet,
-  View,
-  ViewStyle,
-  type ImageStyle,
-  type StyleProp,
-} from "react-native";
+import React from "react";
+import { StyleSheet, View, ViewStyle, type ImageStyle, type StyleProp } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { FadeInImage } from "@/components/FadeInImage";
-
-const PRESS_SCALE = 0.96;
-
-function useScalePress() {
-  const [scale] = React.useState(() => new Animated.Value(1));
-
-  const onPressIn = useCallback(() => {
-    Animated.spring(scale, {
-      toValue: PRESS_SCALE,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 0,
-    }).start();
-  }, [scale]);
-
-  const onPressOut = useCallback(() => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 0,
-    }).start();
-  }, [scale]);
-
-  return { scale, onPressIn, onPressOut };
-}
+import { MotionPressable } from "@/components/motion/MotionPressable";
 
 export type BookCardVariant = "dense" | "list" | "row";
 
@@ -50,8 +17,6 @@ export type BookCardProps = {
   accessibilityLabel?: string;
   /** Card variant: dense (cover grid), list (cover + children slot), row (horizontal) */
   variant?: BookCardVariant;
-  /** @deprecated Use variant instead. "horizontal" → "dense", "vertical" → "row" */
-  orientation?: "vertical" | "horizontal";
   style?: ViewStyle;
   /** Optional extra line of metadata to show under authors, e.g., "@handle" */
   meta?: string;
@@ -60,15 +25,6 @@ export type BookCardProps = {
   /** Row variant size */
   rowSize?: "compact" | "small" | "medium";
 };
-
-function resolveVariant(
-  variant?: BookCardVariant,
-  orientation?: "vertical" | "horizontal",
-): BookCardVariant {
-  if (variant) return variant;
-  if (orientation === "vertical") return "row";
-  return "dense";
-}
 
 const ROW_SIZES = {
   compact: { cover: { width: 48, height: 72 }, gap: 8 },
@@ -98,6 +54,7 @@ function CoverImage({ uri, style }: { uri: string; style: StyleProp<ImageStyle> 
 
 /** Inset outline overlay that gives book covers consistent edge definition against any background. */
 function CoverOutline({ borderRadius }: { borderRadius: number }) {
+  const dark = useColorScheme() === "dark";
   return (
     <View
       style={[
@@ -105,7 +62,7 @@ function CoverOutline({ borderRadius }: { borderRadius: number }) {
         {
           borderRadius,
           borderWidth: 1,
-          borderColor: "rgba(0,0,0,0.08)",
+          borderColor: dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
         },
       ]}
       pointerEvents="none"
@@ -118,9 +75,8 @@ export function BookCard({
   authors,
   imageUri,
   onPress,
-  accessibilityLabel = `Open ${title}, by ${authors}`,
-  variant: variantProp,
-  orientation,
+  accessibilityLabel,
+  variant = "dense",
   style,
   meta,
   children,
@@ -128,18 +84,27 @@ export function BookCard({
 }: BookCardProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
-  const variant = resolveVariant(variantProp, orientation);
-  const { scale, onPressIn, onPressOut } = useScalePress();
+  // Native grouping includes text in supplied rating/metadata content. An explicit
+  // default label would replace that announcement. List children are independent
+  // content/actions below the book button, not part of its accessibility group.
+  const navigationLabel =
+    accessibilityLabel ??
+    (children && variant !== "list" ? undefined : `Open ${title}, by ${authors}`);
+  const navigationAccessibility = {
+    accessibilityLabel: navigationLabel,
+    accessibilityHint: "Open book details",
+    accessibilityValue: navigationLabel && meta ? { text: meta } : undefined,
+  };
 
   if (variant === "dense") {
     return (
-      <Animated.View style={[styles.denseContainer, { transform: [{ scale }] }, style]}>
-        <Pressable
+      <View style={[styles.denseContainer, style]}>
+        <MotionPressable
           accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
+          {...navigationAccessibility}
           onPress={onPress}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
+          static={!onPress}
+          pressedStyle={{ opacity: 0.8 }}
         >
           <View style={styles.denseCoverWrap}>
             <CoverImage uri={imageUri} style={styles.denseCover} />
@@ -163,46 +128,44 @@ export function BookCard({
             ) : null}
             {children}
           </View>
-        </Pressable>
-      </Animated.View>
+        </MotionPressable>
+      </View>
     );
   }
 
   if (variant === "list") {
     return (
-      <Animated.View style={[styles.listContainer, { transform: [{ scale }] }, style]}>
-        <Pressable
+      <View style={[styles.listContainer, style]}>
+        <MotionPressable
           accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
+          {...navigationAccessibility}
           onPress={onPress}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
+          static={!onPress}
+          pressedStyle={{ opacity: 0.8 }}
         >
           <View style={styles.denseCoverWrap}>
             <CoverImage uri={imageUri} style={styles.denseCover} />
             <CoverOutline borderRadius={12} />
           </View>
-          {children && <View style={styles.listChildren}>{children}</View>}
-        </Pressable>
-      </Animated.View>
+        </MotionPressable>
+        {children && <View style={styles.listChildren}>{children}</View>}
+      </View>
     );
   }
 
   // variant === "row"
   const rowConfig = ROW_SIZES[rowSize];
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, style]}>
-      <Pressable
+    <View style={style}>
+      <MotionPressable
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
+        {...navigationAccessibility}
         onPress={onPress}
-        onPressIn={onPressIn}
-        onPressOut={onPressOut}
+        static={!onPress}
+        pressedStyle={{ opacity: 0.8 }}
         style={[
           styles.rowContainer,
           {
-            backgroundColor: colors.cardBackground,
-            shadowColor: colors.shadowMedium,
             gap: rowConfig.gap,
           },
         ]}
@@ -233,8 +196,8 @@ export function BookCard({
           ) : null}
           {children}
         </View>
-      </Pressable>
-    </Animated.View>
+      </MotionPressable>
+    </View>
   );
 }
 
@@ -273,12 +236,7 @@ const styles = StyleSheet.create({
   // Row variant (horizontal card)
   rowContainer: {
     flexDirection: "row",
-    borderRadius: 16,
-    padding: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 3,
+    paddingVertical: 10,
   },
   rowCoverWrap: {
     borderRadius: 8,
