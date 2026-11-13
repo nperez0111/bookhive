@@ -31,7 +31,7 @@ test("application admission remains occupied while ETag consumes a response body
       return c.body(body, 200, { "Content-Type": "text/html" });
     });
     const pending = Array.from({ length: env.RESPONSE_PREPARATION_CONCURRENCY }, (_, i) =>
-      Promise.resolve(app.request(`/__admission-probe/${i}`)),
+      Promise.resolve(app.request(`/__admission-probe/${i}`, { headers: { Cookie: "fixture=1" } })),
     );
     await allStarted;
     expect((await app.request("/__admission-probe/overflow")).status).toBe(503);

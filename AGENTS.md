@@ -99,7 +99,8 @@ Worker threads (bundled to .output/server/workers/):
 
 **Middleware order** in `createApp`: `timing` → `prettyJSON` (dev) → context → wide-event logging → error capture → response admission → asset URLs (Vite manifest) → `/images/*` + `/og/*` CORP override → `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → default `Cache-Control: private, no-store` → Prometheus `registerMetrics` → `etag` → anon page cache (prod).
 
-Response admission bounds aggregate GET/HEAD preparation per worker, without a waiting queue;
+Response admission bounds aggregate GET/HEAD preparation per worker, caps expensive route groups
+and reserves headroom for nonempty-Cookie requests without validating login, with no waiting queue;
 overload returns retryable 503s. Exemptions and limits: `docs/notes/memory-and-runtime.md`.
 
 - **`etag()` never sees a large or streamed body** — `/library/books/*`, `/opds/books/*` and `/import` are excluded by prefix in `src/app.ts` (`ETAG_EXCLUDED_PREFIXES`). Those routes must answer `If-None-Match`/`Range` themselves; `streamPersonalBook` (`src/data/personalLibrary.ts`) owns that for all three callers. Details: `docs/notes/e-reader-and-sync.md`.

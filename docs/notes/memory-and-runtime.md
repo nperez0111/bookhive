@@ -34,6 +34,17 @@ handling. At capacity it returns **503**, `Retry-After: 5`, and `Cache-Control: 
 immediately, without an application waiting queue or per-IP assumptions. Slots remain owned until
 actual downstream rendering/cache extraction, ETag hashing and compression setup settle, including
 errors; a timeout never releases still-running work. Requests recover as slots become available.
+Within that unchanged aggregate cap, expensive reads share a half-cap: `/profile`, `/og`,
+`/explore`, `/search` (segment-aware prefixes), plus the exact XRPC `getProfile`, `getExplore`
+and `searchBooks` methods. This contains the observed profile/ETag bursts and isolates social-card,
+aggregate and upstream-search preparation from cheaper catalogue reads; it does not prove which
+operation initiated the stalls. At the default cap, these reads occupy at most **16 slots**.
+Requests without a nonempty `Cookie` header may occupy at most **24 total slots** and **12 expensive
+slots**. Cookie-bearing requests can use the remaining headroom but never exceed either hard cap.
+The fractions are floored and clamped to one for small configured caps. This is non-preemptive,
+work-conserving within each ceiling, not a waiting queue: unused reserved capacity is not lent to
+anonymous requests. Any cookie qualifies, without OAuth/session validation; it is a spoofable
+scheduling hint, not authentication, an abuse control, or a guarantee of logged-in availability.
 Nitro's final cache-header hook preserves `private, no-store` for every 503, including paths
 ending in an image extension that would otherwise receive the static-asset cache policy.
 
@@ -46,6 +57,9 @@ are outside this gate. No SQLite mmap/cache, host memory or worker-count setting
 
 `runtime_sample.resources.response_admission` reports `active`, `limit`, and cumulative `rejected`
 per application/worker; rejected request events carry `response_admission: "rejected"`. Sampling
+also exposes anonymous/expensive active counts and limits, cumulative `rejectedByReason`, and
+request events identify `response_admission_reason` (`total`, `anonymous`, `expensive`, or
+`expensive_anonymous`, in that precedence). Counters count the first rejecting ceiling only. Sampling
 can be delayed by an event-loop stall. Monitor these rejections together with health, anonymous
 memory, host PSI and response stages before considering a capacity adjustment.
 
