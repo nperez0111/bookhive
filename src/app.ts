@@ -7,7 +7,13 @@ import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
 import { endTime, startTime, timing } from "hono/timing";
 
-import { loadViteManifest, getAssetUrlsFromManifest, getInlineCss } from "./lib/manifest";
+import {
+  loadViteManifest,
+  getAssetUrlsFromManifest,
+  getInlineCss,
+  getAssetPreloadLinks,
+} from "./lib/manifest";
+import { hasSessionCookie, isPublicallyCachedRoute } from "./core/cacheHeaders";
 import { createContextMiddleware, type AppDeps, type AppEnv, type HonoServer } from "./context";
 import { env } from "./env";
 import { getSessionCacheStats } from "./auth/session";
@@ -66,9 +72,25 @@ export function createApp({ startTime: serverStartTime, deps }: CreateAppOptions
     // Inline built CSS into <head> to remove the render-blocking stylesheet
     // request from the critical path (improves FCP/LCP). No-op in dev.
     const inlineCss = await getInlineCss(assetUrls);
-    c.set("assetUrls", inlineCss ? { ...assetUrls, inlineCss } : assetUrls);
+    const resolvedAssets = inlineCss ? { ...assetUrls, inlineCss } : assetUrls;
+    c.set("assetUrls", resolvedAssets);
     endTime(c, "vite_manifest");
     await next();
+    // Cloudflare's hint cache ignores queries: only shared build assets belong
+    // here, never private data, dev URLs, or CSS that Layout already inlined.
+    if (
+      manifest &&
+      c.req.method === "GET" &&
+      c.res.status === 200 &&
+      isPublicallyCachedRoute(c.req.path) &&
+      !hasSessionCookie(c.req.header("Cookie")) &&
+      !c.req.raw.headers.has("Authorization") &&
+      !c.res.headers.has("Set-Cookie") &&
+      c.res.headers.get("Content-Type")?.includes("text/html")
+    ) {
+      const links = getAssetPreloadLinks(resolvedAssets);
+      if (links) c.res.headers.append("Link", links);
+    }
   });
   // Public cover/avatar and OG images must be embeddable on other sites.
   // Override after secureHeaders() unwinds; keep its same-origin default elsewhere.

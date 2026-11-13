@@ -99,6 +99,9 @@ Worker threads (bundled to .output/server/workers/):
 
 **Middleware order** in `createApp`: `timing` → `prettyJSON` (dev) → context → wide-event logging → error capture → response admission → asset URLs (Vite manifest) → `/images/*` + `/og/*` CORP override → `secureHeaders` → `compress` → `jsxRenderer` → OpenTelemetry → default `Cache-Control: private, no-store` → Prometheus `registerMetrics` → `etag` → anon page cache (prod).
 
+The asset-URL middleware also advertises shared production assets to Cloudflare Early Hints on
+anonymous public HTML; it skips CSS already inlined by Layout. See `docs/notes/data-and-caching.md`.
+
 Response admission bounds aggregate GET/HEAD preparation per worker, caps expensive route groups
 and reserves headroom for nonempty-Cookie requests without validating login, with no waiting queue;
 overload returns retryable 503s. Exemptions and limits: `docs/notes/memory-and-runtime.md`.

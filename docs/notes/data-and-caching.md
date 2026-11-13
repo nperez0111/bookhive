@@ -294,6 +294,19 @@ those used to read `c.req.query("lang") || undefined` straight into `CASE WHEN l
 
 ## Caching policy (`src/core/cacheHeaders.ts`)
 
+Cloudflare's Browser Cache TTL should be **Respect Existing Headers**, not its four-hour
+default minimum: public HTML intentionally expires after one hour and errors after 60 seconds.
+Smart Tiered Cache reduces duplicate origin fills; the final edge bypass rule excludes `sid`
+cookies and Authorization headers without changing origin TTLs or query keys.
+
+The asset-URL middleware in `src/app.ts` adds `Link` preload headers for successful anonymous
+public GET HTML when a production manifest is present. `getAssetPreloadLinks` in `lib/manifest.ts`
+allows only shared `/assets/` paths, deduplicates hints, and skips CSS already inlined by Layout.
+Cloudflare Early Hints must be enabled to emit these as 103s. Its hint cache ignores query strings,
+so never add per-user or query-dependent resources. Session/Authorization/Set-Cookie responses,
+errors, non-HTML, development, and private routes do not seed hints. This does not change body
+caching or authentication. Existing HTML modulepreload tags remain the non-103 fallback.
+
 One rule: **signed in (`sid` cookie) → `private, no-store` on every path; signed out → cache
 aggressively** so Cloudflare absorbs scraper load. Applied by `cacheControl()`/`setCacheControl()`
 (`src/routes/lib.ts`), the anon page cache's bypass, and `server/plugins/cache-headers.ts` (the

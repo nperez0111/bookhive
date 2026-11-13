@@ -3,6 +3,19 @@ import { env } from "../env";
 
 export type BundleAssetUrls = { css: string[]; js: string[]; inlineCss?: string };
 
+/** Only shared, same-origin build assets belong in URI-keyed Early Hints. */
+export function getAssetPreloadLinks(assets: BundleAssetUrls): string {
+  const safeAsset = (href: string) =>
+    /^\/assets\/[a-zA-Z0-9_./-]+$/.test(href) && !href.split("/").includes("..");
+  const links = [
+    ...assets.js.filter(safeAsset).map((href) => `<${href}>; rel=preload; as=script; crossorigin`),
+    ...(assets.inlineCss ? [] : assets.css.filter(safeAsset)).map(
+      (href) => `<${href}>; rel=preload; as=style`,
+    ),
+  ];
+  return [...new Set(links)].join(", ");
+}
+
 export interface ViteManifestEntry {
   file: string;
   css?: string[];
