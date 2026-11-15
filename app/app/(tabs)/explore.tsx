@@ -19,11 +19,13 @@ import { useAuthorDirectory } from "@/hooks/useAuthorDirectory";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 export default function ExploreScreen() {
   const router = useRouter();
   const top = useScreenTopInset();
   const colors = Colors[useColorScheme() ?? "light"];
+  const { page } = useAdaptiveLayout();
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ paddingTop: top }}>
@@ -38,7 +40,7 @@ export default function ExploreScreen() {
             />
           }
         />
-        <View style={{ paddingHorizontal: 20 }}>
+        <View style={[page, { paddingHorizontal: 20 }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Search books"
@@ -59,6 +61,7 @@ export default function ExploreScreen() {
 }
 
 function ExploreContent() {
+  const { page, wide } = useAdaptiveLayout();
   const colors = Colors[useColorScheme() ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
@@ -99,59 +102,65 @@ function ExploreContent() {
       />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 20 + bottom }]}
+        contentContainerStyle={[styles.scrollContent, page, { paddingBottom: 20 + bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <View
-          accessibilityRole="tablist"
-          style={[styles.browseSwitch, { backgroundColor: colors.cardBackground }]}
-        >
-          {(["genres", "authors"] as const).map((key) => (
-            <Pressable
-              key={key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: browse === key }}
-              onPress={() => setBrowse(key)}
-              style={[
-                styles.browseTab,
-                browse === key && { backgroundColor: colors.activeBackground },
-              ]}
-            >
-              <ThemedText
-                type="label"
-                style={{
-                  color: browse === key ? colors.primaryText : colors.secondaryText,
-                  fontWeight: browse === key ? "600" : "500",
-                }}
+        <View style={wide ? styles.browseControls : undefined}>
+          <View
+            accessibilityRole="tablist"
+            style={[
+              styles.browseSwitch,
+              wide && { width: 320 },
+              { backgroundColor: colors.cardBackground },
+            ]}
+          >
+            {(["genres", "authors"] as const).map((key) => (
+              <Pressable
+                key={key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: browse === key }}
+                onPress={() => setBrowse(key)}
+                style={[
+                  styles.browseTab,
+                  browse === key && { backgroundColor: colors.activeBackground },
+                ]}
               >
-                {key === "genres" ? "Genres" : "Authors"}
-              </ThemedText>
-            </Pressable>
-          ))}
+                <ThemedText
+                  type="label"
+                  style={{
+                    color: browse === key ? colors.primaryText : colors.secondaryText,
+                    fontWeight: browse === key ? "600" : "500",
+                  }}
+                >
+                  {key === "genres" ? "Genres" : "Authors"}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change discovery language"
+            accessibilityState={{ expanded: languageOpen }}
+            accessibilityValue={{ text: preferredLanguage || "All languages" }}
+            onPress={() => {
+              setLanguageOpen(true);
+              void languages.refetch();
+            }}
+            style={styles.languageButton}
+          >
+            <Ionicons name="globe-outline" size={16} color={colors.secondaryText} />
+            <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+              {preferredLanguage || "All languages"}
+            </ThemedText>
+            <Ionicons
+              name={languageOpen ? "chevron-up" : "chevron-down"}
+              size={14}
+              color={colors.secondaryText}
+            />
+          </Pressable>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Change discovery language"
-          accessibilityState={{ expanded: languageOpen }}
-          accessibilityValue={{ text: preferredLanguage || "All languages" }}
-          onPress={() => {
-            setLanguageOpen(true);
-            void languages.refetch();
-          }}
-          style={styles.languageButton}
-        >
-          <Ionicons name="globe-outline" size={16} color={colors.secondaryText} />
-          <ThemedText type="caption" style={{ color: colors.secondaryText }}>
-            {preferredLanguage || "All languages"}
-          </ThemedText>
-          <Ionicons
-            name={languageOpen ? "chevron-up" : "chevron-down"}
-            size={14}
-            color={colors.secondaryText}
-          />
-        </Pressable>
         <ThemedText style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 20 }}>
           Book results use your selected language.
         </ThemedText>
@@ -202,6 +211,13 @@ function ExploreContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  browseControls: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 24,
+    marginBottom: 8,
+  },
   searchEntry: {
     minHeight: 48,
     flexDirection: "row",

@@ -111,7 +111,14 @@ OAuth handle resolution.
 - `/my-books` → `src/pages/myBooks.tsx` — authenticated tracked-book management, private/no-store; reads `listAllUserBooks` for the viewer only
 - `/home` → `src/pages/home.tsx` — authenticated home (redirects to `/login` if no profile)
 - `/feed` → `src/pages/feed.tsx` — activity feed (friends/all/tracking, keyset-paginated 25/page via `?cursor=`). A thin adapter over `getActivityFeed` (`src/data/activityFeed.ts`) — see `docs/notes/activity-feed.md`
-- `/app` → `src/pages/app.tsx` — iOS app landing
+- `/app` → `src/pages/app.tsx` — iPhone/iPad app landing: four primary tabs, reading
+  tracking/history, discovery, public community/shelves and separate private ebooks.
+  Genuine optimized phone/iPad captures and provenance live in `public/screenshots/app/`;
+  no in-app reader or Android store release is advertised. Keeps the App Store destination,
+  `/og/app` image and explicit `Layout url={c.req.url}` metadata. `/` on
+  `app.bookhive.buzz` (or with a truthy `?app=`) redirects here in `mainRouter`.
+  The refined captures include local responsive work; deploying this page does not release
+  those native changes, which still require the mobile release checks.
 - `/import` → `src/pages/import.tsx` — CSV import page, SSE progress
 - `/search` → `src/pages/searchResults.tsx` (zValidator query `q`/`page`/`lang`)
 - `/explore` → `src/pages/explore.tsx` — Discover hub (`?lang=`)

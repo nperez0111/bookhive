@@ -4,6 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import { authSession } from "@/context/auth";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -53,6 +54,7 @@ type Selection = { asset: DocumentPicker.DocumentPickerAsset; release: () => voi
 
 export default function ImportScreen() {
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
   const [provider, setProvider] = useState<ImportProvider>("goodreads");
   const [file, setFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -132,7 +134,7 @@ export default function ImportScreen() {
     <ThemedView style={styles.root}>
       <View style={[styles.root, { paddingTop: top }]}>
         <BackNavigationHeader title="Import books" />
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, reading]}>
           <AccountSection
             title="Bring your reading history"
             description="Bring books, ratings and reviews from another reading app."

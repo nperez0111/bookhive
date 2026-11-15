@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { FadeInImage } from "@/components/FadeInImage";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { ThemedText } from "@/components/ThemedText";
@@ -62,6 +63,7 @@ export default function ReadingStatsScreen() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [scope, setScope] = useState<"year" | "all">("year");
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
   const bottom = useBottomTabOverflow();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -168,7 +170,7 @@ export default function ReadingStatsScreen() {
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 + bottom }]}
+          contentContainerStyle={[styles.scrollContent, reading, { paddingBottom: 32 + bottom }]}
         >
           {/* Hero Stats */}
           <View

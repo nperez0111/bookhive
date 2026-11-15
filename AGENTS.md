@@ -165,7 +165,7 @@ Each file exports a Hono JSX component rendered server-side.
 | `library.tsx`         | Personal library                                                              |
 | `login.tsx`           | Login form                                                                    |
 | `signup.tsx`          | Sign up form                                                                  |
-| `app.tsx`             | iOS app landing                                                               |
+| `app.tsx`             | iPhone/iPad app landing; four tabs, reading, community and private ebooks     |
 | `privacy-policy.tsx`  | Privacy policy                                                                |
 | `terms.tsx`           | Terms of service (`/legal`)                                                   |
 | `pds.tsx`             | PDS info page                                                                 |
@@ -179,13 +179,13 @@ Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils
 
 Page images are `<picture>` with a WebP `<source>` and the original as the `<img>` fallback. Regenerate with `cwebp -preset picture -q 78..82 -m 6 [-resize <w> 0] in -o out.webp` (always `-preset picture` — the default preset gave 419 KB where `picture` gave 164 KB on the same input/quality; skip `-z 9` lossless on JPEG sources, it comes out larger). Size the WebP to ~2x the CSS slot.
 
-| Asset                                                       | Serves                                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `hive-{768,1280}.webp` + `hive.jpg`                         | Marketing hero. The LCP element — `fetchpriority="high"`, intrinsic `width`/`height`, never lazy |
-| `screenshots/{home-screen,book-info,comment}.webp` + `.png` | `/app` phone mockups                                                                             |
-| `full_logo-384.webp` + `full_logo.jpg`                      | Login/signup logo (rendered at 192px)                                                            |
+| Asset                                  | Serves                                                                                           |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `hive-{768,1280}.webp` + `hive.jpg`    | Marketing hero. The LCP element — `fetchpriority="high"`, intrinsic `width`/`height`, never lazy |
+| `screenshots/app/*.webp` + `.png`      | `/app` genuine phone/iPad captures; provenance in `public/screenshots/app/README.md`             |
+| `full_logo-384.webp` + `full_logo.jpg` | Login/signup logo (rendered at 192px)                                                            |
 
-**Do not convert these to WebP**: `full_logo.jpg` is also the default `og:image`/OAuth `logo_uri` (third parties may not decode WebP); `og-fallback.png` is an OG/Twitter card image (unreliable crawler WebP support); `android-chrome-{192,512}.png` is referenced by `site.webmanifest` with an explicit PNG type; `apple-touch-icon.png`/`favicon*` are fixed-format platform requirements. The other 13 `public/screenshots/*.png` look like App Store listing assets and are referenced nowhere — kept as-is.
+**Do not convert these to WebP**: `full_logo.jpg` is also the default `og:image`/OAuth `logo_uri` (third parties may not decode WebP); `og-fallback.png` is an OG/Twitter card image (unreliable crawler WebP support); `android-chrome-{192,512}.png` is referenced by `site.webmanifest` with an explicit PNG type; `apple-touch-icon.png`/`favicon*` are fixed-format platform requirements. Legacy images directly under `public/screenshots/` are retained as-is; `/app` now uses the genuine captures in its `app/` subdirectory instead.
 
 ### Shared Page Components (`src/pages/components/`)
 

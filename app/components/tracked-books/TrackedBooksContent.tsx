@@ -19,6 +19,7 @@ import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import {
   matchesTrackedFilter,
   selectTrackedBooks,
@@ -34,6 +35,7 @@ export function TrackedBooksContent() {
   const colors = Colors[useColorScheme() ?? "light"];
   const bottom = useBottomTabOverflow();
   const profile = useProfile();
+  const { page, reading, pageWidth, coverColumns } = useAdaptiveLayout();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<TrackedFilter>("all");
   const [ownedOnly, setOwnedOnly] = useState(false);
@@ -81,7 +83,7 @@ export function TrackedBooksContent() {
     setOwnedOnly(false);
   };
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, grid ? page : reading]}>
       <View
         style={[
           styles.search,
@@ -179,13 +181,18 @@ export function TrackedBooksContent() {
         </View>
       )}
       <FlatList
-        key={grid ? "grid" : "list"}
+        key={grid ? `grid-${coverColumns}` : "list"}
         data={filtered}
-        numColumns={grid ? 2 : 1}
+        numColumns={grid ? coverColumns : 1}
         columnWrapperStyle={grid ? styles.gridRow : undefined}
         keyExtractor={(book) => book.hiveId}
         renderItem={({ item }) => (
-          <TrackedBookItem book={item} grid={grid} onError={setWriteError} />
+          <TrackedBookItem
+            book={item}
+            grid={grid}
+            cardWidth={(pageWidth - 40 - (coverColumns - 1) * 12) / coverColumns}
+            onError={setWriteError}
+          />
         )}
         contentContainerStyle={[
           styles.content,

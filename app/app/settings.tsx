@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Updates from "expo-updates";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { ListItem } from "@/components/ListItem";
@@ -21,6 +22,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
   const bottom = useBottomTabOverflow();
   const colors = Colors[useColorScheme() ?? "light"];
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -81,7 +83,9 @@ export default function SettingsScreen() {
         failed={isError}
         onRetry={() => void refetch()}
       />
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: bottom + 24 }}>
+      <ScrollView
+        contentContainerStyle={[reading, { padding: 20, gap: 24, paddingBottom: bottom + 24 }]}
+      >
         <View style={{ gap: 4 }}>
           <SectionHeader title="Preferences" style={{ paddingHorizontal: 0, marginBottom: 0 }} />
           <ThemeToggle />

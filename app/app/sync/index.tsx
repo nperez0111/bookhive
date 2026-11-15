@@ -6,6 +6,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -41,6 +42,7 @@ export default function SyncScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
 
   const passwordQuery = useSyncPassword();
   const rotatePassword = useRotateSyncPassword();
@@ -171,7 +173,7 @@ export default function SyncScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 + bottom }]}
+        contentContainerStyle={[styles.scrollContent, reading, { paddingBottom: 32 + bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Historical progress is not a live connection/health check. */}

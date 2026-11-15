@@ -1,233 +1,357 @@
 import { type FC } from "hono/jsx";
 import { env } from "../env";
-import { Folder, Icon, Star, Users } from "./components/icons";
 
 function AppStoreBadge() {
   return (
     <a
       href="https://apps.apple.com/us/app/bookhive-a-better-goodreads/id6749799032"
       aria-label="Download on the App Store"
-      class="inline-flex min-h-10 items-center gap-3 transition-transform duration-150 ease-out active:scale-[0.96]"
+      class="focus-ring inline-flex min-h-10 items-center rounded-lg"
       rel="noopener noreferrer"
     >
       <img
         src="/download_app_store.svg"
         alt="Download on the App Store"
-        class="h-9 w-auto sm:h-10"
-        loading="lazy"
+        width="120"
+        height="40"
+        class="h-10 w-auto"
         decoding="async"
       />
     </a>
   );
 }
 
-function Hero() {
+// Resized simulator captures, not recreated UI. Provenance lives beside the assets.
+function Screenshot({
+  name,
+  alt,
+  width,
+  height,
+  eager = false,
+}: {
+  name: string;
+  alt: string;
+  width: number;
+  height: number;
+  eager?: boolean;
+}) {
   return (
-    <section class="relative grid place-items-center px-4 pt-12 pb-8 md:pt-12 md:pb-20 lg:grid-cols-2 lg:px-8">
-      <div class="relative z-10 order-2 mt-8 flex w-full justify-center lg:order-1 lg:mt-0">
-        {/* Phone screenshot */}
-        <div class="relative aspect-[9/19] w-[80%] max-w-[260px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[300px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[420px]">
-          <picture>
-            <source type="image/webp" srcset="/screenshots/home-screen.webp" />
-            <img
-              src="/screenshots/home-screen.png"
-              alt="BookHive iOS — home screen"
-              width="750"
-              height="1334"
-              class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-              loading="lazy"
-              decoding="async"
-            />
-          </picture>
-        </div>
-      </div>
-      <div class="relative z-10 order-1">
-        <h1 class="text-4xl font-bold text-shadow-lg sm:text-5xl lg:text-6xl lg:tracking-tight xl:text-7xl xl:tracking-tighter">
-          BookHive app for
-          <span class="ml-2 text-primary">iPhone</span>
-        </h1>
-        <p class="mt-4 max-w-xl text-lg text-muted-foreground">
-          Manage, organize, and review your books anywhere. Follow friends, leave comments, and
-          discover your next great read — all on iOS.
+    <picture>
+      <source type="image/webp" srcset={`/screenshots/app/${name}.webp`} />
+      <img
+        src={`/screenshots/app/${name}.png`}
+        alt={alt}
+        width={width}
+        height={height}
+        class="block h-auto w-full"
+        loading={eager ? "eager" : "lazy"}
+        fetchpriority={eager ? "high" : "auto"}
+        decoding="async"
+      />
+    </picture>
+  );
+}
+
+const tabs = [
+  {
+    title: "My Books",
+    name: "my-books",
+    description:
+      "Your collection, your way. Search, filter by reading status, sort, and switch between list and cover-grid views.",
+    alt: "My Books on iPhone with title and author search, reading statuses and half-star ratings",
+  },
+  {
+    title: "Discover",
+    name: "discover",
+    description:
+      "Find a title, author or ISBN. Browse genres and authors, choose a language, or head into the community feed.",
+    alt: "Discover on iPhone with search, genre and author browsing, language selection and Community",
+  },
+  {
+    title: "Profile",
+    name: "profile",
+    description:
+      "A home for your reading life: public shelves, reviews, reading history and stats, all under your own identity.",
+    alt: "BookHive reader profile in light mode showing a public shelf, reviews and reading statistics",
+  },
+];
+
+export const AppPage: FC = () => (
+  <div class="space-y-20 sm:space-y-28">
+    <section
+      aria-labelledby="app-title"
+      class="grid items-center gap-12 pt-2 lg:grid-cols-2 lg:gap-16"
+    >
+      <div>
+        <p class="text-sm font-semibold tracking-widest text-primary uppercase">
+          BookHive for iPhone &amp; iPad
         </p>
-        <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+        <h1
+          id="app-title"
+          class="mt-4 text-5xl leading-tight font-bold tracking-tight text-balance sm:text-6xl"
+        >
+          A little more buzz.
+          <br />A lot more books.
+        </h1>
+        <p class="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+          Keep track of what you read, find what comes next, and share the good stuff. Your BookHive
+          reading life, at home on your phone and tablet.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
           <AppStoreBadge />
-          <a href={env.PUBLIC_URL || "/"} class="btn btn-ghost">
+          <a href={env.PUBLIC_URL || "/"} class="btn btn-outline">
             Continue on the web
           </a>
         </div>
+        <p class="mt-4 text-sm text-muted-foreground">
+          Sign in with your Bluesky / AT Protocol account.
+        </p>
+        <a
+          href="#inside-the-app"
+          class="focus-ring mt-8 inline-flex min-h-10 items-center text-sm font-medium text-primary hover:underline"
+        >
+          Take a look inside ↓
+        </a>
       </div>
-      <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-muted to-transparent" />
+      <figure class="rounded-3xl border border-border bg-muted/40 px-6 pt-8 pb-6 sm:px-10">
+        <div class="mx-auto max-w-[300px] overflow-hidden rounded-[2rem] border border-border shadow-xl">
+          <Screenshot
+            name="home"
+            alt="BookHive Home on iPhone: currently reading, reading totals, want-to-read books and the four main tabs"
+            width={600}
+            height={1304}
+            eager
+          />
+        </div>
+        <figcaption class="mt-5 text-center text-sm text-muted-foreground">
+          Home · Pick up where you left off.
+        </figcaption>
+      </figure>
     </section>
-  );
-}
 
-function Feature({ title, description, icon }: { title: string; description: string; icon: any }) {
-  return (
-    <div class="flex items-start gap-4">
-      <div class="mt-1 flex shrink-0 items-center justify-center rounded-full bg-primary p-2 text-primary-foreground">
-        {icon}
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">{title}</h3>
-        <p class="mt-2 leading-relaxed text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function Features() {
-  return (
-    <section class="px-4 lg:px-8">
-      <div class="mt-16 text-center text-balance md:mt-0 lg:mx-0">
-        <h2 class="text-4xl font-bold lg:text-5xl lg:tracking-tight">
-          Everything you love about BookHive — now on iOS
+    <section id="inside-the-app" aria-labelledby="tabs-title" class="scroll-mt-8">
+      <div class="max-w-2xl">
+        <p class="text-sm font-semibold tracking-widest text-primary uppercase">
+          Four tabs. One reading life.
+        </p>
+        <h2 id="tabs-title" class="mt-3 text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+          Less hunting through menus.
+          <br />
+          More finding your next book.
         </h2>
-        <p class="mt-4 text-lg text-muted-foreground">
-          Keep your library with you. Add books, track progress, review, and connect with friends
-          from anywhere.
+        <p class="mt-4 leading-relaxed text-muted-foreground">
+          Start with Home for your currently reading, want-to-read and recently finished books. My
+          Books, Discover and Profile keep everything else close by.
         </p>
       </div>
-
-      <div class="mt-12 grid gap-10 sm:grid-cols-2 md:grid-cols-3 md:gap-12 lg:mt-16 lg:gap-16">
-        <Feature
-          title="Manage your books"
-          description="Add to your library, mark as reading, read, or want to read — right from your phone."
-          icon={<Folder class="h-8 w-8" />}
-        />
-        <Feature
-          title="Follow your friends"
-          description="See what your friends are buzzing about and discover books through your network."
-          icon={<Users class="h-8 w-8" />}
-        />
-        <Feature
-          title="Discover new books"
-          description="Personalized search and recommendations help you find your next read."
-          icon={
-            <Icon class="h-8 w-8">
-              <path d="M10 10h4" />
-              <path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3" />
-              <path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z" />
-              <path d="M 22 16 L 2 16" />
-              <path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z" />
-              <path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3" />
-            </Icon>
-          }
-        />
-        <Feature
-          title="Rate and review"
-          description="Share ratings and thoughtful reviews — from quick notes to full commentary."
-          icon={<Star class="h-8 w-8" />}
-        />
-        <Feature
-          title="Comments & replies"
-          description="Join conversations about books. Leave comments and reply to friends."
-          icon={
-            <Icon class="h-8 w-8">
-              <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-            </Icon>
-          }
-        />
-        <Feature
-          title="E-reader sync"
-          description="Upload ebooks to your personal library and sync reading progress from KOReader via OPDS and KOSync."
-          icon={
-            <Icon class="h-8 w-8">
-              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
-            </Icon>
-          }
-        />
-        <Feature
-          title="Own your data"
-          description="Built on the AT Protocol — your data, your account, your network."
-          icon={
-            <Icon class="h-8 w-8">
-              <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-              <path d="M12 10v6" />
-              <path d="m15 13-3 3-3-3" />
-            </Icon>
-          }
-        />
+      <div class="mt-10 grid gap-10 md:grid-cols-3 md:gap-6">
+        {tabs.map((tab) => (
+          <figure key={tab.name} class="min-w-0">
+            <div class="mx-auto max-w-[280px] overflow-hidden rounded-3xl border border-border shadow-lg">
+              <Screenshot name={tab.name} alt={tab.alt} width={560} height={1218} />
+            </div>
+            <figcaption class="mx-auto mt-6 max-w-sm">
+              <h3 class="text-xl font-semibold">{tab.title}</h3>
+              <p class="mt-2 leading-relaxed text-muted-foreground">{tab.description}</p>
+            </figcaption>
+          </figure>
+        ))}
       </div>
     </section>
-  );
-}
 
-function Screenshots() {
-  return (
-    <section class="mt-16 space-y-14 px-4 sm:mt-20 sm:space-y-16 lg:px-8">
-      {/* Row 1 */}
-      <div class="grid items-center gap-8 sm:gap-10 lg:grid-cols-2">
-        <div class="order-1">
-          <h3 class="text-2xl font-bold">Track your reading</h3>
-          <p class="mt-3 text-muted-foreground">
-            Quick actions and clean design make it effortless to add books, update status, and keep
-            notes while you read.
-          </p>
-        </div>
-        <div class="order-2 flex justify-center lg:order-2">
-          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
-            <picture>
-              <source type="image/webp" srcset="/screenshots/book-info.webp" />
-              <img
-                src="/screenshots/book-info.png"
-                alt="BookHive iOS — book details screen"
-                width="750"
-                height="1334"
-                class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-                loading="lazy"
-                decoding="async"
-              />
-            </picture>
-          </div>
-        </div>
+    <section aria-labelledby="tracking-title" class="grid items-center gap-10 lg:grid-cols-2">
+      <div>
+        <p class="text-sm font-semibold tracking-widest text-primary uppercase">
+          Every chapter counts
+        </p>
+        <h2
+          id="tracking-title"
+          class="mt-3 text-3xl font-bold tracking-tight text-balance sm:text-4xl"
+        >
+          Remember more than
+          <br />
+          the last page.
+        </h2>
+        <p class="mt-5 leading-relaxed text-muted-foreground">
+          Want to read, reading, read or abandoned: keep your collection honest. Mark the books you
+          own, give half-star ratings, and put your thoughts into a review.
+        </p>
+        <ul class="mt-6 space-y-4 leading-relaxed text-muted-foreground">
+          <li>
+            <strong class="text-foreground">Track your pace.</strong> Update pages, chapters or a
+            percentage.
+          </li>
+          <li>
+            <strong class="text-foreground">Keep the history.</strong> Record reading dates, revisit
+            previous reads and see recent progress.
+          </li>
+          <li>
+            <strong class="text-foreground">See the bigger picture.</strong> Explore your yearly
+            reading stats and all-time totals.
+          </li>
+        </ul>
       </div>
-
-      {/* Row 2 */}
-      <div class="grid items-center gap-8 sm:gap-10 lg:grid-cols-2">
-        <div class="order-2 flex justify-center lg:order-1">
-          <div class="relative aspect-[9/19] w-full max-w-[200px] overflow-hidden rounded-[2.5rem] bg-black/90 shadow-2xl ring-1 ring-black/10 sm:max-w-[220px] md:max-w-[240px] lg:max-w-[260px] xl:max-w-[300px]">
-            <picture>
-              <source type="image/webp" srcset="/screenshots/comment.webp" />
-              <img
-                src="/screenshots/comment.png"
-                alt="BookHive iOS — comments and reviews"
-                width="750"
-                height="1334"
-                class="absolute inset-0 h-full w-full rounded-[2rem] object-contain p-2"
-                loading="lazy"
-                decoding="async"
-              />
-            </picture>
+      <div class="grid grid-cols-2 items-start gap-4 rounded-3xl border border-border bg-muted/40 p-4 sm:gap-6 sm:p-6">
+        <figure>
+          <div class="mx-auto max-w-[220px] overflow-hidden rounded-2xl border border-border shadow-lg">
+            <Screenshot
+              name="book-details"
+              alt="Dune book details in dark mode with owned status, reading status, rating, review and reading dates"
+              width={440}
+              height={957}
+            />
           </div>
-        </div>
-        <div class="order-1 lg:order-2">
-          <h3 class="text-2xl font-bold">Share thoughts & reviews</h3>
-          <p class="mt-3 text-muted-foreground">
-            Leave comments, reply to friends, and post reviews that sync with your BookHive profile.
-          </p>
-        </div>
+          <figcaption class="mt-4 text-center text-sm text-muted-foreground">
+            Make it your own
+          </figcaption>
+        </figure>
+        <figure class="mt-10">
+          <div class="mx-auto max-w-[220px] overflow-hidden rounded-2xl border border-border shadow-lg">
+            <Screenshot
+              name="progress"
+              alt="Reading progress editor in light mode with pages, chapters, percentage and Save progress"
+              width={440}
+              height={957}
+            />
+          </div>
+          <figcaption class="mt-4 text-center text-sm text-muted-foreground">
+            Keep your place
+          </figcaption>
+        </figure>
       </div>
     </section>
-  );
-}
 
-export const AppPage: FC = () => {
-  return (
-    <div class="space-y-6">
-      <Hero />
-      <Features />
-      <Screenshots />
-      <div class="my-16 text-center text-muted-foreground">
-        See this project&nbsp;
-        <a href="https://github.com/nperez0111/bookhive" class="text-primary hover:underline">
-          on GitHub
+    <section
+      aria-labelledby="ipad-title"
+      class="rounded-3xl border border-border bg-muted/40 p-6 sm:p-10"
+    >
+      <div class="mx-auto max-w-2xl text-center">
+        <p class="text-sm font-semibold tracking-widest text-primary uppercase">
+          Room to spread out
+        </p>
+        <h2 id="ipad-title" class="mt-3 text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+          Your reading life, on a bigger canvas.
+        </h2>
+        <p class="mt-4 leading-relaxed text-muted-foreground">
+          On iPad, Home gives your reading overview room to breathe. Browse your collection in an
+          adaptive cover grid, with comfortable layouts for profiles, discovery and book details.
+        </p>
+      </div>
+      <figure class="mx-auto mt-8 max-w-[620px]">
+        <div class="overflow-hidden rounded-2xl border border-border shadow-xl">
+          <Screenshot
+            name="ipad-home"
+            alt="Actual iPad Home in light mode with a two-column reading dashboard, public shelves and recent activity"
+            width={1240}
+            height={1653}
+          />
+        </div>
+        <figcaption class="mt-4 text-center text-sm text-muted-foreground">
+          A real iPad capture. Light and dark appearances on both devices.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="beyond-title">
+      <h2 id="beyond-title" class="text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+        Books bring people together.
+        <br />
+        Your files stay yours.
+      </h2>
+      <div class="mt-8 grid gap-6 md:grid-cols-2">
+        <article class="rounded-2xl border border-border p-6 sm:p-8">
+          <p class="text-sm font-semibold text-primary">The public side</p>
+          <h3 class="mt-3 text-2xl font-semibold">Find your kind of readers.</h3>
+          <p class="mt-4 leading-relaxed text-muted-foreground">
+            Create and arrange public shelves, visit reader profiles, follow friends and discover
+            books through the community feed. Share reviews and join book conversations with
+            comments and replies.
+          </p>
+          <p class="mt-4 leading-relaxed text-muted-foreground">
+            BookHive uses the same AT Protocol identity as Bluesky. Your public book records and
+            catalogue shelves live in your account’s repository—not in a separate BookHive identity.
+          </p>
+        </article>
+        <article class="rounded-2xl border border-border p-6 sm:p-8">
+          <p class="text-sm font-semibold text-primary">The private side</p>
+          <h3 class="mt-3 text-2xl font-semibold">Bring your ebooks along.</h3>
+          <p class="mt-4 leading-relaxed text-muted-foreground">
+            Upload ebook files to private storage, organize them into private shelves, and download
+            or share them to another app. Ebooks are separate from your public reading collection.
+          </p>
+          <p class="mt-4 leading-relaxed text-muted-foreground">
+            Use OPDS to get books onto a compatible e-reader, and KOSync to sync reading progress
+            from KOReader. Link sync documents to books to keep your tracking connected.
+          </p>
+          <p class="mt-4 text-sm text-muted-foreground">
+            Read in your preferred reader. BookHive does not include an in-app ebook reader.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="questions-title" class="mx-auto max-w-3xl">
+      <h2 id="questions-title" class="text-2xl font-bold">
+        A few things worth knowing
+      </h2>
+      <div class="mt-6 divide-y divide-border border-y border-border">
+        <details class="py-4">
+          <summary class="focus-ring min-h-10 cursor-pointer py-2 font-semibold">
+            Can I bring my existing reading history?
+          </summary>
+          <p class="pt-3 pb-2 leading-relaxed text-muted-foreground">
+            Yes. Open Library tools in My Books to import a CSV export from Goodreads, The
+            StoryGraph or Hardcover. You can also open your public shelves, reading stats and Ebooks
+            from there.
+          </p>
+        </details>
+        <details class="py-4">
+          <summary class="focus-ring min-h-10 cursor-pointer py-2 font-semibold">
+            Are my uploaded ebooks public?
+          </summary>
+          <p class="pt-3 pb-2 leading-relaxed text-muted-foreground">
+            No. Ebook files and private ebook shelves are stored by BookHive for your account. They
+            are not published to your AT Protocol repository. Your tracked books, reviews and public
+            catalogue shelves are public.
+          </p>
+        </details>
+        <details class="py-4">
+          <summary class="focus-ring min-h-10 cursor-pointer py-2 font-semibold">
+            Do I need to start over on the app?
+          </summary>
+          <p class="pt-3 pb-2 leading-relaxed text-muted-foreground">
+            No. Use the same account on BookHive’s website and the app to access your reading
+            collection, public shelves and private ebook library.
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <section aria-labelledby="download-title" class="text-center">
+      <h2 id="download-title" class="text-3xl font-bold tracking-tight sm:text-4xl">
+        Your next chapter starts here.
+      </h2>
+      <p class="mt-4 text-lg text-muted-foreground">Take BookHive with you on iPhone and iPad.</p>
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-4">
+        <AppStoreBadge />
+        <a href={env.PUBLIC_URL || "/"} class="btn btn-outline">
+          Explore BookHive on the web
         </a>
-        , built by{" "}
-        <a href="https://nickthesick.com" class="text-primary hover:underline">
+      </div>
+      <p class="mt-10 text-sm text-muted-foreground">
+        Open source, built with care by{" "}
+        <a href="https://nickthesick.com" class="focus-ring text-primary hover:underline">
           Nick The Sick
         </a>
-      </div>
-    </div>
-  );
-};
+        .{" "}
+        <a
+          href="https://github.com/nperez0111/bookhive"
+          class="focus-ring text-primary hover:underline"
+        >
+          See the project on GitHub
+        </a>
+        .
+      </p>
+    </section>
+  </div>
+);

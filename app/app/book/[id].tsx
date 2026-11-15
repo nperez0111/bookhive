@@ -20,6 +20,7 @@ import { getBaseUrl } from "@/context/auth";
 import { useBookInfo, useDeleteBook, useUpdateBook } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { formatAuthors } from "@/utils/personalLibrary";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -55,6 +56,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const [mutationError, setMutationError] = useState<string | null>(null);
   const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const bottom = useBottomTabOverflow();
+  const { reading } = useAdaptiveLayout();
 
   const bookQuery = useBookInfo(hiveId);
   const bookData = bookQuery.data;
@@ -317,7 +319,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       />
 
       <ScrollView ref={scrollViewRef} style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={[styles.contentContainer, { paddingBottom: 20 + bottom }]}>
+        <View style={[styles.contentContainer, reading, { paddingBottom: 20 + bottom }]}>
           {/* Book Cover and Info Section */}
           <Animated.View style={styles.bookSection} entering={FadeInDown.delay(40).duration(220)}>
             <View style={styles.coverContainer}>

@@ -60,6 +60,14 @@ Book-detail sections use normal layout flow when editors expand. Do not add sibl
 layout-position transitions: retained native-stack screens can leave later controls
 overlapping an already-expanded progress editor when the page is reopened.
 
+`hooks/useAdaptiveLayout.ts` sizes content from the current window, not the device
+model, so rotation and Split View use the same rules. Tablet pages have centered,
+bounded gutters; reading/forms use a narrower 760-point lane. Home uses independent
+dashboard columns, catalogue results use two columns, and cover grids derive their
+column count from available width and text scale. Larger accessibility text stacks
+dashboard content. FlatLists change their key when the column count changes.
+Shared headers keep full-width separators while their controls align to the page.
+
 ## Authentication and session isolation
 
 `context/auth.tsx` owns `authFetch` (ofetch, `sid` cookie and app/platform headers);

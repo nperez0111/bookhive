@@ -12,6 +12,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { HeaderAction } from "@/components/HeaderAction";
 import { ThemedView } from "@/components/ThemedView";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { BOOK_STATUS } from "@/constants";
 import { Colors } from "@/constants/Colors";
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const top = useScreenTopInset();
+  const { wide, page } = useAdaptiveLayout();
 
   const listsQuery = useUserLists(authState?.did);
   const { refetch: refetchProfile } = profile;
@@ -116,6 +118,37 @@ export default function HomeScreen() {
       (b.finishedAt || b.createdAt || "").localeCompare(a.finishedAt || a.createdAt || ""),
     );
 
+  const shelvesAndActivity = (
+    <>
+      <HomeShelvesSection
+        shelves={listsQuery.data?.lists ?? []}
+        onCreatePress={() => setCreateShelfVisible(true)}
+      />
+      <View style={{ paddingHorizontal: 20, gap: 8, marginBottom: 24 }}>
+        <SectionHeader icon="time" title="Recent activity" style={{ paddingHorizontal: 0 }} />
+        {(profile.data.activity ?? []).slice(0, 3).map((activity, index) => (
+          <ListItem
+            key={`${activity.hiveId}:${activity.type}:${index}`}
+            icon="book"
+            title={activity.title}
+            subtitle={
+              (
+                {
+                  finished: "Finished reading",
+                  started: "Started reading",
+                  rated: "Rated",
+                  review: "Reviewed",
+                } as Record<string, string>
+              )[activity.type] ?? "Updated"
+            }
+            onPress={() => router.push(`/book/${activity.hiveId}`)}
+          />
+        ))}
+        <ListItem icon="people" title="Community feed" onPress={() => router.push("/feed")} />
+      </View>
+    </>
+  );
+
   return (
     <ThemedView style={[styles.container, { backgroundColor, paddingBottom: bottom }]}>
       <View style={{ paddingTop: top }}>
@@ -130,6 +163,7 @@ export default function HomeScreen() {
       </View>
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={page}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -148,74 +182,55 @@ export default function HomeScreen() {
             Could not refresh your reading. Pull down to try again.
           </ThemedText>
         )}
-        <HomeBookSection
-          books={readingBooks}
-          title="Currently Reading"
-          icon="book"
-          emptyMessage="What are you reading?"
-          emptySubtitle="Find a book, then choose Currently Reading to keep it here."
-          status={BOOK_STATUS.READING}
-        />
-
-        {/* Stats Section */}
-        <StatsCard
-          style={styles.statsSection}
-          items={[
-            { label: "Total Read", value: stats.totalRead },
-            { label: "This Month", value: stats.thisMonth },
-            { label: "This Year", value: stats.thisYear },
-          ]}
-          onItemPress={handleStatPress}
-        />
-
-        {/* Book Sections */}
-        <HomeBookSection
-          books={wantToReadBooks}
-          title="Want to Read"
-          icon="bookmark"
-          emptyMessage="No books in your list"
-          emptySubtitle="Save books you want to read next."
-          status={BOOK_STATUS.WANTTOREAD}
-        />
-
-        {finishedBooks.length > 0 && (
-          <HomeBookSection
-            books={finishedBooks}
-            title="Recently finished"
-            icon="checkmark-circle"
-            emptyMessage="No finished books"
-            emptySubtitle="Books you finish will appear here"
-            status={BOOK_STATUS.FINISHED}
-          />
-        )}
-
-        <HomeShelvesSection
-          shelves={listsQuery.data?.lists ?? []}
-          onCreatePress={() => setCreateShelfVisible(true)}
-        />
-
-        <View style={{ paddingHorizontal: 20, gap: 8, marginBottom: 24 }}>
-          <SectionHeader icon="time" title="Recent activity" style={{ paddingHorizontal: 0 }} />
-          {(profile.data.activity ?? []).slice(0, 3).map((activity, index) => (
-            <ListItem
-              key={`${activity.hiveId}:${activity.type}:${index}`}
+        <View style={wide ? styles.dashboard : undefined}>
+          <View style={wide ? styles.column : undefined}>
+            <HomeBookSection
+              books={readingBooks}
+              title="Currently Reading"
               icon="book"
-              title={activity.title}
-              subtitle={
-                (
-                  {
-                    finished: "Finished reading",
-                    started: "Started reading",
-                    rated: "Rated",
-                    review: "Reviewed",
-                  } as Record<string, string>
-                )[activity.type] ?? "Updated"
-              }
-              onPress={() => router.push(`/book/${activity.hiveId}`)}
+              emptyMessage="What are you reading?"
+              emptySubtitle="Find a book, then choose Currently Reading to keep it here."
+              status={BOOK_STATUS.READING}
             />
-          ))}
-          <ListItem icon="people" title="Community feed" onPress={() => router.push("/feed")} />
+
+            {/* Stats Section */}
+            <StatsCard
+              style={styles.statsSection}
+              items={[
+                { label: "Total Read", value: stats.totalRead },
+                { label: "This Month", value: stats.thisMonth },
+                { label: "This Year", value: stats.thisYear },
+              ]}
+              onItemPress={handleStatPress}
+            />
+            {wide && shelvesAndActivity}
+          </View>
+
+          {/* Book Sections */}
+          <View style={wide ? styles.column : undefined}>
+            <HomeBookSection
+              books={wantToReadBooks}
+              title="Want to Read"
+              icon="bookmark"
+              emptyMessage="No books in your list"
+              emptySubtitle="Save books you want to read next."
+              status={BOOK_STATUS.WANTTOREAD}
+            />
+
+            {finishedBooks.length > 0 && (
+              <HomeBookSection
+                books={finishedBooks}
+                title="Recently finished"
+                icon="checkmark-circle"
+                emptyMessage="No finished books"
+                emptySubtitle="Books you finish will appear here"
+                status={BOOK_STATUS.FINISHED}
+              />
+            )}
+          </View>
         </View>
+
+        {!wide && shelvesAndActivity}
 
         <View style={[styles.bottomSpacing, { height: 20 + bottom }]} />
       </ScrollView>
@@ -226,6 +241,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  dashboard: { flexDirection: "row", gap: 24, alignItems: "flex-start" },
+  column: { flex: 1, minWidth: 0 },
   container: {
     flex: 1,
   },

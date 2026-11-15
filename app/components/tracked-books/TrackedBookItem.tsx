@@ -20,10 +20,12 @@ import type { UserBook } from "../../../src/bsky/lexicon/generated/types/buzz/bo
 export function TrackedBookItem({
   book,
   grid,
+  cardWidth,
   onError,
 }: {
   book: UserBook;
   grid: boolean;
+  cardWidth?: number;
   onError: (message: string | null) => void;
 }) {
   const router = useRouter();
@@ -60,6 +62,7 @@ export function TrackedBookItem({
       style={[
         styles.card,
         grid ? styles.gridCard : styles.listCard,
+        grid && { width: cardWidth ?? "48%" },
         { borderColor: colors.cardBorder },
       ]}
     >
@@ -152,7 +155,7 @@ export function TrackedBookItem({
 const styles = StyleSheet.create({
   card: { borderBottomWidth: StyleSheet.hairlineWidth },
   listCard: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
-  gridCard: { width: "48%", flexShrink: 1, paddingVertical: 10 },
+  gridCard: { flexShrink: 1, paddingVertical: 10 },
   rating: { flexDirection: "row", alignItems: "center", gap: 4 },
   number: { fontVariant: ["tabular-nums"] },
 });

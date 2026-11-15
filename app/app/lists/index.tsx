@@ -23,6 +23,7 @@ import { useUserLists, useDeleteList } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { HeaderAction } from "@/components/HeaderAction";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 export default function ListsScreen() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function ListsScreen() {
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
+  const { reading } = useAdaptiveLayout();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
 
@@ -128,7 +130,7 @@ export default function ListsScreen() {
         <FlatList
           data={lists}
           keyExtractor={(item) => item.uri}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, reading]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

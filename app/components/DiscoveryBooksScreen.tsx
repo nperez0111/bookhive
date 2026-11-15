@@ -1,6 +1,7 @@
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 
 import { BookCard } from "@/components/BookCard";
@@ -62,6 +63,8 @@ export function DiscoveryBooksScreen({
   const backgroundColor = useThemeColor({}, "background");
   const top = useScreenTopInset();
   const bottom = useBottomTabOverflow();
+  const { wide, page, pageWidth } = useAdaptiveLayout();
+  const columns = wide ? 2 : 1;
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
@@ -70,7 +73,7 @@ export function DiscoveryBooksScreen({
         {!isLoading && hasData && (
           <ThemedText
             type="caption"
-            style={{ color: colors.secondaryText, paddingHorizontal: 20, paddingBottom: 8 }}
+            style={[page, { color: colors.secondaryText, paddingHorizontal: 20, paddingBottom: 8 }]}
           >
             {countLabel}
           </ThemedText>
@@ -90,7 +93,10 @@ export function DiscoveryBooksScreen({
         />
       ) : (
         <FlatList
-          key={resetKey}
+          key={`${resetKey}:${columns}`}
+          style={page}
+          numColumns={columns}
+          columnWrapperStyle={wide ? { gap: 32 } : undefined}
           data={books}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 + bottom }}
@@ -101,7 +107,7 @@ export function DiscoveryBooksScreen({
             ) : undefined
           }
           renderItem={({ item, index }) => (
-            <View style={styles.gridItem}>
+            <View style={wide ? { width: (pageWidth - 72) / 2 } : styles.gridItem}>
               <AnimatedListItem index={index}>
                 <BookCard
                   title={item.title}

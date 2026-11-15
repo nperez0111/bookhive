@@ -6,6 +6,7 @@ import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter"
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 export function GenreBrowser({
   genres,
@@ -20,6 +21,8 @@ export function GenreBrowser({
 }) {
   const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
+  const { wide, pageWidth } = useAdaptiveLayout();
+  const columns = wide ? (pageWidth >= 1000 ? 4 : 3) : 2;
   return (
     <View style={styles.section}>
       <Pressable
@@ -49,6 +52,10 @@ export function GenreBrowser({
             style={({ pressed }) => [
               styles.card,
               {
+                width: (pageWidth - 40 - (columns - 1) * 12) / columns,
+                minHeight: wide ? 120 : 56,
+              },
+              {
                 backgroundColor: colors.cardBackground,
                 borderColor: colors.cardBorder,
                 opacity: pressed ? 0.85 : 1,
@@ -63,7 +70,7 @@ export function GenreBrowser({
             >
               {item.genre}
             </ThemedText>
-            <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+            <ThemedText type="caption" style={{ color: colors.secondaryText, textAlign: "center" }}>
               {item.count.toLocaleString()} books
             </ThemedText>
           </Pressable>
@@ -81,11 +88,9 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   card: {
-    width: "47%",
     borderRadius: 16,
     borderWidth: 1,
     padding: 14,
-    minHeight: 56,
     justifyContent: "center",
   },
   name: { textAlign: "center" },

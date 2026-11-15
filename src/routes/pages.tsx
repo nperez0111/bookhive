@@ -109,8 +109,8 @@ const app = new Hono<AppEnv>()
       <Layout
         assetUrls={c.get("assetUrls")}
         url={c.req.url}
-        title="BookHive App for iOS"
-        description="The BookHive iOS app lets you manage, organize, and review your books anywhere."
+        title="BookHive for iPhone & iPad | Track, Discover & Share Books"
+        description="Track your reading, rate and review books, discover genres and authors, share public shelves, and manage a private ebook library with BookHive for iPhone and iPad."
         image="/og/app"
       >
         <SimpleNavbar isPds={false} />

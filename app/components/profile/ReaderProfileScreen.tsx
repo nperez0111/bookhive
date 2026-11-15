@@ -28,6 +28,7 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { parseHtmlToText } from "@/utils/htmlToText";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 function FollowButton({ targetDid, isFollowing }: { targetDid: string; isFollowing: boolean }) {
   const follow = useFollow();
@@ -86,6 +87,7 @@ export default function ReaderProfileScreen({
 }) {
   const router = useRouter();
   const { authState } = useAuth();
+  const { reading } = useAdaptiveLayout();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
@@ -178,6 +180,7 @@ export default function ReaderProfileScreen({
         style={styles.scrollView}
         contentContainerStyle={[
           styles.contentContainer,
+          reading,
           { paddingBottom: 32 + tabOverflow + bottom },
         ]}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}

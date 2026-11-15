@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -15,6 +16,7 @@ import { useDeleteAccount, useResyncBooks } from "@/hooks/useAccount";
 export default function AccountScreen() {
   const router = useRouter();
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
   const { authState } = useAuth();
   const profile = useProfile();
   const expectedHandle = profile.data?.profile.handle ?? authState?.handle ?? "";
@@ -43,7 +45,10 @@ export default function AccountScreen() {
     <ThemedView style={styles.root}>
       <View style={[styles.root, { paddingTop: top }]}>
         <BackNavigationHeader title="Account settings" />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.content, reading]}
+          keyboardShouldPersistTaps="handled"
+        >
           <AccountSection
             title="Import your books"
             description="Bring your reading history from Goodreads, StoryGraph or Hardcover using a CSV export."

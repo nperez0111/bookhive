@@ -20,6 +20,7 @@ import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BookCard } from "@/components/BookCard";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function SearchScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
 
   const { preferredLanguage } = useLanguage();
   const search = useSearchBooks(query, preferredLanguage);
@@ -67,7 +69,7 @@ export default function SearchScreen() {
         title="Search books"
         onBackPress={() => (router.canGoBack() ? router.back() : router.navigate("/explore"))}
       />
-      <View style={styles.searchControls}>
+      <View style={[reading, styles.searchControls]}>
         <View
           style={[
             styles.searchInputWrapper,
@@ -140,7 +142,7 @@ export default function SearchScreen() {
         </View>
       ) : (
         // Has search query - show search results
-        <View style={styles.searchResultsSection}>
+        <View style={[styles.searchResultsSection, reading]}>
           {isLoading || isDebouncing ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
@@ -196,7 +198,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchControls: {
-    marginHorizontal: 20,
+    paddingHorizontal: 20,
     marginBottom: 16,
   },
   searchInputWrapper: {

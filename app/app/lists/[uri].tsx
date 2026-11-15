@@ -20,6 +20,7 @@ import { QueryErrorHandler } from "@/components/QueryErrorHandler";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl, useAuth } from "@/context/auth";
 import { catalogueCoverUrl } from "@/utils/catalogueCover";
@@ -42,6 +43,7 @@ export default function ListDetailScreen() {
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
+  const { reading } = useAdaptiveLayout();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
@@ -175,7 +177,7 @@ export default function ListDetailScreen() {
       />
 
       {list ? (
-        <View style={styles.descriptionContainer}>
+        <View style={[styles.descriptionContainer, reading]}>
           {list.description ? (
             <ThemedText style={{ color: colors.secondaryText }} type="body">
               {list.description}
@@ -219,7 +221,7 @@ export default function ListDetailScreen() {
         <FlatList
           data={items}
           keyExtractor={(item) => item.uri}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, reading]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

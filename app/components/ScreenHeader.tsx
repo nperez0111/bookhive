@@ -3,10 +3,12 @@ import { StyleSheet, View } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 /** Primary-tab heading. Screens own safe-area insets; actions retain their labels. */
 export function ScreenHeader({ title, actions }: { title: string; actions?: ReactNode }) {
   const colors = Colors[useColorScheme() ?? "light"];
+  const { page } = useAdaptiveLayout();
   return (
     <View
       style={[
@@ -14,10 +16,12 @@ export function ScreenHeader({ title, actions }: { title: string; actions?: Reac
         { backgroundColor: colors.background, borderBottomColor: colors.cardBorder },
       ]}
     >
-      <ThemedText accessibilityRole="header" type="title" style={styles.title}>
-        {title}
-      </ThemedText>
-      {actions ? <View style={styles.actions}>{actions}</View> : null}
+      <View style={[styles.content, page]}>
+        <ThemedText accessibilityRole="header" type="title" style={styles.title}>
+          {title}
+        </ThemedText>
+        {actions ? <View style={styles.actions}>{actions}</View> : null}
+      </View>
     </View>
   );
 }
@@ -27,10 +31,12 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     marginBottom: 16,
-    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 12,
     minHeight: 60,
+  },
+  content: {
+    paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

@@ -6,6 +6,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { ThemedText } from "./ThemedText";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/Colors";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 type BackNavigationHeaderProps = {
   title?: string;
@@ -23,6 +24,7 @@ export function BackNavigationHeader({
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const router = useRouter();
+  const { page } = useAdaptiveLayout();
 
   const handleBackPress = () => {
     if (onBackPress) {
@@ -46,7 +48,7 @@ export function BackNavigationHeader({
         style,
       ]}
     >
-      <View style={styles.content}>
+      <View style={[styles.content, page]}>
         <HeaderAction
           tone="neutral"
           accessibilityLabel="Back"
