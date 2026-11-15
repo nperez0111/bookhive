@@ -10,7 +10,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -35,6 +35,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { HeaderAction } from "@/components/HeaderAction";
 
 export default function ListDetailScreen() {
+  const router = useRouter();
   const { uri } = useLocalSearchParams<{ uri: string }>();
   const { authState } = useAuth();
   const colorScheme = useColorScheme();

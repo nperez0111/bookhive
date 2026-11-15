@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
-import { notifyManager, QueryClient } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { authSession } from "@/context/auth";
 import { queryWrapper } from "../../test/queryHelpers";
 import { useRotateSyncPassword, useSyncPassword } from "../queries/sync";
@@ -13,7 +13,6 @@ jest.mock("@/context/auth", () => ({
 let client: QueryClient;
 const Wrapper = queryWrapper(() => client);
 beforeEach(() => {
-  notifyManager.setNotifyFunction((callback) => act(callback));
   mockRequest.mockReset();
   authSession.replace({ did: "did:plc:a", handle: "a.test", sid: "sid-a" });
   client = new QueryClient({
@@ -25,7 +24,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   client.clear();
-  notifyManager.setNotifyFunction((callback) => callback());
 });
 
 it("clears the old password and re-reads after a lost rotation response without rotating twice", async () => {
@@ -34,7 +32,7 @@ it("clears the old password and re-reads after a lost rotation response without 
     if (url.endsWith("/rotate")) return Promise.reject(new Error("response lost"));
     return Promise.resolve({ password: "server-current-password" });
   });
-  const { result } = renderHook(
+  const { result } = await renderHook(
     () => ({ password: useSyncPassword(), rotate: useRotateSyncPassword() }),
     { wrapper: Wrapper },
   );
@@ -50,7 +48,7 @@ it("clears the old password and re-reads after a lost rotation response without 
 it("does not expose an indefinitely cached old password if the re-read also fails", async () => {
   client.setQueryData(["syncPassword"], "old-password");
   mockRequest.mockRejectedValue(new Error("offline"));
-  const { result } = renderHook(
+  const { result } = await renderHook(
     () => ({ password: useSyncPassword(), rotate: useRotateSyncPassword() }),
     { wrapper: Wrapper },
   );
@@ -68,9 +66,9 @@ it("a delayed rotation error cannot reset the new viewer's password", async () =
       reject = fail;
     }),
   );
-  const { result } = renderHook(() => useRotateSyncPassword(), { wrapper: Wrapper });
+  const { result } = await renderHook(() => useRotateSyncPassword(), { wrapper: Wrapper });
   let pending!: Promise<unknown>;
-  act(() => {
+  await act(() => {
     pending = result.current.mutateAsync().catch(() => {});
   });
   await waitFor(() => expect(mockRequest).toHaveBeenCalled());

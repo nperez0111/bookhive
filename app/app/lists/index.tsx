@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -25,6 +25,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { HeaderAction } from "@/components/HeaderAction";
 
 export default function ListsScreen() {
+  const router = useRouter();
   const { authState } = useAuth();
   const { did } = useLocalSearchParams<{ did?: string }>();
   const ownerDid = did || authState?.did;

@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { HeaderAction } from "@/components/HeaderAction";
 
@@ -26,6 +26,7 @@ export function ProfileBookSection({
   status: "reading" | "wantToRead" | "finished";
   did: string;
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   if (books.length === 0) return null;
 

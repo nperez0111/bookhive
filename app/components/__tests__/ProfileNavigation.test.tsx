@@ -6,7 +6,7 @@ import ReaderProfileScreen from "@/components/profile/ReaderProfileScreen";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), navigate: jest.fn() },
-  useRouter: () => ({ back: jest.fn() }),
+  useRouter: () => jest.requireMock("expo-router").router,
 }));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
 jest.mock("expo-updates", () => ({}));
@@ -29,23 +29,23 @@ jest.mock("@/components/ThemeToggle", () => ({ ThemeToggle: () => null }));
 
 beforeEach(() => jest.clearAllMocks());
 
-it("shows the viewer's public profile and a separate settings gear", () => {
-  const screen = render(<MyProfileScreen />);
+it("shows the viewer's public profile and a separate settings gear", async () => {
+  const screen = await render(<MyProfileScreen />);
   expect(ReaderProfileScreen).toHaveBeenCalledWith(
     { did: "did:plc:viewer", inProfileTab: true },
     undefined,
   );
-  fireEvent.press(screen.getByLabelText("Settings"));
+  await fireEvent.press(screen.getByLabelText("Settings"));
   expect(router.push).toHaveBeenCalledWith("/settings");
   expect(screen.queryByText("Sign Out")).toBeNull();
 });
 
-it("keeps account tools in settings, not reading tools", () => {
-  const screen = render(<SettingsScreen />);
+it("keeps account tools in settings, not reading tools", async () => {
+  const screen = await render(<SettingsScreen />);
   expect(screen.getByText("Book Language")).toBeTruthy();
   expect(screen.getByText("Sign Out")).toBeTruthy();
   expect(screen.getByText("Privacy Policy")).toBeTruthy();
-  fireEvent.press(screen.getByText("Account Management"));
+  await fireEvent.press(screen.getByText("Account Management"));
   expect(router.push).toHaveBeenCalledWith("/account");
   for (const title of [
     "My Books",

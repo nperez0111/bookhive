@@ -45,6 +45,8 @@ function StatusSelectionContent({
 
   return (
     <Pressable
+      testID="reading-status-backdrop"
+      accessible={false}
       style={[styles.modalBackdrop, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
       onPress={onClose}
     >

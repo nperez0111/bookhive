@@ -15,15 +15,18 @@ const books: UserBook[] = Array.from({ length: 5 }, (_, index) => ({
 }));
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 jest.mock("@/context/auth", () => ({ getBaseUrl: () => "https://bookhive.buzz" }));
 jest.mock("@/components/FadeInImage", () => ({ FadeInImage: () => null }));
 
 beforeEach(() => jest.clearAllMocks());
 
-it("formats catalogue authors without blank entries or splitting a surname comma", () => {
-  render(
+it("formats catalogue authors without blank entries or splitting a surname comma", async () => {
+  await render(
     <ProfileBookSection
       books={[{ ...books[0], authors: " Le Guin, Ursula \t \t Another Writer " }]}
       title="Books"
@@ -33,13 +36,15 @@ it("formats catalogue authors without blank entries or splitting a surname comma
     />,
   );
   expect(screen.getByText("Le Guin, Ursula, Another Writer")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Book 0" }).props.accessibilityLabel).toBeUndefined();
+  expect(
+    screen.getByRole("button", { name: /^Book 0\b/ }).props.accessibilityLabel,
+  ).toBeUndefined();
 });
 
 it.each(["reading", "wantToRead", "finished"] as const)(
   "opens the complete %s shelf for the displayed reader while bounding the preview",
-  (status) => {
-    render(
+  async (status) => {
+    await render(
       <ProfileBookSection
         books={books}
         title="Books"
@@ -48,20 +53,20 @@ it.each(["reading", "wantToRead", "finished"] as const)(
         did="did:plc:reader"
       />,
     );
-    expect(screen.getAllByRole("button", { name: /^Book \d$/ })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^Book \d\b/ })).toHaveLength(3);
     expect(screen.getAllByText("4.5")).toHaveLength(3);
     expect(screen.getByText("5 books")).toBeTruthy();
     expect(screen.getByText("See all")).toBeTruthy();
     expect(screen.queryByText("Book 3")).toBeNull();
-    fireEvent.press(screen.getByLabelText("View shelf"));
+    await fireEvent.press(screen.getByLabelText("View shelf"));
     expect(router.push).toHaveBeenLastCalledWith(`/books/${status}?did=did:plc:reader`);
-    fireEvent.press(screen.getByRole("button", { name: "Book 0" }));
+    await fireEvent.press(screen.getByRole("button", { name: /^Book 0\b/ }));
     expect(router.push).toHaveBeenLastCalledWith("/book/bk_0");
   },
 );
 
-it("omits an empty public shelf without presenting management controls", () => {
-  render(
+it("omits an empty public shelf without presenting management controls", async () => {
+  await render(
     <ProfileBookSection
       books={[]}
       title="Books"

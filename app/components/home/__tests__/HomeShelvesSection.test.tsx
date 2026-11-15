@@ -4,18 +4,21 @@ import { router } from "expo-router";
 import { HomeShelvesSection } from "../HomeShelvesSection";
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 
 beforeEach(() => jest.clearAllMocks());
 
-it("keeps both shelf creation entry points available for an empty collection", () => {
+it("keeps both shelf creation entry points available for an empty collection", async () => {
   const onCreatePress = jest.fn();
-  render(<HomeShelvesSection shelves={[]} onCreatePress={onCreatePress} />);
-  fireEvent.press(screen.getByLabelText("Create shelf"));
-  fireEvent.press(screen.getByText("No shelves yet"));
+  await render(<HomeShelvesSection shelves={[]} onCreatePress={onCreatePress} />);
+  await fireEvent.press(screen.getByLabelText("Create shelf"));
+  await fireEvent.press(screen.getByText("No shelves yet"));
   expect(onCreatePress).toHaveBeenCalledTimes(2);
-  fireEvent.press(screen.getByLabelText("See all shelves"));
+  await fireEvent.press(screen.getByLabelText("See all shelves"));
   expect(router.push).toHaveBeenLastCalledWith("/lists");
   const row = screen.getByLabelText("Create your first shelf");
   expect(row).toHaveStyle({ minHeight: 80 });
@@ -24,10 +27,10 @@ it("keeps both shelf creation entry points available for an empty collection", (
   ).toBeUndefined();
 });
 
-it("uses public AT-URI navigation and keeps creation alongside populated shelves", () => {
+it("uses public AT-URI navigation and keeps creation alongside populated shelves", async () => {
   const onCreatePress = jest.fn();
   const uri = "at://did:plc:reader/social.popfeed.feed.list/favourites";
-  render(
+  await render(
     <HomeShelvesSection
       shelves={[
         { uri, name: "Favourites", itemCount: 1 },
@@ -38,8 +41,8 @@ it("uses public AT-URI navigation and keeps creation alongside populated shelves
   );
   expect(screen.getByText("1 book")).toBeTruthy();
   expect(screen.getByText("2 books")).toBeTruthy();
-  fireEvent.press(screen.getByText("Favourites"));
+  await fireEvent.press(screen.getByText("Favourites"));
   expect(router.push).toHaveBeenLastCalledWith(`/lists/${encodeURIComponent(uri)}`);
-  fireEvent.press(screen.getByText("New Shelf"));
+  await fireEvent.press(screen.getByText("New Shelf"));
   expect(onCreatePress).toHaveBeenCalledTimes(1);
 });

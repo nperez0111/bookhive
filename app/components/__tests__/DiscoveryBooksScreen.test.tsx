@@ -1,6 +1,5 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
-import { FlatList } from "react-native";
 import AuthorBooksScreen from "../../app/explore/authors/[author]";
 import GenreBooksScreen from "../../app/explore/genres/[genre]";
 import { DiscoveryBooksScreen } from "../DiscoveryBooksScreen";
@@ -35,9 +34,13 @@ jest.mock("@/components/GradientView", () => ({
   GradientView: jest.requireActual<typeof import("react-native")>("react-native").View,
 }));
 jest.mock("@/components/BookCard", () => ({
-  BookCard: ({ title }: { title: string }) => {
+  BookCard: ({ title, ...props }: { title: string }) => {
     const { Text } = jest.requireActual("react-native");
-    return <Text>{title}</Text>;
+    return (
+      <Text testID="book-card" {...props}>
+        {title}
+      </Text>
+    );
   },
 }));
 jest.mock("@/components/QueryErrorHandler", () => ({
@@ -71,69 +74,69 @@ beforeEach(() => {
   };
 });
 
-test("author uses server total while genre uses loaded unique count and more indicator", () => {
-  const author = render(<AuthorBooksScreen />);
+test("author uses server total while genre uses loaded unique count and more indicator", async () => {
+  const author = await render(<AuthorBooksScreen />);
   expect(author.getByText("42 books")).toBeTruthy();
   expect(mockAuthorBooks).toHaveBeenLastCalledWith("Le Guin", "en");
-  author.unmount();
+  await author.unmount();
   mockQuery.data.pages.push(mockQuery.data.pages[0]);
-  const genre = render(<GenreBooksScreen />);
+  const genre = await render(<GenreBooksScreen />);
   expect(genre.getByText("1+ books")).toBeTruthy();
   expect(mockGenreBooks).toHaveBeenLastCalledWith("Fantasy", "en");
   mockQuery.hasNextPage = false;
-  genre.rerender(<GenreBooksScreen />);
+  await genre.rerender(<GenreBooksScreen />);
   expect(genre.getByText("1 books")).toBeTruthy();
 });
 
 test.each([AuthorBooksScreen, GenreBooksScreen])(
   "keeps cards on page failure and selects the correct retry",
-  (Screen) => {
+  async (Screen) => {
     mockQuery.error = new Error("Page failed");
     mockQuery.isFetchNextPageError = true;
-    const view = render(<Screen />);
+    const view = await render(<Screen />);
     expect(view.getByText("Earthsea")).toBeTruthy();
-    fireEvent.press(view.getByText("Retry"));
+    await fireEvent.press(view.getByText("Retry"));
     expect(mockQuery.fetchNextPage).toHaveBeenCalledTimes(1);
     expect(mockQuery.refetch).not.toHaveBeenCalled();
     mockQuery.isFetchNextPageError = false;
-    view.rerender(<Screen />);
-    fireEvent.press(view.getByText("Retry"));
+    await view.rerender(<Screen />);
+    await fireEvent.press(view.getByText("Retry"));
     expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
     mockQuery.data = undefined;
-    view.rerender(<Screen />);
+    await view.rerender(<Screen />);
     expect(view.queryByText("Earthsea")).toBeNull();
-    fireEvent.press(view.getByText("Retry"));
+    await fireEvent.press(view.getByText("Retry"));
     expect(mockQuery.refetch).toHaveBeenCalledTimes(2);
   },
 );
 
 test.each([AuthorBooksScreen, GenreBooksScreen])(
   "keeps the back header available during loading and initial errors",
-  (Screen) => {
+  async (Screen) => {
     mockQuery.data = undefined;
     mockQuery.isLoading = true;
-    const view = render(<Screen />);
+    const view = await render(<Screen />);
     expect(view.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(view.queryByText("0 books")).toBeNull();
     mockQuery.isLoading = false;
     mockQuery.error = new Error("Initial request failed");
-    view.rerender(<Screen />);
+    await view.rerender(<Screen />);
     expect(view.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(view.queryByText("0 books")).toBeNull();
-    fireEvent.press(view.getByText("Retry"));
+    await fireEvent.press(view.getByText("Retry"));
     expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
   },
 );
 
-test("does not request an image proxy URL for books with no artwork", () => {
-  const view = render(<GenreBooksScreen />);
+test("does not request an image proxy URL for books with no artwork", async () => {
+  const view = await render(<GenreBooksScreen />);
   // The presentation boundary must send the same missing-cover value as search.
-  const card = view.UNSAFE_getByType(jest.requireMock("@/components/BookCard").BookCard);
+  const card = view.getByTestId("book-card");
   expect(card.props.imageUri).toBe("");
 });
 
-test("does not show a successful empty state beside a failed empty-page refresh", () => {
-  const view = render(
+test("does not show a successful empty state beside a failed empty-page refresh", async () => {
+  const view = await render(
     <DiscoveryBooksScreen
       title="Fantasy"
       countLabel="0 books"
@@ -156,22 +159,22 @@ test("does not show a successful empty state beside a failed empty-page refresh"
 
 test.each([AuthorBooksScreen, GenreBooksScreen])(
   "guards load more while fetching and remounts the list on language or route change",
-  (Screen) => {
-    const view = render(<Screen />);
-    fireEvent.press(view.getByText("Load more"));
+  async (Screen) => {
+    const view = await render(<Screen />);
+    await fireEvent.press(view.getByText("Load more"));
     expect(mockQuery.fetchNextPage).toHaveBeenCalledTimes(1);
     mockQuery.isFetching = true;
     mockQuery.isFetchingNextPage = true;
-    view.rerender(<Screen />);
-    fireEvent.press(view.getByText("Loading…"));
+    await view.rerender(<Screen />);
+    await fireEvent.press(view.getByText("Loading…"));
     expect(mockQuery.fetchNextPage).toHaveBeenCalledTimes(1);
-    const previousList = view.UNSAFE_getByType(FlatList).instance;
+    const previousList = view.getByTestId("book-card");
     mockLanguage = "fr";
-    view.rerender(<Screen />);
-    expect(view.UNSAFE_getByType(FlatList).instance).not.toBe(previousList);
-    const languageList = view.UNSAFE_getByType(FlatList).instance;
+    await view.rerender(<Screen />);
+    expect(view.getByTestId("book-card")).not.toBe(previousList);
+    const languageList = view.getByTestId("book-card");
     mockParams = { author: "Borges", genre: "Mystery" };
-    view.rerender(<Screen />);
-    expect(view.UNSAFE_getByType(FlatList).instance).not.toBe(languageList);
+    await view.rerender(<Screen />);
+    expect(view.getByTestId("book-card")).not.toBe(languageList);
   },
 );

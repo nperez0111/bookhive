@@ -33,6 +33,7 @@ const mockBooks = [
   },
 ];
 jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
   router: { push: (...args: unknown[]) => mockPush(...args) },
   useLocalSearchParams: () => ({ status: "reading", did: "did:plc:other" }),
 }));
@@ -68,15 +69,15 @@ beforeEach(() => {
   mockPending = false;
   mockUpdate.mockResolvedValue({ success: true });
 });
-afterEach(() => {
-  act(() => jest.runOnlyPendingTimers());
+afterEach(async () => {
+  await act(() => jest.runOnlyPendingTimers());
   jest.useRealTimers();
 });
 
 test.each(["dense", "row"] as const)(
   "%s cards retain extra content and accessible navigation",
-  (variant) => {
-    render(
+  async (variant) => {
+    await render(
       <BookCard
         title="Example"
         authors="Writer"
@@ -92,36 +93,36 @@ test.each(["dense", "row"] as const)(
     );
     expect(screen.getByText("Reading")).toBeTruthy();
     expect(screen.getByTestId("extra")).toBeTruthy();
-    const button = screen.getByRole("button", { name: "Example" });
+    const button = screen.getByRole("button", { name: /^Example\b/ });
     expect(within(button).getByText("Writer")).toBeTruthy();
     expect(within(button).getByText("Reading")).toBeTruthy();
     expect(within(button).getByText("Rated 4.5 out of 5")).toBeTruthy();
     expect(button.props.accessibilityLabel).toBeUndefined();
     expect(button.props.accessibilityHint).toBe("Open book details");
-    fireEvent.press(button);
+    await fireEvent.press(button);
     expect(mockPush).toHaveBeenCalledTimes(1);
   },
 );
 
-test("navigation-only cards preserve their label and expose changing metadata as a spoken value", () => {
-  const view = render(
+test("navigation-only cards preserve their label and expose changing metadata as a spoken value", async () => {
+  const view = await render(
     <BookCard title="Example" authors="Writer" imageUri="" meta="Finished 2026-10-01" />,
   );
   expect(
     screen.getByRole("button", { name: "Open Example, by Writer" }).props.accessibilityValue,
   ).toEqual({ text: "Finished 2026-10-01" });
-  view.rerender(<BookCard title="Example" authors="Writer" imageUri="" meta="Reading" />);
+  await view.rerender(<BookCard title="Example" authors="Writer" imageUri="" meta="Reading" />);
   expect(
     screen.getByRole("button", { name: "Open Example, by Writer" }).props.accessibilityValue,
   ).toEqual({ text: "Reading" });
 });
 
 test("My Books keeps status separate from navigation without per-book menus in list and grid modes", async () => {
-  const { rerender } = render(<MyBooksScreen />);
+  const { rerender } = await render(<MyBooksScreen />);
   expect(screen.getByText("4.5")).toBeTruthy();
   expect(screen.queryByLabelText("More options for Earlier")).toBeNull();
-  fireEvent.press(screen.getByLabelText("Change reading status for Earlier"));
-  await act(async () => fireEvent.press(screen.getByText("Read")));
+  await fireEvent.press(screen.getByLabelText("Change reading status for Earlier"));
+  await act(async () => await fireEvent.press(screen.getByText("Read")));
   await waitFor(() =>
     expect(mockUpdate).toHaveBeenCalledWith({
       hiveId: "bk_a",
@@ -129,35 +130,35 @@ test("My Books keeps status separate from navigation without per-book menus in l
     }),
   );
   expect(mockPush).not.toHaveBeenCalled();
-  fireEvent.press(screen.getByLabelText("Switch to grid view"));
-  fireEvent.press(screen.getByRole("button", { name: "Earlier" }));
+  await fireEvent.press(screen.getByLabelText("Switch to grid view"));
+  await fireEvent.press(screen.getByRole("button", { name: /^Earlier\b/ }));
   expect(mockPush).toHaveBeenCalledWith("/book/bk_a");
   mockPending = true;
-  rerender(<MyBooksScreen />);
+  await rerender(<MyBooksScreen />);
   expect(screen.getByLabelText("Change reading status for Earlier")).toBeDisabled();
   expect(screen.queryByLabelText("More options for Earlier")).toBeNull();
 });
 
 test("status shelves retain another DID, genre filtering, start-date sorting and five-star ratings", async () => {
-  render(<StatusScreen />);
+  await render(<StatusScreen />);
   expect(mockProfile).toHaveBeenCalledWith("did:plc:other");
   expect(screen.getByText("4.5")).toBeTruthy();
   expect(screen.queryByText("0.9")).toBeNull();
-  fireEvent.press(screen.getByText("Date Read"));
-  expect(screen.UNSAFE_getAllByType(BookCard).map((card) => card.props.title)).toEqual([
+  await fireEvent.press(screen.getByText("Date Read"));
+  expect(screen.getAllByText(/^(Later|Earlier)$/).map((card) => card.props.children)).toEqual([
     "Later",
     "Earlier",
   ]);
-  fireEvent.press(screen.getByText("Fiction"));
+  await fireEvent.press(screen.getByText("Fiction"));
   expect(screen.queryByText("Later")).toBeNull();
-  await act(async () => fireEvent.press(screen.getByRole("button", { name: "Earlier" })));
+  await fireEvent.press(screen.getByRole("button", { name: /^Earlier\b/ }));
   expect(mockPush).toHaveBeenCalledWith("/book/bk_a?status=reading");
 });
 
-test("public profile rows retain half-star ratings and book navigation", () => {
-  render(<ProfileScreen />);
+test("public profile rows retain half-star ratings and book navigation", async () => {
+  await render(<ProfileScreen />);
   expect(mockProfile).toHaveBeenCalledWith("did:plc:other");
   expect(screen.getByText("4.5")).toBeTruthy();
-  fireEvent.press(screen.getByRole("button", { name: "Earlier" }));
+  await fireEvent.press(screen.getByRole("button", { name: /^Earlier\b/ }));
   expect(mockPush).toHaveBeenCalledWith("/book/bk_a");
 });

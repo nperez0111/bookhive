@@ -1,3 +1,4 @@
+import { pressInFlight } from "../../test/pressInFlight";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { BookSearchModal } from "../BookSearchModal";
 import { TextPromptModal } from "../TextPromptModal";
@@ -12,19 +13,19 @@ jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
 jest.mock("@/components/FadeInImage", () => ({ FadeInImage: () => null }));
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 
-it("resets a new matching operation with the same initial title instead of keeping the last target's query", () => {
+it("resets a new matching operation with the same initial title instead of keeping the last target's query", async () => {
   const props = {
     visible: true,
     initialQuery: "Same title",
     onClose: jest.fn(),
     onSelectBook: jest.fn(),
   };
-  const view = render(<BookSearchModal {...props} operationKey={1} />);
-  fireEvent.changeText(
+  const view = await render(<BookSearchModal {...props} operationKey={1} />);
+  await fireEvent.changeText(
     screen.getByPlaceholderText("Search by title or author"),
     "Previous target query",
   );
-  view.rerender(<BookSearchModal {...props} operationKey={2} />);
+  await view.rerender(<BookSearchModal {...props} operationKey={2} />);
   expect(screen.getByDisplayValue("Same title")).toBeTruthy();
   expect(screen.queryByDisplayValue("Previous target query")).toBeNull();
 });
@@ -45,19 +46,16 @@ it("gives same-valued prompts distinct drafts and keeps one synchronous submit o
     onClose: jest.fn(),
     onSubmit,
   };
-  const view = render(<TextPromptModal {...props} operationKey={1} />);
+  const view = await render(<TextPromptModal {...props} operationKey={1} />);
   const input = screen.getByPlaceholderText("Name");
-  fireEvent.changeText(input, "Old draft");
-  act(() => {
-    fireEvent(input, "submitEditing");
-    fireEvent.press(screen.getByText("Save"));
-  });
+  await fireEvent.changeText(input, "Old draft");
+  await pressInFlight(screen.getByText("Save"), screen.getByText("Save"));
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  view.rerender(<TextPromptModal {...props} operationKey={2} />);
+  await view.rerender(<TextPromptModal {...props} operationKey={2} />);
   expect(screen.getByDisplayValue("Same name")).toBeTruthy();
   await act(async () => {
     finish();
   });
-  fireEvent.changeText(screen.getByPlaceholderText("Name"), "New draft");
+  await fireEvent.changeText(screen.getByPlaceholderText("Name"), "New draft");
   expect(screen.getByDisplayValue("New draft")).toBeTruthy();
 });

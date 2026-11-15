@@ -5,6 +5,9 @@ import { ThemedText } from "./ThemedText";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 
+// RN 0.88 style contracts are readonly; only the local construction is mutable.
+type MutableStyle<T> = { -readonly [K in keyof T]: T[K] };
+
 export type ThemedButtonProps = {
   title: string;
   accessibilityLabel?: string;
@@ -38,7 +41,7 @@ export function ThemedButton({
   const colors = Colors[colorScheme ?? "light"];
 
   const getButtonStyle = (pressed?: boolean): ViewStyle => {
-    const baseStyle: ViewStyle = {
+    const baseStyle: MutableStyle<ViewStyle> = {
       borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
@@ -96,7 +99,7 @@ export function ThemedButton({
   };
 
   const getTextStyle = (): TextStyle => {
-    const baseStyle: TextStyle = {
+    const baseStyle: MutableStyle<TextStyle> = {
       fontWeight: "600",
     };
 

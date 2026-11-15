@@ -175,7 +175,8 @@ export default defineConfig(({ command }): any => ({
     ignorePatterns: ["src/scrapers/waf/__fixtures__/"],
   },
   fmt: {
-    ignorePatterns: ["src/scrapers/waf/__fixtures__/"],
+    // Icon Composer owns its bundle serialization; preserve the supplied bytes.
+    ignorePatterns: ["src/scrapers/waf/__fixtures__/", "app/assets/images/icon.icon/"],
   },
   plugins: [
     bunRuntimeExternal(),

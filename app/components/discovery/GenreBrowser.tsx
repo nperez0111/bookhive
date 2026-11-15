@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { genreEmojiImage } from "./genreEmojiImages";
 import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter";
 import { ThemedText } from "@/components/ThemedText";
@@ -18,6 +18,7 @@ export function GenreBrowser({
   onToggle: () => void;
   directory: ComponentProps<typeof InfinitePaginationFooter> & { isLoading: boolean };
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   return (
     <View style={styles.section}>

@@ -4,13 +4,13 @@ import { ThemedText } from "../ThemedText";
 
 jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "#123456" }));
 
-it("renders text with the theme color", () => {
-  render(<ThemedText>Hello reader!</ThemedText>);
+it("renders text with the theme color", async () => {
+  await render(<ThemedText>Hello reader!</ThemedText>);
   expect(screen.getByText("Hello reader!")).toHaveStyle({ color: "#123456", fontSize: 16 });
 });
 
-it("supports typography and caller style overrides", () => {
-  render(
+it("supports typography and caller style overrides", async () => {
+  await render(
     <ThemedText type="title" style={{ color: "red" }}>
       BookHive
     </ThemedText>,

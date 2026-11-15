@@ -10,7 +10,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { useLanguage } from "@/context/language";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { getBaseUrl } from "@/context/auth";
 import type { HiveBook } from "../../src/types";
@@ -22,6 +22,7 @@ import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 export default function SearchScreen() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];

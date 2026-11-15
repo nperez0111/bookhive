@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
-import { notifyManager, QueryClient, QueryObserver } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { deferred, queryWrapper } from "../../test/queryHelpers";
 import { authSession } from "@/context/auth";
 import {
@@ -38,7 +38,6 @@ let client: QueryClient;
 const xhrDescriptor = Object.getOwnPropertyDescriptor(globalThis, "XMLHttpRequest");
 const Wrapper = queryWrapper(() => client);
 beforeEach(() => {
-  notifyManager.setNotifyFunction((callback) => act(callback));
   mockSent.mockReset().mockResolvedValue({});
   authSession.replace({ did: "did:plc:a", handle: "a.test", sid: "session-a" });
   client = new QueryClient({
@@ -50,7 +49,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   client.clear();
-  notifyManager.setNotifyFunction((callback) => callback());
   jest.restoreAllMocks();
   if (xhrDescriptor) Object.defineProperty(globalThis, "XMLHttpRequest", xhrDescriptor);
   else Reflect.deleteProperty(globalThis, "XMLHttpRequest");
@@ -70,9 +68,9 @@ it.each([
   async (_name, hook, input, key) => {
     const gate = deferred();
     const cancellation = jest.spyOn(client, "cancelQueries").mockReturnValue(gate.promise);
-    const { result } = renderHook(() => hook(), { wrapper: Wrapper });
+    const { result } = await renderHook(() => hook(), { wrapper: Wrapper });
     let pending!: Promise<unknown>;
-    act(() => {
+    await act(() => {
       pending = result.current.mutateAsync(input as never).catch((error: Error) => error);
     });
     await waitFor(() => expect(cancellation).toHaveBeenCalled());
@@ -95,7 +93,7 @@ it.each([
 );
 
 it("captures upload identity before mutation scheduling rather than at XHR send", async () => {
-  const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
+  const { result } = await renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
   authSession.replace({ did: "did:plc:b", handle: "b.test", sid: "session-b" });
   await act(async () => {
     await expect(
@@ -114,7 +112,7 @@ it("deleting a file preserves counts in unrelated filtered ebook caches", async 
   });
   const unrelated = { pages: [{ books: [{ contentHash: "other" }], total: 4 }], pageParams: [""] };
   client.setQueryData(shelfKey, unrelated);
-  const { result } = renderHook(() => useDeletePersonalBook(), { wrapper: Wrapper });
+  const { result } = await renderHook(() => useDeletePersonalBook(), { wrapper: Wrapper });
   await act(async () => {
     await result.current.mutateAsync({ contentHash: "hash" });
   });
@@ -134,9 +132,9 @@ it("aborts an in-flight XHR upload when the captured session changes", async () 
     configurable: true,
     value: jest.fn(() => xhr),
   });
-  const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
+  const { result } = await renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
   let pending!: Promise<unknown>;
-  act(() => {
+  await act(() => {
     pending = result.current
       .mutateAsync({ uri: "file:///book.epub", name: "book.epub" })
       .catch((error: Error) => error);
@@ -183,9 +181,9 @@ it.each([
       value: jest.fn(() => xhr),
     });
     const invalidate = jest.spyOn(client, "invalidateQueries");
-    const { result } = renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
+    const { result } = await renderHook(() => useUploadPersonalBook(), { wrapper: Wrapper });
     let pending!: Promise<unknown>;
-    act(() => {
+    await act(() => {
       pending = result.current
         .mutateAsync({ uri: "file:///book.epub", name: "book.epub" })
         .catch((error: Error) => error);
@@ -229,10 +227,10 @@ it("rolls back only the failed file and defers offline refetch until both delete
   mockSent.mockImplementation((_session, _url, options) =>
     options.body.contentHash === "a" ? a.promise : b.promise,
   );
-  const { result } = renderHook(() => useDeletePersonalBook(), { wrapper: Wrapper });
+  const { result } = await renderHook(() => useDeletePersonalBook(), { wrapper: Wrapper });
   let failed!: Promise<unknown>;
   let saved!: Promise<unknown>;
-  act(() => {
+  await act(() => {
     failed = result.current.mutateAsync({ contentHash: "a" }).catch((error: Error) => error);
     saved = result.current.mutateAsync({ contentHash: "b" });
   });
@@ -274,13 +272,13 @@ it("a failed document deletion preserves another document's successful dismissal
   mockSent.mockImplementation((_session, _url, options) =>
     options.body.document === "a" ? a.promise : b.promise,
   );
-  const { result } = renderHook(
+  const { result } = await renderHook(
     () => ({ remove: useDeleteSyncDocument(), dismiss: useDismissSyncDocument() }),
     { wrapper: Wrapper },
   );
   let failed!: Promise<unknown>;
   let saved!: Promise<unknown>;
-  act(() => {
+  await act(() => {
     failed = result.current.remove.mutateAsync({ document: "a" }).catch((error: Error) => error);
     saved = result.current.dismiss.mutateAsync({ document: "b", dismissed: true });
   });
@@ -323,7 +321,7 @@ it.each([useLinkPersonalBook, useLinkSyncDocument])(
       jest.fn().mockReturnValue(response.promise),
     );
     const invalidate = jest.spyOn(client, "invalidateQueries");
-    const { result } = renderHook(() => hook(), { wrapper: Wrapper });
+    const { result } = await renderHook(() => hook(), { wrapper: Wrapper });
     await act(async () => {
       await result.current.mutateAsync({
         contentHash: "hash",
@@ -371,9 +369,9 @@ it.each([useLinkPersonalBook, useLinkSyncDocument])(
     const response = deferred<unknown>();
     mockSent.mockReturnValue(response.promise);
     const invalidate = jest.spyOn(client, "invalidateQueries");
-    const { result } = renderHook(() => hook(), { wrapper: Wrapper });
+    const { result } = await renderHook(() => hook(), { wrapper: Wrapper });
     let pending!: Promise<unknown>;
-    act(() => {
+    await act(() => {
       pending = result.current
         .mutateAsync({ contentHash: "hash", document: "doc", hiveId: "bk_target" } as never)
         .catch((error: Error) => error);

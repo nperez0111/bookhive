@@ -9,7 +9,7 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 20, bottom: 20 }),
 }));
 
-it("exposes the selected status and close action, replacing options while pending", () => {
+it("exposes the selected status and close action, replacing options while pending", async () => {
   const props = {
     visible: true,
     onClose: jest.fn(),
@@ -17,11 +17,14 @@ it("exposes the selected status and close action, replacing options while pendin
     onStatusSelect: jest.fn(),
     isPending: false,
   };
-  const result = render(<StatusSelectionModal {...props} />);
+  const result = await render(<StatusSelectionModal {...props} />);
+  // An accessible backdrop groups the entire native modal into one VoiceOver
+  // element, hiding the otherwise correctly labelled close button and radios.
+  expect(screen.getByTestId("reading-status-backdrop")).toHaveProp("accessible", false);
   expect(screen.getByRole("radio", { checked: true })).toBeOnTheScreen();
-  fireEvent.press(screen.getByRole("button", { name: "Close reading status" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Close reading status" }));
   expect(props.onClose).toHaveBeenCalledTimes(1);
-  result.rerender(<StatusSelectionModal {...props} isPending />);
+  await result.rerender(<StatusSelectionModal {...props} isPending />);
   expect(screen.getByText("Updating your reading status...")).toBeOnTheScreen();
   expect(screen.queryAllByRole("radio")).toHaveLength(0);
 });

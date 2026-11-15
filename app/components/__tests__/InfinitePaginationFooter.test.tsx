@@ -23,14 +23,14 @@ function props() {
   };
 }
 
-test("renders nothing when exhausted and uses caller labels for loading and load more", () => {
+test("renders nothing when exhausted and uses caller labels for loading and load more", async () => {
   const state = props();
-  const view = render(<InfinitePaginationFooter {...state} hasNextPage={false} />);
+  const view = await render(<InfinitePaginationFooter {...state} hasNextPage={false} />);
   expect(view.toJSON()).toBeNull();
-  view.rerender(<InfinitePaginationFooter {...state} loadMoreLabel="More authors" />);
-  fireEvent.press(view.getByText("More authors"));
+  await view.rerender(<InfinitePaginationFooter {...state} loadMoreLabel="More authors" />);
+  await fireEvent.press(view.getByText("More authors"));
   expect(state.fetchNextPage).toHaveBeenCalledTimes(1);
-  view.rerender(
+  await view.rerender(
     <InfinitePaginationFooter {...state} isFetchingNextPage loadingLabel="Fetching authors" />,
   );
   expect(view.getByText("Fetching authors")).toBeTruthy();
@@ -40,26 +40,29 @@ test.each([
   { isFetching: true, isFetchingNextPage: false },
   { isFetching: true, isFetchingNextPage: true },
   { isFetching: false, isFetchingNextPage: true },
-])("blocks loading more during any fetch: %j", (flags) => {
+])("blocks loading more during any fetch: %j", async (flags) => {
   const state = props();
-  const view = render(<InfinitePaginationFooter {...state} {...flags} />);
+  const view = await render(<InfinitePaginationFooter {...state} {...flags} />);
   const button = view.getByRole("button");
   expect(button).toBeDisabled();
-  fireEvent.press(button);
+  await fireEvent.press(button);
   expect(state.fetchNextPage).not.toHaveBeenCalled();
 });
 
-test.each([true, false])("error retry selects failed next page: %s", (isFetchNextPageError) => {
-  const state = props();
-  const view = render(
-    <InfinitePaginationFooter
-      {...state}
-      error={new Error("Page failed")}
-      isFetchNextPageError={isFetchNextPageError}
-    />,
-  );
-  expect(view.queryByText("Load more")).toBeNull();
-  fireEvent.press(view.getByText("Retry"));
-  expect(state.fetchNextPage).toHaveBeenCalledTimes(isFetchNextPageError ? 1 : 0);
-  expect(state.refetch).toHaveBeenCalledTimes(isFetchNextPageError ? 0 : 1);
-});
+test.each([true, false])(
+  "error retry selects failed next page: %s",
+  async (isFetchNextPageError) => {
+    const state = props();
+    const view = await render(
+      <InfinitePaginationFooter
+        {...state}
+        error={new Error("Page failed")}
+        isFetchNextPageError={isFetchNextPageError}
+      />,
+    );
+    expect(view.queryByText("Load more")).toBeNull();
+    await fireEvent.press(view.getByText("Retry"));
+    expect(state.fetchNextPage).toHaveBeenCalledTimes(isFetchNextPageError ? 1 : 0);
+    expect(state.refetch).toHaveBeenCalledTimes(isFetchNextPageError ? 0 : 1);
+  },
+);

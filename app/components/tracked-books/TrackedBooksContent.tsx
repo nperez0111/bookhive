@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 
 import { ActionSheet } from "@/components/ActionSheet";
 import { TrackedBookItem } from "./TrackedBookItem";
@@ -30,6 +30,7 @@ import {
 } from "@/utils/trackedBooks";
 
 export function TrackedBooksContent() {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   const bottom = useBottomTabOverflow();
   const profile = useProfile();

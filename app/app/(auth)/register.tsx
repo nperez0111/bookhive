@@ -4,7 +4,7 @@ import { Colors } from "@/constants/Colors";
 import { authSession, useAuth, getBaseUrl } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { LinearGradient } from "expo-linear-gradient";
-import { router, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { ofetch } from "ofetch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import {
 } from "react-native";
 
 export default function RegisterScreen() {
+  const router = useRouter();
   const { signIn } = useAuth();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];

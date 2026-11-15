@@ -5,7 +5,7 @@ import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { router, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const STORED_HANDLE_KEY = "bookhive_last_handle";
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { signIn } = useAuth();
   const { handle: handleParam } = useLocalSearchParams<{ handle?: string | string[] }>();
   // Query parameters are runtime input: repeated keys produce arrays.

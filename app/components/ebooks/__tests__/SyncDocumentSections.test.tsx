@@ -34,25 +34,25 @@ it("partitions file-backed, unmatched, linked and dismissed documents without du
   expect(documentTitle({ ...doc, title: null, filename: null })).toBe("Untitled document");
 });
 
-it("routes matching and other actions to the exact unmatched document", () => {
+it("routes matching and other actions to the exact unmatched document", async () => {
   const onMatch = jest.fn();
   const onActions = jest.fn();
-  render(<SyncDocumentTriage documents={[doc]} onMatch={onMatch} onActions={onActions} />);
+  await render(<SyncDocumentTriage documents={[doc]} onMatch={onMatch} onActions={onActions} />);
   expect(screen.getByText("42% · A Writer")).toBeTruthy();
-  fireEvent.press(screen.getByText("Link"));
+  await fireEvent.press(screen.getByText("Link"));
   expect(onMatch).toHaveBeenCalledWith(doc);
-  fireEvent.press(screen.getByLabelText("More actions for A synced book"));
+  await fireEvent.press(screen.getByLabelText("More actions for A synced book"));
   expect(onActions).toHaveBeenCalledWith(doc);
 });
 
-it("keeps dismissed and linked states distinct in the tracked section", () => {
+it("keeps dismissed and linked states distinct in the tracked section", async () => {
   const dismissed = { ...doc, dismissed: true };
   const onActions = jest.fn();
-  const view = render(<TrackedSyncDocuments documents={[dismissed]} onActions={onActions} />);
+  const view = await render(<TrackedSyncDocuments documents={[dismissed]} onActions={onActions} />);
   expect(screen.getByText("Not on BookHive")).toBeTruthy();
-  fireEvent.press(screen.getByText("A synced book"));
+  await fireEvent.press(screen.getByText("A synced book"));
   expect(onActions).toHaveBeenCalledWith(dismissed);
-  view.rerender(
+  await view.rerender(
     <TrackedSyncDocuments
       documents={[{ ...doc, hiveId: "bk_test", bookTitle: "Catalogue title" }]}
       onActions={onActions}

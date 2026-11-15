@@ -34,14 +34,14 @@ describe("mobile discovery queries", () => {
   it("debounces both the cache key and request, and cancels stale search work", async () => {
     jest.useFakeTimers();
     fetchMock.mockImplementation(() => new Promise(() => {}));
-    const { result, rerender } = renderHook(({ q }: { q: string }) => useSearchBooks(q), {
+    const { result, rerender } = await renderHook(({ q }: { q: string }) => useSearchBooks(q), {
       initialProps: { q: "" },
       wrapper: Wrapper,
     });
-    rerender({ q: "d" });
-    act(() => jest.advanceTimersByTime(100));
-    rerender({ q: "dune" });
-    act(() => jest.advanceTimersByTime(299));
+    await rerender({ q: "d" });
+    await act(() => jest.advanceTimersByTime(100));
+    await rerender({ q: "dune" });
+    await act(() => jest.advanceTimersByTime(299));
     expect(fetchMock).not.toHaveBeenCalled();
     await act(async () => {
       jest.advanceTimersByTime(1);
@@ -49,10 +49,10 @@ describe("mobile discovery queries", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("q=dune&limit=25&offset=0");
     const signal = fetchMock.mock.calls[0][1].signal as AbortSignal;
-    rerender({ q: "dunes" });
+    await rerender({ q: "dunes" });
     expect(signal.aborted).toBe(true);
     expect(result.current.data).toBeUndefined();
-    rerender({ q: "   " });
+    await rerender({ q: "   " });
     await act(async () => {
       jest.advanceTimersByTime(300);
     });
@@ -71,7 +71,7 @@ describe("mobile discovery queries", () => {
       hasMore: true,
       cursor: "third",
     });
-    const { result } = renderHook(() => useFeed("all"), { wrapper: Wrapper });
+    const { result } = await renderHook(() => useFeed("all"), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     await act(async () => {
       await result.current.fetchNextPage();
@@ -89,7 +89,7 @@ describe("mobile discovery queries", () => {
     const offline = deferred<unknown>();
     fetchMock.mockReturnValueOnce(offline.promise);
     let refresh!: Promise<void>;
-    act(() => {
+    await act(() => {
       refresh = result.current.refresh();
     });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
@@ -103,7 +103,7 @@ describe("mobile discovery queries", () => {
     expect(result.current.isRefetchError).toBe(true);
     const next = deferred<unknown>();
     fetchMock.mockReturnValueOnce(next.promise);
-    act(() => {
+    await act(() => {
       refresh = result.current.refresh();
     });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
@@ -124,7 +124,7 @@ describe("mobile discovery queries", () => {
 
   it("a retained refresh cannot start after its session is replaced", async () => {
     fetchMock.mockResolvedValue({ activities: [], hasMore: false });
-    const { result } = renderHook(() => useFeed("all"), { wrapper: Wrapper });
+    const { result } = await renderHook(() => useFeed("all"), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const refresh = result.current.refresh;
     authSession.replace({ did: "did:plc:b", handle: "b.test", sid: "b-sid" });
@@ -139,7 +139,7 @@ describe("mobile discovery queries", () => {
       books: Array.from({ length: 50 }, (_, id) => ({ id: `${url}:${id}` })),
       offset: url.includes("offset=50") ? 100 : 50,
     }));
-    const { result, rerender } = renderHook(
+    const { result, rerender } = await renderHook(
       ({ language }: { language: string }) => useGenreBooks("Fantasy", language),
       {
         initialProps: { language: "en" },
@@ -157,7 +157,7 @@ describe("mobile discovery queries", () => {
       "/xrpc/buzz.bookhive.searchBooks?genre=Fantasy&limit=50&offset=50&language=en",
     ]);
     await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
-    rerender({ language: "fr" });
+    await rerender({ language: "fr" });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.pages).toHaveLength(1);
     expect(fetchMock.mock.calls[2][0]).toContain("offset=0&language=fr");

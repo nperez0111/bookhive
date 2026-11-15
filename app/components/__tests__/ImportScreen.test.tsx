@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { pressInFlight } from "../../test/pressInFlight";
+import { act, render, screen } from "@testing-library/react-native";
 import ImportScreen from "@/app/import";
 import { createAuthSessionScope } from "@/context/authSession";
 
@@ -61,7 +62,7 @@ const asset = (uri = "file:///cache/DocumentPicker/one.csv", name = "books.csv",
 });
 async function pick(file = asset()) {
   mockPick.mockResolvedValueOnce({ canceled: false, assets: [file] });
-  fireEvent.press(screen.getByText(/Choose.*CSV/));
+  await pressInFlight(screen.getByText(/Choose.*CSV/));
   await act(async () => {});
 }
 beforeEach(() => {
@@ -77,23 +78,16 @@ it("guards picker and import before pending state rerenders, retaining the copy 
   mockPick.mockReturnValueOnce(picker.promise);
   const request = deferred<unknown>();
   mockImport.mockReturnValueOnce(request.promise);
-  const view = render(<ImportScreen />);
+  const view = await render(<ImportScreen />);
   const pickerButton = screen.getByRole("button", { name: "Choose CSV file" });
-  act(() => {
-    fireEvent.press(pickerButton);
-    fireEvent.press(pickerButton);
-  });
+  await pressInFlight(pickerButton, pickerButton);
   expect(mockPick).toHaveBeenCalledTimes(1);
   await act(async () => picker.resolve({ canceled: false, assets: [asset()] }));
   const importButton = screen.getByText("Import books");
-  act(() => {
-    fireEvent.press(importButton);
-    fireEvent.press(importButton);
-    fireEvent.press(screen.getByText("Hardcover"));
-  });
+  await pressInFlight(importButton, importButton, screen.getByText("Hardcover"));
   expect(mockImport).toHaveBeenCalledTimes(1);
   expect(mockDelete).not.toHaveBeenCalled();
-  view.unmount();
+  await view.unmount();
   expect(mockDelete).not.toHaveBeenCalled();
   await act(async () => request.resolve({}));
   expect(mockDelete).toHaveBeenCalledWith(asset().uri);
@@ -105,10 +99,10 @@ it.each(["unmount", "session"])(
   async (reason) => {
     const picker = deferred<unknown>();
     mockPick.mockReturnValueOnce(picker.promise);
-    const view = render(<ImportScreen />);
-    fireEvent.press(screen.getByText("Choose CSV file"));
-    if (reason === "unmount") view.unmount();
-    else act(() => mockSession.replace(null));
+    const view = await render(<ImportScreen />);
+    await pressInFlight(screen.getByText("Choose CSV file"));
+    if (reason === "unmount") await view.unmount();
+    else await act(() => mockSession.replace(null));
     await act(async () => picker.resolve({ canceled: false, assets: [asset()] }));
     expect(mockDelete).toHaveBeenCalledWith(asset().uri);
     expect(mockImport).not.toHaveBeenCalled();
@@ -116,21 +110,21 @@ it.each(["unmount", "session"])(
 );
 
 it("cleans replaced selections, provider changes and unused selections on unmount", async () => {
-  const view = render(<ImportScreen />);
+  const view = await render(<ImportScreen />);
   await pick();
   await pick(asset("file:///cache/DocumentPicker/two.csv"));
   expect(mockDelete).toHaveBeenCalledWith(asset().uri);
-  fireEvent.press(screen.getByText("Hardcover"));
+  await pressInFlight(screen.getByText("Hardcover"));
   expect(mockDelete).toHaveBeenCalledWith("file:///cache/DocumentPicker/two.csv");
   await pick(asset("file:///cache/DocumentPicker/three.csv"));
-  view.unmount();
+  await view.unmount();
   expect(mockDelete).toHaveBeenCalledWith("file:///cache/DocumentPicker/three.csv");
 });
 
 it.each([asset(undefined, "archive.zip"), asset(undefined, "large.csv", 51 * 1024 * 1024)])(
   "cleans rejected picker copies: $name",
   async (file) => {
-    render(<ImportScreen />);
+    await render(<ImportScreen />);
     await pick(file);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(mockDelete).toHaveBeenCalledWith(file.uri);
@@ -142,17 +136,17 @@ it.each([
   "content://provider/original.csv",
   "file:///cache/DocumentPicker/../original.csv",
 ])("never deletes an unowned picker URI: %s", async (uri) => {
-  const view = render(<ImportScreen />);
+  const view = await render(<ImportScreen />);
   await pick(asset(uri));
-  view.unmount();
+  await view.unmount();
   expect(mockDelete).not.toHaveBeenCalled();
 });
 
 it("cleans the copy after failed import and requires a fresh file for retry", async () => {
   mockImport.mockRejectedValueOnce(new Error("network lost"));
-  render(<ImportScreen />);
+  await render(<ImportScreen />);
   await pick();
-  fireEvent.press(screen.getByText("Import books"));
+  await pressInFlight(screen.getByText("Import books"));
   await act(async () => {});
   expect(mockDelete).toHaveBeenCalledWith(asset().uri);
   expect(screen.queryByText("Import books")).toBeNull();

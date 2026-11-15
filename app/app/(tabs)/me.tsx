@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 import ReaderProfileScreen from "@/components/profile/ReaderProfileScreen";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -10,6 +10,7 @@ import { useAuth } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function MyProfileScreen() {
+  const router = useRouter();
   const { authState } = useAuth();
   const top = useScreenTopInset();
   const colors = Colors[useColorScheme() ?? "light"];

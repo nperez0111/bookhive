@@ -1,6 +1,6 @@
 # BookHive Mobile App — Architecture
 
-Expo SDK 57 / React 19.2 / React Native 0.86, strict TypeScript and expo-router.
+Expo SDK 58 / React 19.3 / React Native 0.88, strict TypeScript and expo-router.
 Exact versions live in `package.json` and the shared root `bun.lock`.
 See [README.md](README.md) for setup/build commands and
 [release checks](../docs/notes/mobile-feature-parity.md) before shipping.
@@ -32,6 +32,10 @@ authenticated root native Stack above the retained tab shell. Hidden tab entries
 do **not** provide native stack gestures. iOS swipe-back and Android Back pop real
 history; direct links without history use `BackNavigationHeader`'s Home fallback.
 Sign-out must protect every secondary route as well as the tabs.
+SDK 58 keeps protected routes registered: the root supplies explicit `redirectTo`
+destinations (`/(auth)/login` and `/(tabs)`) rather than relying on group inference.
+Components use tree-scoped `useRouter()`; imperative navigation outside React stays
+in `utils/navigation.ts`. Hrefs name complete routes, not nested navigator params.
 
 Three domains must stay distinct: My Books tracks public AT Protocol book records;
 catalogue shelves use public AT URIs; ebook shelves use private numeric IDs.
@@ -80,6 +84,10 @@ Terminal credential failures return 401; transient restore/network failures retu
 not expiry. Merely showing an error never signs out. `NetworkErrorView`'s explicit
 Sign In action calls guarded sign-out and lets protected navigation show login;
 pushing an auth route while credentials remain is blocked.
+
+Transport-only native `FetchError`/cause prose is classified as a retryable network
+failure, not shown with its internal request URL; HTTP status and session cancellation
+remain authoritative.
 
 Login accepts only a runtime-string handle parameter; remembered handles cannot
 overwrite typing. Login/registration submissions have synchronous duplicate guards.
@@ -212,6 +220,10 @@ password rotation re-reads the current credential; never retry rotation itself.
 
 ## API and platform boundaries
 
+`assets/images/icon.icon/` is the iOS Icon Composer source configured by `ios.icon`.
+Keep its whole bundle intact; root formatting excludes its tool-owned JSON. Android
+and web continue using their PNG assets, not this Apple-only bundle.
+
 `api/` holds transport/wire contracts, not React state or caches. `queryFetch.ts`
 decorates read errors, not a second client; `mutationResult.ts` validates PDS-write
 success without coupling follows to book queues. Generated API types are type-only.
@@ -243,7 +255,12 @@ streaming copies wait for settlement. A retry then requires reselecting the file
   44-point controls, 52×64 rating choices and full text scaling/wrapping.
 - Theme tokens live in `constants/Colors.ts`; `accentForeground` supplies readable
   text on accent treatments. Explicitly theme the native iOS date spinner.
+  `ThemedTextInput` defaults placeholders to the app theme too; native defaults
+  can be unreadable when the app's dark/light preference differs from iOS's.
 - `ActionSheet` replaces many-button alerts (especially Android);
+  both Cancel and backdrop dismissal expose named native button roles.
+  The status modal's containing backdrop is non-accessible so iOS does not group
+  its close control and radio options into one inaccessible native element.
   `TextPromptModal` replaces iOS-only `Alert.prompt`. Sheets scroll and expose
   selection state. `LanguagePicker` refreshes supported languages on open and
   distinguishes loading/error/empty, retaining All Languages and retry.
@@ -262,12 +279,21 @@ streaming copies wait for settlement. A retry then requires reselecting the file
 
 Run commands in [README.md](README.md): Jest, typecheck, lint, dependency checks
 and both native bundle exports. Exports do not validate native compilation/devices.
-Jest supports Bun's isolated peer paths; React/test-renderer versions must match.
+Jest 30 / jest-expo 58 use Testing Library 14 and `test-renderer` 1.3 for React 19.3,
+not deprecated `react-test-renderer`. Render, hooks, events, act, rerender, unmount
+and Router test helpers are awaited. `test/pressInFlight.ts` deliberately starts
+callbacks without awaiting their network/picker promise so race tests can inspect
+pending state; multiple targets dispatch in the same render before act flushes.
+Queries inspect host output rather than removed composite `UNSAFE_*` APIs.
 Router integration tests need `standard-navigation` transformed and Expo's dev
-message socket mapped across peer instances (otherwise CI reads a null bundle URL).
+message socket/native-only FormData patch mapped across Bun peer instances
+(otherwise CI reads a null bundle URL or patches Jest's incompatible FormData).
 
 Theme preference uses AsyncStorage; credentials use SecureStore. Native modules
 and SDK changes require new binaries, never OTA alone. Foreground OTA checks may
 download, but activation waits for cold start or explicitly approved reload so drafts
-survive. EAS profiles remain development/preview/production; bundle ID is
+survive. SDK 58 uses app/runtime version 1.4.0 to isolate SDK 57 development clients.
+EAS CLI is pinned to 27.10.0 in scripts and eas.json. Native projects are generated
+and ignored; preserve any existing native project before regenerating on SDK changes.
+EAS profiles remain development/preview/production; bundle ID is
 `buzz.bookhive.app`, scheme `bookhive://`. Release/version scripts never commit.

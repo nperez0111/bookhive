@@ -80,7 +80,7 @@ jest.mock("@/components/NetworkStatusIndicator", () => ({
 }));
 
 it("updates the iOS status background and system glyph tone with the theme, reserving the inset once", async () => {
-  render(<RootLayout />);
+  await render(<RootLayout />);
   await waitFor(() =>
     expect(screen.getByTestId("ios-status-area")).toHaveStyle({
       backgroundColor: Colors.dark.background,
@@ -95,7 +95,7 @@ it("updates the iOS status background and system glyph tone with the theme, rese
     backgroundColor: Colors.dark.background,
   });
   expect(jest.mocked(StatusBar).mock.calls.at(-1)?.[0]).toMatchObject({ style: "light" });
-  fireEvent.press(screen.getByRole("button", { name: "Toggle test theme" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Toggle test theme" }));
   expect(screen.getByTestId("ios-status-area")).toHaveStyle({
     backgroundColor: Colors.light.background,
   });

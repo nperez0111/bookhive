@@ -1,19 +1,23 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { BookActionCard } from "../../BookActionCard";
-import { DatePickerModal } from "../../DatePickerModal";
 
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
-jest.mock("../../DatePickerModal", () => ({ DatePickerModal: () => null }));
+jest.mock("../../DatePickerModal", () => {
+  const { View } = jest.requireActual("react-native");
+  return {
+    DatePickerModal: (props: { title: string }) => <View {...props} testID={props.title} />,
+  };
+});
 
 function picker(title: string) {
-  return screen.UNSAFE_getAllByType(DatePickerModal).find((node) => node.props.title === title)!;
+  return screen.getByTestId(title);
 }
 
 it("validates reading date order before calling the write adapter", async () => {
   const onStartedAtChange = jest.fn().mockResolvedValue(true);
   const onFinishedAtChange = jest.fn().mockResolvedValue(true);
-  render(
+  await render(
     <BookActionCard
       type="dates"
       title="Reading dates"
@@ -24,17 +28,17 @@ it("validates reading date order before calling the write adapter", async () => 
       onFinishedAtChange={onFinishedAtChange}
     />,
   );
-  fireEvent.press(screen.getByRole("button", { name: "Edit reading dates" }));
-  fireEvent.press(screen.getByRole("button", { name: "Change started date" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Edit reading dates" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Change started date" }));
   await act(async () => picker("Select Started Date").props.onConfirm(new Date(2026, 0, 21)));
   expect(onStartedAtChange).not.toHaveBeenCalled();
   expect(screen.getByRole("alert")).toHaveTextContent(
     "Finished date must be on or after started date",
   );
-  fireEvent.press(screen.getByRole("button", { name: "Change finished date" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Change finished date" }));
   await act(async () => picker("Select Finished Date").props.onConfirm(new Date(2026, 0, 9)));
   expect(onFinishedAtChange).not.toHaveBeenCalled();
-  fireEvent.press(screen.getByRole("button", { name: "Change finished date" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Change finished date" }));
   await act(async () => picker("Select Finished Date").props.onConfirm(new Date(2026, 0, 10)));
   expect(onFinishedAtChange).toHaveBeenCalledWith("2026-01-10");
   expect(screen.queryByRole("alert")).toBeNull();
@@ -50,7 +54,7 @@ it.each(["Started", "Finished"])(
           finish = resolve;
         }),
     );
-    render(
+    await render(
       <BookActionCard
         type="dates"
         title="Reading dates"
@@ -59,22 +63,22 @@ it.each(["Started", "Finished"])(
         onFinishedAtChange={save}
       />,
     );
-    fireEvent.press(screen.getByLabelText("Edit reading dates"));
-    fireEvent.press(screen.getByLabelText(`Change ${field.toLowerCase()} date`));
+    await fireEvent.press(screen.getByLabelText("Edit reading dates"));
+    await fireEvent.press(screen.getByLabelText(`Change ${field.toLowerCase()} date`));
     const title = `Select ${field} Date`;
-    act(() => {
+    await act(() => {
       void picker(title).props.onConfirm(new Date(2026, 0, 10));
     });
     expect(picker(title).props.visible).toBe(true);
     expect(picker(title).props.isPending).toBe(true);
-    act(() => {
+    await act(() => {
       void picker(title).props.onConfirm(new Date(2026, 0, 11));
     });
     expect(save).toHaveBeenCalledTimes(1);
     await act(async () => finish(false));
     expect(picker(title).props.visible).toBe(true);
     expect(picker(title).props.error).toContain("Could not save this date");
-    act(() => {
+    await act(() => {
       void picker(title).props.onConfirm(new Date(2026, 0, 10));
     });
     expect(save).toHaveBeenLastCalledWith("2026-01-10");
@@ -92,18 +96,18 @@ it("hides an open date picker and blocks its confirmation while a write is pendi
     onStartedAtChange,
     onFinishedAtChange: jest.fn(),
   };
-  const { rerender } = render(<BookActionCard {...props} />);
-  fireEvent.press(screen.getByRole("button", { name: "Edit reading dates" }));
-  fireEvent.press(screen.getByRole("button", { name: "Change started date" }));
+  const { rerender } = await render(<BookActionCard {...props} />);
+  await fireEvent.press(screen.getByRole("button", { name: "Edit reading dates" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Change started date" }));
   expect(picker("Select Started Date").props.visible).toBe(true);
-  rerender(<BookActionCard {...props} isPending />);
+  await rerender(<BookActionCard {...props} isPending />);
   expect(picker("Select Started Date").props.visible).toBe(false);
   await act(async () => picker("Select Started Date").props.onConfirm(new Date(2026, 0, 10)));
   expect(onStartedAtChange).not.toHaveBeenCalled();
 });
 
 it("keeps the date picker open and shows a rejected adapter's error", async () => {
-  render(
+  await render(
     <BookActionCard
       type="dates"
       title="Reading dates"
@@ -112,8 +116,8 @@ it("keeps the date picker open and shows a rejected adapter's error", async () =
       onFinishedAtChange={jest.fn()}
     />,
   );
-  fireEvent.press(screen.getByLabelText("Edit reading dates"));
-  fireEvent.press(screen.getByLabelText("Change started date"));
+  await fireEvent.press(screen.getByLabelText("Edit reading dates"));
+  await fireEvent.press(screen.getByLabelText("Change started date"));
   await act(async () => picker("Select Started Date").props.onConfirm(new Date(2026, 0, 10)));
   expect(picker("Select Started Date").props.visible).toBe(true);
   expect(picker("Select Started Date").props.error).toBe("Date rejected");

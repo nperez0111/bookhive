@@ -1,5 +1,5 @@
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 
@@ -56,6 +56,7 @@ export function DiscoveryBooksScreen({
   refetch,
   fetchNextPage,
 }: Props) {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
@@ -97,7 +98,7 @@ export function DiscoveryBooksScreen({
           ListEmptyComponent={
             !error ? (
               <ThemedText style={{ padding: 20 }}>No books found for this selection.</ThemedText>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item, index }) => (
             <View style={styles.gridItem}>

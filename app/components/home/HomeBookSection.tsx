@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 
 import { AnimatedListItem } from "@/components/AnimatedListItem";
 import { BookCard } from "@/components/BookCard";
@@ -26,6 +26,7 @@ const STATUS_ROUTES = {
 } as const;
 
 function HomeBookRows({ books }: { books: UserBook[] }) {
+  const router = useRouter();
   return (
     <View style={styles.bookRows}>
       {books.map((book, index) => (
@@ -68,6 +69,7 @@ export function HomeBookSection({
   emptySubtitle: string;
   status: keyof typeof STATUS_ROUTES;
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   const displayBooks = books.slice(0, MAX_BOOKS_PER_SECTION);
 

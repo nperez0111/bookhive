@@ -1,3 +1,4 @@
+import { pressInFlight } from "../../test/pressInFlight";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import LibraryScreen from "../../app/library";
@@ -155,7 +156,10 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "#fff" }));
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
 jest.mock("expo-haptics", () => ({
   notificationAsync: jest.fn().mockResolvedValue(undefined),
@@ -181,18 +185,18 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-function chooseMatch() {
-  fireEvent.press(screen.getByText("Open uploaded ebook"));
-  fireEvent.press(screen.getByText("Link to a BookHive book"));
-  fireEvent.press(screen.getByText("Choose catalogue book"));
+async function chooseMatch() {
+  await pressInFlight(screen.getByText("Open uploaded ebook"));
+  await pressInFlight(screen.getByText("Link to a BookHive book"));
+  await pressInFlight(screen.getByText("Choose catalogue book"));
 }
 
-it("keeps cached cards visible and offers retry when a filtered query fails", () => {
+it("keeps cached cards visible and offers retry when a filtered query fails", async () => {
   mockLibraryError = new Error("Filtered library unavailable");
-  render(<LibraryScreen />);
+  await render(<LibraryScreen />);
   expect(screen.getByText("Filtered library unavailable")).toBeTruthy();
   expect(screen.getByText("Open uploaded ebook")).toBeTruthy();
-  fireEvent.press(screen.getByText("Retry library"));
+  await pressInFlight(screen.getByText("Retry library"));
   expect(mockRefetch).toHaveBeenCalled();
 });
 
@@ -201,12 +205,14 @@ it.each([0, 2])("never guesses document identity with %s returned documents", as
     ...mockDoc,
     document: `actual-${i}`,
   }));
-  render(<LibraryScreen />);
-  chooseMatch();
+  await render(<LibraryScreen />);
+  await chooseMatch();
   expect(mockMutations.LinkPersonalBook.mutateAsync).not.toHaveBeenCalled();
   expect(mockMutations.LinkSyncDocument.mutateAsync).not.toHaveBeenCalled();
   if (count) {
-    fireEvent.press(screen.getByLabelText("Use progress from Reader document, document actual-0"));
+    await pressInFlight(
+      screen.getByLabelText("Use progress from Reader document, document actual-0"),
+    );
     await waitFor(() =>
       expect(mockMutations.LinkSyncDocument.mutateAsync).toHaveBeenCalledWith({
         document: "actual-0",
@@ -215,7 +221,7 @@ it.each([0, 2])("never guesses document identity with %s returned documents", as
     );
   } else {
     expect(screen.getByText(/No synced documents are available/)).toBeTruthy();
-    fireEvent.press(screen.getByText("Link file only — don't move progress"));
+    await pressInFlight(screen.getByText("Link file only — don't move progress"));
     await waitFor(() =>
       expect(mockMutations.LinkPersonalBook.mutateAsync).toHaveBeenCalledTimes(1),
     );
@@ -225,14 +231,14 @@ it.each([0, 2])("never guesses document identity with %s returned documents", as
 
 it("preserves file-link partial success and retries only the chosen document's progress", async () => {
   mockMutations.LinkSyncDocument.mutateAsync.mockRejectedValueOnce(new Error("Offline"));
-  render(<LibraryScreen />);
-  chooseMatch();
+  await render(<LibraryScreen />);
+  await chooseMatch();
   const label = "Use progress from Reader document, document actual-filename-hash";
-  fireEvent.press(screen.getByLabelText(label));
+  await pressInFlight(screen.getByLabelText(label));
   await waitFor(() =>
     expect(screen.getByText(/The file is linked. Moving progress failed/)).toBeTruthy(),
   );
-  fireEvent.press(screen.getByLabelText(label));
+  await pressInFlight(screen.getByLabelText(label));
   await waitFor(() => expect(mockMutations.LinkSyncDocument.mutateAsync).toHaveBeenCalledTimes(2));
   expect(mockMutations.LinkPersonalBook.mutateAsync).toHaveBeenCalledTimes(1);
 });
@@ -242,12 +248,12 @@ it.each(["unmount", "session change"])(
   async (reason) => {
     const first = deferred();
     mockMutations.LinkPersonalBook.mutateAsync.mockReturnValueOnce(first.promise);
-    const view = render(<LibraryScreen />);
-    chooseMatch();
-    fireEvent.press(
+    const view = await render(<LibraryScreen />);
+    await chooseMatch();
+    await pressInFlight(
       screen.getByLabelText("Use progress from Reader document, document actual-filename-hash"),
     );
-    if (reason === "unmount") view.unmount();
+    if (reason === "unmount") await view.unmount();
     else authSession.replace(null);
     await act(async () => {
       first.resolve({});
@@ -262,14 +268,14 @@ it.each(["unmount", "session change"])(
 it("does not close a newer matching draft when an older operation completes", async () => {
   const first = deferred();
   mockMutations.LinkPersonalBook.mutateAsync.mockReturnValueOnce(first.promise);
-  render(<LibraryScreen />);
-  chooseMatch();
-  fireEvent.press(
+  await render(<LibraryScreen />);
+  await chooseMatch();
+  await pressInFlight(
     screen.getByLabelText("Use progress from Reader document, document actual-filename-hash"),
   );
-  fireEvent.press(screen.getByText("Cancel"));
-  fireEvent.press(screen.getByText("Open uploaded ebook"));
-  fireEvent.press(screen.getByText("Link to a BookHive book"));
+  await pressInFlight(screen.getByText("Cancel"));
+  await pressInFlight(screen.getByText("Open uploaded ebook"));
+  await pressInFlight(screen.getByText("Link to a BookHive book"));
   await act(async () => {
     first.resolve({});
   });
@@ -279,13 +285,13 @@ it("does not close a newer matching draft when an older operation completes", as
 it("awaits create-then-add after navigation instead of depending on observer callbacks", async () => {
   const first = deferred<{ shelf: { id: number; name: string } }>();
   mockMutations.CreatePersonalShelf.mutateAsync.mockReturnValueOnce(first.promise);
-  const view = render(<LibraryScreen />);
-  fireEvent.press(screen.getByText("Open uploaded ebook"));
-  fireEvent.press(screen.getByText("Shelves"));
-  fireEvent.press(screen.getByText("New shelf…"));
-  fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "New private shelf");
-  fireEvent.press(screen.getByText("Create shelf"));
-  view.unmount();
+  const view = await render(<LibraryScreen />);
+  await pressInFlight(screen.getByText("Open uploaded ebook"));
+  await pressInFlight(screen.getByText("Shelves"));
+  await pressInFlight(screen.getByText("New shelf…"));
+  await fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "New private shelf");
+  await pressInFlight(screen.getByText("Create shelf"));
+  await view.unmount();
   await act(async () => {
     first.resolve({ shelf: { id: 9, name: "New private shelf" } });
   });
@@ -298,30 +304,30 @@ it("awaits create-then-add after navigation instead of depending on observer cal
 it("keeps a newer prompt open after an older create completes", async () => {
   const first = deferred<{ shelf: { id: number; name: string } }>();
   mockMutations.CreatePersonalShelf.mutateAsync.mockReturnValueOnce(first.promise);
-  render(<LibraryScreen />);
-  fireEvent.press(screen.getByText("Shelf"));
-  fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "A");
-  fireEvent.press(screen.getByText("Create shelf"));
-  fireEvent.press(screen.getByText("Cancel"));
-  fireEvent.press(screen.getByText("Shelf"));
+  await render(<LibraryScreen />);
+  await pressInFlight(screen.getByText("Shelf"));
+  await fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "A");
+  await pressInFlight(screen.getByText("Create shelf"));
+  await pressInFlight(screen.getByText("Cancel"));
+  await pressInFlight(screen.getByText("Shelf"));
   await act(async () => {
     first.resolve({ shelf: { id: 9, name: "A" } });
   });
-  fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "B");
+  await fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "B");
   expect(screen.getByDisplayValue("B")).toBeTruthy();
 });
 
 it("prevents duplicate create submissions before pending state rerenders", async () => {
   const first = deferred<{ shelf: { id: number; name: string } }>();
   mockMutations.CreatePersonalShelf.mutateAsync.mockReturnValueOnce(first.promise);
-  render(<LibraryScreen />);
-  fireEvent.press(screen.getByText("Shelf"));
+  await render(<LibraryScreen />);
+  await pressInFlight(screen.getByText("Shelf"));
   const input = screen.getByPlaceholderText("e.g. Sci-fi");
-  fireEvent.changeText(input, "Only one");
+  await fireEvent.changeText(input, "Only one");
   const submit = screen.getByText("Create shelf");
-  act(() => {
-    fireEvent.press(submit);
-    fireEvent(input, "submitEditing");
+  await act(() => {
+    void fireEvent.press(submit);
+    void fireEvent(input, "submitEditing");
   });
   expect(mockMutations.CreatePersonalShelf.mutateAsync).toHaveBeenCalledTimes(1);
   await act(async () => {
@@ -335,12 +341,12 @@ it.each(["session change", "add failure"])(
     const first = deferred<{ shelf: { id: number; name: string } }>();
     mockMutations.CreatePersonalShelf.mutateAsync.mockReturnValueOnce(first.promise);
     mockMutations.AddToPersonalShelf.mutateAsync.mockRejectedValueOnce(new Error("Offline"));
-    render(<LibraryScreen />);
-    fireEvent.press(screen.getByText("Open uploaded ebook"));
-    fireEvent.press(screen.getByText("Shelves"));
-    fireEvent.press(screen.getByText("New shelf…"));
-    fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "Retained shelf");
-    fireEvent.press(screen.getByText("Create shelf"));
+    await render(<LibraryScreen />);
+    await pressInFlight(screen.getByText("Open uploaded ebook"));
+    await pressInFlight(screen.getByText("Shelves"));
+    await pressInFlight(screen.getByText("New shelf…"));
+    await fireEvent.changeText(screen.getByPlaceholderText("e.g. Sci-fi"), "Retained shelf");
+    await pressInFlight(screen.getByText("Create shelf"));
     if (reason === "session change") authSession.replace(null);
     await act(async () => {
       first.resolve({ shelf: { id: 9, name: "Retained shelf" } });

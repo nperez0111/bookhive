@@ -5,8 +5,8 @@ import MyBooksScreen from "../../app/(tabs)/my-books";
 
 const mockUpdateBook = jest.fn();
 beforeEach(() => jest.useFakeTimers());
-afterEach(() => {
-  act(() => jest.runOnlyPendingTimers());
+afterEach(async () => {
+  await act(() => jest.runOnlyPendingTimers());
   jest.useRealTimers();
 });
 const mockStats = {
@@ -31,6 +31,7 @@ jest.mock("@/hooks/useBookhiveQuery", () => ({
   useUpdateBook: () => ({ isPending: false, mutateAsync: mockUpdateBook }),
 }));
 jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
   useLocalSearchParams: () => ({ did: "did:plc:test" }),
   router: { push: jest.fn() },
 }));
@@ -50,12 +51,12 @@ jest.mock("@/components/GradientView", () => ({
   GradientView: jest.requireActual<typeof import("react-native")>("react-native").View,
 }));
 
-it("decodes fixed-point ratings and shows all-time statistics only after explicit selection", () => {
-  render(<ReadingStatsScreen />);
+it("decodes fixed-point ratings and shows all-time statistics only after explicit selection", async () => {
+  await render(<ReadingStatsScreen />);
   expect(screen.queryByText("All-Time Reading")).toBeNull();
   expect(screen.getByText("4.2")).toBeTruthy();
   expect(screen.queryByText("42.0")).toBeNull();
-  fireEvent.press(screen.getByText("All time"));
+  await fireEvent.press(screen.getByText("All time"));
   expect(screen.getByText("All-Time Reading")).toBeTruthy();
   expect(screen.getByText("4.5")).toBeTruthy();
   expect(screen.queryByText("45.0")).toBeNull();
@@ -63,31 +64,31 @@ it("decodes fixed-point ratings and shows all-time statistics only after explici
 
 it("makes status the only row action without an ownership menu", async () => {
   mockUpdateBook.mockResolvedValue({});
-  render(<MyBooksScreen />);
+  await render(<MyBooksScreen />);
   expect(screen.queryByText("Own")).toBeNull();
   expect(screen.queryByText("Mark as owned")).toBeNull();
-  fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
-  await act(async () => fireEvent.press(screen.getByText("Reading")));
+  await fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
+  await act(async () => await fireEvent.press(screen.getByText("Reading")));
   expect(mockUpdateBook).toHaveBeenLastCalledWith({
     hiveId: "bk_test",
     status: "buzz.bookhive.defs#reading",
   });
   expect(screen.queryByLabelText("More options for Rated book")).toBeNull();
-  fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
-  await act(async () => fireEvent.press(screen.getByText("No status")));
+  await fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
+  await act(async () => await fireEvent.press(screen.getByText("No status")));
   expect(mockUpdateBook).toHaveBeenLastCalledWith({ hiveId: "bk_test", status: "" });
 });
 
 it("keeps rejected row updates visible outside the book row", async () => {
   mockUpdateBook.mockRejectedValueOnce(new Error("Save failed"));
-  render(<MyBooksScreen />);
-  fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
-  await act(async () => fireEvent.press(screen.getByText("Read")));
+  await render(<MyBooksScreen />);
+  await fireEvent.press(screen.getByLabelText("Change reading status for Rated book"));
+  await act(async () => await fireEvent.press(screen.getByText("Read")));
   expect(screen.getByText(/Save failed/)).toBeTruthy();
 });
 
-it("keeps library tools out of the book list until requested", () => {
-  render(<MyBooksScreen />);
+it("keeps library tools out of the book list until requested", async () => {
+  await render(<MyBooksScreen />);
   expect(screen.queryByText("Shelves")).toBeNull();
   for (const [title, route] of [
     ["Shelves", "/lists"],
@@ -95,31 +96,31 @@ it("keeps library tools out of the book list until requested", () => {
     ["Import", "/import"],
     ["Ebooks", "/library"],
   ]) {
-    fireEvent.press(screen.getByLabelText("Library tools"));
-    fireEvent.press(screen.getByText(title));
+    await fireEvent.press(screen.getByLabelText("Library tools"));
+    await fireEvent.press(screen.getByText(title));
     expect(router.push).toHaveBeenLastCalledWith(route);
     expect(screen.queryByText(title)).toBeNull();
   }
 });
 
-it("keeps a catalogue entry point available when My Books already has books", () => {
-  render(<MyBooksScreen />);
-  fireEvent.press(screen.getByLabelText("Find books"));
+it("keeps a catalogue entry point available when My Books already has books", async () => {
+  await render(<MyBooksScreen />);
+  await fireEvent.press(screen.getByLabelText("Find books"));
   expect(router.push).toHaveBeenLastCalledWith("/search");
 });
 
-it("shows only the selected filter and keeps sorting options in a sheet", () => {
-  render(<MyBooksScreen />);
+it("shows only the selected filter and keeps sorting options in a sheet", async () => {
+  await render(<MyBooksScreen />);
   expect(screen.queryByText("Reading (0)")).toBeNull();
-  fireEvent.press(screen.getByLabelText("Filter your books"));
-  fireEvent.press(screen.getByText("Reading (0)"));
+  await fireEvent.press(screen.getByLabelText("Filter your books"));
+  await fireEvent.press(screen.getByText("Reading (0)"));
   expect(screen.getByText("Reading · 0")).toBeTruthy();
   expect(screen.getByText("No matching books")).toBeTruthy();
-  fireEvent.press(screen.getByText("Clear filters"));
+  await fireEvent.press(screen.getByText("Clear filters"));
   expect(screen.getByText("Rated book")).toBeTruthy();
-  fireEvent.press(screen.getByLabelText("Sort by Date added"));
-  fireEvent.press(screen.getByText("Title"));
-  fireEvent.press(screen.getByLabelText("Sort by Title"));
-  fireEvent.press(screen.getByText("Ascending order"));
+  await fireEvent.press(screen.getByLabelText("Sort by Date added"));
+  await fireEvent.press(screen.getByText("Title"));
+  await fireEvent.press(screen.getByLabelText("Sort by Title"));
+  await fireEvent.press(screen.getByText("Ascending order"));
   expect(screen.queryByText("Sort your books")).toBeNull();
 });

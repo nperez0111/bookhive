@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
 import { ThemedView } from "@/components/ThemedView";
@@ -13,6 +13,7 @@ import { useProfile } from "@/hooks/useBookhiveQuery";
 import { useDeleteAccount, useResyncBooks } from "@/hooks/useAccount";
 
 export default function AccountScreen() {
+  const router = useRouter();
   const top = useScreenTopInset();
   const { authState } = useAuth();
   const profile = useProfile();

@@ -59,7 +59,7 @@ beforeEach(() => {
 test.each([useResyncBooks, useDeleteAccount])(
   "account writes captured in A's render cannot start as B",
   async (hook) => {
-    renderHook(() => hook());
+    await renderHook(() => hook());
     const write = mockOptions.mutationFn;
     mockSession.replace(account("b"));
     await expect(write("a.test")).rejects.toThrow("session changed");
@@ -68,7 +68,7 @@ test.each([useResyncBooks, useDeleteAccount])(
 );
 
 test("deletion signs out A synchronously, never B from a stale callback or delayed persistence", async () => {
-  renderHook(() => useDeleteAccount());
+  await renderHook(() => useDeleteAccount());
   const staleResult = await mockOptions.mutationFn("a.test");
   mockSession.replace(account("b"));
   await mockOptions.onSuccess(staleResult);
@@ -76,7 +76,7 @@ test("deletion signs out A synchronously, never B from a stale callback or delay
   expect(mockSession.state).toEqual(account("b"));
 
   mockSession.replace(account("a"));
-  renderHook(() => useDeleteAccount());
+  await renderHook(() => useDeleteAccount());
   const result = await mockOptions.mutationFn("a.test");
   const persistence = deferred();
   // Match AuthProvider: replace the session before awaiting credential storage.
@@ -97,7 +97,7 @@ test("deletion signs out A synchronously, never B from a stale callback or delay
 });
 
 test("resync completion does not invalidate a replacement account", async () => {
-  renderHook(() => useResyncBooks());
+  await renderHook(() => useResyncBooks());
   const result = await mockOptions.mutationFn();
   mockSession.replace(account("b"));
   await mockOptions.onSuccess(result);
@@ -108,7 +108,7 @@ test.each([
   [useResyncBooks, undefined, "/xrpc/buzz.bookhive.resyncAccount", {}],
   [useDeleteAccount, "a.test", "/xrpc/buzz.bookhive.deleteAccount", { confirmHandle: "a.test" }],
 ] as const)("account tools use validated XRPC procedures", async (hook, input, path, body) => {
-  renderHook(() => hook());
+  await renderHook(() => hook());
   await mockOptions.mutationFn(input);
   expect(mockTransport).toHaveBeenCalledWith(
     "a-sid",
@@ -122,7 +122,7 @@ test.each([useResyncBooks, useDeleteAccount])(
   "unsuccessful account responses cannot trigger success callbacks",
   async (hook) => {
     mockTransport.mockResolvedValue({ success: false });
-    renderHook(() => hook());
+    await renderHook(() => hook());
     await expect(mockOptions.mutationFn("a.test")).rejects.toThrow("Could not");
     expect(mockClear).not.toHaveBeenCalled();
     expect(mockSignOut).not.toHaveBeenCalled();
@@ -132,17 +132,17 @@ test.each([useResyncBooks, useDeleteAccount])(
 
 test.each(["mutate", "mutateAsync"] as const)(
   "retained CSV %s callback from A cannot start an upload as B",
-  (method) => {
+  async (method) => {
     const originalXHR = global.XMLHttpRequest;
     const constructXHR = jest.fn();
     global.XMLHttpRequest = constructXHR as unknown as typeof XMLHttpRequest;
     try {
-      const { result, rerender } = renderHook(() => useCsvImport());
+      const { result, rerender } = await renderHook(() => useCsvImport());
       const retainedCallback = result.current[method];
-      act(() => {
+      await act(() => {
         mockSession.replace(account("b"));
       });
-      rerender({});
+      await rerender({});
       expect(() =>
         retainedCallback({
           provider: "goodreads",

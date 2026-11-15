@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -28,6 +28,7 @@ type BookSummary = {
 };
 
 function MiniBookCard({ book, label, colors }: { book: BookSummary; label: string; colors: any }) {
+  const router = useRouter();
   return (
     <Pressable
       onPress={() => router.push(`/book/${book.hiveId}` as any)}

@@ -4,8 +4,13 @@ import { isCancelledError } from "@tanstack/react-query";
 export const classifyNetworkError = (error: any): NetworkError => {
   const message = typeof error?.message === "string" ? error.message : "";
   const status = error?.status ?? error?.response?.status;
+  const causeMessage = typeof error?.cause?.message === "string" ? error.cause.message : "";
   // Handle fetch errors
-  if (error?.name === "TypeError" && message.includes("fetch")) {
+  if (
+    !status &&
+    ((error?.name === "TypeError" && message.includes("fetch")) ||
+      /fetch failed|could not connect to (?:the )?server/i.test(`${message}\n${causeMessage}`))
+  ) {
     return {
       type: "network",
       message: "Unable to connect to the server. Please check your internet connection.",

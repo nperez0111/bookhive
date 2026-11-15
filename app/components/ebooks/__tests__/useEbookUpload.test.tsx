@@ -49,8 +49,8 @@ const asset = {
 const mutateAsync = jest.fn();
 const unmatched = jest.fn();
 
-function setup(storage: PersonalStorage | null = null) {
-  return renderHook(() =>
+async function setup(storage: PersonalStorage | null = null) {
+  return await renderHook(() =>
     useEbookUpload({ storage, upload: { mutateAsync }, onUnmatched: unmatched }),
   );
 }
@@ -65,7 +65,7 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 it("explains a full library without opening the picker", async () => {
-  const { result } = setup({ usedBytes: 100, quotaBytes: 100 });
+  const { result } = await setup({ usedBytes: 100, quotaBytes: 100 });
   await act(async () => result.current.handleUpload());
   expect(Alert.alert).toHaveBeenCalledWith("Library full", expect.any(String));
   expect(pick).not.toHaveBeenCalled();
@@ -73,7 +73,7 @@ it("explains a full library without opening the picker", async () => {
 });
 
 it("rejects unsupported extensions and oversized files before sending bytes", async () => {
-  const { result } = setup({ usedBytes: 80, quotaBytes: 100 });
+  const { result } = await setup({ usedBytes: 80, quotaBytes: 100 });
   pick.mockResolvedValueOnce({ canceled: false, assets: [{ ...asset, name: "book.pdf" }] });
   await act(async () => result.current.handleUpload());
   expect(Alert.alert).toHaveBeenLastCalledWith("Unsupported file", expect.any(String));
@@ -86,18 +86,18 @@ it("retains ZIP/uppercase format handling, progress, unmatched-book handoff and 
   pick.mockResolvedValue({ canceled: false, assets: [{ ...asset, name: "Book.FB2.ZIP" }] });
   const upload = deferred<{ book: PersonalBook }>();
   mutateAsync.mockReturnValueOnce(upload.promise);
-  const { result } = setup();
+  const { result } = await setup();
   let pending!: Promise<void>;
-  act(() => {
+  await act(() => {
     pending = result.current.handleUpload();
   });
   await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   expect(result.current.uploadName).toBe("Book.FB2.ZIP");
   expect(result.current.uploadProgress).toBe(0);
   const [input] = mutateAsync.mock.calls[0];
-  act(() => input.onProgress(0.5));
+  await act(() => input.onProgress(0.5));
   expect(result.current.uploadProgress).toBe(0.5);
-  act(() => input.onProgress(1));
+  await act(() => input.onProgress(1));
   expect(result.current.isBusy).toBe(true);
   expect(mockDelete).not.toHaveBeenCalled();
   await act(async () => {
@@ -114,9 +114,9 @@ it("retains ZIP/uppercase format handling, progress, unmatched-book handoff and 
 it("prevents duplicate pickers and recovers from picker rejection", async () => {
   const picker = deferred<DocumentPicker.DocumentPickerResult>();
   pick.mockReturnValueOnce(picker.promise);
-  const { result } = setup();
+  const { result } = await setup();
   let pending!: Promise<void>;
-  act(() => {
+  await act(() => {
     pending = result.current.handleUpload();
   });
   await act(async () => {
@@ -141,9 +141,9 @@ it("prevents duplicate pickers and recovers from picker rejection", async () => 
 it("does not upload an old pick after logout and still removes its cache copy", async () => {
   const picker = deferred<DocumentPicker.DocumentPickerResult>();
   pick.mockReturnValueOnce(picker.promise);
-  const { result } = setup();
+  const { result } = await setup();
   let pending!: Promise<void>;
-  act(() => {
+  await act(() => {
     pending = result.current.handleUpload();
   });
   authSession.replace(null);
@@ -161,13 +161,13 @@ it.each(["unmount", "logout"])(
   async (reason) => {
     const upload = deferred<{ book: PersonalBook }>();
     mutateAsync.mockReturnValueOnce(upload.promise);
-    const { result, unmount } = setup();
+    const { result, unmount } = await setup();
     let pending!: Promise<void>;
-    act(() => {
+    await act(() => {
       pending = result.current.handleUpload();
     });
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    if (reason === "unmount") unmount();
+    if (reason === "unmount") await unmount();
     else authSession.replace(null);
     await act(async () => {
       upload.resolve({ book });
@@ -184,7 +184,7 @@ it("shows authoritative upload errors and never deletes a non-cache original", a
     assets: [{ ...asset, uri: "file:///documents/book.epub" }],
   });
   mutateAsync.mockRejectedValueOnce(new Error("Server quota explanation"));
-  const { result } = setup();
+  const { result } = await setup();
   await act(async () => {
     await result.current.handleUpload();
   });

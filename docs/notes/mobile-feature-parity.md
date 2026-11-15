@@ -42,8 +42,8 @@ and simulator startup live in [app README](../../app/README.md).
   dependency compatibility checks and both native bundle exports.
 - Deploy additive history/statistics/discovery and account XRPC APIs before the
   client. Local validation does not deploy servers or publish an app.
-- SDK 57 / RN 0.86 and native SecureStore/FileSystem/Sharing require new signed
-  binaries for runtime 1.3.0; never ship this as OTA to an older runtime.
+- SDK 58 / RN 0.88 and the compatible native modules require new signed binaries
+  for runtime 1.4.0; never ship this as OTA to an older SDK 57/1.3.0 runtime.
 - Bun peer-context directories can trigger Expo Doctor's same-version native
   duplicate warning. Check autolinking/native builds before release; compatible
   dependencies and successful exports alone do not resolve it. Do not delete the

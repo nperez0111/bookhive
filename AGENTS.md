@@ -450,7 +450,7 @@ Read `app/ARCHITECTURE.md` before changing native code: it maps domain component
 `hooks/queries/` implementations (`useBookhiveQuery.ts` is a compatibility export),
 and `app/api/` transport contracts. It owns session/draft/cache rules, public versus
 private shelf boundaries, root-Stack navigation and the iOS double-inset gotcha.
-The app uses SDK 57 / RN 0.86 with SecureStore and viewer-isolated caches; native
+The app uses SDK 58 / RN 0.88 with SecureStore and viewer-isolated caches; native
 dependency changes require new binaries, never an OTA-only release.
 
 The app renders `payload.error` verbatim for any non-2xx upload response, which is why the quota rejection (413) carries human prose rather than a bare code. It reads `storage` off `getPersonalLibrary` for its own quota meter, so **anything that changes the quota's wire shape needs an app release**. `app/utils/personalLibrary.ts`'s `formatBytes` is a deliberate byte-for-byte copy of the server's.

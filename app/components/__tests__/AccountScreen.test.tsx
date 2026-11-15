@@ -18,7 +18,10 @@ jest.mock("@/hooks/useAccount", () => ({
   useDeleteAccount: () => ({ mutate: mockDelete, isPending: mockDeletePending }),
   useResyncBooks: () => ({ mutate: jest.fn(), isPending: mockResyncPending }),
 }));
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@/components/BackNavigationHeader", () => ({ BackNavigationHeader: () => null }));
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "#ffffff" }));
@@ -38,17 +41,17 @@ afterEach(() => jest.restoreAllMocks());
 
 test.each([false, true])(
   "DID confirmation is available with a stored handle and cached profile=%s",
-  (cachedProfile) => {
+  async (cachedProfile) => {
     if (cachedProfile) mockProfile = { profile: { handle: "old.test" } };
-    render(<AccountScreen />);
+    await render(<AccountScreen />);
     expect(screen.getByText(/type your DID exactly: did:plc:reader/)).toBeTruthy();
     expect(
       screen.getByText(/accepts this fallback only when no profile is available/),
     ).toBeTruthy();
     if (!cachedProfile) expect(screen.getByText(/Your profile is unavailable/)).toBeTruthy();
 
-    fireEvent.changeText(screen.getByLabelText("Confirm your handle or DID"), mockDid);
-    fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
+    await fireEvent.changeText(screen.getByLabelText("Confirm your handle or DID"), mockDid);
+    await fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
     expect(mockDelete).not.toHaveBeenCalled();
     expect(Alert.alert).toHaveBeenCalledTimes(1);
     const buttons = jest.mocked(Alert.alert).mock.calls[0][2]!;
@@ -59,29 +62,29 @@ test.each([false, true])(
   },
 );
 
-test("confirmation must exactly match a nonempty handle or DID", () => {
+test("confirmation must exactly match a nonempty handle or DID", async () => {
   mockProfile = { profile: { handle: "current.test" } };
-  render(<AccountScreen />);
+  await render(<AccountScreen />);
   const input = screen.getByLabelText("Confirm your handle or DID");
   for (const value of ["", "reader", "stored.test", "CURRENT.test", ` ${mockDid}`, `${mockDid} `]) {
-    fireEvent.changeText(input, value);
-    fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
+    await fireEvent.changeText(input, value);
+    await fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
   }
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(mockDelete).not.toHaveBeenCalled();
-  fireEvent.changeText(input, "current.test");
-  fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
+  await fireEvent.changeText(input, "current.test");
+  await fireEvent.press(screen.getAllByText("Delete BookHive data").at(-1)!);
   jest.mocked(Alert.alert).mock.calls[0][2]![1].onPress!();
   expect(mockDelete).toHaveBeenCalledWith("current.test");
 });
 
-test.each(["delete", "resync"])("pending %s blocks DID deletion", (pending) => {
+test.each(["delete", "resync"])("pending %s blocks DID deletion", async (pending) => {
   mockDeletePending = pending === "delete";
   mockResyncPending = pending === "resync";
-  render(<AccountScreen />);
-  fireEvent.changeText(screen.getByLabelText("Confirm your handle or DID"), mockDid);
+  await render(<AccountScreen />);
+  await fireEvent.changeText(screen.getByLabelText("Confirm your handle or DID"), mockDid);
   const label = mockDeletePending ? "Loading..." : "Delete BookHive data";
-  fireEvent.press(screen.getAllByText(label).at(-1)!);
+  await fireEvent.press(screen.getAllByText(label).at(-1)!);
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(mockDelete).not.toHaveBeenCalled();
 });

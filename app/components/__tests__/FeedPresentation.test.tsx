@@ -5,7 +5,7 @@ import FeedScreen from "../../app/feed";
 const mockFeed = jest.fn();
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), canGoBack: () => true, back: jest.fn() },
-  useRouter: () => ({ canGoBack: () => true, back: jest.fn() }),
+  useRouter: () => jest.requireMock("expo-router").router,
 }));
 jest.mock("@/hooks/useBookhiveQuery", () => ({
   useFeed: (...args: unknown[]) => mockFeed(...args),
@@ -49,28 +49,28 @@ beforeEach(() => {
   });
 });
 
-test("feed book/profile actions are separate accessibility groups and activity remains spoken", () => {
-  render(<FeedScreen />);
+test("feed book/profile actions are separate accessibility groups and activity remains spoken", async () => {
+  await render(<FeedScreen />);
   const book = screen.getByRole("button", { name: "Open Earthsea, by Le Guin" });
-  const profile = screen.getByRole("button", { name: "@reader.test" });
+  const profile = screen.getByRole("button", { name: /@reader\.test/ });
   expect(within(profile).getByText(/finished reading.*ago/)).toBeTruthy();
   expect(profile.props.accessibilityLabel).toBeUndefined();
   expect(within(book).queryByText("@reader.test")).toBeNull();
   expect(screen.getByLabelText("Rated 4.5 out of 5 stars")).toBeTruthy();
   expect(screen.getByText("A wonderful voyage.")).toBeTruthy();
   expect(within(book).queryByText("A wonderful voyage.")).toBeNull();
-  fireEvent.press(profile);
+  await fireEvent.press(profile);
   expect(router.push).toHaveBeenLastCalledWith("/profile/did:plc:reader");
-  fireEvent.press(book);
+  await fireEvent.press(book);
   expect(router.push).toHaveBeenLastCalledWith("/book/bk_one");
 });
 
-test("feed filters expose selection and request the selected feed", () => {
-  render(<FeedScreen />);
+test("feed filters expose selection and request the selected feed", async () => {
+  await render(<FeedScreen />);
   expect(screen.getByRole("tab", { name: "Following" }).props.accessibilityState.selected).toBe(
     true,
   );
-  fireEvent.press(screen.getByRole("tab", { name: "Your books" }));
+  await fireEvent.press(screen.getByRole("tab", { name: "Your books" }));
   expect(mockFeed).toHaveBeenLastCalledWith("tracking");
   expect(screen.getByRole("tab", { name: "Your books" }).props.accessibilityState.selected).toBe(
     true,

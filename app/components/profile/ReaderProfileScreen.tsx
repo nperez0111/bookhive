@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
@@ -84,6 +84,7 @@ export default function ReaderProfileScreen({
   did: string;
   inProfileTab?: boolean;
 }) {
+  const router = useRouter();
   const { authState } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);

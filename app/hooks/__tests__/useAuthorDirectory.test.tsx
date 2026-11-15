@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { QueryClient } from "@tanstack/react-query";
-import { queryWrapper } from "../../test/queryHelpers";
+import { deferred, queryWrapper } from "../../test/queryHelpers";
 import { authFetch } from "@/context/auth";
 import { useAuthorDirectory } from "../useAuthorDirectory";
 
@@ -30,12 +30,13 @@ afterEach(() => {
 
 describe("useAuthorDirectory", () => {
   it("retains pages on failure, retries the offset, stops at exhaustion and resets for a new language", async () => {
+    const french = deferred<ReturnType<typeof page>>();
     fetchMock
       .mockResolvedValueOnce(page(0, 50, true))
       .mockRejectedValueOnce(new Error("Directory unavailable"))
       .mockResolvedValueOnce(page(50, 1, false))
-      .mockResolvedValueOnce({ ...page(0, 1, false), total: 1 });
-    const { result, rerender } = renderHook(
+      .mockReturnValueOnce(french.promise);
+    const { result, rerender } = await renderHook(
       ({ language }: { language: string }) => useAuthorDirectory("   ", language),
       { initialProps: { language: "en" }, wrapper: Wrapper },
     );
@@ -59,8 +60,11 @@ describe("useAuthorDirectory", () => {
       "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=50&language=en",
     ]);
     expect(result.current.hasNextPage).toBe(false);
-    rerender({ language: "fr" });
+    await rerender({ language: "fr" });
     expect(result.current.authors).toEqual([]);
+    await act(() => {
+      french.resolve({ ...page(0, 1, false), total: 1 });
+    });
     await waitFor(() => expect(result.current.authors).toHaveLength(1));
     expect(result.current.data?.pages).toHaveLength(1);
     expect(fetchMock.mock.calls[3][0]).toContain("offset=0&language=fr");
@@ -69,14 +73,14 @@ describe("useAuthorDirectory", () => {
   it("debounces normalized search keys and requests, cancels old work, and skips collapsed-directory requests", async () => {
     jest.useFakeTimers();
     fetchMock.mockImplementation(() => new Promise(() => {}));
-    const { result, rerender } = renderHook(
+    const { result, rerender } = await renderHook(
       ({ q, enabled }: { q: string; enabled: boolean }) =>
         useAuthorDirectory(q, "English", enabled),
       { initialProps: { q: "", enabled: false }, wrapper: Wrapper },
     );
     expect(fetchMock).not.toHaveBeenCalled();
-    rerender({ q: "  Le Guin  ", enabled: true });
-    act(() => jest.advanceTimersByTime(299));
+    await rerender({ q: "  Le Guin  ", enabled: true });
+    await act(() => jest.advanceTimersByTime(299));
     expect(fetchMock).not.toHaveBeenCalled();
     await act(async () => {
       jest.advanceTimersByTime(1);
@@ -85,7 +89,7 @@ describe("useAuthorDirectory", () => {
       "/xrpc/buzz.bookhive.listAuthors?limit=50&offset=0&language=English&q=le%20guin",
     );
     const signal = fetchMock.mock.calls[0][1].signal as AbortSignal;
-    rerender({ q: "Borges", enabled: true });
+    await rerender({ q: "Borges", enabled: true });
     expect(signal.aborted).toBe(true);
     expect(result.current.authors).toEqual([]);
     await act(async () => {
@@ -93,13 +97,13 @@ describe("useAuthorDirectory", () => {
     });
     expect(fetchMock.mock.calls[1][0]).toContain("offset=0&language=English&q=borges");
     const secondSignal = fetchMock.mock.calls[1][1].signal as AbortSignal;
-    rerender({ q: "Borges", enabled: false });
+    await rerender({ q: "Borges", enabled: false });
     expect(secondSignal.aborted).toBe(true);
   });
 
   it("rejects a non-advancing next offset even when hasMore is incorrectly true", async () => {
     fetchMock.mockResolvedValue({ ...page(0, 0, true), offset: 0 });
-    const { result } = renderHook(() => useAuthorDirectory(""), { wrapper: Wrapper });
+    const { result } = await renderHook(() => useAuthorDirectory(""), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.hasNextPage).toBe(false);
   });

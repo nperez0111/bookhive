@@ -106,7 +106,7 @@ function LanguagePickerContent({
                   <ThemedButton title="Refresh languages" variant="outline" onPress={onRetry} />
                 ) : null}
               </View>
-            ) : null
+            ) : undefined
           }
           ListEmptyComponent={<ThemedText>No matching languages.</ThemedText>}
           renderItem={({ item }) => (

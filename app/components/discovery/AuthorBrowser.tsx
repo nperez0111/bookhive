@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { FadeInImage } from "@/components/FadeInImage";
 import { InfinitePaginationFooter } from "@/components/InfinitePaginationFooter";
 import { ThemedText } from "@/components/ThemedText";
@@ -35,6 +35,7 @@ export function AuthorBrowser({
     total: number | undefined;
   };
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   return (
     <View style={styles.section}>

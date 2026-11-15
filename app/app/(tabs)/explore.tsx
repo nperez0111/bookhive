@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 
@@ -21,6 +21,7 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 export default function ExploreScreen() {
+  const router = useRouter();
   const top = useScreenTopInset();
   const colors = Colors[useColorScheme() ?? "light"];
   return (

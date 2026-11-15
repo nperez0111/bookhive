@@ -24,7 +24,10 @@ interface CommentsSectionProps {
   comments: CommentItem[];
   hiveId: string;
   onUserPress?: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
+  onReplyClick?: (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => void;
 }
 
 // Individual Comment Component
@@ -32,7 +35,10 @@ const CommentEntry: React.FC<{
   comment: CommentItem;
   hiveId: string;
   onUserPress: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
+  onReplyClick?: (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => void;
 }> = ({ comment, hiveId, onUserPress, onReplyClick }) => {
   const { authState } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -41,7 +47,7 @@ const CommentEntry: React.FC<{
   const [editText, setEditText] = useState("");
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
-  const replyFormRef = useRef<View>(null);
+  const replyFormRef = useRef<React.ComponentRef<typeof View>>(null);
   const updateComment = useUpdateComment();
   const updateBook = useUpdateBook();
   const isPending = updateComment.isPending || updateBook.isPending;
@@ -371,7 +377,10 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     onUserPress?.(userDid);
   };
 
-  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View | null>) => {
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => {
     // Call the parent callback
     onReplyClick?.(commentId, replyFormRef);
   };

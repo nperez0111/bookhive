@@ -31,14 +31,14 @@ beforeEach(() => {
 
 it("a retained A comment mutation cannot execute after account B mounts", async () => {
   const clientA = new QueryClient({ defaultOptions: { mutations: { gcTime: Infinity } } });
-  const accountA = renderHook(useUpdateComment, {
+  const accountA = await renderHook(useUpdateComment, {
     wrapper: queryWrapper(() => clientA),
   });
   const submitA = accountA.result.current.mutateAsync;
-  accountA.unmount();
+  await accountA.unmount();
   mockSession.replace({ did: "did:plc:b", handle: "b.test", sid: "sid-b" });
   const clientB = new QueryClient({ defaultOptions: { mutations: { gcTime: Infinity } } });
-  const accountB = renderHook(useUpdateComment, {
+  const accountB = await renderHook(useUpdateComment, {
     wrapper: queryWrapper(() => clientB),
   });
   await act(async () => {
@@ -58,7 +58,7 @@ it("a retained A comment mutation cannot execute after account B mounts", async 
   const response = deferred<unknown>();
   mockNetwork.mockReturnValueOnce(response.promise);
   let pending!: Promise<unknown>;
-  act(() => {
+  await act(() => {
     pending = accountB.result.current.mutateAsync(input);
   });
   await waitFor(() => expect(mockNetwork).toHaveBeenCalledTimes(3));
@@ -69,7 +69,7 @@ it("a retained A comment mutation cannot execute after account B mounts", async 
     await pending;
   });
   expect(invalidate).not.toHaveBeenCalled();
-  accountB.unmount();
+  await accountB.unmount();
   clientA.clear();
   clientB.clear();
 });
@@ -79,7 +79,7 @@ it("does not replay a comment when the first response is lost", async () => {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: 2, retryDelay: 0, gcTime: Infinity } },
   });
-  const { result, unmount } = renderHook(useUpdateComment, {
+  const { result, unmount } = await renderHook(useUpdateComment, {
     wrapper: queryWrapper(() => client),
   });
   await act(async () => {
@@ -87,6 +87,6 @@ it("does not replay a comment when the first response is lost", async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   expect(mockNetwork).toHaveBeenCalledTimes(1);
-  unmount();
+  await unmount();
   client.clear();
 });

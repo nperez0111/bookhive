@@ -12,21 +12,21 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-it("does not reserve the status bar twice on iOS", () => {
+it("does not reserve the status bar twice on iOS", async () => {
   jest.replaceProperty(Platform, "OS", "ios");
-  expect(renderHook(() => useScreenTopInset()).result.current).toBe(0);
+  expect((await renderHook(() => useScreenTopInset())).result.current).toBe(0);
 });
 
-it("updates Android screen padding when rotation changes the device inset", () => {
+it("updates Android screen padding when rotation changes the device inset", async () => {
   jest.replaceProperty(Platform, "OS", "android");
-  const { result, rerender } = renderHook(() => useScreenTopInset());
+  const { result, rerender } = await renderHook(() => useScreenTopInset());
   expect(result.current).toBe(59);
   mockTopInset = 0;
-  rerender({});
+  await rerender({});
   expect(result.current).toBe(0);
 });
 
-it("preserves browser safe-area padding because the root only pads iOS", () => {
+it("preserves browser safe-area padding because the root only pads iOS", async () => {
   jest.replaceProperty(Platform, "OS", "web");
-  expect(renderHook(() => useScreenTopInset()).result.current).toBe(59);
+  expect((await renderHook(() => useScreenTopInset())).result.current).toBe(59);
 });

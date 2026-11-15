@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 import { formatDistanceToNow } from "date-fns";
@@ -44,6 +44,7 @@ const BOOK_STATUS_LABELS: Record<string, string> = {
 };
 
 export default function FeedScreen() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<FeedTab>("friends");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const colorScheme = useColorScheme();
@@ -141,7 +142,7 @@ export default function FeedScreen() {
         </BookCard>
       );
     },
-    [colors],
+    [colors, router],
   );
 
   const renderItem = ({ item }: { item: FeedGroup }) => {
@@ -300,7 +301,7 @@ export default function FeedScreen() {
               <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>
-            ) : null
+            ) : undefined
           }
         />
       )}

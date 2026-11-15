@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 import { ActionSheet, type SheetAction } from "@/components/ActionSheet";
@@ -90,6 +90,7 @@ type MatchTarget = MatchInput & {
 class CreatedShelfError extends Error {}
 
 export default function LibraryScreen() {
+  const router = useRouter();
   const session = authSession.capture();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
@@ -387,7 +388,7 @@ export default function LibraryScreen() {
       },
     });
     return actions;
-  }, [bookSheet, unlinkBook, confirmDeleteBook, exporting, exportBook, openMatch]);
+  }, [bookSheet, unlinkBook, confirmDeleteBook, exporting, exportBook, openMatch, router]);
 
   const shelfPickerActions = useMemo((): SheetAction[] => {
     const book = shelfPickerFor;
@@ -577,7 +578,7 @@ export default function LibraryScreen() {
       },
     });
     return actions;
-  }, [docSheet, dismissDocument, renameDocument, deleteDocument, openMatch, openPrompt]);
+  }, [docSheet, dismissDocument, renameDocument, deleteDocument, openMatch, openPrompt, router]);
 
   const runMatch = async (target: MatchTarget, hiveBook: HiveBook, document?: SyncDoc) => {
     if (matching.current || session.signal.aborted) return;

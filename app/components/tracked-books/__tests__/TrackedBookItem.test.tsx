@@ -18,7 +18,10 @@ const book: UserBook = {
 };
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@/hooks/useColorScheme", () => ({ useColorScheme: () => "light" }));
 jest.mock("@/context/auth", () => ({ getBaseUrl: () => "https://bookhive.buzz" }));
 jest.mock("@/components/FadeInImage", () => ({ FadeInImage: () => null }));
@@ -33,28 +36,30 @@ beforeEach(() => {
   mockUpdate.mockResolvedValue({});
 });
 
-it("preserves zero-page progress in the compact row", () => {
-  render(<TrackedBookItem book={book} grid={false} onError={jest.fn()} />);
+it("preserves zero-page progress in the compact row", async () => {
+  await render(<TrackedBookItem book={book} grid={false} onError={jest.fn()} />);
   expect(screen.getByText("0 of 200 pages")).toBeTruthy();
 });
 
 it("refuses invalid identifiers before calling the mutation hook", async () => {
   const onError = jest.fn();
-  render(<TrackedBookItem book={{ ...book, hiveId: "invalid" }} grid={false} onError={onError} />);
-  fireEvent.press(screen.getByLabelText("Change reading status for A tracked book"));
-  await act(async () => fireEvent.press(screen.getByText("Read")));
+  await render(
+    <TrackedBookItem book={{ ...book, hiveId: "invalid" }} grid={false} onError={onError} />,
+  );
+  await fireEvent.press(screen.getByLabelText("Change reading status for A tracked book"));
+  await act(async () => await fireEvent.press(screen.getByText("Read")));
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(onError).toHaveBeenCalledWith(
     "This book has an invalid identifier. Refresh your books and try again.",
   );
 });
 
-it("disables status writes while pending and has no overflow menu", () => {
+it("disables status writes while pending and has no overflow menu", async () => {
   mockPending = true;
-  render(<TrackedBookItem book={book} grid={false} onError={jest.fn()} />);
+  await render(<TrackedBookItem book={book} grid={false} onError={jest.fn()} />);
   const status = screen.getByLabelText("Change reading status for A tracked book");
   expect(status).toBeDisabled();
-  fireEvent.press(status);
+  await fireEvent.press(status);
   expect(screen.queryByText("Reading status")).toBeNull();
   expect(screen.queryByLabelText("More options for A tracked book")).toBeNull();
   expect(mockUpdate).not.toHaveBeenCalled();
@@ -63,9 +68,9 @@ it("disables status writes while pending and has no overflow menu", () => {
 it("reports a failed status update to the collection instead of retaining row-local feedback", async () => {
   const onError = jest.fn();
   mockUpdate.mockRejectedValueOnce(new Error("Save failed"));
-  render(<TrackedBookItem book={book} grid onError={onError} />);
-  fireEvent.press(screen.getByLabelText("Change reading status for A tracked book"));
-  await act(async () => fireEvent.press(screen.getByText("Read")));
+  await render(<TrackedBookItem book={book} grid onError={onError} />);
+  await fireEvent.press(screen.getByLabelText("Change reading status for A tracked book"));
+  await act(async () => await fireEvent.press(screen.getByText("Read")));
   expect(mockUpdate).toHaveBeenCalledWith({
     hiveId: "bk_test",
     status: "buzz.bookhive.defs#finished",

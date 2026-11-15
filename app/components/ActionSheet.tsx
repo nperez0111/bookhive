@@ -48,7 +48,12 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+        />
         <View
           style={[
             styles.sheet,
@@ -134,6 +139,8 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
           </ScrollView>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
             onPress={onClose}
             style={({ pressed }) => [
               styles.cancel,

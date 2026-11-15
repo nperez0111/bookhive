@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { QueryClient } from "@tanstack/react-query";
 import { createAuthSessionScope } from "../../context/authSession";
-import { queryWrapper } from "../../test/queryHelpers";
+import { deferred, queryWrapper } from "../../test/queryHelpers";
 import { useCsvImport } from "../useCsvImport";
 
 const mockSession = createAuthSessionScope();
@@ -50,9 +50,9 @@ afterEach(() => {
 });
 
 it("coalesces same-tick imports before React Query enters pending and releases after completion", async () => {
-  const { result } = renderHook(useCsvImport, { wrapper: queryWrapper(() => client) });
+  const { result } = await renderHook(useCsvImport, { wrapper: queryWrapper(() => client) });
   let first!: ReturnType<typeof result.current.mutateAsync>;
-  act(() => {
+  await act(() => {
     first = result.current.mutateAsync(input);
     expect(result.current.mutateAsync(input)).toBe(first);
     result.current.mutate(input);
@@ -64,7 +64,7 @@ it("coalesces same-tick imports before React Query enters pending and releases a
     await first;
   });
   let next!: typeof first;
-  act(() => {
+  await act(() => {
     next = result.current.mutateAsync(input);
   });
   await waitFor(() => expect(requests).toHaveLength(2));
@@ -78,35 +78,46 @@ it.each(["unmount", "session"])(
   "aborts its only active request on %s and ignores late progress",
   async (reason) => {
     const invalidate = jest.spyOn(client, "invalidateQueries");
-    const { result, unmount } = renderHook(useCsvImport, { wrapper: queryWrapper(() => client) });
+    const { result, unmount } = await renderHook(useCsvImport, {
+      wrapper: queryWrapper(() => client),
+    });
     let pending!: ReturnType<typeof result.current.mutateAsync>;
-    act(() => {
+    await act(() => {
       pending = result.current.mutateAsync(input);
     });
     const rejected = expect(pending).rejects.toThrow("Import stopped");
     await waitFor(() => expect(requests[0]?.send).toHaveBeenCalled());
     expect(requests[0].setRequestHeader).toHaveBeenCalledWith("cookie", "sid=sid-a");
-    act(() => {
-      if (reason === "unmount") unmount();
+    await act(async () => {
+      if (reason === "unmount") await unmount();
       else mockSession.replace({ did: "did:plc:b", handle: "b.test", sid: "sid-b" });
     });
     await act(async () => {
       await rejected;
     });
     expect(requests[0].abort).toHaveBeenCalledTimes(1);
-    act(() => requests[0].upload.onprogress?.({ lengthComputable: true, loaded: 10, total: 10 }));
+    await act(() =>
+      requests[0].upload.onprogress?.({ lengthComputable: true, loaded: 10, total: 10 }),
+    );
     expect(result.current.uploadProgress).toBe(0);
     if (reason === "session") expect(invalidate).not.toHaveBeenCalled();
   },
 );
 
 it("does not start a queued mutation after its screen unmounts", async () => {
-  const { result, unmount } = renderHook(useCsvImport, { wrapper: queryWrapper(() => client) });
-  let pending!: ReturnType<typeof result.current.mutateAsync>;
-  act(() => {
-    pending = result.current.mutateAsync(input);
-    unmount();
+  const gate = deferred();
+  const onMutate = jest.fn(() => gate.promise);
+  client.setDefaultOptions({ mutations: { gcTime: 0, onMutate } });
+  const { result, unmount } = await renderHook(useCsvImport, {
+    wrapper: queryWrapper(() => client),
   });
+  let pending!: ReturnType<typeof result.current.mutateAsync>;
+  await act(async () => {
+    pending = result.current.mutateAsync(input);
+  });
+  await waitFor(() => expect(onMutate).toHaveBeenCalled());
+  await unmount();
+  gate.resolve();
   await expect(pending).rejects.toThrow("screen closed");
   expect(requests).toHaveLength(0);
 });

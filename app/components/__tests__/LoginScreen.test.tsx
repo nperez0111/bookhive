@@ -1,3 +1,4 @@
+import { pressInFlight, submitInFlight } from "../../test/pressInFlight";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { router } from "expo-router";
@@ -11,6 +12,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 jest.mock("@/context/auth", () => ({ useAuth: () => ({ signIn: mockSignIn }) }));
 jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
   router: { push: jest.fn() },
   useLocalSearchParams: () => mockParams,
 }));
@@ -26,16 +28,16 @@ beforeEach(() => {
 });
 
 it("requires a handle and offers account registration", async () => {
-  render(<LoginScreen />);
+  await render(<LoginScreen />);
   await waitFor(() => expect(AsyncStorage.getItem).toHaveBeenCalled());
   expect(screen.getByRole("button", { name: "Continue to sign in" })).toBeDisabled();
-  fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+  await pressInFlight(screen.getByRole("button", { name: "Create an account" }));
   expect(router.push).toHaveBeenCalledWith("/(auth)/register");
 });
 
 it("prefills the requested handle before a remembered handle", async () => {
   mockParams = { handle: "reader.example.com" };
-  render(<LoginScreen />);
+  await render(<LoginScreen />);
   await act(async () => {});
   expect(screen.getByDisplayValue("reader.example.com")).toBeOnTheScreen();
   expect(AsyncStorage.getItem).not.toHaveBeenCalled();
@@ -48,8 +50,11 @@ it("does not overwrite typing when remembered-handle loading finishes", async ()
       resolve = done;
     }),
   );
-  render(<LoginScreen />);
-  fireEvent.changeText(screen.getByLabelText("Bluesky or AT Protocol handle"), "new.example.com");
+  await render(<LoginScreen />);
+  await fireEvent.changeText(
+    screen.getByLabelText("Bluesky or AT Protocol handle"),
+    "new.example.com",
+  );
   await act(async () => resolve("old.example.com"));
   expect(screen.getByDisplayValue("new.example.com")).toBeOnTheScreen();
 });
@@ -61,18 +66,17 @@ it("submits once, trims the handle, and keeps failures recoverable", async () =>
       reject = fail;
     }),
   );
-  render(<LoginScreen />);
+  await render(<LoginScreen />);
   await waitFor(() => expect(AsyncStorage.getItem).toHaveBeenCalled());
   const input = screen.getByLabelText("Bluesky or AT Protocol handle");
-  fireEvent.changeText(input, " reader.example.com ");
-  fireEvent(input, "submitEditing");
-  fireEvent(input, "submitEditing");
+  await fireEvent.changeText(input, " reader.example.com ");
+  await submitInFlight(input, input);
   await waitFor(() => expect(mockSignIn).toHaveBeenCalledWith({ handle: "reader.example.com" }));
   expect(mockSignIn).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("button", { name: "Opening sign in" })).toBeDisabled();
   await act(async () => reject(new Error("Provider unavailable")));
   expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
   expect(screen.getByRole("button", { name: "Continue to sign in" })).toBeEnabled();
-  fireEvent.changeText(input, "other.example.com");
+  await fireEvent.changeText(input, "other.example.com");
   expect(screen.queryByRole("alert")).toBeNull();
 });

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Linking, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import * as Updates from "expo-updates";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -18,6 +18,7 @@ import { useLanguages } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { signOut } = useAuth();
   const top = useScreenTopInset();
   const bottom = useBottomTabOverflow();

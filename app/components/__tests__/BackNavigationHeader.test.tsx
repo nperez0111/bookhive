@@ -23,39 +23,41 @@ beforeEach(() => {
   mockCanGoBack.mockReturnValue(true);
 });
 
-it("renders a title and right-hand content", () => {
-  render(
+it("renders a title and right-hand content", async () => {
+  await render(
     <BackNavigationHeader title="Test Title" rightElement={<View testID="right-element" />} />,
   );
   expect(screen.getByText("Test Title")).toBeOnTheScreen();
   expect(screen.getByTestId("right-element")).toBeOnTheScreen();
 });
 
-it("exposes the full screen title as a heading without limiting large text to one line", () => {
+it("exposes the full screen title as a heading without limiting large text to one line", async () => {
   const title = "Reading statistics for a reader with a long name";
-  render(<BackNavigationHeader title={title} />);
+  await render(<BackNavigationHeader title={title} />);
   const heading = screen.getByRole("header", { name: title });
   expect(heading.props.numberOfLines).toBeUndefined();
 });
 
-it("navigates back by default", () => {
-  render(<BackNavigationHeader />);
-  fireEvent.press(screen.getByText("Back"));
+it("navigates back by default", async () => {
+  await render(<BackNavigationHeader />);
+  await fireEvent.press(screen.getByText("Back"));
   expect(mockBack).toHaveBeenCalledTimes(1);
 });
 
-it("uses a caller back handler instead of navigating", () => {
+it("uses a caller back handler instead of navigating", async () => {
   const onBackPress = jest.fn();
-  render(<BackNavigationHeader onBackPress={onBackPress} rightElement={<Text>Action</Text>} />);
-  fireEvent.press(screen.getByText("Back"));
+  await render(
+    <BackNavigationHeader onBackPress={onBackPress} rightElement={<Text>Action</Text>} />,
+  );
+  await fireEvent.press(screen.getByText("Back"));
   expect(onBackPress).toHaveBeenCalledTimes(1);
   expect(mockBack).not.toHaveBeenCalled();
 });
 
-it("provides an accessible back action and returns direct links to Home", () => {
+it("provides an accessible back action and returns direct links to Home", async () => {
   mockCanGoBack.mockReturnValue(false);
-  render(<BackNavigationHeader />);
-  fireEvent.press(screen.getByRole("button", { name: "Back" }));
+  await render(<BackNavigationHeader />);
+  await fireEvent.press(screen.getByRole("button", { name: "Back" }));
   expect(mockNavigate).toHaveBeenCalledWith("/");
   expect(mockBack).not.toHaveBeenCalled();
 });

@@ -4,13 +4,13 @@ import { ReadingHistory } from "../ReadingHistory";
 
 jest.mock("@/hooks/useThemeColor", () => ({ useThemeColor: () => "#123456" }));
 
-it("does not fabricate prior reads", () => {
-  render(<ReadingHistory />);
+it("does not fabricate prior reads", async () => {
+  await render(<ReadingHistory />);
   expect(screen.queryByText("Reading history")).toBeNull();
 });
 
-it("shows accessible dated prior reads in API order, including missing start dates", () => {
-  render(
+it("shows accessible dated prior reads in API order, including missing start dates", async () => {
+  await render(
     <ReadingHistory
       previousReads={[
         { startedAt: "2026-01-01T00:00:00.000Z", finishedAt: "2026-02-02T00:00:00.000Z" },
@@ -25,8 +25,8 @@ it("shows accessible dated prior reads in API order, including missing start dat
   expect(screen.getByLabelText("Previous read 2. Finished Jun 3, 2025.")).toBeTruthy();
 });
 
-it("shows API progress entries independently, preserving zero and exact page counts", () => {
-  render(
+it("shows API progress entries independently, preserving zero and exact page counts", async () => {
+  await render(
     <ReadingHistory
       progressHistory={[
         { createdAt: "2026-10-23T00:00:00.000Z", currentPage: 657, totalPages: 658, percent: 100 },

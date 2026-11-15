@@ -5,7 +5,10 @@ import { useAuthorDirectory } from "@/hooks/useAuthorDirectory";
 import { useExplore, useLanguages } from "@/hooks/useBookhiveQuery";
 import ExploreScreen from "../../app/(tabs)/explore";
 
-jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
+  router: { push: jest.fn() },
+}));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
 jest.mock("react-native-safe-area-context", () => {
   const { View } = jest.requireActual("react-native");
@@ -83,163 +86,163 @@ beforeEach(() => {
 });
 
 describe("Explore author directory", () => {
-  it("explains empty featured selections and offers directories", () => {
+  it("explains empty featured selections and offers directories", async () => {
     mockExplore.data = { genres: [], topAuthors: [] };
-    const result = render(<ExploreScreen />);
+    const result = await render(<ExploreScreen />);
     expect(result.getByText("No featured genres yet")).toBeTruthy();
     expect(result.getAllByText("Book results use your selected language.")).toHaveLength(1);
     expect(result.getByRole("button", { name: "Browse all genres" })).toBeTruthy();
-    fireEvent.press(result.getByRole("tab", { name: "Authors" }));
+    await fireEvent.press(result.getByRole("tab", { name: "Authors" }));
     expect(result.getByText("No featured authors yet")).toBeTruthy();
     expect(result.getByRole("button", { name: "Browse author directory" })).toBeTruthy();
   });
 
   it.each(["loading", "fetching", "error"])(
     "does not call featured %s an empty success",
-    (state) => {
+    async (state) => {
       mockExplore.data = { genres: [], topAuthors: [] };
       mockExplore.isLoading = state === "loading";
       mockExplore.isFetching = state === "fetching";
       mockExplore.error = state === "error" ? new Error("Unavailable") : null;
-      const result = render(<ExploreScreen />);
+      const result = await render(<ExploreScreen />);
       expect(result.queryByText(/No featured/)).toBeNull();
-      fireEvent.press(result.getByRole("tab", { name: "Authors" }));
+      await fireEvent.press(result.getByRole("tab", { name: "Authors" }));
       expect(result.queryByText(/No featured/)).toBeNull();
     },
   );
 
-  it("only enables the genre directory while it is visible, preserving expansion", () => {
-    const screen = render(<ExploreScreen />);
+  it("only enables the genre directory while it is visible, preserving expansion", async () => {
+    const screen = await render(<ExploreScreen />);
     expect(exploreMock).toHaveBeenLastCalledWith("English", false);
-    fireEvent.press(screen.getByText("Browse all genres"));
+    await fireEvent.press(screen.getByText("Browse all genres"));
     expect(exploreMock).toHaveBeenLastCalledWith("English", true);
     expect(screen.getByText("Fantasy")).toBeTruthy();
     expect(screen.getByText(/Directory counts include all languages/)).toBeTruthy();
-    fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Authors"));
     expect(exploreMock).toHaveBeenLastCalledWith("English", false);
-    fireEvent.press(screen.getByText("Genres"));
+    await fireEvent.press(screen.getByText("Genres"));
     expect(exploreMock).toHaveBeenLastCalledWith("English", true);
     expect(screen.getByText("Show featured genres")).toBeTruthy();
   });
 
   it.each(["loading", "error"])(
     "keeps independent directories and language controls usable on featured %s",
-    (status) => {
+    async (status) => {
       mockExplore.data = undefined;
       mockExplore.isLoading = status === "loading";
       mockExplore.error = status === "error" ? new Error("Featured failed") : null;
-      const screen = render(<ExploreScreen />);
+      const screen = await render(<ExploreScreen />);
       expect(screen.getByLabelText("Change discovery language")).toBeTruthy();
-      fireEvent.press(screen.getByText("Browse all genres"));
+      await fireEvent.press(screen.getByText("Browse all genres"));
       expect(screen.getByText("Fantasy")).toBeTruthy();
       expect(screen.queryByText("Featured failed")).toBeNull();
-      fireEvent.press(screen.getByText("Authors"));
-      fireEvent.press(screen.getByText("Browse author directory"));
+      await fireEvent.press(screen.getByText("Authors"));
+      await fireEvent.press(screen.getByText("Browse author directory"));
       expect(screen.getByText("Ursula K. Le Guin")).toBeTruthy();
       expect(screen.queryByText("Featured failed")).toBeNull();
     },
   );
 
-  it("does not label the old author count as matches for a debouncing search", () => {
+  it("does not label the old author count as matches for a debouncing search", async () => {
     directoryMock.mockReturnValue({ ...directory(), total: 0, isDebouncing: true });
-    const screen = render(<ExploreScreen />);
-    fireEvent.press(screen.getByText("Authors"));
-    fireEvent.press(screen.getByText("Browse author directory"));
-    fireEvent.changeText(screen.getByLabelText("Search author directory"), "Borges");
+    const screen = await render(<ExploreScreen />);
+    await fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Browse author directory"));
+    await fireEvent.changeText(screen.getByLabelText("Search author directory"), "Borges");
     expect(screen.queryByText(/authors in this directory/)).toBeNull();
     expect(screen.queryByText(/No authors match/)).toBeNull();
   });
 
-  it("shows one browse category at a time without a second page title", () => {
-    const screen = render(<ExploreScreen />);
+  it("shows one browse category at a time without a second page title", async () => {
+    const screen = await render(<ExploreScreen />);
     expect(screen.queryByText("Browse books")).toBeNull();
     expect(screen.getByText("Browse all genres")).toBeTruthy();
     expect(screen.getByText("Genre 6")).toBeTruthy();
     expect(screen.queryByText("Genre 7")).toBeNull();
     expect(screen.queryByText("Author 1")).toBeNull();
     expect(screen.queryByText("Browse author directory")).toBeNull();
-    fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Authors"));
     expect(screen.queryByText("Browse all genres")).toBeNull();
     expect(screen.getByText("Browse author directory")).toBeTruthy();
     expect(screen.getByText("Author 5")).toBeTruthy();
     expect(screen.queryByText("Author 6")).toBeNull();
     expect(screen.queryByText("Genre 1")).toBeNull();
-    fireEvent.press(screen.getByText("Genres"));
+    await fireEvent.press(screen.getByText("Genres"));
     expect(screen.getByText("Browse all genres")).toBeTruthy();
   });
-  it("opens the shared language picker with a fresh catalogue request", () => {
-    const screen = render(<ExploreScreen />);
+  it("opens the shared language picker with a fresh catalogue request", async () => {
+    const screen = await render(<ExploreScreen />);
     const language = () => screen.getByLabelText("Change discovery language");
     expect(language().props.accessibilityState.expanded).toBe(false);
-    fireEvent.press(language());
+    await fireEvent.press(language());
     expect(language().props.accessibilityState.expanded).toBe(true);
     expect(languagesMock().refetch).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("radio", { name: "English", checked: true })).toBeTruthy();
-    fireEvent.press(screen.getByRole("radio", { name: "All Languages" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "All Languages" }));
     expect(mockSetLanguage).toHaveBeenCalledWith(null);
     expect(language().props.accessibilityState.expanded).toBe(false);
   });
-  it("retains author-directory input across category switches and disables its query while hidden", () => {
-    const screen = render(<ExploreScreen />);
-    fireEvent.press(screen.getByText("Authors"));
-    fireEvent.press(screen.getByText("Browse author directory"));
-    fireEvent.changeText(screen.getByLabelText("Search author directory"), "Le Guin");
-    fireEvent.press(screen.getByText("Genres"));
+  it("retains author-directory input across category switches and disables its query while hidden", async () => {
+    const screen = await render(<ExploreScreen />);
+    await fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Browse author directory"));
+    await fireEvent.changeText(screen.getByLabelText("Search author directory"), "Le Guin");
+    await fireEvent.press(screen.getByText("Genres"));
     expect(directoryMock).toHaveBeenLastCalledWith("Le Guin", "English", false);
     expect(screen.queryByLabelText("Search author directory")).toBeNull();
-    fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Authors"));
     expect(directoryMock).toHaveBeenLastCalledWith("Le Guin", "English", true);
     expect(screen.getByLabelText("Search author directory").props.value).toBe("Le Guin");
   });
-  it("makes book search and the community feed available from Discover", () => {
-    const screen = render(<ExploreScreen />);
+  it("makes book search and the community feed available from Discover", async () => {
+    const screen = await render(<ExploreScreen />);
     expect(screen.getByText("Discover")).toBeTruthy();
-    fireEvent.press(screen.getByLabelText("Search books"));
+    await fireEvent.press(screen.getByLabelText("Search books"));
     expect(router.push).toHaveBeenLastCalledWith("/search");
-    fireEvent.press(screen.getByLabelText("Community feed"));
+    await fireEvent.press(screen.getByLabelText("Community feed"));
     expect(router.push).toHaveBeenLastCalledWith("/feed");
   });
-  it("discloses the bounded directory, offers search/load more, and links existing author detail", () => {
+  it("discloses the bounded directory, offers search/load more, and links existing author detail", async () => {
     const state = directory();
     directoryMock.mockReturnValue(state);
-    const screen = render(<ExploreScreen />);
-    fireEvent.press(screen.getByText("Authors"));
-    fireEvent.press(screen.getByText("Browse author directory"));
+    const screen = await render(<ExploreScreen />);
+    await fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Browse author directory"));
     expect(screen.getByText(/top 500 eligible authors/)).toBeTruthy();
-    fireEvent.changeText(screen.getByLabelText("Search author directory"), "Le Guin");
+    await fireEvent.changeText(screen.getByLabelText("Search author directory"), "Le Guin");
     expect(directoryMock).toHaveBeenLastCalledWith("Le Guin", "English", true);
-    fireEvent.press(screen.getByText("Ursula K. Le Guin"));
+    await fireEvent.press(screen.getByText("Ursula K. Le Guin"));
     expect(router.push).toHaveBeenCalledWith("/explore/authors/Ursula%20K.%20Le%20Guin");
-    fireEvent.press(screen.getByText("Load more authors"));
+    await fireEvent.press(screen.getByText("Load more authors"));
     expect(state.fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps loaded rows visible beside a later-page error and retries that page", () => {
+  it("keeps loaded rows visible beside a later-page error and retries that page", async () => {
     const state = {
       ...directory(),
       error: new Error("Authors could not load"),
       isFetchNextPageError: true,
     };
     directoryMock.mockReturnValue(state);
-    const screen = render(<ExploreScreen />);
-    fireEvent.press(screen.getByText("Authors"));
-    fireEvent.press(screen.getByText("Browse author directory"));
+    const screen = await render(<ExploreScreen />);
+    await fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Browse author directory"));
     expect(screen.getByText("Ursula K. Le Guin")).toBeTruthy();
     expect(screen.getByText("Authors could not load")).toBeTruthy();
-    fireEvent.press(screen.getByText("Retry directory"));
+    await fireEvent.press(screen.getByText("Retry directory"));
     expect(state.fetchNextPage).toHaveBeenCalledTimes(1);
     expect(state.refetch).not.toHaveBeenCalled();
   });
 
-  it("hides both retry and load-more controls during author debounce", () => {
+  it("hides both retry and load-more controls during author debounce", async () => {
     const state = { ...directory(), isDebouncing: true };
     directoryMock.mockReturnValue(state);
-    const screen = render(<ExploreScreen />);
-    fireEvent.press(screen.getByText("Authors"));
-    fireEvent.press(screen.getByText("Browse author directory"));
+    const screen = await render(<ExploreScreen />);
+    await fireEvent.press(screen.getByText("Authors"));
+    await fireEvent.press(screen.getByText("Browse author directory"));
     expect(screen.queryByText("Load more authors")).toBeNull();
     directoryMock.mockReturnValue({ ...state, error: new Error("Stale query failed") });
-    screen.rerender(<ExploreScreen />);
+    await screen.rerender(<ExploreScreen />);
     expect(screen.queryByText("Retry directory")).toBeNull();
     expect(screen.getByText("Ursula K. Le Guin")).toBeTruthy();
   });

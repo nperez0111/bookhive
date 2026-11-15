@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
@@ -34,6 +34,7 @@ const SETUP_STEPS = [
 ];
 
 export default function SyncScreen() {
+  const router = useRouter();
   const { authState } = useAuth();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];

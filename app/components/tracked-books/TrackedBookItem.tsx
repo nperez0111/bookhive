@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 
 import { ActionSheet } from "@/components/ActionSheet";
 import { BookCard } from "@/components/BookCard";
@@ -26,6 +26,7 @@ export function TrackedBookItem({
   grid: boolean;
   onError: (message: string | null) => void;
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   const update = useUpdateBook();
   const [statusOpen, setStatusOpen] = useState(false);

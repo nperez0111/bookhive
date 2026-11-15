@@ -1,3 +1,4 @@
+import { pressInFlight } from "../../test/pressInFlight";
 /// <reference types="jest" />
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
@@ -51,16 +52,16 @@ it.each(["unmount", "session change"])(
     const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
     const pending = deferred();
     mockUpdateComment.mockReturnValueOnce(pending.promise);
-    const view = render(
+    const view = await render(
       <CommentsSection
         hiveId="bk_test"
         comments={[{ ...review, uri: "at://review", cid: "cid" }]}
       />,
     );
-    fireEvent.press(screen.getByText("Reply"));
-    fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "Old reply");
-    fireEvent.press(screen.getAllByText("Reply").at(-1)!);
-    if (reason === "unmount") view.unmount();
+    await pressInFlight(screen.getByText("Reply"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "Old reply");
+    await pressInFlight(screen.getAllByText("Reply").at(-1)!);
+    if (reason === "unmount") await view.unmount();
     else authSession.replace(null);
     await act(async () => {
       pending.reject(new Error("Obsolete failure"));
@@ -73,19 +74,16 @@ it.each(["unmount", "session change"])(
 it("blocks same-render duplicate replies, cancellation, reopening and draft edits while writing", async () => {
   const pending = deferred();
   mockUpdateComment.mockReturnValueOnce(pending.promise);
-  render(
+  await render(
     <CommentsSection hiveId="bk_test" comments={[{ ...review, uri: "at://review", cid: "cid" }]} />,
   );
-  fireEvent.press(screen.getByText("Reply"));
-  fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "First reply");
+  await pressInFlight(screen.getByText("Reply"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "First reply");
   const submit = screen.getAllByText("Reply").at(-1)!;
-  act(() => {
-    fireEvent.press(submit);
-    fireEvent.press(submit);
-  });
-  fireEvent.press(screen.getByText("Cancel"));
-  fireEvent.press(screen.getAllByText("Reply")[0]);
-  fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "Replacement draft");
+  await pressInFlight(submit, submit);
+  await pressInFlight(screen.getByText("Cancel"));
+  await pressInFlight(screen.getAllByText("Reply")[0]);
+  await fireEvent.changeText(screen.getByPlaceholderText("Write a reply..."), "Replacement draft");
   expect(screen.getByDisplayValue("First reply")).toBeTruthy();
   expect(mockUpdateComment).toHaveBeenCalledTimes(1);
   await act(async () => {
@@ -105,18 +103,18 @@ it.each(["edit", "reply"])(
       cid: "cid-b",
       review: "Other review",
     };
-    const view = render(<CommentsSection hiveId="bk_test" comments={[first]} />);
-    fireEvent.press(screen.getByText(mode === "edit" ? "Edit" : "Reply"));
+    const view = await render(<CommentsSection hiveId="bk_test" comments={[first]} />);
+    await pressInFlight(screen.getByText(mode === "edit" ? "Edit" : "Reply"));
     const input =
       mode === "edit"
         ? screen.getByLabelText("Edit your review")
         : screen.getByPlaceholderText("Write a reply...");
-    fireEvent.changeText(input, "Keep with record A");
-    view.rerender(<CommentsSection hiveId="bk_test" comments={[second, first]} />);
+    await fireEvent.changeText(input, "Keep with record A");
+    await view.rerender(<CommentsSection hiveId="bk_test" comments={[second, first]} />);
     expect(screen.getByDisplayValue("Keep with record A")).toBeTruthy();
     if (mode === "reply") {
       await act(async () => {
-        fireEvent.press(screen.getAllByText("Reply").at(-1)!);
+        await pressInFlight(screen.getAllByText("Reply").at(-1)!);
       });
       expect(mockUpdateComment).toHaveBeenCalledWith(
         expect.objectContaining({ parentUri: "at://review-a", comment: "Keep with record A" }),
@@ -128,14 +126,11 @@ it.each(["edit", "reply"])(
 it("blocks same-render duplicate review saves", async () => {
   const pending = deferred();
   mockUpdateBook.mockReturnValueOnce(pending.promise);
-  render(<CommentsSection hiveId="bk_test" comments={[review]} />);
-  fireEvent.press(screen.getByText("Edit"));
-  fireEvent.changeText(screen.getByLabelText("Edit your review"), "One write");
+  await render(<CommentsSection hiveId="bk_test" comments={[review]} />);
+  await pressInFlight(screen.getByText("Edit"));
+  await fireEvent.changeText(screen.getByLabelText("Edit your review"), "One write");
   const save = screen.getByText("Save");
-  act(() => {
-    fireEvent.press(save);
-    fireEvent.press(save);
-  });
+  await pressInFlight(save, save);
   expect(mockUpdateBook).toHaveBeenCalledTimes(1);
   expect(mockUpdateBook).toHaveBeenCalledWith({ hiveId: "bk_test", review: "One write" });
   expect(mockUpdateComment).not.toHaveBeenCalled();
@@ -146,10 +141,10 @@ it("blocks same-render duplicate review saves", async () => {
 
 it("permits clearing a review", async () => {
   mockUpdateBook.mockResolvedValue({ success: true });
-  render(<CommentsSection hiveId="bk_test" comments={[review]} />);
-  fireEvent.press(screen.getByText("Edit"));
-  fireEvent.changeText(screen.getByLabelText("Edit your review"), "");
-  fireEvent.press(screen.getByText("Save"));
+  await render(<CommentsSection hiveId="bk_test" comments={[review]} />);
+  await pressInFlight(screen.getByText("Edit"));
+  await fireEvent.changeText(screen.getByLabelText("Edit your review"), "");
+  await pressInFlight(screen.getByText("Save"));
   await waitFor(() =>
     expect(mockUpdateBook).toHaveBeenCalledWith({ hiveId: "bk_test", review: "" }),
   );
@@ -158,10 +153,10 @@ it("permits clearing a review", async () => {
 it("keeps a failed review draft visible and reports the error", async () => {
   const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
   mockUpdateBook.mockRejectedValue(new Error("Offline"));
-  render(<CommentsSection hiveId="bk_test" comments={[review]} />);
-  fireEvent.press(screen.getByText("Edit"));
-  fireEvent.changeText(screen.getByLabelText("Edit your review"), "Keep this draft");
-  fireEvent.press(screen.getByText("Save"));
+  await render(<CommentsSection hiveId="bk_test" comments={[review]} />);
+  await pressInFlight(screen.getByText("Edit"));
+  await fireEvent.changeText(screen.getByLabelText("Edit your review"), "Keep this draft");
+  await pressInFlight(screen.getByText("Save"));
   await waitFor(() => expect(alert).toHaveBeenCalledWith("Error", "Failed to save review"));
   expect(screen.getByDisplayValue("Keep this draft")).toBeTruthy();
   alert.mockRestore();

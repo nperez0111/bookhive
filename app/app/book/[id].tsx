@@ -22,7 +22,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
 import { formatAuthors } from "@/utils/personalLibrary";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
@@ -43,6 +43,7 @@ import { AddToListSheet } from "@/components/AddToListSheet";
 import { HtmlToText } from "@/utils/htmlToText";
 
 function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: string }) {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const backgroundColor = useThemeColor({}, "background");
@@ -52,7 +53,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [progressEditing, setProgressEditing] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const bottom = useBottomTabOverflow();
 
   const bookQuery = useBookInfo(hiveId);
@@ -204,7 +205,10 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     router.push(`/profile/${userDid}`);
   };
 
-  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View | null>) => {
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => {
     // Scroll to the reply form after a short delay to ensure it's rendered
     setTimeout(() => {
       if (replyFormRef.current && scrollViewRef.current) {

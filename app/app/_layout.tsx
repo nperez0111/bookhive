@@ -129,10 +129,10 @@ function AuthenticatedNavigation() {
   const { isAuthenticated } = useAuth();
   return (
     <Stack screenOptions={{ headerShown: false, gestureEnabled: true }}>
-      <Stack.Protected guard={!isAuthenticated}>
+      <Stack.Protected guard={!isAuthenticated} redirectTo="/(tabs)">
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isAuthenticated} redirectTo="/(auth)/login">
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="search" />
         <Stack.Screen name="feed" />

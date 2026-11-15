@@ -3,10 +3,10 @@ import { fireEvent, render } from "@testing-library/react-native";
 import SearchScreen from "../../app/search";
 import LibraryScreen from "../../app/library";
 import { router } from "expo-router";
-import { FlatList } from "react-native";
 
 let mockQuery: any;
 jest.mock("expo-router", () => ({
+  useRouter: () => jest.requireMock("expo-router").router,
   router: { push: jest.fn(), canGoBack: jest.fn(() => true), back: jest.fn(), navigate: jest.fn() },
 }));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
@@ -102,65 +102,70 @@ beforeEach(() => {
 
 test.each([SearchScreen, LibraryScreen])(
   "keeps loaded books and routes retries in %p",
-  (Screen) => {
-    const view = render(<Screen />);
+  async (Screen) => {
+    const view = await render(<Screen />);
     if (Screen === SearchScreen)
-      fireEvent.changeText(
+      await fireEvent.changeText(
         view.getByLabelText("Search catalogue by title, author or ISBN"),
         "Earthsea",
       );
     expect(view.getByText("Earthsea")).toBeTruthy();
     mockQuery.isFetching = true;
-    view.rerender(<Screen />);
-    fireEvent.press(view.getByText("Load more"));
+    await view.rerender(<Screen />);
+    await fireEvent.press(view.getByText("Load more"));
     expect(mockQuery.fetchNextPage).not.toHaveBeenCalled();
     mockQuery.isFetching = false;
     mockQuery.error = new Error("Page failed");
     mockQuery.isFetchNextPageError = true;
-    view.rerender(<Screen />);
+    await view.rerender(<Screen />);
     expect(view.getByText("Earthsea")).toBeTruthy();
     expect(view.queryByText("Load more")).toBeNull();
     // Library may also show the unfiltered count query's error in its header.
-    fireEvent.press(view.getAllByText("Retry page").at(-1)!);
+    await fireEvent.press(view.getAllByText("Retry page").at(-1)!);
     expect(mockQuery.fetchNextPage).toHaveBeenCalledTimes(1);
     expect(mockQuery.refetch).not.toHaveBeenCalled();
     mockQuery.isFetchNextPageError = false;
-    view.rerender(<Screen />);
-    fireEvent.press(view.getAllByText("Retry page").at(-1)!);
+    await view.rerender(<Screen />);
+    await fireEvent.press(view.getAllByText("Retry page").at(-1)!);
     expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
   },
 );
 
-test("search retains its controls while results scroll and allows first-tap navigation with a keyboard", () => {
-  const view = render(<SearchScreen />);
-  fireEvent.changeText(
+test("search retains its controls while results scroll and allows first-tap navigation with a keyboard", async () => {
+  const view = await render(<SearchScreen />);
+  await fireEvent.changeText(
     view.getByLabelText("Search catalogue by title, author or ISBN"),
     "Earthsea",
   );
-  const list = view.UNSAFE_getByType(FlatList);
+  const list = view.container.queryAll(
+    (node) => node.props.keyboardShouldPersistTaps === "handled",
+  )[0];
   expect(list.props.keyboardShouldPersistTaps).toBe("handled");
   expect(list.props.keyboardDismissMode).toBe("on-drag");
   expect(view.getByText("1+ results")).toBeTruthy();
   expect(view.getByText("Book language: en")).toBeTruthy();
-  fireEvent.press(view.getByText("Earthsea"));
+  await fireEvent.press(view.getByText("Earthsea"));
   expect(router.push).toHaveBeenCalledWith("/book/bk_one");
-  fireEvent.press(view.getByRole("button", { name: "Clear search" }));
+  await fireEvent.press(view.getByRole("button", { name: "Clear search" }));
   expect(view.getByText("Find your next book, or one you already read.")).toBeTruthy();
-  fireEvent.press(view.getByRole("button", { name: "Back" }));
+  await fireEvent.press(view.getByRole("button", { name: "Back" }));
   expect(router.back).toHaveBeenCalled();
 });
 
-test("search hides stale counts and page actions while the next query debounces", () => {
-  const view = render(<SearchScreen />);
-  fireEvent.changeText(
+test("search hides stale counts and page actions while the next query debounces", async () => {
+  const view = await render(<SearchScreen />);
+  await fireEvent.changeText(
     view.getByLabelText("Search catalogue by title, author or ISBN"),
     "Earthsea",
   );
   expect(view.getByText("Book language: en")).toBeTruthy();
   expect(view.getByText("1+ results")).toBeTruthy();
   mockQuery.isDebouncing = true;
-  view.rerender(<SearchScreen />);
-  fireEvent.changeText(view.getByLabelText("Search catalogue by title, author or ISBN"), "Dune");
+  await view.rerender(<SearchScreen />);
+  await fireEvent.changeText(
+    view.getByLabelText("Search catalogue by title, author or ISBN"),
+    "Dune",
+  );
   expect(view.queryByText("1+ results")).toBeNull();
   expect(view.queryByText("Load more")).toBeNull();
   expect(view.queryByText("Earthsea")).toBeNull();

@@ -1,6 +1,6 @@
 import { BookCard } from "@/components/BookCard";
 import { getBaseUrl } from "@/context/auth";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { catalogueCoverUrl } from "@/utils/catalogueCover";
@@ -14,6 +14,7 @@ interface BookGridItemProps {
 }
 
 export function BookGridItem({ book, style, status, numColumns = 2 }: BookGridItemProps) {
+  const router = useRouter();
   const handlePress = () => {
     if (status) {
       // Navigate to book detail and pass context about where we came from

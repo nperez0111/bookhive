@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ActionSheet } from "@/components/ActionSheet";
@@ -13,6 +13,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { useScreenTopInset } from "@/hooks/useScreenTopInset";
 
 export default function MyBooksScreen() {
+  const router = useRouter();
   const { authState } = useAuth();
   const colors = Colors[useColorScheme() ?? "light"];
   const top = useScreenTopInset();

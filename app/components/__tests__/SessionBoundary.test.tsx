@@ -109,7 +109,7 @@ afterEach(async () => {
 
 it("replaces root clients/queues on A → B and A → logout → A, synchronously aborting and clearing old work", async () => {
   const previous = mockClient;
-  render(<RootLayout />);
+  await render(<RootLayout />);
   await waitFor(() => expect(mockClient).not.toBe(previous));
   const alice = mockClient;
   const aliceScope = authSession.capture();
@@ -125,7 +125,7 @@ it("replaces root clients/queues on A → B and A → logout → A, synchronousl
       },
     })
     .catch(() => {});
-  act(() => {
+  await act(() => {
     authSession.replace({ did: "did:plc:bob", handle: "bob.test", sid: "bob-session" });
     // These checks run before React can mount the next client.
     expect(aliceScope.signal.aborted).toBe(true);
@@ -138,7 +138,7 @@ it("replaces root clients/queues on A → B and A → logout → A, synchronousl
   expect(bookMutationQueue(bob)).not.toBe(aliceQueue);
   expect(bob.getQueryData(["private"])).toBeUndefined();
 
-  act(() => authSession.replace(mockAccount));
+  await act(() => authSession.replace(mockAccount));
   const aliceAgain = mockClient;
   expect(aliceAgain).not.toBe(alice);
   expect(aliceAgain).not.toBe(bob);
@@ -150,7 +150,7 @@ it("replaces root clients/queues on A → B and A → logout → A, synchronousl
     await signedOut;
   });
   const anonymous = mockClient;
-  act(() => authSession.replace(mockAccount));
+  await act(() => authSession.replace(mockAccount));
   expect(mockClient).not.toBe(anonymous);
   expect(mockClient).not.toBe(aliceAgain);
   expect(bookMutationQueue(mockClient)).not.toBe(bookMutationQueue(aliceAgain));
@@ -159,7 +159,7 @@ it("replaces root clients/queues on A → B and A → logout → A, synchronousl
 
 it("real signOut cannot clear B when A's credential deletion finishes later", async () => {
   const previous = mockClient;
-  render(<RootLayout />);
+  await render(<RootLayout />);
   await waitFor(() => expect(mockClient).not.toBe(previous));
   let finishStorage!: () => void;
   jest.mocked(SecureStore.deleteItemAsync).mockReturnValueOnce(
@@ -171,13 +171,13 @@ it("real signOut cannot clear B when A's credential deletion finishes later", as
   const oldClient = mockClient;
   oldClient.setQueryData(["private"], "alice");
   let signOut!: Promise<void>;
-  act(() => {
+  await act(() => {
     signOut = mockSignOut();
     expect(oldScope.signal.aborted).toBe(true);
     expect(oldClient.getQueryCache().getAll()).toHaveLength(0);
   });
   const bob = { did: "did:plc:bob", handle: "bob.test", sid: "bob-session" };
-  act(() => authSession.replace(bob));
+  await act(() => authSession.replace(bob));
   const bobClient = mockClient;
   bobClient.setQueryData(["private"], "bob");
   await waitFor(() => expect(finishStorage).toBeDefined());
@@ -192,7 +192,7 @@ it("real signOut cannot clear B when A's credential deletion finishes later", as
 
 it("retries transient reads but not auth failures, cancellation or writes", async () => {
   const previous = mockClient;
-  render(<RootLayout />);
+  await render(<RootLayout />);
   await waitFor(() => expect(mockClient).not.toBe(previous));
   const defaults = mockClient.getDefaultOptions();
   const retry = defaults.queries!.retry as (count: number, error: Error) => boolean;

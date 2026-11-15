@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { MotionPressable } from "@/components/motion/MotionPressable";
 
@@ -22,6 +22,7 @@ export function HomeShelvesSection({
   shelves: ShelfItem[];
   onCreatePress: () => void;
 }) {
+  const router = useRouter();
   const colors = Colors[useColorScheme() ?? "light"];
   return (
     <View style={styles.section}>

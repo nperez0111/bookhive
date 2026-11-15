@@ -125,8 +125,8 @@ function MyBooksScreen() {
   );
 }
 
-function renderNavigation(initialUrl = "/") {
-  return renderRouter(
+async function renderNavigation(initialUrl = "/") {
+  return await renderRouter(
     {
       ...detailScreens,
       _layout: RootLayout,
@@ -143,33 +143,33 @@ function renderNavigation(initialUrl = "/") {
 }
 
 it("pops detail screens back through their origin instead of switching hidden tabs", async () => {
-  const navigation = renderNavigation();
+  const navigation = await renderNavigation();
   await waitFor(() => expect(screen.getByText("Signed in as alice.test")).toBeTruthy());
   for (const title of ["Home", "My Books", "Discover", "Profile"]) {
     expect(screen.getByText(title)).toBeOnTheScreen();
   }
-  act(() => router.navigate("/my-books"));
+  await act(() => router.navigate("/my-books"));
   await waitFor(() => expect(screen.getByText("My Books collection")).toBeTruthy());
-  fireEvent.press(screen.getByText("Local state: 0"));
-  act(() => router.push("/search"));
+  await fireEvent.press(screen.getByText("Local state: 0"));
+  await act(() => router.push("/search"));
   await waitFor(() => expect(navigation.getPathname()).toBe("/search"));
-  act(() => router.push("/book/bk_test"));
+  await act(() => router.push("/book/bk_test"));
   await waitFor(() => expect(navigation.getPathname()).toBe("/book/bk_test"));
   expect(router.canGoBack()).toBe(true);
-  act(() => router.back());
+  await act(() => router.back());
   await waitFor(() => expect(navigation.getPathname()).toBe("/search"));
-  act(() => router.back());
+  await act(() => router.back());
   await waitFor(() => expect(navigation.getPathname()).toBe("/my-books"));
   expect(screen.getByText("My Books collection")).toBeTruthy();
   expect(screen.getByText("Local state: 1")).toBeTruthy();
 });
 
 it("opens a signed-in book deep link without inventing a previous page", async () => {
-  const navigation = renderNavigation("/book/bk_test");
+  const navigation = await renderNavigation("/book/bk_test");
   await waitFor(() => expect(screen.getByText("Detail: book/[id]")).toBeTruthy());
   expect(navigation.getPathname()).toBe("/book/bk_test");
   expect(router.canGoBack()).toBe(false);
-  fireEvent.press(screen.getByRole("button", { name: "Back" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Back" }));
   await waitFor(() => expect(navigation.getPathname()).toBe("/"));
   expect(screen.getByText("Signed in as alice.test")).toBeTruthy();
 });
@@ -177,26 +177,26 @@ it("opens a signed-in book deep link without inventing a previous page", async (
 it("keeps transient failures signed in and explicitly signs out into the protected login route", async () => {
   // Use the real root Stack.Protected, AuthProvider/session scope and theme provider.
   // Only leaf screens and native services are replaced, not navigation or auth state.
-  const navigation = renderNavigation();
+  const navigation = await renderNavigation();
   await waitFor(() => expect(screen.getByText("Signed in as alice.test")).toBeTruthy());
   expect(screen.getByText("Temporarily unavailable")).toBeTruthy();
   expect(getAuthState()).toEqual(mockAccount);
   expect(mockSecureDelete).not.toHaveBeenCalled();
   expect(screen.queryByText("Sign In")).toBeNull();
-  fireEvent.press(screen.getByText("Permission failure"));
+  await fireEvent.press(screen.getByText("Permission failure"));
   expect(screen.getByText("Permission Denied")).toBeTruthy();
   expect(screen.queryByText("Sign In")).toBeNull();
   expect(getAuthState()).toEqual(mockAccount);
   // Restore the retryable error before testing the explicit expired-session action.
-  fireEvent.press(screen.getByText("Temporary failure"));
+  await fireEvent.press(screen.getByText("Temporary failure"));
   const oldSession = authSession.capture();
 
-  fireEvent.press(screen.getByText("Try Again"));
+  await fireEvent.press(screen.getByText("Try Again"));
   expect(screen.getByText("Your session has expired. Please sign in again.")).toBeTruthy();
   expect(getAuthState()).toEqual(mockAccount);
   expect(screen.queryByText("Login screen")).toBeNull();
 
-  fireEvent.press(screen.getByText("Sign In"));
+  await fireEvent.press(screen.getByText("Sign In"));
   await waitFor(() => expect(screen.getByText("Login screen")).toBeTruthy());
   await waitFor(() => expect(mockSecureDelete).toHaveBeenCalledWith("authState"));
   expect(getAuthState()).toBeNull();
@@ -205,13 +205,13 @@ it("keeps transient failures signed in and explicitly signs out into the protect
   expect(navigation.getPathname()).toBe("/login");
   expect(screen.queryByText("Signed in as alice.test")).toBeNull();
   // A stale navigation into the now-protected tabs must not bounce login back out.
-  act(() => router.replace("/(tabs)"));
+  await act(() => router.replace("/(tabs)"));
   await waitFor(() => expect(navigation.getSegments()).toEqual(["(auth)", "login"]));
   expect(screen.getByText("Login screen")).toBeTruthy();
   expect(getAuthState()).toBeNull();
   for (const route of Object.keys(detailScreens)) {
     const path = `/${route.replace(/\/index$/, "").replace(/\[[^\]]+\]/g, "test")}`;
-    act(() => router.replace(path as Parameters<typeof router.replace>[0]));
+    await act(() => router.replace(path as Parameters<typeof router.replace>[0]));
     await waitFor(() => expect(navigation.getSegments()).toEqual(["(auth)", "login"]));
     expect(screen.getByText("Login screen")).toBeTruthy();
   }

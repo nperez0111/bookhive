@@ -22,10 +22,11 @@ import { useThemeColor } from "@/hooks/useThemeColor";
 import { calendarDate } from "@/utils/calendarDate";
 import { Ionicons } from "@expo/vector-icons";
 import { isThisMonth, isThisYear } from "date-fns";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 
 export default function HomeScreen() {
+  const router = useRouter();
   const profile = useProfile();
   const { authState } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -66,7 +67,7 @@ export default function HomeScreen() {
         if (authState?.did) router.push(`/profile/${authState.did}/stats` as any);
       }
     },
-    [authState],
+    [authState, router],
   );
 
   if (profile.isLoading && !isRefreshing && !profile.data) {

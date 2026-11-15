@@ -90,8 +90,10 @@ Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/i
 
 ## 📱 Mobile App Development
 
-This workspace uses **Expo SDK 57.0.31 / React Native 0.86.3 / React 19.2.3**.
-Native versions follow Expo's SDK 57 compatibility matrix, not the latest SDK 58.
+This workspace uses **Expo SDK 58.0.25 / React Native 0.88.1 / React 19.3.0**.
+Native versions follow Expo's stable SDK 58 compatibility matrix, not canary tags.
+Use Node **22.13+ on the 22 line, 24.3+ on the 24 line, or 26+** (RN 0.88's
+supported engines); local checks use Node 26.13.1 and pinned Bun 1.4.4.
 Install with Bun from the repository root; `bun.lock` is shared with the server.
 
 ### Getting Started
@@ -111,7 +113,7 @@ Install with Bun from the repository root; `bun.lock` is shared with the server.
 3. Choose your platform:
    - **iOS Simulator**: Press `i` in the terminal
    - **Android Emulator**: Press `a` in the terminal
-   - **Physical Device**: Use a matching SDK 57 development build. A newer Expo Go may not support SDK 57.
+   - **Physical Device**: Use a matching SDK 58 development build, not an older SDK 57 binary.
 
 ### Local iOS simulator testing in Paseo
 
@@ -139,6 +141,8 @@ bun run ios --device "iPhone 17 Pro" --no-bundler
 
 This generates the ignored `ios/` project, installs CocoaPods, compiles the native
 development client and opens Simulator. Xcode and CocoaPods must be installed.
+On SDK upgrades, inspect and preserve the old native directory outside the repo
+before regenerating it; never blindly delete custom native edits with `prebuild --clean`.
 Do not combine `--port` with `--no-bundler`; Expo rejects that combination. Metro
 already runs separately on its default port 8081. For later sessions, start both
 scripts and press `i` in the Metro terminal to reopen the installed client.
@@ -162,12 +166,17 @@ bun run typecheck
 bun run lint
 bun run export:check
 bunx expo install --check
+bunx expo-doctor
 ```
 
-Jest uses the Expo preset and React Native Testing Library. Its transform allowlist
-supports Bun's isolated `.bun` dependency paths. React and the test renderer must
-stay on the same exact version; the server workspace intentionally uses a different
-React patch. Babel runtime is explicit because isolated installs do not expose
+Jest 30 uses the SDK 58 Expo preset and React Native Testing Library 14 with
+`test-renderer` 1.3 (React 19.3), not deprecated `react-test-renderer`. All renderer
+operations and events are asynchronous. Pending-operation regression tests use
+`test/pressInFlight.ts` to inspect state before resolving controlled requests;
+same-render duplicate submissions dispatch before the act flush. Its transform
+allowlist supports Bun's isolated `.bun` dependency paths, and mocks cover Expo's
+native-only dev socket and FormData patch across peer copies. The server workspace
+intentionally retains React 19.2.7. Babel runtime is explicit because isolated installs do not expose
 transitive Babel helpers to application imports.
 
 CI runs mobile unit tests, TypeScript, ESLint, and iOS/Android JavaScript exports separately
@@ -177,13 +186,13 @@ and is disposable (do not commit it).
 
 ### Native releases and updates
 
-Version **1.3.0** introduces a new native runtime (`runtimeVersion: appVersion`),
-including SDK 57, SecureStore, FileSystem, and Sharing. Build and install a new
+Version **1.4.0** introduces a new native runtime (`runtimeVersion: appVersion`),
+including SDK 58 and its compatible native modules. Build and install a new
 binary before publishing updates for that runtime; an OTA update cannot upgrade
-an installed SDK 56 binary or add native modules. Validate OAuth, secure session
+an installed SDK 57 (or older) binary or add native modules. Validate OAuth, secure session
 restoration, ebook upload/download/sharing, and offline behavior on real devices.
 
-EAS scripts use `bunx eas-cli@25.3.0`; `eas.json` requires that same version.
+EAS scripts use `bunx eas-cli@27.10.0`; `eas.json` requires that same version.
 Use `bun run ios:build` or `bun run android:build` for native builds, and the
 matching `ios:submit` / `android:submit` script after device validation. Signing
 and store credentials must be configured separately; these checks do not publish.
@@ -194,11 +203,15 @@ the root lockfile with `bun install` after a version bump. EAS manages productio
 build numbers remotely; local build-number fields are version-derived defaults.
 
 On Bun's isolated workspace install, Expo Doctor currently reports same-version
-duplicates for Constants, FileSystem, Font, Linking, and Symbols in different
+duplicates for Constants, FileSystem, Font, Linking, and StatusBar in different
 peer-context directories. Expo's autolinking/Metro resolution is enabled and both
 mobile exports pass, but do not treat exports as proof that this warning is harmless
 in a signed native build. Check autolinking and run a native build before release.
 Do not delete the shared lockfile or change server React just to silence Doctor.
+The SDK 58 iPhone 17 Pro simulator build (iOS 26.4) succeeds with Xcode 26.4.1 and
+CocoaPods 1.17.0. Simulator QA covers native navigation, read-only book disclosures,
+offline library errors, themes and large text; signed-device and Android checks remain
+separate release gates.
 
 ## 🏗️ Architecture
 
