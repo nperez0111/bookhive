@@ -1,5 +1,5 @@
+/// <reference types="bun" />
 import { resolve } from "path";
-import { $ } from "bun";
 
 const ROOT = resolve(import.meta.dir, "..");
 const APP_JSON = resolve(ROOT, "app.json");
@@ -61,7 +61,7 @@ async function main() {
 
   let input = "";
   for await (const line of console) {
-    input = line.trim().toLowerCase();
+    input = line.trim();
     break;
   }
 
@@ -101,13 +101,7 @@ async function main() {
     Bun.write(PACKAGE_JSON, JSON.stringify(packageJson, null, 2) + "\n"),
   ]);
 
-  if (changed) {
-    await $`git add app.json package.json`.cwd(ROOT);
-    await $`git commit -m ${`chore(release): version ${newVersion} of mobile app`}`.cwd(ROOT);
-    console.log(`  Committed: chore(release): version ${newVersion} of mobile app\n`);
-  }
-
-  console.log("  Done ✓\n");
+  console.log("  Updated files only; review and commit separately. No git commands were run.\n");
 }
 
 void main();

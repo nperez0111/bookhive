@@ -1,7 +1,7 @@
 # 🐝 BookHive - A Better Goodreads
 
 <p align="center">
-    <a href="LICENSE" target="_blank">
+    <a href="../LICENSE" target="_blank">
         <img src="https://img.shields.io/github/license/nperez0111/bookhive.svg" alt="GitHub license">
     </a>
     <a href="https://github.com/nperez0111/bookhive/actions" target="_blank">
@@ -23,8 +23,8 @@ Goodreads, but better, built on Bluesky.
 - OAuth with Bluesky with session storage, and persistence
 - Defined Lexicons for books (with reviews, ratings, etc)
 - Displaying a feed of new books & reviews from the firehose
-- Works without JavaScript, but has some dynamic features
-- All data is stored in your PDS, and can be used by other apps
+- Native iOS and Android applications built with Expo
+- Public reading records live in your PDS; private ebooks and sync data live on BookHive
 
 I'll be posting updates on this [Bluesky thread](https://bsky.app/profile/nickthesick.com/post/3lb7ilmgrxk2u) to share my progress, but this is usable right now on <https://bookhive.buzz>.
 
@@ -54,14 +54,21 @@ BookHive is your decentralized alternative to Goodreads, offering a beautiful, m
 **✨ Key Features:**
 • OAuth integration with Bluesky for seamless login
 • Beautiful book covers and detailed information
-• Reading status tracking (currently reading, want to read, completed)
+• My Books search, filters, ownership, sorting and reading status (including abandoned)
+• Editable reviews, half-star ratings, progress and reread history
+• Ordered public shelves with tags and private ebook shelves
+• Goodreads, StoryGraph and Hardcover imports
+• Ebook upload, search, download and sharing; KOReader/OPDS setup
+• Account re-sync and confirmed BookHive account deletion
 • Social features with Bluesky integration
 • Dark/light theme support
-• Offline reading list management
+• Cached reading lists while offline; network access is required to confirm writes
 • Cross-platform sync via Bluesky
 
 **🔒 Your Data, Your Control:**
-Unlike traditional book platforms, BookHive stores all your reading data on Bluesky's decentralized network. This means you can take your books, reviews, and reading history with you to other apps, and you're not locked into a single platform.
+Public reading records live on Bluesky's decentralized network, so your books,
+reviews and reading history remain portable. Uploaded ebooks and reader-sync data
+are private BookHive storage, not public PDS records.
 
 **🌟 Join the Hive:**
 Start building your reading community today! BookHive is actively developed with regular updates and new features. Have a feature request? We'd love to hear from you!
@@ -81,67 +88,136 @@ The goal is to:
 
 Have a feature request? [Open an issue](https://github.com/nperez0111/bookhive/issues/new)!
 
-## 🧑‍💻 Development
-
-To install dependencies:
-
-```bash
-pnpm install
-```
-
-Copy `.env.example` to `.env` and fill in the values.
-
-To run:
-
-```bash
-pnpm run dev
-```
-
 ## 📱 Mobile App Development
 
-This is the React Native/Expo mobile app for BookHive.
+This workspace uses **Expo SDK 58.0.25 / React Native 0.88.1 / React 19.3.0**.
+Native versions follow Expo's stable SDK 58 compatibility matrix, not canary tags.
+Use Node **22.13+ on the 22 line, 24.3+ on the 24 line, or 26+** (RN 0.88's
+supported engines); local checks use Node 26.13.1 and pinned Bun 1.4.4.
+Install with Bun from the repository root; `bun.lock` is shared with the server.
 
 ### Getting Started
 
-1. Install dependencies:
+1. Install dependencies from the repository root:
 
    ```bash
-   npm install
+    bun install --frozen-lockfile
    ```
 
-2. Start the development server:
+2. Start Metro from `app/`:
 
    ```bash
-   npx expo start
+    bun run start
    ```
 
 3. Choose your platform:
    - **iOS Simulator**: Press `i` in the terminal
    - **Android Emulator**: Press `a` in the terminal
-   - **Physical Device**: Scan the QR code with Expo Go app
+   - **Physical Device**: Use a matching SDK 58 development build, not an older SDK 57 binary.
+
+### Local iOS simulator testing in Paseo
+
+Start these workspace scripts from Paseo, or run the commands at the repository root:
+
+```bash
+paseo script start dev:local
+paseo script start ios
+```
+
+Both servers run in supervised Paseo terminals. The backend and OAuth callback use
+`http://127.0.0.1:5199`; Metro uses `http://localhost:8081`. The `ios` script sets
+`EXPO_PUBLIC_API_URL` explicitly so testing never silently uses production.
+Loopback OAuth needs no public tunnel or hosted client metadata. This setup is for
+the simulator on this Mac, not physical devices. Stop the regular `dev` script
+first because it also uses port 5199. Open the direct URLs above rather than
+Paseo's automatically allocated proxy links for these fixed-port scripts.
+
+For the first install, or after changing native dependencies, run in a Paseo
+terminal with `app/` as its working directory:
+
+```bash
+bun run ios --device "iPhone 17 Pro" --no-bundler
+```
+
+This generates the ignored `ios/` project, installs CocoaPods, compiles the native
+development client and opens Simulator. Xcode and CocoaPods must be installed.
+On SDK upgrades, inspect and preserve the old native directory outside the repo
+before regenerating it; never blindly delete custom native edits with `prebuild --clean`.
+Do not combine `--port` with `--no-bundler`; Expo rejects that combination. Metro
+already runs separately on its default port 8081. For later sessions, start both
+scripts and press `i` in the Metro terminal to reopen the installed client.
+JavaScript edits use Fast Refresh; native dependency/config changes need a rebuild.
+
+If Xcode rejects all build destinations with an "iOS … is not installed" error,
+install the simulator runtime matching the selected Xcode under
+Xcode > Settings > Components, then retry the build. The existing simulator may
+boot even when Xcode cannot yet use it as a build destination. Runtime downloads
+can be several GB; check free disk space first.
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Watch component/unit tests (Jest, not Bun's native test runner)
 bun run test
 
-# Run tests in watch mode
-bun run test
-
-# Run tests once
+# Deterministic CI checks
 bun run test:run
-
-# Run tests with UI
-bun run test:ui
+bun run typecheck
+bun run lint
+bun run export:check
+bunx expo install --check
+bunx expo-doctor
 ```
+
+Jest 30 uses the SDK 58 Expo preset and React Native Testing Library 14 with
+`test-renderer` 1.3 (React 19.3), not deprecated `react-test-renderer`. All renderer
+operations and events are asynchronous. Pending-operation regression tests use
+`test/pressInFlight.ts` to inspect state before resolving controlled requests;
+same-render duplicate submissions dispatch before the act flush. Its transform
+allowlist supports Bun's isolated `.bun` dependency paths, and mocks cover Expo's
+native-only dev socket and FormData patch across peer copies. The server workspace
+intentionally retains React 19.2.7. Babel runtime is explicit because isolated installs do not expose
+transitive Babel helpers to application imports.
+
+CI runs mobile unit tests, TypeScript, ESLint, and iOS/Android JavaScript exports separately
+from server tests. Exporting validates bundling, **not** native compilation, signing,
+or device behavior. `dist/check/` contains export output
+and is disposable (do not commit it).
+
+### Native releases and updates
+
+Version **1.4.0** introduces a new native runtime (`runtimeVersion: appVersion`),
+including SDK 58 and its compatible native modules. Build and install a new
+binary before publishing updates for that runtime; an OTA update cannot upgrade
+an installed SDK 57 (or older) binary or add native modules. Validate OAuth, secure session
+restoration, ebook upload/download/sharing, and offline behavior on real devices.
+
+EAS scripts use `bunx eas-cli@27.10.0`; `eas.json` requires that same version.
+Use `bun run ios:build` or `bun run android:build` for native builds, and the
+matching `ios:submit` / `android:submit` script after device validation. Signing
+and store credentials must be configured separately; these checks do not publish.
+`bun run ios:build` no longer changes versions implicitly. Run `bun run bump`
+explicitly to update `app.json` and `package.json`; `[m]` selects minor and `[M]`
+selects major. The script never stages or commits files. Review changes and refresh
+the root lockfile with `bun install` after a version bump. EAS manages production
+build numbers remotely; local build-number fields are version-derived defaults.
+
+On Bun's isolated workspace install, Expo Doctor currently reports same-version
+duplicates for Constants, FileSystem, Font, Linking, and StatusBar in different
+peer-context directories. Expo's autolinking/Metro resolution is enabled and both
+mobile exports pass, but do not treat exports as proof that this warning is harmless
+in a signed native build. Check autolinking and run a native build before release.
+Do not delete the shared lockfile or change server React just to silence Doctor.
+The SDK 58 iPhone 17 Pro simulator build (iOS 26.4) succeeds with Xcode 26.4.1 and
+CocoaPods 1.17.0. Simulator QA covers native navigation, read-only book disclosures,
+offline library errors, themes and large text; signed-device and Android checks remain
+separate release gates.
 
 ## 🏗️ Architecture
 
-- **Backend**: [Hono](https://hono.dev) with AT Proto for OAuth
-- **Frontend**: Mostly static HTML, with some Hono JSX for dynamic content (Fast as possible)
-- **Mobile App**: React Native with Expo, using file-based routing
-- **Database**: SQLite, with Kyesly as the ORM
+See [native architecture](ARCHITECTURE.md) for module/session/navigation rules,
+[server architecture](../ARCHITECTURE.md) for the shared backend, and
+[release checks](../docs/notes/mobile-feature-parity.md) before shipping.
 
 ## 📱 App Store Links
 

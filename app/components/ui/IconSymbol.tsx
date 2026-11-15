@@ -13,6 +13,9 @@ const MAPPING = {
   magnifyingglass: "search",
   gear: "settings",
   book: "book",
+  "book.fill": "book",
+  "safari.fill": "explore",
+  "person.circle.fill": "account-circle",
   bookmark: "bookmark",
   "checkmark-circle": "check-circle",
   "paperplane.fill": "send",
@@ -39,5 +42,5 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  return <MaterialIcons size={size} name={MAPPING[name]} style={[{ color }, style]} />;
 }

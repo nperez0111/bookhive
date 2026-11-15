@@ -25,6 +25,7 @@ interface HtmlToTextProps {
   html: string;
   style?: any;
   containerStyle?: any;
+  numberOfLines?: number;
 }
 
 interface ParsedElement {
@@ -217,7 +218,12 @@ function renderElements(
   return components;
 }
 
-export function HtmlToText({ html, style, containerStyle }: HtmlToTextProps): React.ReactElement {
+export function HtmlToText({
+  html,
+  style,
+  containerStyle,
+  numberOfLines,
+}: HtmlToTextProps): React.ReactElement {
   if (!html || typeof html !== "string") {
     return <Text style={style}>No description available</Text>;
   }
@@ -225,7 +231,11 @@ export function HtmlToText({ html, style, containerStyle }: HtmlToTextProps): Re
   const elements = parseHtmlToTree(html);
   const components = renderElements(elements, style, "root");
 
-  return <Text style={[containerStyle, style]}>{components}</Text>;
+  return (
+    <Text numberOfLines={numberOfLines} style={[containerStyle, style]}>
+      {components}
+    </Text>
+  );
 }
 
 /** Plain-text fallback, kept alongside `HtmlToText` for callers that want a string. */

@@ -1,15 +1,17 @@
 import React from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { HeaderAction } from "./HeaderAction";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { ThemedText } from "./ThemedText";
 import { useRouter } from "expo-router";
+import { Colors } from "@/constants/Colors";
 
 type BackNavigationHeaderProps = {
   title?: string;
   onBackPress?: () => void;
   rightElement?: React.ReactNode;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 };
 
 export function BackNavigationHeader({
@@ -19,13 +21,15 @@ export function BackNavigationHeader({
   style,
 }: BackNavigationHeaderProps) {
   const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
   const router = useRouter();
 
   const handleBackPress = () => {
     if (onBackPress) {
       onBackPress();
     } else {
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.navigate("/");
     }
   };
 
@@ -36,44 +40,30 @@ export function BackNavigationHeader({
         {
           paddingTop: 8,
           paddingBottom: 8,
-          backgroundColor: "transparent",
+          backgroundColor: colors.background,
+          borderBottomColor: colors.cardBorder,
         },
         style,
       ]}
     >
       <View style={styles.content}>
-        <Pressable
+        <HeaderAction
+          tone="neutral"
+          accessibilityLabel="Back"
           onPress={handleBackPress}
-          style={[
-            styles.backButton,
-            {
-              backgroundColor: "rgba(0, 0, 0, 0.4)",
-              borderWidth: 1,
-              borderColor: "rgba(255, 255, 255, 0.2)",
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.25,
-              shadowRadius: 4,
-              elevation: 4,
-            },
-          ]}
-          hitSlop={12}
+          style={styles.backButton}
           pressRetentionOffset={12}
         >
-          <Ionicons
-            name="chevron-back"
-            size={20}
-            color={colorScheme === "dark" ? "white" : "white"}
-          />
-        </Pressable>
+          <Ionicons name="chevron-back" size={20} color={colors.primaryText} />
+        </HeaderAction>
 
         {title && (
           <View style={styles.titleContainer}>
             <View style={styles.titlePill}>
               <ThemedText
-                style={[styles.title, { color: "white" }]}
+                accessibilityRole="header"
+                style={[styles.title, { color: colors.primaryText }]}
                 type="heading"
-                numberOfLines={1}
               >
                 {title}
               </ThemedText>
@@ -90,17 +80,21 @@ export function BackNavigationHeader({
 const styles = StyleSheet.create({
   container: {
     zIndex: 1000,
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
   },
   content: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 4,
   },
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 8,
@@ -108,14 +102,11 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
-    alignItems: "center",
+    minWidth: 0,
+    alignItems: "flex-start",
   },
   titlePill: {
     flexShrink: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
     overflow: "hidden",
   },
   title: {
@@ -123,7 +114,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   rightContainer: {
-    minWidth: 40,
+    minWidth: 44,
+    maxWidth: "100%",
+    marginLeft: "auto",
     alignItems: "flex-end",
   },
 });

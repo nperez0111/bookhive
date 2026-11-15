@@ -1,14 +1,16 @@
 import * as BuzzBookhiveDefs from "@/../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 import { Colors } from "@/constants/Colors";
-import { getBaseUrl, useAuth } from "@/context/auth";
-import { useUpdateComment } from "@/hooks/useBookhiveQuery";
+import { authSession, getBaseUrl, useAuth } from "@/context/auth";
+import { useUpdateBook, useUpdateComment } from "@/hooks/useBookhiveQuery";
+import type { HiveId } from "../../src/types";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { ThemedButton } from "./ThemedButton";
 import { ThemedText } from "./ThemedText";
+import { StarDisplay } from "./StarDisplay";
 
 // Union type for both comments and reviews
 export type CommentItem = (
@@ -22,39 +24,21 @@ interface CommentsSectionProps {
   comments: CommentItem[];
   hiveId: string;
   onUserPress?: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
+  onReplyClick?: (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => void;
 }
 
-// Star Rating Component for comments
-const CommentStarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size = 16 }) => {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? "light"];
-
-  // Convert 1-10 rating to 1-5 stars
-  const starRating = rating ? Math.round(rating / 2) : 0;
-
-  return (
-    <View style={styles.starRating}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Ionicons
-          key={star}
-          name={starRating >= star ? "star" : "star-outline"}
-          size={size}
-          color={
-            starRating >= star ? colors.primary : colorScheme === "dark" ? "#9CA3AF" : colors.icon
-          }
-        />
-      ))}
-    </View>
-  );
-};
-
 // Individual Comment Component
-const CommentItem: React.FC<{
+const CommentEntry: React.FC<{
   comment: CommentItem;
   hiveId: string;
   onUserPress: (userDid: string) => void;
-  onReplyClick?: (commentId: string, replyFormRef: React.RefObject<View | null>) => void;
+  onReplyClick?: (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => void;
 }> = ({ comment, hiveId, onUserPress, onReplyClick }) => {
   const { authState } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -63,8 +47,20 @@ const CommentItem: React.FC<{
   const [editText, setEditText] = useState("");
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
-  const replyFormRef = useRef<View>(null);
+  const replyFormRef = useRef<React.ComponentRef<typeof View>>(null);
   const updateComment = useUpdateComment();
+  const updateBook = useUpdateBook();
+  const isPending = updateComment.isPending || updateBook.isPending;
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  const session = authSession.capture();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () => mounted.current && !session.signal.aborted;
 
   // Determine if this is a review or comment
   const isReview = "review" in comment;
@@ -74,7 +70,8 @@ const CommentItem: React.FC<{
   const userHandle = comment.handle;
 
   const handleReply = async () => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || isPending || writing.current || session.signal.aborted) return;
+    writing.current = true;
 
     try {
       // Both comments and reviews can have replies
@@ -86,8 +83,10 @@ const CommentItem: React.FC<{
           parentUri: comment.uri,
           parentCid: comment.cid,
         });
-        setReplyText("");
-        setShowReplyForm(false);
+        if (isCurrent()) {
+          setReplyText("");
+          setShowReplyForm(false);
+        }
       } else if (!isReview && "uri" in comment && comment.uri && comment.cid) {
         // For comments, use the comment's URI and CID as parent
         await updateComment.mutateAsync({
@@ -96,19 +95,36 @@ const CommentItem: React.FC<{
           parentUri: comment.uri,
           parentCid: comment.cid,
         });
-        setReplyText("");
-        setShowReplyForm(false);
+        if (isCurrent()) {
+          setReplyText("");
+          setShowReplyForm(false);
+        }
+      } else {
+        Alert.alert(
+          "Cannot reply",
+          "This entry is missing its reply reference. Please refresh and try again.",
+        );
       }
     } catch {
-      Alert.alert("Error", "Failed to post reply");
+      if (isCurrent()) Alert.alert("Error", "Failed to post reply");
+    } finally {
+      writing.current = false;
     }
   };
 
   const handleEdit = async () => {
-    if (!editText.trim()) return;
+    if (isPending || writing.current || session.signal.aborted || (!isReview && !editText.trim()))
+      return;
+    writing.current = true;
 
     try {
-      if (
+      if (isReview) {
+        await updateBook.mutateAsync({ hiveId: hiveId as HiveId, review: editText });
+        if (isCurrent()) {
+          setIsEditing(false);
+          setEditText("");
+        }
+      } else if (
         "uri" in comment &&
         comment.uri &&
         "parent" in comment &&
@@ -124,20 +140,32 @@ const CommentItem: React.FC<{
           parentCid: parent.cid,
           uri: comment.uri!,
         });
-        setIsEditing(false);
-        setEditText("");
+        if (isCurrent()) {
+          setIsEditing(false);
+          setEditText("");
+        }
+      } else {
+        Alert.alert(
+          "Cannot edit",
+          "This comment is missing its parent reference. Please refresh and try again.",
+        );
       }
     } catch {
-      Alert.alert("Error", "Failed to edit comment");
+      if (isCurrent())
+        Alert.alert("Error", isReview ? "Failed to save review" : "Failed to edit comment");
+    } finally {
+      writing.current = false;
     }
   };
 
   const startEditing = () => {
+    if (writing.current || isPending) return;
     setEditText(isReview ? comment.review : comment.comment);
     setIsEditing(true);
   };
 
   const handleReplyButtonClick = () => {
+    if (writing.current || isPending) return;
     setShowReplyForm(!showReplyForm);
     if (!showReplyForm && onReplyClick) {
       // Call the callback with the comment ID and ref when opening reply form
@@ -174,7 +202,7 @@ const CommentItem: React.FC<{
         </Pressable>
 
         {/* Rating - only show for reviews */}
-        {rating && <CommentStarRating rating={rating} />}
+        {rating ? <StarDisplay rating={rating} size="md" /> : null}
       </View>
 
       {/* Timestamp */}
@@ -199,7 +227,11 @@ const CommentItem: React.FC<{
             placeholder="Edit your comment..."
             placeholderTextColor={colors.placeholderText}
             value={editText}
-            onChangeText={setEditText}
+            onChangeText={(value) => {
+              if (!writing.current) setEditText(value);
+            }}
+            editable={!isPending}
+            accessibilityLabel={isReview ? "Edit your review" : "Edit your comment"}
             multiline
             numberOfLines={3}
           />
@@ -207,18 +239,21 @@ const CommentItem: React.FC<{
             <ThemedButton
               title="Cancel"
               onPress={() => {
+                if (writing.current || isPending) return;
                 setIsEditing(false);
                 setEditText("");
               }}
               variant="ghost"
               size="small"
+              disabled={isPending}
             />
             <ThemedButton
               title="Save"
               onPress={handleEdit}
               variant="primary"
               size="small"
-              disabled={!editText.trim()}
+              disabled={isPending || (!isReview && !editText.trim())}
+              loading={isPending}
             />
           </View>
         </View>
@@ -253,7 +288,11 @@ const CommentItem: React.FC<{
 
               {/* Edit button - only show for user's own comments */}
               {authState.did === userDid && (
-                <Pressable style={styles.interactionButton} onPress={startEditing}>
+                <Pressable
+                  style={styles.interactionButton}
+                  onPress={startEditing}
+                  disabled={isPending}
+                >
                   <Ionicons
                     name="pencil-outline"
                     size={20}
@@ -291,7 +330,10 @@ const CommentItem: React.FC<{
             placeholder="Write a reply..."
             placeholderTextColor={colors.placeholderText}
             value={replyText}
-            onChangeText={setReplyText}
+            onChangeText={(value) => {
+              if (!writing.current) setReplyText(value);
+            }}
+            editable={!isPending}
             multiline
             numberOfLines={3}
           />
@@ -299,18 +341,21 @@ const CommentItem: React.FC<{
             <ThemedButton
               title="Cancel"
               onPress={() => {
+                if (writing.current || isPending) return;
                 setShowReplyForm(false);
                 setReplyText("");
               }}
               variant="ghost"
               size="small"
+              disabled={isPending}
             />
             <ThemedButton
               title="Reply"
               onPress={handleReply}
               variant="primary"
               size="small"
-              disabled={!replyText.trim()}
+              disabled={isPending || !replyText.trim()}
+              loading={isPending}
             />
           </View>
         </View>
@@ -332,7 +377,10 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     onUserPress?.(userDid);
   };
 
-  const handleReplyClick = (commentId: string, replyFormRef: React.RefObject<View | null>) => {
+  const handleReplyClick = (
+    commentId: string,
+    replyFormRef: React.RefObject<React.ComponentRef<typeof View> | null>,
+  ) => {
     // Call the parent callback
     onReplyClick?.(commentId, replyFormRef);
   };
@@ -386,7 +434,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
     return (
       <View key={comment.id} style={[styles.threadedComment, { marginLeft: depth * 20 }]}>
-        <CommentItem
+        <CommentEntry
           comment={comment}
           hiveId={hiveId}
           onUserPress={handleUserPress}
@@ -515,10 +563,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 2,
-  },
-  starRating: {
-    flexDirection: "row",
-    alignItems: "center",
   },
   timestamp: {
     fontSize: 14,

@@ -7,6 +7,14 @@
     "dev": {
       "type": "service",
       "command": "NODE_ENV=development PORT=5199 DEV_HOST=0.0.0.0 DEV_HMR_CLIENT_PORT=443 PUBLIC_URL=https://5199.dev.nickthesick.com vp run dev"
+    },
+    "dev:local": {
+      "type": "service",
+      "command": "NODE_ENV=development PORT=5199 DEV_HOST=127.0.0.1 PUBLIC_URL=http://127.0.0.1:5199 vp run dev"
+    },
+    "ios": {
+      "type": "service",
+      "command": "cd app && EXPO_PUBLIC_API_URL=http://127.0.0.1:5199 REACT_NATIVE_PACKAGER_HOSTNAME=localhost bun run start --dev-client --localhost --port 8081"
     }
   }
 }

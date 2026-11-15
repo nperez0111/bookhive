@@ -1,9 +1,8 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, StyleSheet, Animated } from "react-native";
 import { ThemedText } from "./ThemedText";
 import { Ionicons } from "@expo/vector-icons";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useEffect, useRef } from "react";
 
 interface NetworkStatusIndicatorProps {
   showAlways?: boolean;
@@ -15,8 +14,8 @@ export const NetworkStatusIndicator: React.FC<NetworkStatusIndicatorProps> = ({
   position = "top",
 }) => {
   const { isConnected, isInternetReachable } = useNetworkStatus();
-  const slideAnim = useRef(new Animated.Value(-50)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const [slideAnim] = React.useState(() => new Animated.Value(-50));
+  const [opacityAnim] = React.useState(() => new Animated.Value(0));
 
   const isOnline = isConnected && isInternetReachable !== false;
 

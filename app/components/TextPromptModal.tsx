@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,7 +25,8 @@ type TextPromptModalProps = {
   maxLength?: number;
   busy?: boolean;
   onClose: () => void;
-  onSubmit: (value: string) => void;
+  onSubmit: (value: string) => void | Promise<unknown>;
+  operationKey?: number;
 };
 
 /**
@@ -44,16 +45,34 @@ export function TextPromptModal({
   busy = false,
   onClose,
   onSubmit,
+  operationKey,
 }: TextPromptModalProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const [value, setValue] = useState(initialValue);
+  const submission = useRef({ active: false });
 
-  useEffect(() => {
+  const [previous, setPrevious] = useState({ visible, initialValue, operationKey });
+  if (
+    previous.visible !== visible ||
+    previous.initialValue !== initialValue ||
+    previous.operationKey !== operationKey
+  ) {
+    setPrevious({ visible, initialValue, operationKey });
     if (visible) setValue(initialValue);
-  }, [visible, initialValue]);
+  }
 
   const trimmed = value.trim();
+  const submit = async () => {
+    const operation = submission.current;
+    if (!trimmed || busy || operation.active) return;
+    operation.active = true;
+    try {
+      await onSubmit(trimmed);
+    } finally {
+      operation.active = false;
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -93,7 +112,10 @@ export function TextPromptModal({
           ) : null}
           <TextInput
             value={value}
-            onChangeText={setValue}
+            onChangeText={(text) => {
+              if (!busy && !submission.current.active) setValue(text);
+            }}
+            editable={!busy}
             placeholder={placeholder}
             placeholderTextColor={colors.tertiaryText}
             style={[
@@ -107,7 +129,7 @@ export function TextPromptModal({
             maxLength={maxLength}
             autoFocus
             returnKeyType="done"
-            onSubmitEditing={() => trimmed && !busy && onSubmit(trimmed)}
+            onSubmitEditing={submit}
           />
 
           <Pressable
@@ -116,7 +138,7 @@ export function TextPromptModal({
               { backgroundColor: colors.primary },
               (!trimmed || busy) && styles.submitDisabled,
             ]}
-            onPress={() => onSubmit(trimmed)}
+            onPress={submit}
             disabled={!trimmed || busy}
           >
             {busy ? (

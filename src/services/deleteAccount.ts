@@ -57,7 +57,11 @@ async function batchDeleteFromPds(
   }
 }
 
-/** Delete all BookHive data for a user from both PDS and local database. */
+/**
+ * Delete BookHive records, local rows and uploaded files (not Bluesky posts).
+ * No transaction spans PDS, SQLite and files: propagate partial failures so
+ * callers retain their session and can retry the remaining cleanup.
+ */
 export async function deleteAccountData({
   agent,
   db,
@@ -120,6 +124,8 @@ export async function deleteAccountData({
   await kv.removeItem(`sync_pending:${did}`);
 
   // Remove uploaded library files from disk
-  // The settings adapter retains the session on failure so a retry can finish cleanup.
+  // Keep filesystem I/O outside the SQLite write transaction. If it fails, the
+  // rows are already gone, but the caller must not claim deletion completed.
+  // Both account adapters retain the session on failure so cleanup can be retried.
   await removeUserDir(did);
 }
