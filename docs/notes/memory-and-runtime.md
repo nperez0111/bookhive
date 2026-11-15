@@ -182,6 +182,13 @@ shutdown: native VACUUM must finish before ownership is released. An unexpected 
 fails closed rather than assuming termination stopped native work; `failedClosed` exposes this
 condition. Crash leftovers require deliberate cleanup, not a sweep of other jobs' directories.
 
+Authenticated, file-backed `/admin/export` requests disable Bun's socket idle timeout through
+`lib/requestIdleTimeout.ts` before preparation. VACUUM produces no response bytes and otherwise
+triggers the ordinary idle timeout while the handler is still pending. srvx exposes the native
+server on the original request, whose identity Nitro/Hono preserve. This exemption is applied
+only after authentication and DB validation; normal requests keep their runtime limits. It does
+not suppress client-disconnect signals or replace the cooperative preparation deadline above.
+
 ## Bounded read materialization and statement lifetimes
 
 Shelf directory previews select at most ten item IDs per shelf before catalogue hydration,

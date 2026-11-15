@@ -15,6 +15,7 @@ import { warmCatalogSearch } from "../services/searchBooks";
 import { pruneMirroredRecords } from "../data/repoMirror";
 import type { HiveId, UserBook, Buzz } from "../types";
 import { errorMessage } from "../lib/errors";
+import { disableRequestIdleTimeout } from "../lib/requestIdleTimeout";
 
 const admin = new Hono<AppEnv>()
   .post("/backfill-catalog", async (c) => {
@@ -103,6 +104,10 @@ const admin = new Hono<AppEnv>()
 
       const exportDir =
         env.DB_EXPORT_DIR?.trim() || path.join(path.dirname(env.DB_PATH), "exports");
+
+      // VACUUM preparation sends no bytes. Keep Bun's ordinary idle limit from
+      // cancelling it; the export worker still owns its deadline and safe abort.
+      disableRequestIdleTimeout(c.req.raw);
 
       ctx.addWideEventContext({
         admin_export: "started",
