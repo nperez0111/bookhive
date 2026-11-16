@@ -69,7 +69,9 @@ form adapters can still redirect and the JSON adapters can report a rejected wri
   and only rotates a re-read on an explicit Reading selection. The sync bridge also passes its
   percentage to `statusFromProgress`: percentage-only 100% infers Finished, while existing
   Finished/Abandoned states remain unchanged. A rounded percentage without exact counts cannot
-  distinguish a nearly finished page count from actual completion.
+  distinguish a nearly finished page count from actual completion. The manual
+  `POST /library/sync/link` path likewise asserts progress and no status, so the same inference
+  decides a freshly linked document.
 - **The `book_lock` is enforced by the core, checked by the client.** `withBookLock`
   (`services/getBook.ts`) owns check-then-set-then-release and returns `{locked}` rather than
   throwing (adapters answer differently: an error page for the form, a JSON 429 for the API route).

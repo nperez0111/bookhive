@@ -12,6 +12,7 @@ import { testContext } from "../test/db";
 import type { SessionClient } from "../auth/client";
 import type { ProfileViewDetailed } from "../types";
 import { createTestDb } from "../test/db";
+import { FINISHED, READING, WANTTOREAD } from "../constants";
 
 type TestApp = Hono<AppEnv>;
 
@@ -20,17 +21,17 @@ const OTHER_DID = "did:plc:someoneelse";
 
 /**
  * Mount the real router with the slice of AppContext these routes touch. The
- * routes under test need only db + the session helpers; /sync/link (which also
- * needs kv and a PDS agent) is not exercised here.
+ * routes under test need db + the session helpers; /sync/link additionally
+ * needs a PDS session, which `fakePdsAgent` supplies.
  */
-function createApp(db: Database, did: string | null = DID): TestApp {
+function createApp(db: Database, did: string | null = DID, agent?: SessionClient): TestApp {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
     c.set(
       "ctx",
       testContext({
         db,
-        getSessionAgent: async () => (did ? ({ did } as SessionClient) : null),
+        getSessionAgent: async () => (did ? (agent ?? ({ did } as SessionClient)) : null),
         getSessionDid: async () => did,
         getProfile: async () => ({ handle: "test.bsky.social" }) as unknown as ProfileViewDetailed,
       }),
@@ -236,6 +237,218 @@ describe("GET /library/sync/documents", () => {
   it("401s without a session", async () => {
     const anon = createApp(db, null);
     const res = await anon.request("/library/sync/documents");
+    expect(res.status).toBe(401);
+  });
+});
+
+async function seedHiveBook(db: Database, id: HiveId) {
+  await db
+    .insertInto("hive_book")
+    .values({
+      id,
+      title: "A Synced Book",
+      rawTitle: "A Synced Book",
+      authors: "An Author",
+      source: "goodreads",
+      // No cover: the create path must not try to fetch one.
+      thumbnail: "",
+      createdAt: now,
+      updatedAt: now,
+    } as never)
+    .execute();
+}
+
+type WrittenBook = {
+  status?: string;
+  owned?: boolean;
+  bookProgress?: { percent?: number };
+};
+
+/** The one PDS call the link route makes when it creates a book: `createRecord`. */
+function fakePdsAgent() {
+  const recorded: WrittenBook[] = [];
+  const agent = {
+    did: DID,
+    async post(name: string, opts: { input?: { record?: WrittenBook } } = {}) {
+      if (name !== "com.atproto.repo.createRecord") throw new Error(`unexpected post ${name}`);
+      recorded.push(opts.input?.record ?? {});
+      return {
+        ok: true as const,
+        data: { uri: `at://${DID}/buzz.bookhive.book/3klink`, cid: "cidlink" },
+      };
+    },
+    async get(name: string) {
+      throw new Error(`unexpected get ${name}`);
+    },
+  };
+  return { agent: agent as unknown as SessionClient, recorded };
+}
+
+describe("POST /library/sync/link", () => {
+  const HIVE_ID = "bk_linked" as HiveId;
+  let db: Database;
+  let recorded: WrittenBook[];
+  let app: TestApp;
+
+  beforeEach(async () => {
+    ({ db } = await createTestDb());
+    const fake = fakePdsAgent();
+    recorded = fake.recorded;
+    app = createApp(db, DID, fake.agent);
+    await seedHiveBook(db, HIVE_ID);
+  });
+
+  const link = (document: string) =>
+    app.request("/library/sync/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document, hiveId: HIVE_ID }),
+    });
+
+  async function userBook() {
+    return db
+      .selectFrom("user_book")
+      .select(["status", "bookProgress", "owned", "startedAt", "finishedAt"])
+      .where("userDid", "=", DID)
+      .where("hiveId", "=", HIVE_ID)
+      .executeTakeFirst();
+  }
+
+  async function seedUserBook(fields: {
+    status: string;
+    bookProgress?: { percent: number; updatedAt: string };
+  }) {
+    await db
+      .insertInto("user_book")
+      .values({
+        uri: `at://${DID}/buzz.bookhive.book/3kseed`,
+        cid: "cidseed",
+        userDid: DID,
+        hiveId: HIVE_ID,
+        title: "A Synced Book",
+        authors: "An Author",
+        status: fields.status,
+        owned: 1,
+        bookProgress: fields.bookProgress ? JSON.stringify(fields.bookProgress) : null,
+        createdAt: now,
+        indexedAt: now,
+      })
+      .execute();
+  }
+
+  it("links a finished document as finished, not reading", async () => {
+    // The e-reader was at 100% before the link; that has to carry across.
+    await seedSyncDocument(db, { documentHash: "hash-done", percentage: 1 });
+
+    const res = await link("hash-done");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ hiveId: HIVE_ID, bookTitle: "A Synced Book" });
+
+    const book = await userBook();
+    expect(book?.status).toBe(FINISHED);
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(100);
+    expect(book?.finishedAt).toBeTruthy();
+    expect(book?.owned).toBe(1);
+    // The PDS record carries the same status.
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.status).toBe(FINISHED);
+  });
+
+  it("links a partially read document as reading", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-half", percentage: 0.42 });
+
+    expect((await link("hash-half")).status).toBe(200);
+
+    const book = await userBook();
+    expect(book?.status).toBe(READING);
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(42);
+    expect(book?.startedAt).toBeTruthy();
+    expect(book?.finishedAt).toBeNull();
+  });
+
+  it("finishes an already-tracked want-to-read book at 100%", async () => {
+    await seedUserBook({ status: WANTTOREAD });
+    await seedSyncDocument(db, { documentHash: "hash-done", percentage: 1 });
+
+    expect((await link("hash-done")).status).toBe(200);
+
+    expect((await userBook())?.status).toBe(FINISHED);
+  });
+
+  it("does not reopen a finished book from a stray e-reader page-turn", async () => {
+    await seedUserBook({
+      status: FINISHED,
+      bookProgress: { percent: 100, updatedAt: now },
+    });
+    await seedSyncDocument(db, { documentHash: "hash-turn", percentage: 0.1 });
+
+    expect((await link("hash-turn")).status).toBe(200);
+
+    const book = await userBook();
+    expect(book?.status).toBe(FINISHED);
+    // The reading position still advances; only the status is protected.
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(10);
+  });
+
+  it("coerces a numeric-string percentage instead of discarding it", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-str", percentage: 1 });
+    await db
+      .updateTable("sync_document")
+      .set({ progressData: JSON.stringify({ progress: "/body/1", percentage: "0.42" }) })
+      .where("documentHash", "=", "hash-str")
+      .execute();
+
+    expect((await link("hash-str")).status).toBe(200);
+
+    const book = await userBook();
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(42);
+    expect(book?.status).toBe(READING);
+  });
+
+  it("links an unparseable percentage as 0 rather than failing the record write", async () => {
+    // Unguarded this is `Math.round("nope" * 100)` → NaN, which fails record
+    // validation after the document link has already committed.
+    await seedSyncDocument(db, { documentHash: "hash-bad", percentage: 1 });
+    await db
+      .updateTable("sync_document")
+      .set({ progressData: JSON.stringify({ progress: "/body/1", percentage: "nope" }) })
+      .where("documentHash", "=", "hash-bad")
+      .execute();
+
+    expect((await link("hash-bad")).status).toBe(200);
+
+    const book = await userBook();
+    expect(JSON.parse(book?.bookProgress ?? "{}").percent).toBe(0);
+    expect(book?.status).toBe(READING);
+  });
+
+  it("404s for an unknown document and for an unknown book", async () => {
+    expect((await link("nope")).status).toBe(404);
+
+    await seedSyncDocument(db, { documentHash: "hash-1" });
+    const res = await app.request("/library/sync/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: "hash-1", hiveId: "bk_missing" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("cannot link another user's document", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-theirs", userDid: OTHER_DID });
+
+    expect((await link("hash-theirs")).status).toBe(404);
+    expect(await userBook()).toBeUndefined();
+  });
+
+  it("401s without a session", async () => {
+    await seedSyncDocument(db, { documentHash: "hash-1" });
+    const anon = createApp(db, null);
+    const res = await anon.request("/library/sync/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: "hash-1", hiveId: HIVE_ID }),
+    });
     expect(res.status).toBe(401);
   });
 });

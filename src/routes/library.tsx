@@ -9,9 +9,9 @@ import type { SessionClient } from "../auth/client";
 import { LibraryPage } from "../pages/library";
 import { syncCredentialRoutes } from "./syncCredentials";
 import { bridgeProgressToUserBook } from "../data/syncBridge";
+import { toPercent } from "../core/bookProgress";
 import { updateBookRecord } from "../services/getBook";
 import { formatBytes } from "../lib/formatBytes";
-import { READING } from "../constants";
 import { etagMatches, streamPersonalBook, MAX_PERSONAL_BOOK_BYTES } from "../data/personalLibrary";
 import { uploadPersonalBook } from "../services/uploadPersonalBook";
 import { NO_HIVE_MATCH } from "../data/syncMatching";
@@ -365,12 +365,16 @@ app.post(
 
     let percentage = 0;
     try {
-      percentage = (JSON.parse(row.progressData) as SyncProgressData).percentage ?? 0;
+      // Device-controlled blob, so coerce: a NaN would fail record validation
+      // *after* the document link above has already committed.
+      const parsed = Number((JSON.parse(row.progressData) as SyncProgressData).percentage);
+      percentage = Number.isFinite(parsed) ? parsed : 0;
     } catch {
       // ignore malformed progress
     }
 
-    // Create the user_book if missing, with "reading" status, so it shows up on their profile/home.
+    // Create the user_book if missing, so it shows up on their profile/home,
+    // carrying the progress the e-reader already reported.
     const existingUserBook = await db
       .selectFrom("user_book")
       .select("uri")
@@ -380,13 +384,13 @@ app.post(
 
     if (!existingUserBook) {
       const ctx = c.get("ctx");
-      const percent = Math.max(0, Math.min(100, Math.round(percentage * 100)));
+      const percent = toPercent(percentage);
+      // No status here: `nextReadingState` infers it from the progress.
       await updateBookRecord({
         ctx,
         agent,
         hiveId: hiveId as HiveId,
         updates: {
-          status: READING,
           bookProgress: { percent, updatedAt: new Date().toISOString() },
           owned: true,
         },
