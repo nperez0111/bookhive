@@ -4,6 +4,10 @@ import ReadingStatsScreen from "../../app/profile/[did]/stats";
 import MyBooksScreen from "../../app/(tabs)/my-books";
 
 const mockUpdateBook = jest.fn();
+jest.mock("@/hooks/queries/catalogueLists", () => ({
+  useUserLists: () => ({ data: { lists: [] } }),
+  useListDetails: () => ({}),
+}));
 beforeEach(() => jest.useFakeTimers());
 afterEach(async () => {
   await act(() => jest.runOnlyPendingTimers());
@@ -87,26 +91,13 @@ it("keeps rejected row updates visible outside the book row", async () => {
   expect(screen.getByText(/Save failed/)).toBeTruthy();
 });
 
-it("keeps library tools out of the book list until requested", async () => {
+it("offers Ebooks directly without a tools or catalogue-search menu", async () => {
   await render(<MyBooksScreen />);
-  expect(screen.queryByText("Shelves")).toBeNull();
-  for (const [title, route] of [
-    ["Shelves", "/lists"],
-    ["Reading stats", "/profile/did:plc:test/stats"],
-    ["Import", "/import"],
-    ["Ebooks", "/library"],
-  ]) {
-    await fireEvent.press(screen.getByLabelText("Library tools"));
-    await fireEvent.press(screen.getByText(title));
-    expect(router.push).toHaveBeenLastCalledWith(route);
-    expect(screen.queryByText(title)).toBeNull();
-  }
-});
-
-it("keeps a catalogue entry point available when My Books already has books", async () => {
-  await render(<MyBooksScreen />);
-  await fireEvent.press(screen.getByLabelText("Find books"));
-  expect(router.push).toHaveBeenLastCalledWith("/search");
+  expect(screen.getByLabelText("Manage public shelves")).toBeTruthy();
+  expect(screen.queryByLabelText("Library tools")).toBeNull();
+  expect(screen.queryByLabelText("Find books")).toBeNull();
+  await fireEvent.press(screen.getByText("Ebooks"));
+  expect(router.push).toHaveBeenLastCalledWith("/library");
 });
 
 it("shows only the selected filter and keeps sorting options in a sheet", async () => {

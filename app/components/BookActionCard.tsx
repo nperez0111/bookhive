@@ -7,7 +7,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { StarRating } from "./StarRating";
 import { DatePickerModal } from "./DatePickerModal";
-import { BOOK_STATUS_MAP, type BookStatus } from "@/constants/index";
+import { BOOK_STATUS_OPTIONS, type BookStatus } from "@/constants/index";
 import { calendarDate } from "@/utils/calendarDate";
 
 interface CommonProps {
@@ -171,7 +171,9 @@ export const BookActionCard: React.FC<BookActionCardProps> = (props) => {
                 },
               ]}
             >
-              {status ? BOOK_STATUS_MAP[status] : "Choose reading status"}
+              {status
+                ? BOOK_STATUS_OPTIONS.find((option) => option.value === status)?.label
+                : "Choose reading status"}
             </ThemedText>
             <Ionicons name="chevron-forward" size={20} color={Colors.light.primaryText} />
           </Pressable>

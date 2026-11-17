@@ -81,11 +81,21 @@ export default function LoginScreen() {
       >
         <View style={styles.content}>
           <View style={styles.brand}>
-            <Image
-              source={require("@/assets/images/bee.png")}
-              style={styles.logo}
-              accessible={false}
-            />
+            <View
+              style={{
+                padding: 6,
+                borderRadius: 14,
+                backgroundColor: "#f9eabc",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Image
+                source={require("@/assets/images/bee.png")}
+                style={styles.logo}
+                accessible={false}
+              />
+            </View>
             <ThemedText type="heading">BookHive</ThemedText>
           </View>
           <View style={styles.introduction}>

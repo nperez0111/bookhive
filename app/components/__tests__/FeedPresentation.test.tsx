@@ -51,7 +51,7 @@ beforeEach(() => {
 
 test("feed book/profile actions are separate accessibility groups and activity remains spoken", async () => {
   await render(<FeedScreen />);
-  const book = screen.getByRole("button", { name: "Open Earthsea, by Le Guin" });
+  const book = screen.getByRole("button", { name: /Earthsea.*Le Guin/ });
   const profile = screen.getByRole("button", { name: /@reader\.test/ });
   expect(within(profile).getByText(/finished reading.*ago/)).toBeTruthy();
   expect(profile.props.accessibilityLabel).toBeUndefined();

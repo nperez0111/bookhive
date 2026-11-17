@@ -15,7 +15,7 @@ import { ThemedText } from "./ThemedText";
 import { ThemedView } from "./ThemedView";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
-import { BOOK_STATUS_MAP, BOOK_STATUS, type BookStatus } from "@/constants/index";
+import { BOOK_STATUS_OPTIONS, BOOK_STATUS, type BookStatus } from "@/constants/index";
 
 const STATUS_OPTIONS = [
   BOOK_STATUS.FINISHED,
@@ -131,7 +131,7 @@ function StatusSelectionContent({
                       ]}
                       type="body"
                     >
-                      {BOOK_STATUS_MAP[item]}
+                      {BOOK_STATUS_OPTIONS.find((option) => option.value === item)?.label}
                     </ThemedText>
                     {currentStatus === item && (
                       <Ionicons name="checkmark" size={20} color={colors.primary} />

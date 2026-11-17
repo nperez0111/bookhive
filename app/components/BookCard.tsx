@@ -6,6 +6,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { FadeInImage } from "@/components/FadeInImage";
 import { MotionPressable } from "@/components/motion/MotionPressable";
+import { displayAuthors } from "../../src/core/authors";
 
 export type BookCardVariant = "dense" | "list" | "row";
 
@@ -72,7 +73,7 @@ function CoverOutline({ borderRadius }: { borderRadius: number }) {
 
 export function BookCard({
   title,
-  authors,
+  authors: rawAuthors,
   imageUri,
   onPress,
   accessibilityLabel,
@@ -82,6 +83,7 @@ export function BookCard({
   children,
   rowSize = "medium",
 }: BookCardProps) {
+  const authors = displayAuthors(rawAuthors).replace(/\s+/g, " ").trim();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   // Native grouping includes text in supplied rating/metadata content. An explicit

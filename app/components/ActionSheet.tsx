@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  AccessibilityInfo,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -42,120 +44,153 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
   const colors = Colors[colorScheme ?? "light"];
   const { bottom } = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  const [entrance] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    entrance.setValue(0);
+    if (!visible) return;
+    let active = true;
+    const reveal = (reduced: boolean) => {
+      if (!active) return;
+      entrance.stopAnimation();
+      if (reduced) entrance.setValue(1);
+      else Animated.timing(entrance, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    };
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", reveal);
+    AccessibilityInfo.isReduceMotionEnabled().then(reveal, () => reveal(true));
+    return () => {
+      active = false;
+      subscription.remove();
+      entrance.stopAnimation();
+    };
+  }, [visible, entrance]);
 
   const visibleActions = actions.filter(Boolean);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss"
-        />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.cardBackground,
-              borderColor: colors.cardBorder,
-              paddingBottom: 16 + bottom,
-              maxHeight: height * 0.85,
-            },
-          ]}
-        >
-          <View style={[styles.grabber, { backgroundColor: colors.cardBorder }]} />
-
-          {title ? (
-            <View style={styles.header}>
-              <ThemedText type="heading" style={{ color: colors.primaryText }} numberOfLines={2}>
-                {title}
-              </ThemedText>
-              {subtitle ? (
-                <ThemedText
-                  type="caption"
-                  style={{ color: colors.secondaryText, marginTop: 2 }}
-                  numberOfLines={2}
-                >
-                  {subtitle}
-                </ThemedText>
-              ) : null}
-            </View>
-          ) : null}
-
-          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.actions}>
-            {visibleActions.map((action) => {
-              const tint = action.destructive ? colors.error : colors.primaryText;
-              return (
-                <Pressable
-                  key={action.key}
-                  accessibilityRole={action.selected !== undefined ? "radio" : "button"}
-                  accessibilityState={{
-                    checked: action.selected,
-                    disabled: action.disabled || action.busy,
-                    busy: action.busy,
-                  }}
-                  onPress={action.onPress}
-                  disabled={action.disabled || action.busy}
-                  style={({ pressed }) => [
-                    styles.action,
-                    {
-                      backgroundColor: pressed ? colors.activeBackground : "transparent",
-                      opacity: action.disabled ? 0.4 : 1,
-                    },
-                  ]}
-                >
-                  <View style={styles.actionIcon}>
-                    {action.busy ? (
-                      <ActivityIndicator size="small" color={tint} />
-                    ) : (
-                      <Ionicons
-                        name={
-                          action.selected !== undefined
-                            ? action.selected
-                              ? "checkmark"
-                              : "ellipse-outline"
-                            : action.icon
-                        }
-                        size={18}
-                        color={action.destructive ? colors.error : colors.primary}
-                      />
-                    )}
-                  </View>
-                  <View style={styles.actionText}>
-                    <ThemedText type="body" style={{ color: tint }}>
-                      {action.label}
-                    </ThemedText>
-                    {action.description ? (
-                      <ThemedText type="caption" style={{ color: colors.secondaryText }}>
-                        {action.description}
-                      </ThemedText>
-                    ) : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.cancel,
+    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
+      {visible && (
+        <View style={styles.overlay}>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: entrance }]}>
+            <Pressable
+              style={styles.backdrop}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+            />
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.sheet,
               {
+                transform: [
+                  {
+                    translateY: entrance.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [height, 0],
+                    }),
+                  },
+                ],
+              },
+              {
+                backgroundColor: colors.cardBackground,
                 borderColor: colors.cardBorder,
-                backgroundColor: pressed ? colors.activeBackground : "transparent",
+                paddingBottom: 16 + bottom,
+                maxHeight: height * 0.85,
               },
             ]}
           >
-            <ThemedText type="label" style={{ color: colors.secondaryText }}>
-              Cancel
-            </ThemedText>
-          </Pressable>
+            <View style={[styles.grabber, { backgroundColor: colors.cardBorder }]} />
+
+            {title ? (
+              <View style={styles.header}>
+                <ThemedText type="heading" style={{ color: colors.primaryText }} numberOfLines={2}>
+                  {title}
+                </ThemedText>
+                {subtitle ? (
+                  <ThemedText
+                    type="caption"
+                    style={{ color: colors.secondaryText, marginTop: 2 }}
+                    numberOfLines={2}
+                  >
+                    {subtitle}
+                  </ThemedText>
+                ) : null}
+              </View>
+            ) : null}
+
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.actions}>
+              {visibleActions.map((action) => {
+                const tint = action.destructive ? colors.error : colors.primaryText;
+                return (
+                  <Pressable
+                    key={action.key}
+                    accessibilityRole={action.selected !== undefined ? "radio" : "button"}
+                    accessibilityState={{
+                      checked: action.selected,
+                      disabled: action.disabled || action.busy,
+                      busy: action.busy,
+                    }}
+                    onPress={action.onPress}
+                    disabled={action.disabled || action.busy}
+                    style={({ pressed }) => [
+                      styles.action,
+                      {
+                        backgroundColor: pressed ? colors.activeBackground : "transparent",
+                        opacity: action.disabled ? 0.4 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={styles.actionIcon}>
+                      {action.busy ? (
+                        <ActivityIndicator size="small" color={tint} />
+                      ) : (
+                        <Ionicons
+                          name={
+                            action.selected !== undefined
+                              ? action.selected
+                                ? "checkmark"
+                                : "ellipse-outline"
+                              : action.icon
+                          }
+                          size={18}
+                          color={action.destructive ? colors.error : colors.primary}
+                        />
+                      )}
+                    </View>
+                    <View style={styles.actionText}>
+                      <ThemedText type="body" style={{ color: tint }}>
+                        {action.label}
+                      </ThemedText>
+                      {action.description ? (
+                        <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+                          {action.description}
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.cancel,
+                {
+                  borderColor: colors.cardBorder,
+                  backgroundColor: pressed ? colors.activeBackground : "transparent",
+                },
+              ]}
+            >
+              <ThemedText type="label" style={{ color: colors.secondaryText }}>
+                Cancel
+              </ThemedText>
+            </Pressable>
+          </Animated.View>
         </View>
-      </View>
+      )}
     </Modal>
   );
 }

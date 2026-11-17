@@ -2,14 +2,10 @@ import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { HeaderAction } from "@/components/HeaderAction";
 
-import { BookCard } from "@/components/BookCard";
-import { StarDisplay } from "@/components/StarDisplay";
+import { BookCoverGrid } from "@/components/BookCoverGrid";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
-import { getBaseUrl } from "@/context/auth";
-import { catalogueCoverUrl } from "@/utils/catalogueCover";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { displayAuthors } from "../../../src/core/authors";
 import type { UserBook } from "../../../src/bsky/lexicon/generated/types/buzz/bookhive/defs";
 
 /** Read-only public shelf preview. Tracked-book editing belongs to My Books. */
@@ -48,32 +44,7 @@ export function ProfileBookSection({
           onPress={() => router.push(`/books/${status}?did=${did}` as any)}
         />
       </View>
-      <View style={styles.bookRows}>
-        {books.slice(0, 3).map((book) => (
-          <View key={book.hiveId}>
-            <BookCard
-              title={book.title}
-              authors={displayAuthors(book.authors)}
-              imageUri={catalogueCoverUrl(getBaseUrl(), book)}
-              onPress={() => router.push(`/book/${book.hiveId}`)}
-              variant="row"
-              rowSize="compact"
-            >
-              {book.stars != null && book.stars > 0 && (
-                <View style={styles.ratingContainer}>
-                  <StarDisplay rating={book.stars} />
-                  <ThemedText
-                    style={[styles.ratingText, { color: colors.secondaryText }]}
-                    type="caption"
-                  >
-                    {book.stars / 2}
-                  </ThemedText>
-                </View>
-              )}
-            </BookCard>
-          </View>
-        ))}
-      </View>
+      <BookCoverGrid books={books.slice(0, 3)} />
     </View>
   );
 }
@@ -93,7 +64,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: { flex: 1 },
-  bookRows: { gap: 8 },
-  ratingContainer: { flexDirection: "row", alignItems: "center", gap: 4 },
-  ratingText: { lineHeight: 16 },
 });

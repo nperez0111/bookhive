@@ -13,19 +13,29 @@ then supplies authentication, the epoch-scoped QueryClient and navigation. A
 provider returned by its consumer cannot supply that consumer's context.
 The root waits for session restoration before choosing protected auth/main routes.
 
-| Route/module                                                      | Owns                                                                  |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `app/(auth)/`                                                     | Login and registration                                                |
-| `app/(tabs)/index.tsx`                                            | Home reading overview                                                 |
-| `app/(tabs)/my-books.tsx`                                         | Tracked books; Library tools opens shelves, stats, imports and Ebooks |
-| `app/(tabs)/explore.tsx`                                          | Discover: search, community feed, genre/author browsing               |
-| `app/(tabs)/me.tsx`                                               | Signed-in reader's profile; gear opens settings                       |
-| `app/book/[id].tsx`, `app/books/[status].tsx`                     | Book detail and complete status shelves                               |
-| `app/profile/[did].tsx`, `app/profile/[did]/stats.tsx`            | Public profiles and reading stats                                     |
-| `app/search.tsx`, `app/feed.tsx`, `app/explore/{genres,authors}/` | Search, feed and catalogue results                                    |
-| `app/lists/`                                                      | Public catalogue shelves and owner editing                            |
-| `app/library/`, `app/sync/`                                       | Private Ebooks and e-reader setup                                     |
-| `app/settings.tsx`, `app/account.tsx`, `app/import.tsx`           | Preferences, account maintenance and CSV imports                      |
+`expo-splash-screen` uses the transparent `bee.png` mark at 160 points on eggshell
+(`#f9eabc`) or brown (`#3f2b08`), following the OS theme. The first JS surface's
+`onLayout` dismisses it, not a font/network promise. `LaunchScreen` keeps that
+centered mark and surface while theme/session restoration runs; saved app theme
+takes over when read. It is static (including under Reduce Motion), with no minimum
+display time. Theme context renders immediately with system defaults and exposes
+`isLoaded`; protected navigation still waits for auth. Optional SpaceMono loading
+or failure never blocks the shell or recovery UI. Splash config changes require
+new native binaries; Expo Go/dev-client previews cannot validate the release splash.
+
+| Route/module                                                      | Owns                                                             |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `app/(auth)/`                                                     | Login and registration                                           |
+| `app/(tabs)/index.tsx`                                            | Home reading overview                                            |
+| `app/(tabs)/my-books.tsx`                                         | Tracked books, public-shelf filter chips and direct Ebooks entry |
+| `app/(tabs)/explore.tsx`                                          | Discover: search, community feed, genre/author browsing          |
+| `app/(tabs)/me.tsx`                                               | Signed-in profile, CSV import and settings gear                  |
+| `app/book/[id].tsx`, `app/books/[status].tsx`                     | Book detail and complete status shelves                          |
+| `app/profile/[did].tsx`, `app/profile/[did]/stats.tsx`            | Public profiles and reading stats                                |
+| `app/search.tsx`, `app/feed.tsx`, `app/explore/{genres,authors}/` | Search, feed and catalogue results                               |
+| `app/lists/`                                                      | Public catalogue shelves and owner editing                       |
+| `app/library/`, `app/sync/`                                       | Private Ebooks and e-reader setup                                |
+| `app/settings.tsx`, `app/account.tsx`, `app/import.tsx`           | Preferences, account maintenance and CSV imports                 |
 
 Only the four primary screens belong to `(tabs)`. Secondary routes push onto the
 authenticated root native Stack above the retained tab shell. Hidden tab entries
@@ -44,7 +54,7 @@ Public profile previews never import editable tracked-book rows.
 | Component folder/module     | Boundary                                                                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `components/tracked-books/` | `TrackedBooksContent` owns query/filter/sort/refresh and collection-level write feedback; `TrackedBookItem` uses existing mutation hooks |
-| `components/home/`          | Four-book read-only previews and public shelf entry points                                                                               |
+| `components/home/`          | Currently-reading cover preview and public shelf entry points                                                                            |
 | `components/profile/`       | `ReaderProfileScreen` serves own/public routes; three-book previews and expandable shelves/reviews                                       |
 | `components/book-detail/`   | Progress/review drafts and progress editor presentation                                                                                  |
 | `components/discovery/`     | Genre/author presentation; route retains language/category/search state and enables queries                                              |
@@ -55,6 +65,26 @@ to the collection: optimistic status changes can remove a row from its filter
 before a failed request returns. Ownership is independent of reading status and
 edited on book detail. Home/profile refresh failures retain cached content;
 profile refresh reloads both reader data and public shelves.
+Home shows only the currently-reading book preview. Home and profile previews use
+the read-only `BookCoverGrid`, measured against their own container width. My Books
+intersects a selected public shelf's catalogue IDs with tracked-book filters; it
+never treats an unloaded shelf as all books. Pull-to-refresh reloads shelf membership.
+The Home search action opens Discover, whose search field opens catalogue search.
+Community feed entries use compact book rows rather than full-width cover cards.
+Home's Community section is separate from the reader's personal Recent activity.
+
+Action sheets animate their full-screen backdrop opacity independently from the
+sheet translation and respect Reduce Motion. Status controls use `BOOK_STATUS_OPTIONS`
+labels, not the lowercase prose map. Descriptions expand once; comment display uses
+the same HTML renderer without changing stored drafts. Removal stays centered at the
+bottom of book detail and opens a themed confirmation.
+
+On wide windows, book detail places the cover/community rating beside the reading
+controls; narrow windows and larger text stack them. Description and discussion keep
+the narrower reading width below both columns.
+The fixed book header centers the title and author at 22pt and 15pt; a centered, enlarged cover and
+explicitly labelled community rating precede the personal reading controls. Personal
+rating values belong in the disclosure summary, not repeated in its heading.
 
 Book-detail sections use normal layout flow when editors expand. Do not add sibling
 layout-position transitions: retained native-stack screens can leave later controls

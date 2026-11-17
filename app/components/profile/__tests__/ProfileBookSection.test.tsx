@@ -35,10 +35,7 @@ it("formats catalogue authors without blank entries or splitting a surname comma
       did="did:plc:reader"
     />,
   );
-  expect(screen.getByText("Le Guin, Ursula, Another Writer")).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: /^Book 0\b/ }).props.accessibilityLabel,
-  ).toBeUndefined();
+  expect(screen.getByLabelText("Open Book 0, by Le Guin, Ursula, Another Writer")).toBeTruthy();
 });
 
 it.each(["reading", "wantToRead", "finished"] as const)(
@@ -53,14 +50,13 @@ it.each(["reading", "wantToRead", "finished"] as const)(
         did="did:plc:reader"
       />,
     );
-    expect(screen.getAllByRole("button", { name: /^Book \d\b/ })).toHaveLength(3);
-    expect(screen.getAllByText("4.5")).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^Open Book \d\b/ })).toHaveLength(3);
     expect(screen.getByText("5 books")).toBeTruthy();
     expect(screen.getByText("See all")).toBeTruthy();
     expect(screen.queryByText("Book 3")).toBeNull();
     await fireEvent.press(screen.getByLabelText("View shelf"));
     expect(router.push).toHaveBeenLastCalledWith(`/books/${status}?did=did:plc:reader`);
-    await fireEvent.press(screen.getByRole("button", { name: /^Book 0\b/ }));
+    await fireEvent.press(screen.getByRole("button", { name: /^Open Book 0\b/ }));
     expect(router.push).toHaveBeenLastCalledWith("/book/bk_0");
   },
 );

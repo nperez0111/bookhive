@@ -7,6 +7,7 @@ export {
   WANTTOREAD,
   BOOK_STATUS,
   BOOK_STATUS_MAP,
+  BOOK_STATUS_OPTIONS,
   BOOK_STATUS_PAST_TENSE_MAP,
 } from "../../src/constants";
 

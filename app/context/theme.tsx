@@ -9,6 +9,7 @@ interface ThemeContextType {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
   isDark: boolean;
+  isLoaded: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -47,12 +48,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const isDark = theme === "dark";
 
-  if (!isLoaded) {
-    return null; // Or a loading spinner
-  }
-
   return (
-    <ThemeContext.Provider value={{ theme, themeMode, setThemeMode, isDark }}>
+    <ThemeContext.Provider value={{ theme, themeMode, setThemeMode, isDark, isLoaded }}>
       {children}
     </ThemeContext.Provider>
   );

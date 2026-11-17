@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -18,6 +19,8 @@ import { ThemedTextInput } from "@/components/ThemedTextInput";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useProfile } from "@/hooks/useBookhiveQuery";
+import { useUserLists, useListDetails } from "@/hooks/queries/catalogueLists";
+import { useAuth } from "@/context/auth";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 import {
@@ -35,6 +38,10 @@ export function TrackedBooksContent() {
   const colors = Colors[useColorScheme() ?? "light"];
   const bottom = useBottomTabOverflow();
   const profile = useProfile();
+  const { authState } = useAuth();
+  const shelves = useUserLists(authState?.did);
+  const [shelfUri, setShelfUri] = useState<string>();
+  const shelf = useListDetails(shelfUri);
   const { page, reading, pageWidth, coverColumns } = useAdaptiveLayout();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<TrackedFilter>("all");
@@ -47,12 +54,16 @@ export function TrackedBooksContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const books = profile.data?.books;
+  const shelfIds = useMemo(
+    () => new Set(shelf.data?.items.map((item) => item.hiveId)),
+    [shelf.data],
+  );
   const filtered = useMemo(
     () =>
       selectTrackedBooks(books ?? [], { query, filter, sort, direction }).filter(
-        (book) => !ownedOnly || book.owned,
+        (book) => (!ownedOnly || book.owned) && (!shelfUri || shelfIds.has(book.hiveId)),
       ),
-    [books, query, filter, sort, direction, ownedOnly],
+    [books, query, filter, sort, direction, ownedOnly, shelfUri, shelfIds],
   );
   const counts = useMemo(
     () =>
@@ -81,9 +92,66 @@ export function TrackedBooksContent() {
     setQuery("");
     setFilter("all");
     setOwnedOnly(false);
+    setShelfUri(undefined);
   };
   return (
     <View style={[styles.screen, grid ? page : reading]}>
+      <View style={{ marginBottom: 12 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+        >
+          {[{ uri: undefined, name: "All books" }, ...(shelves.data?.lists ?? [])].map((entry) => (
+            <Pressable
+              key={entry.uri ?? "all"}
+              accessibilityRole="button"
+              accessibilityState={{ selected: shelfUri === entry.uri }}
+              onPress={() => setShelfUri(entry.uri)}
+              style={{
+                minHeight: 44,
+                paddingHorizontal: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 22,
+                borderWidth: 1,
+                borderColor: shelfUri === entry.uri ? colors.primary : colors.cardBorder,
+                backgroundColor: shelfUri === entry.uri ? colors.activeBackground : "transparent",
+              }}
+            >
+              <ThemedText type="label">{entry.name}</ThemedText>
+            </Pressable>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Manage public shelves"
+            onPress={() => router.push("/lists")}
+            style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: "center" }}
+          >
+            <ThemedText type="label">Shelves</ThemedText>
+          </Pressable>
+        </ScrollView>
+        {shelves.error && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void shelves.refetch()}
+            style={{ paddingHorizontal: 20, minHeight: 44, justifyContent: "center" }}
+          >
+            <ThemedText accessibilityRole="alert">Could not load shelves. Try again.</ThemedText>
+          </Pressable>
+        )}
+        {shelfUri && shelf.error && shelf.data && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void shelf.refetch()}
+            style={{ paddingHorizontal: 20, minHeight: 44, justifyContent: "center" }}
+          >
+            <ThemedText accessibilityRole="alert">
+              Could not refresh this shelf. Showing saved books. Try again.
+            </ThemedText>
+          </Pressable>
+        )}
+      </View>
       <View
         style={[
           styles.search,
@@ -180,64 +248,76 @@ export function TrackedBooksContent() {
           </Pressable>
         </View>
       )}
-      <FlatList
-        key={grid ? `grid-${coverColumns}` : "list"}
-        data={filtered}
-        numColumns={grid ? coverColumns : 1}
-        columnWrapperStyle={grid ? styles.gridRow : undefined}
-        keyExtractor={(book) => book.hiveId}
-        renderItem={({ item }) => (
-          <TrackedBookItem
-            book={item}
-            grid={grid}
-            cardWidth={(pageWidth - 40 - (coverColumns - 1) * 12) / coverColumns}
-            onError={setWriteError}
-          />
-        )}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: bottom + 24 },
-          filtered.length === 0 && styles.emptyContent,
-        ]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={colors.primary}
-            onRefresh={() => {
-              setRefreshing(true);
-              void profile.refetch().finally(() => setRefreshing(false));
-            }}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons
-              name={books?.length ? "search-outline" : "library-outline"}
-              size={42}
-              color={colors.primary}
+      {shelfUri && !shelf.data ? (
+        shelf.error ? (
+          <QueryErrorHandler error={shelf.error} onRetry={() => shelf.refetch()} showRetryButton />
+        ) : (
+          <ActivityIndicator color={colors.primary} />
+        )
+      ) : (
+        <FlatList
+          key={grid ? `grid-${coverColumns}` : "list"}
+          data={filtered}
+          numColumns={grid ? coverColumns : 1}
+          columnWrapperStyle={grid ? styles.gridRow : undefined}
+          keyExtractor={(book) => book.hiveId}
+          renderItem={({ item }) => (
+            <TrackedBookItem
+              book={item}
+              grid={grid}
+              cardWidth={(pageWidth - 40 - (coverColumns - 1) * 12) / coverColumns}
+              onError={setWriteError}
             />
-            <ThemedText type="heading">
-              {books?.length ? "No matching books" : "Make room for your next read"}
-            </ThemedText>
-            <ThemedText style={styles.emptyDescription}>
-              {books?.length
-                ? "Try a different title, author, or reading status."
-                : "Find a book and add it to your reading list to get started."}
-            </ThemedText>
-            <Pressable
-              accessibilityRole="button"
-              onPress={books?.length ? clearFilters : () => router.push("/search")}
-              style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-            >
-              <ThemedText type="label" style={{ color: colors.background }}>
-                {books?.length ? "Clear filters" : "Find books"}
+          )}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: bottom + 24 },
+            filtered.length === 0 && styles.emptyContent,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              tintColor={colors.primary}
+              onRefresh={() => {
+                setRefreshing(true);
+                void Promise.all([
+                  profile.refetch(),
+                  shelves.refetch(),
+                  ...(shelfUri ? [shelf.refetch()] : []),
+                ]).finally(() => setRefreshing(false));
+              }}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons
+                name={books?.length ? "search-outline" : "library-outline"}
+                size={42}
+                color={colors.primary}
+              />
+              <ThemedText type="heading">
+                {books?.length ? "No matching books" : "Make room for your next read"}
               </ThemedText>
-            </Pressable>
-          </View>
-        }
-      />
+              <ThemedText style={styles.emptyDescription}>
+                {books?.length
+                  ? "Try a different title, author, or reading status."
+                  : "Find a book and add it to your reading list to get started."}
+              </ThemedText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={books?.length ? clearFilters : () => router.navigate("/explore")}
+                style={[styles.emptyButton, { backgroundColor: colors.primary }]}
+              >
+                <ThemedText type="label" style={{ color: colors.background }}>
+                  {books?.length ? "Clear filters" : "Find books"}
+                </ThemedText>
+              </Pressable>
+            </View>
+          }
+        />
+      )}
       <ActionSheet
         visible={sortOpen}
         onClose={() => setSortOpen(false)}

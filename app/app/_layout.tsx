@@ -20,8 +20,9 @@ import "react-native-reanimated";
 import { AuthProvider, authSession, useAuth, getBaseUrl } from "@/context/auth";
 import { accountCacheKey, epochStorage } from "@/context/authSession";
 import { LanguageProvider } from "@/context/language";
-import { ThemeProvider } from "@/context/theme";
-import { View, Platform, AppState, ActivityIndicator } from "react-native";
+import { ThemeProvider, useTheme } from "@/context/theme";
+import { View, Platform, AppState } from "react-native";
+import { LaunchScreen } from "@/components/LaunchScreen";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { NetworkErrorBoundary } from "@/components/NetworkErrorBoundary";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
@@ -69,7 +70,7 @@ function useOTAUpdates() {
   }, []);
 }
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Hold only until the first JS surface has laid out, never for network/auth work.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function createQueryClient() {
@@ -156,12 +157,9 @@ function AuthenticatedNavigation() {
 
 function AccountCache({ children }: { children: React.ReactNode }) {
   const { isRestoring, sessionEpoch } = useAuth();
+  const colorScheme = useColorScheme();
   if (isRestoring)
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator accessibilityLabel="Restoring session" />
-      </View>
-    );
+    return <LaunchScreen theme={colorScheme ?? "light"} message="Restoring your reading space…" />;
   return <SessionCache key={sessionEpoch}>{children}</SessionCache>;
 }
 
@@ -176,7 +174,9 @@ export default function RootLayout() {
 function RootLayoutContent() {
   useOTAUpdates();
   const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
+  const { isLoaded: themeLoaded } = useTheme();
+  // This optional monospace font must not block login, recovery or the app shell.
+  const [, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
   const { top } = useSafeAreaInsets();
@@ -186,66 +186,72 @@ function RootLayoutContent() {
   }, []);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
+    if (fontError) console.warn("Optional font could not load:", fontError);
+  }, [fontError]);
 
   return (
     <StrictMode>
-      <NetworkErrorBoundary>
-        <AuthProvider>
-          <AccountCache>
-            <LanguageProvider>
-              <NavigationThemeProvider
-                value={{
-                  ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
-                  colors: {
-                    ...(colorScheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
-                    primary: Colors[colorScheme ?? "light"].primary,
-                    background: Colors[colorScheme ?? "light"].background,
-                    text: Colors[colorScheme ?? "light"].text,
-                    card: Colors[colorScheme ?? "light"].surfacePrimary,
-                    border: Colors[colorScheme ?? "light"].cardBorder,
-                  },
-                }}
-              >
-                {/* iOS status bar background overlay */}
-                {Platform.OS === "ios" && (
-                  <View
-                    testID="ios-status-area"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: top,
-                      backgroundColor: Colors[colorScheme ?? "light"].background,
-                      zIndex: 1,
+      <View
+        testID="launch-surface"
+        style={{ flex: 1, backgroundColor: Colors[colorScheme ?? "light"].background }}
+        onLayout={() => {
+          void SplashScreen.hideAsync().catch(() => {});
+        }}
+      >
+        <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+        {!themeLoaded ? (
+          <LaunchScreen theme={colorScheme ?? "light"} />
+        ) : (
+          <NetworkErrorBoundary>
+            <AuthProvider>
+              <AccountCache>
+                <LanguageProvider>
+                  <NavigationThemeProvider
+                    value={{
+                      ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
+                      colors: {
+                        ...(colorScheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
+                        primary: Colors[colorScheme ?? "light"].primary,
+                        background: Colors[colorScheme ?? "light"].background,
+                        text: Colors[colorScheme ?? "light"].text,
+                        card: Colors[colorScheme ?? "light"].surfacePrimary,
+                        border: Colors[colorScheme ?? "light"].cardBorder,
+                      },
                     }}
-                  />
-                )}
-                <View
-                  testID="app-safe-area"
-                  style={{
-                    flex: 1,
-                    backgroundColor: Colors[colorScheme ?? "light"].background,
-                    paddingTop: Platform.OS === "ios" ? top : 0,
-                  }}
-                >
-                  <NetworkStatusIndicator />
-                  <AuthenticatedNavigation />
-                </View>
-                <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-              </NavigationThemeProvider>
-            </LanguageProvider>
-          </AccountCache>
-        </AuthProvider>
-      </NetworkErrorBoundary>
+                  >
+                    {/* iOS status bar background overlay */}
+                    {Platform.OS === "ios" && (
+                      <View
+                        testID="ios-status-area"
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: top,
+                          backgroundColor: Colors[colorScheme ?? "light"].background,
+                          zIndex: 1,
+                        }}
+                      />
+                    )}
+                    <View
+                      testID="app-safe-area"
+                      style={{
+                        flex: 1,
+                        backgroundColor: Colors[colorScheme ?? "light"].background,
+                        paddingTop: Platform.OS === "ios" ? top : 0,
+                      }}
+                    >
+                      <NetworkStatusIndicator />
+                      <AuthenticatedNavigation />
+                    </View>
+                  </NavigationThemeProvider>
+                </LanguageProvider>
+              </AccountCache>
+            </AuthProvider>
+          </NetworkErrorBoundary>
+        )}
+      </View>
     </StrictMode>
   );
 }

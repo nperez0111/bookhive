@@ -179,8 +179,9 @@ it("lets catalogue rating metadata reflow at accessibility text sizes without tr
   mockData.book.rating = 4300;
   mockData.book.ratingsCount = 1721972;
   await render(<BookInfo />);
-  const metadata = screen.getByText("4.3 (1,721,972)");
-  expect(metadata).toHaveStyle({ fontSize: 14, flexShrink: 1, maxWidth: "100%" });
+  expect(screen.getByText("Community rating")).toBeTruthy();
+  expect(screen.getByText("4.3 / 5")).toBeTruthy();
+  const metadata = screen.getByText("1,721,972 ratings");
   expect(metadata.props.numberOfLines).toBeUndefined();
   expect(metadata.props.allowFontScaling).not.toBe(false);
   expect(metadata.props.adjustsFontSizeToFit).not.toBe(true);
@@ -288,7 +289,8 @@ it("keeps editors closed until requested and expands the book description", asyn
   expect(screen.queryByDisplayValue("Old review")).toBeNull();
   expect(screen.getByLabelText("Edit review").props.accessibilityState.expanded).toBe(false);
   await pressInFlight(screen.getByText("Read full description"));
-  expect(screen.getByText("Show less")).toBeTruthy();
+  expect(screen.queryByText("Read full description")).toBeNull();
+  expect(screen.queryByText("Show less")).toBeNull();
   await pressInFlight(screen.getByLabelText("Update reading progress"));
   expect(screen.getAllByPlaceholderText("Current")).toHaveLength(2);
   await pressInFlight(screen.getByLabelText("Edit review"));

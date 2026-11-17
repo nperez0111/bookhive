@@ -10,6 +10,8 @@ import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
 
 type BackNavigationHeaderProps = {
   title?: string;
+  subtitle?: string;
+  centered?: boolean;
   onBackPress?: () => void;
   rightElement?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -17,6 +19,8 @@ type BackNavigationHeaderProps = {
 
 export function BackNavigationHeader({
   title,
+  subtitle,
+  centered = false,
   onBackPress,
   rightElement,
   style,
@@ -60,20 +64,36 @@ export function BackNavigationHeader({
         </HeaderAction>
 
         {title && (
-          <View style={styles.titleContainer}>
-            <View style={styles.titlePill}>
+          <View style={[styles.titleContainer, centered && { alignItems: "center" }]}>
+            <View style={[styles.titlePill, centered && { alignItems: "center" }]}>
               <ThemedText
                 accessibilityRole="header"
-                style={[styles.title, { color: colors.primaryText }]}
+                style={[
+                  styles.title,
+                  { color: colors.primaryText },
+                  centered && { textAlign: "center", fontSize: 22, lineHeight: 28 },
+                ]}
                 type="heading"
               >
                 {title}
               </ThemedText>
+              {subtitle ? (
+                <ThemedText
+                  type="caption"
+                  style={[
+                    { color: colors.secondaryText },
+                    centered && { textAlign: "center", fontSize: 15, lineHeight: 21 },
+                  ]}
+                >
+                  {subtitle}
+                </ThemedText>
+              ) : null}
             </View>
           </View>
         )}
 
         {rightElement ? <View style={styles.rightContainer}>{rightElement}</View> : null}
+        {centered && !rightElement ? <View style={{ width: 52 }} accessible={false} /> : null}
       </View>
     </View>
   );

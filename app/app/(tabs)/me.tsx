@@ -20,19 +20,22 @@ export default function MyProfileScreen() {
         <ScreenHeader
           title="Profile"
           actions={
-            <HeaderAction
-              tone="neutral"
-              accessibilityLabel="Settings"
-              onPress={() => router.push("/settings")}
-              style={{
-                minWidth: 44,
-                minHeight: 44,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="settings-outline" size={24} color={colors.primaryText} />
-            </HeaderAction>
+            <>
+              <HeaderAction title="Import" tone="neutral" onPress={() => router.push("/import")} />
+              <HeaderAction
+                tone="neutral"
+                accessibilityLabel="Settings"
+                onPress={() => router.push("/settings")}
+                style={{
+                  minWidth: 44,
+                  minHeight: 44,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="settings-outline" size={24} color={colors.primaryText} />
+              </HeaderAction>
+            </>
           }
         />
       </View>

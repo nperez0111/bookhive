@@ -109,14 +109,6 @@ export default function HomeScreen() {
   }
 
   const readingBooks = profile.data.books.filter((book) => book.status === BOOK_STATUS.READING);
-  const wantToReadBooks = profile.data.books.filter(
-    (book) => book.status === BOOK_STATUS.WANTTOREAD,
-  );
-  const finishedBooks = profile.data.books
-    .filter((book) => book.status === BOOK_STATUS.FINISHED)
-    .sort((a, b) =>
-      (b.finishedAt || b.createdAt || "").localeCompare(a.finishedAt || a.createdAt || ""),
-    );
 
   const shelvesAndActivity = (
     <>
@@ -144,7 +136,15 @@ export default function HomeScreen() {
             onPress={() => router.push(`/book/${activity.hiveId}`)}
           />
         ))}
-        <ListItem icon="people" title="Community feed" onPress={() => router.push("/feed")} />
+      </View>
+      <View style={{ paddingHorizontal: 20, gap: 8, marginBottom: 24 }}>
+        <SectionHeader icon="people" title="Community" style={{ paddingHorizontal: 0 }} />
+        <ListItem
+          icon="people"
+          title="Community feed"
+          subtitle="See what other readers are reading and reviewing."
+          onPress={() => router.push("/feed")}
+        />
       </View>
     </>
   );
@@ -155,7 +155,10 @@ export default function HomeScreen() {
         <ScreenHeader
           title="Home"
           actions={
-            <HeaderAction accessibilityLabel="Find a book" onPress={() => router.push("/search")}>
+            <HeaderAction
+              accessibilityLabel="Find a book"
+              onPress={() => router.navigate("/explore")}
+            >
               <Ionicons name="search-outline" size={20} color={colors.accentForeground} />
             </HeaderAction>
           }
@@ -189,7 +192,7 @@ export default function HomeScreen() {
               title="Currently Reading"
               icon="book"
               emptyMessage="What are you reading?"
-              emptySubtitle="Find a book, then choose Currently Reading to keep it here."
+              emptySubtitle="Find a book, then choose Reading to keep it here."
               status={BOOK_STATUS.READING}
             />
 
@@ -203,31 +206,10 @@ export default function HomeScreen() {
               ]}
               onItemPress={handleStatPress}
             />
-            {wide && shelvesAndActivity}
           </View>
 
           {/* Book Sections */}
-          <View style={wide ? styles.column : undefined}>
-            <HomeBookSection
-              books={wantToReadBooks}
-              title="Want to Read"
-              icon="bookmark"
-              emptyMessage="No books in your list"
-              emptySubtitle="Save books you want to read next."
-              status={BOOK_STATUS.WANTTOREAD}
-            />
-
-            {finishedBooks.length > 0 && (
-              <HomeBookSection
-                books={finishedBooks}
-                title="Recently finished"
-                icon="checkmark-circle"
-                emptyMessage="No finished books"
-                emptySubtitle="Books you finish will appear here"
-                status={BOOK_STATUS.FINISHED}
-              />
-            )}
-          </View>
+          <View style={wide ? styles.column : undefined}>{wide && shelvesAndActivity}</View>
         </View>
 
         {!wide && shelvesAndActivity}

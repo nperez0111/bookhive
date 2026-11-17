@@ -11,6 +11,7 @@ import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-nati
 import { ThemedButton } from "./ThemedButton";
 import { ThemedText } from "./ThemedText";
 import { StarDisplay } from "./StarDisplay";
+import { HtmlToText } from "@/utils/htmlToText";
 
 // Union type for both comments and reviews
 export type CommentItem = (
@@ -258,11 +259,7 @@ const CommentEntry: React.FC<{
           </View>
         </View>
       ) : (
-        <ThemedText
-          style={[styles.commentText, { color: colorScheme === "dark" ? "#E5E7EB" : colors.text }]}
-        >
-          {content}
-        </ThemedText>
+        <HtmlToText html={content} style={[styles.commentText, { color: colors.text }]} />
       )}
 
       {/* Interaction Footer */}

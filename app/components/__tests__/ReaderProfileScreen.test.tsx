@@ -127,11 +127,7 @@ it("does not add placeholder bio text or expansion controls for short bios", asy
 
 it("bounds book and review previews without hiding the full collections", async () => {
   const screen = await render(<ReaderProfileScreen did="did:plc:viewer" />);
-  expect(
-    screen
-      .getAllByRole("button", { name: /^Book \d\b/ })
-      .filter((button) => button.props.accessibilityHint === "Open book details"),
-  ).toHaveLength(3);
+  expect(screen.getAllByRole("button", { name: /^Open Book \d\b/ })).toHaveLength(3);
   expect(screen.queryAllByLabelText(/Read review of/)).toHaveLength(2);
   expect(screen.getByText("Review 0 More & detail")).toBeTruthy();
   expect(screen.queryByText(/<b>Review/)).toBeNull();

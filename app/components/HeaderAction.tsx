@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, type PressableProps } from "react-native";
+import { ActivityIndicator, Pressable, View, type PressableProps } from "react-native";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { ThemedText } from "./ThemedText";
@@ -40,7 +40,7 @@ export function HeaderAction({
           minWidth: 44,
           maxWidth: "100%",
           width: title ? undefined : 44,
-          paddingHorizontal: title ? 12 : 10,
+          paddingHorizontal: title ? 12 : 0,
           borderWidth: 1,
           borderRadius: 12,
           borderColor: tone === "primary" ? colors.primary : colors.cardBorder,
@@ -54,7 +54,17 @@ export function HeaderAction({
         typeof style === "function" ? style(state) : style,
       ]}
     >
-      {loading ? <ActivityIndicator size="small" color={foreground} /> : children}
+      {loading ? (
+        <ActivityIndicator size="small" color={foreground} />
+      ) : (
+        children && (
+          <View
+            style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}
+          >
+            {children}
+          </View>
+        )
+      )}
       {title && (
         <ThemedText type="label" style={{ color: foreground, flexShrink: 1 }}>
           {title}

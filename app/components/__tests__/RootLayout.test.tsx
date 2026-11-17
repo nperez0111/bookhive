@@ -1,5 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
+import { useAuth } from "@/context/auth";
 import RootLayout from "../../app/_layout";
 import { Colors } from "@/constants/Colors";
 
@@ -40,7 +44,7 @@ jest.mock("expo-router", () => {
 });
 jest.mock("@/context/auth", () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => children,
-  useAuth: () => ({ isAuthenticated: false, isRestoring: false, sessionEpoch: 0 }),
+  useAuth: jest.fn(() => ({ isAuthenticated: false, isRestoring: false, sessionEpoch: 0 })),
   authSession: { epoch: 0, subscribe: () => () => {} },
   getBaseUrl: () => "https://bookhive.buzz",
 }));
@@ -53,10 +57,10 @@ jest.mock("@tanstack/query-async-storage-persister", () => ({
 jest.mock("@tanstack/react-query-persist-client", () => ({
   PersistQueryClientProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
-jest.mock("expo-font", () => ({ useFonts: () => [true] }));
+jest.mock("expo-font", () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock("expo-splash-screen", () => ({
   preventAutoHideAsync: async () => {},
-  hideAsync: async () => {},
+  hideAsync: jest.fn(async () => {}),
 }));
 jest.mock("expo-updates", () => ({}));
 jest.mock("expo-status-bar", () => ({ StatusBar: jest.fn(() => null) }));
@@ -78,6 +82,51 @@ jest.mock("@/components/NetworkStatusIndicator", () => ({
     );
   },
 }));
+
+beforeEach(() => {
+  jest.mocked(useAuth).mockReturnValue({
+    isAuthenticated: false,
+    isRestoring: false,
+    sessionEpoch: 0,
+  } as ReturnType<typeof useAuth>);
+  jest.mocked(useFonts).mockReturnValue([true, null]);
+  jest.mocked(SplashScreen.hideAsync).mockClear();
+});
+
+it("shows the launch surface while reading theme preferences instead of leaving native splash blocking", async () => {
+  let resolveTheme!: (theme: string) => void;
+  jest.mocked(AsyncStorage.getItem).mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveTheme = resolve;
+    }),
+  );
+  await render(<RootLayout />);
+  expect(screen.getByRole("progressbar")).toHaveTextContent("Opening your reading space…");
+  await fireEvent(screen.getByTestId("launch-surface"), "layout", {
+    nativeEvent: { layout: { width: 390, height: 844 } },
+  });
+  expect(SplashScreen.hideAsync).toHaveBeenCalled();
+  await act(async () => {
+    resolveTheme("dark");
+  });
+  expect(screen.queryByTestId("launch-screen")).toBeNull();
+  expect(screen.getByTestId("app-safe-area")).toHaveStyle({
+    backgroundColor: Colors.dark.background,
+  });
+});
+
+it("keeps native splash colors and transparent mark aligned with the JS launch surface", () => {
+  const config = require("../../app.json");
+  const [, splash] = config.expo.plugins.find(
+    (plugin: unknown) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
+  );
+  expect(splash).toMatchObject({
+    image: "./assets/images/bee.png",
+    imageWidth: 160,
+    backgroundColor: Colors.light.background,
+    dark: { image: "./assets/images/bee.png", backgroundColor: Colors.dark.background },
+  });
+});
 
 it("updates the iOS status background and system glyph tone with the theme, reserving the inset once", async () => {
   await render(<RootLayout />);
@@ -104,4 +153,42 @@ it("updates the iOS status background and system glyph tone with the theme, rese
     backgroundColor: Colors.light.background,
   });
   expect(jest.mocked(StatusBar).mock.calls.at(-1)?.[0]).toMatchObject({ style: "dark" });
+});
+
+it("reveals a themed session-loading surface on layout, without waiting for auth or fonts", async () => {
+  jest
+    .mocked(useAuth)
+    .mockReturnValue({ isAuthenticated: false, isRestoring: true, sessionEpoch: 0 } as ReturnType<
+      typeof useAuth
+    >);
+  jest.mocked(useFonts).mockReturnValue([false, null]);
+  jest.mocked(SplashScreen.hideAsync).mockClear();
+  await render(<RootLayout />);
+  expect(screen.getByTestId("launch-screen")).toHaveStyle({
+    backgroundColor: Colors.dark.background,
+  });
+  expect(screen.getByRole("progressbar")).toHaveTextContent("Restoring your reading space…");
+  expect(screen.queryByTestId("app-safe-area")).toBeNull();
+  expect(SplashScreen.hideAsync).not.toHaveBeenCalled();
+  await fireEvent(screen.getByTestId("launch-surface"), "layout", {
+    nativeEvent: { layout: { width: 390, height: 844 } },
+  });
+  expect(SplashScreen.hideAsync).toHaveBeenCalled();
+});
+
+it("does not strand navigation behind a failed optional font", async () => {
+  jest
+    .mocked(useAuth)
+    .mockReturnValue({ isAuthenticated: false, isRestoring: false, sessionEpoch: 0 } as ReturnType<
+      typeof useAuth
+    >);
+  jest.mocked(useFonts).mockReturnValue([false, new Error("Font unavailable")]);
+  const warning = jest.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await render(<RootLayout />);
+    expect(screen.getByTestId("app-safe-area")).toBeTruthy();
+    expect(screen.queryByTestId("launch-screen")).toBeNull();
+  } finally {
+    warning.mockRestore();
+  }
 });

@@ -25,9 +25,14 @@ beforeEach(() => {
 
 it("renders a title and right-hand content", async () => {
   await render(
-    <BackNavigationHeader title="Test Title" rightElement={<View testID="right-element" />} />,
+    <BackNavigationHeader
+      title="Test Title"
+      subtitle="Book author"
+      rightElement={<View testID="right-element" />}
+    />,
   );
   expect(screen.getByText("Test Title")).toBeOnTheScreen();
+  expect(screen.getByText("Book author")).toBeOnTheScreen();
   expect(screen.getByTestId("right-element")).toBeOnTheScreen();
 });
 
@@ -36,6 +41,12 @@ it("exposes the full screen title as a heading without limiting large text to on
   await render(<BackNavigationHeader title={title} />);
   const heading = screen.getByRole("header", { name: title });
   expect(heading.props.numberOfLines).toBeUndefined();
+});
+
+it("can center a book title and author", async () => {
+  await render(<BackNavigationHeader title="Dune" subtitle="Frank Herbert" centered />);
+  expect(screen.getByRole("header", { name: "Dune" })).toHaveStyle({ textAlign: "center" });
+  expect(screen.getByText("Frank Herbert")).toHaveStyle({ textAlign: "center" });
 });
 
 it("navigates back by default", async () => {

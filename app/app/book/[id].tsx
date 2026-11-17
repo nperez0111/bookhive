@@ -56,7 +56,7 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
   const [mutationError, setMutationError] = useState<string | null>(null);
   const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const bottom = useBottomTabOverflow();
-  const { reading } = useAdaptiveLayout();
+  const { reading, page, wide } = useAdaptiveLayout();
 
   const bookQuery = useBookInfo(hiveId);
   const bookData = bookQuery.data;
@@ -307,7 +307,9 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     <View style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}>
       {/* Back Navigation Header */}
       <BackNavigationHeader
-        title="Book"
+        title={book.title}
+        subtitle={formatAuthors(book.authors)}
+        centered
         onBackPress={
           fromStatus
             ? () => {
@@ -319,288 +321,212 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
       />
 
       <ScrollView ref={scrollViewRef} style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={[styles.contentContainer, reading, { paddingBottom: 20 + bottom }]}>
-          {/* Book Cover and Info Section */}
-          <Animated.View style={styles.bookSection} entering={FadeInDown.delay(40).duration(220)}>
-            <View style={styles.coverContainer}>
-              <FadeInImage
-                source={{
-                  uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
+        <View
+          style={[styles.contentContainer, wide ? page : reading, { paddingBottom: 20 + bottom }]}
+        >
+          <View style={wide && styles.bookOverview}>
+            {/* Book Cover and Info Section */}
+            <Animated.View
+              style={[styles.bookSection, wide && styles.bookSectionWide]}
+              entering={FadeInDown.delay(40).duration(220)}
+            >
+              <View style={styles.coverContainer}>
+                <FadeInImage
+                  source={{
+                    uri: `${getBaseUrl()}/images/s_300x500,fit_cover/${book.cover || book.thumbnail}`,
+                  }}
+                  style={[styles.cover, wide && styles.coverWide]}
+                  resizeMode="cover"
+                />
+              </View>
+
+              <View style={styles.bookInfo}>
+                {book.rating && book.ratingsCount && (
+                  <View style={styles.communityRating}>
+                    <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+                      Community rating
+                    </ThemedText>
+                    <View style={styles.ratingDisplay}>
+                      <StarDisplay rating={Math.round(rating * 2)} size="md" />
+                      <ThemedText type="label">{rating.toFixed(1)} / 5</ThemedText>
+                    </View>
+                    <ThemedText type="caption" style={{ color: colors.secondaryText }}>
+                      {book.ratingsCount.toLocaleString()} ratings
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+
+            <View style={wide && styles.readingColumn}>
+              <BookActionCard
+                type="status"
+                title="Reading status"
+                icon="bookmark-outline"
+                status={status}
+                onStatusPress={() => {
+                  if (!isBusy) setModalVisible(true);
                 }}
-                style={styles.cover}
-                resizeMode="cover"
+                isPending={isBusy}
+                rightAccessory={
+                  <Pressable
+                    onPress={handleOwnedToggle}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Own this book"
+                    accessibilityState={{ checked: Boolean(userBook.owned), disabled: isBusy }}
+                    disabled={isBusy}
+                    style={{
+                      minHeight: 44,
+                      minWidth: 44,
+                      paddingHorizontal: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.cardBorder,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Ionicons
+                      name={userBook.owned ? "book" : "book-outline"}
+                      size={18}
+                      color={colors.secondaryText}
+                    />
+                    <ThemedText type="label">{userBook.owned ? "Owned" : "Own"}</ThemedText>
+                  </Pressable>
+                }
               />
-            </View>
+              {mutationError && (
+                <ThemedText
+                  accessibilityRole="alert"
+                  style={[styles.progressError, { color: colors.errorText }]}
+                >
+                  {mutationError}
+                </ThemedText>
+              )}
 
-            <View style={styles.bookInfo}>
-              <ThemedText
-                style={[styles.title, { color: colorScheme === "dark" ? "white" : colors.text }]}
+              <ReadingProgressCard
+                progress={storedProgress}
+                draft={progressDraft}
+                isBusy={isBusy}
+                saving={activeWrite === "progress"}
+                error={progressError}
+                success={progressSuccess}
+                onSave={handleSaveProgress}
+                editing={progressEditing}
+                onEditingChange={setProgressEditing}
+              />
+
+              <Animated.View
+                style={styles.actionsContainer}
+                entering={FadeInDown.delay(140).duration(220)}
               >
-                {book.title}
-              </ThemedText>
-              <ThemedText style={[styles.author, { color: colors.secondaryText }]}>
-                {formatAuthors(book.authors)}
-              </ThemedText>
+                <BookActionCard
+                  type="rating"
+                  title="Your rating"
+                  icon="star-outline"
+                  rating={userBook.stars}
+                  onRatingChange={handleRatingUpdate}
+                  isPending={isBusy}
+                />
+                <BookActionCard
+                  type="review"
+                  title={userBook.review ? "Your Review" : "Write a review"}
+                  icon="chatbubble-outline"
+                  review={userBook.review}
+                  onReviewSave={handleAddReview}
+                  isPending={isBusy}
+                  reviewText={reviewDraft.value}
+                  onReviewTextChange={reviewDraft.change}
+                />
+                {hasTracking && (
+                  <BookActionCard
+                    type="dates"
+                    title="Reading Dates"
+                    icon="calendar-outline"
+                    startedAt={userBook.startedAt}
+                    finishedAt={userBook.finishedAt}
+                    onStartedAtChange={handleStartedAtUpdate}
+                    onFinishedAtChange={handleFinishedAtUpdate}
+                    isPending={isBusy}
+                  />
+                )}
+                {status && (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isBusy}
+                    onPress={() => saveBook({ hiveId, status: "" })}
+                    style={{ minHeight: 44, justifyContent: "center" }}
+                  >
+                    <ThemedText>Clear reading status</ThemedText>
+                  </Pressable>
+                )}
+              </Animated.View>
 
-              {/* Rating Display */}
-              {book.rating && book.ratingsCount && (
-                <View style={styles.ratingDisplay}>
-                  <StarDisplay rating={Math.round(rating * 2)} size="md" />
+              <Animated.View
+                style={styles.actionButtons}
+                entering={FadeInDown.delay(80).duration(220)}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Share book"
+                  style={[
+                    styles.actionButton,
+                    {
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                  onPress={handleShare}
+                >
+                  <Ionicons
+                    name="share-outline"
+                    size={20}
+                    color={colorScheme === "dark" ? "white" : colors.text}
+                  />
                   <ThemedText
                     style={[
-                      styles.ratingsCount,
-                      {
-                        color: colors.secondaryText,
-                      },
+                      styles.actionButtonText,
+                      { color: colorScheme === "dark" ? "white" : colors.text },
                     ]}
                   >
-                    {rating.toFixed(1)} ({book.ratingsCount.toLocaleString()})
+                    Share
                   </ThemedText>
-                </View>
-              )}
-            </View>
-          </Animated.View>
+                </Pressable>
 
-          <BookActionCard
-            type="status"
-            title="Reading status"
-            icon="bookmark-outline"
-            status={status}
-            onStatusPress={() => {
-              if (!isBusy) setModalVisible(true);
-            }}
-            isPending={isBusy}
-            rightAccessory={
-              <Pressable
-                onPress={handleOwnedToggle}
-                accessibilityRole="switch"
-                accessibilityLabel="Own this book"
-                accessibilityState={{ checked: Boolean(userBook.owned), disabled: isBusy }}
-                disabled={isBusy}
-                style={{
-                  minHeight: 44,
-                  minWidth: 44,
-                  paddingHorizontal: 12,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                <Ionicons
-                  name={userBook.owned ? "book" : "book-outline"}
-                  size={18}
-                  color={colors.secondaryText}
-                />
-                <ThemedText type="label">{userBook.owned ? "Owned" : "Own"}</ThemedText>
-              </Pressable>
-            }
-          />
-          {mutationError && (
-            <ThemedText
-              accessibilityRole="alert"
-              style={[styles.progressError, { color: colors.errorText }]}
-            >
-              {mutationError}
-            </ThemedText>
-          )}
-
-          <ReadingProgressCard
-            progress={storedProgress}
-            draft={progressDraft}
-            isBusy={isBusy}
-            saving={activeWrite === "progress"}
-            error={progressError}
-            success={progressSuccess}
-            onSave={handleSaveProgress}
-            editing={progressEditing}
-            onEditingChange={setProgressEditing}
-          />
-
-          <Animated.View
-            style={styles.actionsContainer}
-            entering={FadeInDown.delay(140).duration(220)}
-          >
-            <BookActionCard
-              type="rating"
-              title={userBook.stars ? `Your Rating: ${userBook.stars / 2}/5` : "Rate this book"}
-              icon="star-outline"
-              rating={userBook.stars}
-              onRatingChange={handleRatingUpdate}
-              isPending={isBusy}
-            />
-            <BookActionCard
-              type="review"
-              title={userBook.review ? "Your Review" : "Write a review"}
-              icon="chatbubble-outline"
-              review={userBook.review}
-              onReviewSave={handleAddReview}
-              isPending={isBusy}
-              reviewText={reviewDraft.value}
-              onReviewTextChange={reviewDraft.change}
-            />
-            {hasTracking && (
-              <BookActionCard
-                type="dates"
-                title="Reading Dates"
-                icon="calendar-outline"
-                startedAt={userBook.startedAt}
-                finishedAt={userBook.finishedAt}
-                onStartedAtChange={handleStartedAtUpdate}
-                onFinishedAtChange={handleFinishedAtUpdate}
-                isPending={isBusy}
-              />
-            )}
-            {status && (
-              <Pressable
-                accessibilityRole="button"
-                disabled={isBusy}
-                onPress={() => saveBook({ hiveId, status: "" })}
-                style={{ minHeight: 44, justifyContent: "center" }}
-              >
-                <ThemedText>Clear reading status</ThemedText>
-              </Pressable>
-            )}
-          </Animated.View>
-
-          <Animated.View style={styles.actionButtons} entering={FadeInDown.delay(80).duration(220)}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Share book"
-              style={[
-                styles.actionButton,
-                {
-                  borderColor: colors.cardBorder,
-                },
-              ]}
-              onPress={handleShare}
-            >
-              <Ionicons
-                name="share-outline"
-                size={20}
-                color={colorScheme === "dark" ? "white" : colors.text}
-              />
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                Share
-              </ThemedText>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add to List"
-              style={[
-                styles.actionButton,
-                {
-                  borderColor: colors.cardBorder,
-                },
-              ]}
-              onPress={() => setAddToListVisible(true)}
-            >
-              <Ionicons
-                name="list-outline"
-                size={20}
-                color={colorScheme === "dark" ? "white" : colors.text}
-              />
-              <ThemedText
-                style={[
-                  styles.actionButtonText,
-                  { color: colorScheme === "dark" ? "white" : colors.text },
-                ]}
-              >
-                Add to List
-              </ThemedText>
-            </Pressable>
-          </Animated.View>
-
-          {/* Description */}
-          <Animated.View
-            style={styles.descriptionSection}
-            entering={FadeInDown.delay(110).duration(220)}
-          >
-            <ThemedText
-              style={[
-                styles.sectionTitle,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
-            >
-              Description
-            </ThemedText>
-            <HtmlToText
-              html={book.description || "No description available"}
-              numberOfLines={descriptionExpanded ? undefined : 4}
-              style={[styles.description, { color: colors.text }]}
-            />
-            {!!book.description && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: descriptionExpanded }}
-                onPress={() => setDescriptionExpanded(!descriptionExpanded)}
-                style={{ minHeight: 44, justifyContent: "center" }}
-              >
-                <ThemedText style={{ color: colors.text, textDecorationLine: "underline" }}>
-                  {descriptionExpanded ? "Show less" : "Read full description"}
-                </ThemedText>
-              </Pressable>
-            )}
-          </Animated.View>
-
-          {/* Genre Chips */}
-          {genres.length > 0 && (
-            <Animated.View
-              style={styles.genreSection}
-              entering={FadeInDown.delay(115).duration(220)}
-            >
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.genreScroll}
-              >
-                {genres.map((genre) => (
-                  <Pressable
-                    key={genre}
-                    accessibilityRole="button"
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add to List"
+                  style={[
+                    styles.actionButton,
+                    {
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
+                  onPress={() => setAddToListVisible(true)}
+                >
+                  <Ionicons
+                    name="list-outline"
+                    size={20}
+                    color={colorScheme === "dark" ? "white" : colors.text}
+                  />
+                  <ThemedText
                     style={[
-                      styles.genreChip,
-                      {
-                        backgroundColor:
-                          colorScheme === "dark"
-                            ? "rgba(251, 191, 36, 0.15)"
-                            : "rgba(217, 119, 6, 0.1)",
-                        borderColor:
-                          colorScheme === "dark"
-                            ? "rgba(251, 191, 36, 0.3)"
-                            : "rgba(217, 119, 6, 0.2)",
-                      },
+                      styles.actionButtonText,
+                      { color: colorScheme === "dark" ? "white" : colors.text },
                     ]}
-                    onPress={() =>
-                      router.push(`/explore/genres/${encodeURIComponent(genre)}` as any)
-                    }
                   >
-                    <ThemedText
-                      style={[styles.genreChipText, { color: colors.text }]}
-                      type="caption"
-                    >
-                      {genre}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Animated.View>
-          )}
-
-          {/* Who's Reading */}
-          {activity.length > 0 && (
+                    Add to List
+                  </ThemedText>
+                </Pressable>
+              </Animated.View>
+            </View>
+          </View>
+          <View style={reading}>
+            {/* Description */}
             <Animated.View
-              style={styles.whoIsReadingSection}
-              entering={FadeInDown.delay(120).duration(220)}
+              style={styles.descriptionSection}
+              entering={FadeInDown.delay(110).duration(220)}
             >
               <ThemedText
                 style={[
@@ -608,180 +534,258 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                   { color: colorScheme === "dark" ? "white" : colors.text },
                 ]}
               >
-                Who&apos;s Reading This ({activity.length})
+                Description
               </ThemedText>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.whoIsReadingScroll}
-              >
-                {activity.map((item, idx) => {
-                  const userDid = (item as any).userDid as string | undefined;
-                  const userHandle = (item as any).userHandle as string | undefined;
-                  return (
-                    <UserBlock
-                      key={`reader-${userDid ?? idx}`}
-                      handle={userHandle ?? userDid ?? "user"}
-                      avatar={
-                        userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
-                      }
-                      size="sm"
-                      onPress={userDid ? () => handleUserPress(userDid) : undefined}
-                      style={styles.whoIsReadingItem}
-                    />
-                  );
-                })}
-              </ScrollView>
-            </Animated.View>
-          )}
-
-          <ReadingHistory
-            previousReads={userBook.previousReads}
-            progressHistory={userBook.progressHistory}
-          />
-          {!!userBook.shelves?.length && (
-            <View style={{ gap: 8, marginBottom: 24 }}>
-              <ThemedText accessibilityRole="header" type="heading">
-                On public shelves
-              </ThemedText>
-              {userBook.shelves.map((shelf) => (
+              <HtmlToText
+                html={book.description || "No description available"}
+                numberOfLines={descriptionExpanded ? undefined : 4}
+                style={[styles.description, { color: colors.text }]}
+              />
+              {!!book.description && !descriptionExpanded && (
                 <Pressable
-                  key={shelf.uri}
                   accessibilityRole="button"
-                  accessibilityLabel={`View public shelf ${shelf.name}`}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/lists/[uri]",
-                      params: { uri: encodeURIComponent(shelf.uri) },
-                    })
-                  }
+                  accessibilityState={{ expanded: descriptionExpanded }}
+                  onPress={() => setDescriptionExpanded(true)}
                   style={{ minHeight: 44, justifyContent: "center" }}
                 >
-                  <ThemedText>{shelf.name}</ThemedText>
+                  <ThemedText style={{ color: colors.text, textDecorationLine: "underline" }}>
+                    Read full description
+                  </ThemedText>
                 </Pressable>
-              ))}
-            </View>
-          )}
+              )}
+            </Animated.View>
 
-          {/* Activity from other users */}
-          <Animated.View
-            style={styles.activitySection}
-            entering={FadeInDown.delay(160).duration(220)}
-          >
-            <ThemedText
-              style={[
-                styles.sectionTitle,
-                { color: colorScheme === "dark" ? "white" : colors.text },
-              ]}
-            >
-              Activity
-            </ThemedText>
-            {activity.length === 0 ? (
-              <ThemedText
-                style={{
-                  color: colors.secondaryText,
-                }}
-                type="body"
+            {/* Genre Chips */}
+            {genres.length > 0 && (
+              <Animated.View
+                style={styles.genreSection}
+                entering={FadeInDown.delay(115).duration(220)}
               >
-                No recent activity on this book
-              </ThemedText>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {activity.map((item, idx) => {
-                  const t = item.type;
-                  const iconName =
-                    t === "finished"
-                      ? ("checkmark-circle-outline" as const)
-                      : t === "review"
-                        ? ("chatbubble-ellipses-outline" as const)
-                        : ("book-outline" as const);
-                  const userDid = (item as any).userDid as string | undefined;
-                  const userHandle = (item as any).userHandle as string | undefined;
-                  const title = `@${userHandle ?? userDid ?? "user"}`;
-                  const subtitle = `${t.charAt(0).toUpperCase()}${t.slice(1)} · ${new Date(item.createdAt).toLocaleDateString()}`;
-                  return (
-                    <ListItem
-                      key={`${item.hiveId}-${userDid ?? idx}-${item.createdAt}`}
-                      icon={iconName}
-                      avatarUri={
-                        userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.genreScroll}
+                >
+                  {genres.map((genre) => (
+                    <Pressable
+                      key={genre}
+                      accessibilityRole="button"
+                      style={[
+                        styles.genreChip,
+                        {
+                          backgroundColor:
+                            colorScheme === "dark"
+                              ? "rgba(251, 191, 36, 0.15)"
+                              : "rgba(217, 119, 6, 0.1)",
+                          borderColor:
+                            colorScheme === "dark"
+                              ? "rgba(251, 191, 36, 0.3)"
+                              : "rgba(217, 119, 6, 0.2)",
+                        },
+                      ]}
+                      onPress={() =>
+                        router.push(`/explore/genres/${encodeURIComponent(genre)}` as any)
                       }
-                      title={title}
-                      subtitle={subtitle}
-                      onPress={userDid ? () => handleUserPress(userDid) : undefined}
-                    />
-                  );
-                })}
+                    >
+                      <ThemedText
+                        style={[styles.genreChipText, { color: colors.text }]}
+                        type="caption"
+                      >
+                        {genre}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+
+            {/* Who's Reading */}
+            {activity.length > 0 && (
+              <Animated.View
+                style={styles.whoIsReadingSection}
+                entering={FadeInDown.delay(120).duration(220)}
+              >
+                <ThemedText
+                  style={[
+                    styles.sectionTitle,
+                    { color: colorScheme === "dark" ? "white" : colors.text },
+                  ]}
+                >
+                  Who&apos;s Reading This ({activity.length})
+                </ThemedText>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.whoIsReadingScroll}
+                >
+                  {activity.map((item, idx) => {
+                    const userDid = (item as any).userDid as string | undefined;
+                    const userHandle = (item as any).userHandle as string | undefined;
+                    return (
+                      <UserBlock
+                        key={`reader-${userDid ?? idx}`}
+                        handle={userHandle ?? userDid ?? "user"}
+                        avatar={
+                          userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
+                        }
+                        size="sm"
+                        onPress={userDid ? () => handleUserPress(userDid) : undefined}
+                        style={styles.whoIsReadingItem}
+                      />
+                    );
+                  })}
+                </ScrollView>
+              </Animated.View>
+            )}
+
+            <ReadingHistory
+              previousReads={userBook.previousReads}
+              progressHistory={userBook.progressHistory}
+            />
+            {!!userBook.shelves?.length && (
+              <View style={{ gap: 8, marginBottom: 24 }}>
+                <ThemedText accessibilityRole="header" type="heading">
+                  On public shelves
+                </ThemedText>
+                {userBook.shelves.map((shelf) => (
+                  <Pressable
+                    key={shelf.uri}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View public shelf ${shelf.name}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/lists/[uri]",
+                        params: { uri: encodeURIComponent(shelf.uri) },
+                      })
+                    }
+                    style={{ minHeight: 44, justifyContent: "center" }}
+                  >
+                    <ThemedText>{shelf.name}</ThemedText>
+                  </Pressable>
+                ))}
               </View>
             )}
-          </Animated.View>
 
-          <StatusSelectionModal
-            visible={modalVisible}
-            onClose={() => {
-              if (!isBusy) setModalVisible(false);
-            }}
-            currentStatus={status}
-            onStatusSelect={handleStatusUpdate}
-            isPending={isBusy}
-          />
+            {/* Activity from other users */}
+            <Animated.View
+              style={styles.activitySection}
+              entering={FadeInDown.delay(160).duration(220)}
+            >
+              <ThemedText
+                style={[
+                  styles.sectionTitle,
+                  { color: colorScheme === "dark" ? "white" : colors.text },
+                ]}
+              >
+                Activity
+              </ThemedText>
+              {activity.length === 0 ? (
+                <ThemedText
+                  style={{
+                    color: colors.secondaryText,
+                  }}
+                  type="body"
+                >
+                  No recent activity on this book
+                </ThemedText>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {activity.map((item, idx) => {
+                    const t = item.type;
+                    const iconName =
+                      t === "finished"
+                        ? ("checkmark-circle-outline" as const)
+                        : t === "review"
+                          ? ("chatbubble-ellipses-outline" as const)
+                          : ("book-outline" as const);
+                    const userDid = (item as any).userDid as string | undefined;
+                    const userHandle = (item as any).userHandle as string | undefined;
+                    const title = `@${userHandle ?? userDid ?? "user"}`;
+                    const subtitle = `${t.charAt(0).toUpperCase()}${t.slice(1)} · ${new Date(item.createdAt).toLocaleDateString()}`;
+                    return (
+                      <ListItem
+                        key={`${item.hiveId}-${userDid ?? idx}-${item.createdAt}`}
+                        icon={iconName}
+                        avatarUri={
+                          userHandle ? `${getBaseUrl()}/profile/${userHandle}/image` : undefined
+                        }
+                        title={title}
+                        subtitle={subtitle}
+                        onPress={userDid ? () => handleUserPress(userDid) : undefined}
+                      />
+                    );
+                  })}
+                </View>
+              )}
+            </Animated.View>
 
-          {/* Only render delete modal if user has the book in their library */}
-          {(hasTracking || deleteModalVisible) && (
-            <DeleteConfirmationModal
-              visible={deleteModalVisible}
+            <StatusSelectionModal
+              visible={modalVisible}
               onClose={() => {
-                if (!isBusy && !writeInFlight.current) setDeleteModalVisible(false);
+                if (!isBusy) setModalVisible(false);
               }}
-              onConfirm={handleDeleteBook}
-              title="Remove from My Books?"
-              message={
-                mutationError ??
-                "This removes this book from your profile and My Books, including its status, rating, review, reading dates and progress. The catalogue book stays available. This cannot be undone."
-              }
+              currentStatus={status}
+              onStatusSelect={handleStatusUpdate}
               isPending={isBusy}
             />
-          )}
 
-          <Animated.View entering={FadeInUp.delay(180).duration(240)}>
-            <CommentsSection
-              comments={comments}
+            {/* Only render delete modal if user has the book in their library */}
+            {(hasTracking || deleteModalVisible) && (
+              <DeleteConfirmationModal
+                visible={deleteModalVisible}
+                onClose={() => {
+                  if (!isBusy && !writeInFlight.current) setDeleteModalVisible(false);
+                }}
+                onConfirm={handleDeleteBook}
+                title="Remove from My Books?"
+                message={
+                  mutationError ??
+                  "This removes this book from your profile and My Books, including its status, rating, review, reading dates and progress. The catalogue book stays available. This cannot be undone."
+                }
+                isPending={isBusy}
+              />
+            )}
+
+            <Animated.View entering={FadeInUp.delay(180).duration(240)}>
+              <CommentsSection
+                comments={comments}
+                hiveId={hiveId}
+                onUserPress={handleUserPress}
+                onReplyClick={handleReplyClick}
+              />
+            </Animated.View>
+
+            <AddToListSheet
+              visible={addToListVisible}
+              onClose={() => setAddToListVisible(false)}
               hiveId={hiveId}
-              onUserPress={handleUserPress}
-              onReplyClick={handleReplyClick}
             />
-          </Animated.View>
-
-          <AddToListSheet
-            visible={addToListVisible}
-            onClose={() => setAddToListVisible(false)}
-            hiveId={hiveId}
-          />
-          {hasTracking && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Delete book tracking"
-              accessibilityState={{ disabled: isBusy }}
-              disabled={isBusy}
-              onPress={() => setDeleteModalVisible(true)}
-              style={{
-                minHeight: 44,
-                paddingHorizontal: 12,
-                borderWidth: 1,
-                borderColor: colors.cardBorder,
-                borderRadius: 12,
-                flexDirection: "row",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                gap: 8,
-                marginTop: 24,
-                marginBottom: 12,
-              }}
-            >
-              <Ionicons name="trash-outline" size={18} color={colors.errorText} />
-              <ThemedText style={{ color: colors.errorText }}>Remove from My Books</ThemedText>
-            </Pressable>
-          )}
+            {hasTracking && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Delete book tracking"
+                accessibilityState={{ disabled: isBusy }}
+                disabled={isBusy}
+                onPress={() => setDeleteModalVisible(true)}
+                style={{
+                  minHeight: 44,
+                  paddingHorizontal: 12,
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                  borderRadius: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  alignSelf: "center",
+                  gap: 8,
+                  marginTop: 24,
+                  marginBottom: 12,
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.errorText} />
+                <ThemedText style={{ color: colors.errorText }}>Remove from My Books</ThemedText>
+              </Pressable>
+            )}
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -821,11 +825,31 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   bookSection: {
-    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    paddingTop: 4,
     marginBottom: 24,
   },
+  bookOverview: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 48,
+    marginBottom: 24,
+  },
+  bookSectionWide: {
+    width: 224,
+    minWidth: 0,
+    paddingTop: 16,
+  },
+  readingColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  coverWide: {
+    width: 224,
+    height: 336,
+  },
   coverContainer: {
-    marginRight: 16,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -836,36 +860,21 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cover: {
-    width: 96,
-    height: 144,
+    width: 168,
+    height: 252,
     borderRadius: 8,
   },
   bookInfo: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: "center",
+    maxWidth: "100%",
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 4,
-    lineHeight: 24,
-  },
-  author: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
+  communityRating: { alignItems: "center", gap: 4 },
   ratingDisplay: {
     flexDirection: "row",
     flexWrap: "wrap",
     columnGap: 6,
     rowGap: 4,
     alignItems: "center",
-  },
-  ratingsCount: {
-    fontSize: 14,
-    flexShrink: 1,
-    maxWidth: "100%",
+    justifyContent: "center",
   },
   actionButtons: {
     flexDirection: "row",

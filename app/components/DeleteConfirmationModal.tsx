@@ -34,7 +34,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
           style={[
             styles.modalView,
             {
-              backgroundColor: colorScheme === "dark" ? "#1f2937" : "#ffffff",
+              backgroundColor: colors.cardBackground,
             },
           ]}
           onStartShouldSetResponder={() => true}
@@ -43,23 +43,20 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
             style={[
               styles.modalHeader,
               {
-                borderBottomColor:
-                  colorScheme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+                borderBottomColor: colors.cardBorder,
               },
             ]}
           >
-            <ThemedText
-              style={[styles.modalTitle, { color: colorScheme === "dark" ? "white" : colors.text }]}
-              type="heading"
-            >
+            <ThemedText style={[styles.modalTitle, { color: colors.text }]} type="heading">
               {title}
             </ThemedText>
-            <Pressable onPress={onClose}>
-              <Ionicons
-                name="close"
-                size={24}
-                color={colorScheme === "dark" ? "#9CA3AF" : colors.icon}
-              />
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close confirmation"
+              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons name="close" size={24} color={colors.icon} />
             </Pressable>
           </View>
 
@@ -68,7 +65,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
               style={[
                 styles.messageText,
                 {
-                  color: colorScheme === "dark" ? "#9CA3AF" : colors.secondaryText,
+                  color: colors.secondaryText,
                 },
               ]}
               type="body"
@@ -120,6 +117,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
     width: "80%",
+    maxWidth: 440,
     maxHeight: "60%",
   },
   modalHeader: {

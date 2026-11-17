@@ -57,6 +57,9 @@ function FollowButton({ targetDid, isFollowing }: { targetDid: string; isFollowi
         paddingHorizontal: 12,
         paddingVertical: 10,
         minHeight: 44,
+        alignItems: "center",
+        justifyContent: "center",
+        alignSelf: "center",
         borderRadius: 9999,
         opacity: pending ? 0.7 : 1,
       }}

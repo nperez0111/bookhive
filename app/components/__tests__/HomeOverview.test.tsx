@@ -7,7 +7,7 @@ let mockBooks: any[] = [];
 let mockError: Error | null = null;
 jest.mock("expo-router", () => ({
   useRouter: () => jest.requireMock("expo-router").router,
-  router: { push: jest.fn() },
+  router: { push: jest.fn(), navigate: jest.fn() },
 }));
 jest.mock("@expo/vector-icons", () => ({ Ionicons: "Icon" }));
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 24 }) }));
@@ -49,8 +49,8 @@ it("limits book previews and keeps the complete reading shelf one tap away", asy
     status: BOOK_STATUS.READING,
   }));
   await render(<HomeScreen />);
-  expect(screen.getByText("Book 3")).toBeTruthy();
-  expect(screen.queryByText("Book 4")).toBeNull();
+  expect(screen.getByLabelText("Open Book 3, by Writer")).toBeTruthy();
+  expect(screen.queryByLabelText("Open Book 4, by Writer")).toBeNull();
   await fireEvent.press(
     screen.getByRole("button", { name: "See all currently reading books, 8 books" }),
   );
@@ -60,7 +60,7 @@ it("limits book previews and keeps the complete reading shelf one tap away", asy
 it("gives empty reading sections an action and sends time-based stats to reading stats", async () => {
   await render(<HomeScreen />);
   await fireEvent.press(screen.getAllByText("Find a book")[0]);
-  expect(router.push).toHaveBeenLastCalledWith("/search");
+  expect(router.navigate).toHaveBeenLastCalledWith("/explore");
   await fireEvent.press(screen.getByText("This Year"));
   expect(router.push).toHaveBeenLastCalledWith("/profile/did:plc:self/stats");
 });
@@ -71,11 +71,19 @@ it("keeps cached books available when refresh fails", async () => {
   ];
   mockError = new Error("Offline");
   await render(<HomeScreen />);
-  expect(screen.getByText("Cached book")).toBeTruthy();
+  expect(screen.getByLabelText("Open Cached book, by Writer")).toBeTruthy();
   expect(screen.getByRole("alert")).toHaveTextContent(/Could not refresh/);
 });
 
-it("previews finished books in finish-date order instead of duplicating the owned collection", async () => {
+it("offers Community separately from personal recent activity", async () => {
+  await render(<HomeScreen />);
+  expect(screen.getByText("Recent activity")).toBeTruthy();
+  expect(screen.getByText("Community")).toBeTruthy();
+  await fireEvent.press(screen.getByText("Community feed"));
+  expect(router.push).toHaveBeenLastCalledWith("/feed");
+});
+
+it("keeps book previews focused on current reading", async () => {
   mockBooks = [
     {
       hiveId: "bk_old",
@@ -95,9 +103,6 @@ it("previews finished books in finish-date order instead of duplicating the owne
   const books = screen
     .getAllByRole("button")
     .filter((button) => button.props.accessibilityLabel?.startsWith("Open "));
-  expect(books.map((book) => book.props.accessibilityLabel)).toEqual([
-    "Open Latest finish, by Unknown author",
-    "Open Earlier finish, by Unknown author",
-  ]);
+  expect(books).toEqual([]);
   expect(screen.queryByText("Only owned")).toBeNull();
 });

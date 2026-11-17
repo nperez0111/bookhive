@@ -27,6 +27,8 @@ import { catalogueCoverUrl } from "@/utils/catalogueCover";
 import { useFeed, type FeedActivity, type FeedGroup } from "@/hooks/useBookhiveQuery";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { useAdaptiveLayout } from "@/hooks/useAdaptiveLayout";
+import { HtmlToText } from "@/utils/htmlToText";
 
 type FeedTab = "friends" | "all" | "tracking";
 
@@ -52,6 +54,7 @@ export default function FeedScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const bottom = useBottomTabOverflow();
   const top = useScreenTopInset();
+  const { reading } = useAdaptiveLayout();
 
   const feed = useFeed(activeTab);
   const { refresh, hasNextPage, isFetching, error, fetchNextPage } = feed;
@@ -95,7 +98,7 @@ export default function FeedScreen() {
   }, [hasNextPage, isFetching, error, fetchNextPage, isRefreshing]);
 
   const renderActivity = useCallback(
-    ({ item }: { item: FeedActivity }) => {
+    ({ item, showActor = true }: { item: FeedActivity; showActor?: boolean }) => {
       const timeAgo = (() => {
         try {
           return formatDistanceToNow(new Date(item.indexedAt ?? item.createdAt), {
@@ -108,38 +111,40 @@ export default function FeedScreen() {
       const statusLabel = BOOK_STATUS_LABELS[item.status ?? ""] ?? "updated";
 
       return (
-        <BookCard
-          title={item.title}
-          authors={item.authors}
-          imageUri={catalogueCoverUrl(getBaseUrl(), item)}
-          onPress={() => router.push(`/book/${item.hiveId}` as any)}
-          variant="list"
-        >
-          <UserBlock
-            handle={item.userHandle ?? item.userDid}
-            avatar={
-              item.userAvatar ??
-              (item.userHandle ? `${getBaseUrl()}/profile/${item.userHandle}/image` : undefined)
-            }
-            size="sm"
-            onPress={() => router.push(`/profile/${item.userDid}` as any)}
-            suffix={`${statusLabel} ${timeAgo}`}
-          />
-          {item.stars != null && item.stars > 0 && (
-            <View accessible accessibilityLabel={`Rated ${item.stars / 2} out of 5 stars`}>
-              <StarDisplay rating={item.stars} size="sm" style={{ marginTop: 4 }} />
-            </View>
+        <View style={{ gap: 6 }}>
+          {showActor && (
+            <UserBlock
+              handle={item.userHandle ?? item.userDid}
+              avatar={item.userAvatar}
+              size="sm"
+              onPress={() => router.push(`/profile/${item.userDid}`)}
+              suffix={`${statusLabel} ${timeAgo}`}
+            />
           )}
-          {item.review ? (
-            <ThemedText
-              type="caption"
-              style={{ color: colors.secondaryText, marginTop: 4, fontStyle: "italic" }}
-              numberOfLines={2}
-            >
-              {item.review}
-            </ThemedText>
-          ) : null}
-        </BookCard>
+          <BookCard
+            title={item.title}
+            authors={item.authors}
+            imageUri={catalogueCoverUrl(getBaseUrl(), item)}
+            onPress={() => router.push(`/book/${item.hiveId}` as any)}
+            variant="row"
+            rowSize="small"
+            meta={showActor ? undefined : `${statusLabel} · ${timeAgo}`}
+          />
+          <View style={{ paddingLeft: 72 }}>
+            {item.stars != null && item.stars > 0 && (
+              <View accessible accessibilityLabel={`Rated ${item.stars / 2} out of 5 stars`}>
+                <StarDisplay rating={item.stars} size="sm" style={{ marginTop: 4 }} />
+              </View>
+            )}
+            {item.review ? (
+              <HtmlToText
+                html={item.review}
+                style={{ color: colors.secondaryText, marginTop: 4, fontStyle: "italic" }}
+                numberOfLines={2}
+              />
+            ) : null}
+          </View>
+        </View>
       );
     },
     [colors, router],
@@ -159,7 +164,7 @@ export default function FeedScreen() {
         />
         {item.activities.map((activity) => (
           <View key={`${activity.userDid}:${activity.hiveId}`}>
-            {renderActivity({ item: activity })}
+            {renderActivity({ item: activity, showActor: false })}
           </View>
         ))}
         {item.total > item.activities.length && (
@@ -188,7 +193,7 @@ export default function FeedScreen() {
       {/* Tab Selector */}
       <View
         accessibilityRole="tablist"
-        style={[styles.tabRow, { borderBottomColor: colors.cardBorder }]}
+        style={[styles.tabRow, reading, { borderBottomColor: colors.cardBorder }]}
       >
         {TABS.map((tab) => (
           <Pressable
@@ -246,7 +251,7 @@ export default function FeedScreen() {
           </View>
           <ThemedText style={[styles.emptyTitle, { color: colors.primaryText }]} type="heading">
             {activeTab === "friends"
-              ? "No friend activity yet"
+              ? "No activity from people you follow yet"
               : activeTab === "tracking"
                 ? "No activity on tracked books"
                 : "No activity yet"}
@@ -275,7 +280,7 @@ export default function FeedScreen() {
           key={activeTab}
           data={groups}
           keyExtractor={(item) => item.key}
-          style={styles.feedList}
+          style={[styles.feedList, reading]}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           onEndReached={onEndReached}

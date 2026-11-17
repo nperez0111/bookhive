@@ -37,6 +37,10 @@ jest.mock("expo-router", () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
   useLocalSearchParams: () => ({ status: "reading", did: "did:plc:other" }),
 }));
+jest.mock("@/hooks/queries/catalogueLists", () => ({
+  useUserLists: () => ({ data: { lists: [] } }),
+  useListDetails: () => ({}),
+}));
 jest.mock("@/hooks/useBookhiveQuery", () => ({
   useProfile: (...args: unknown[]) => {
     mockProfile(...args);
@@ -155,10 +159,9 @@ test("status shelves retain another DID, genre filtering, start-date sorting and
   expect(mockPush).toHaveBeenCalledWith("/book/bk_a?status=reading");
 });
 
-test("public profile rows retain half-star ratings and book navigation", async () => {
+test("public profile cover previews retain book navigation", async () => {
   await render(<ProfileScreen />);
   expect(mockProfile).toHaveBeenCalledWith("did:plc:other");
-  expect(screen.getByText("4.5")).toBeTruthy();
-  await fireEvent.press(screen.getByRole("button", { name: /^Earlier\b/ }));
+  await fireEvent.press(screen.getByRole("button", { name: /^Open Earlier\b/ }));
   expect(mockPush).toHaveBeenCalledWith("/book/bk_a");
 });
