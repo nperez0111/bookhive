@@ -73,7 +73,8 @@ The Home search action opens Discover, whose search field opens catalogue search
 Community feed entries use compact book rows rather than full-width cover cards.
 Home's Community section is separate from the reader's personal Recent activity.
 
-Action sheets animate their full-screen backdrop opacity independently from the
+Action sheets, including Add to List, share `hooks/useSheetEntrance.ts` to animate
+their full-screen backdrop opacity independently from the
 sheet translation and respect Reduce Motion. Status controls use `BOOK_STATUS_OPTIONS`
 labels, not the lowercase prose map. Descriptions expand once; comment display uses
 the same HTML renderer without changing stored drafts. Removal stays centered at the
@@ -82,7 +83,10 @@ bottom of book detail and opens a themed confirmation.
 On wide windows, book detail places the cover/community rating beside the reading
 controls; narrow windows and larger text stack them. Description and discussion keep
 the narrower reading width below both columns.
-The fixed book header centers the title and author at 22pt and 15pt; a centered, enlarged cover and
+The fixed book header uses the short label "Book details" with Add to List and Share
+actions on the right, without a duplicate action row in the body. The full title and author
+wrap in the scrolling content above the cover, so long titles cannot enlarge the fixed
+header. A centered, enlarged cover and
 explicitly labelled community rating precede the personal reading controls. Personal
 rating values belong in the disclosure summary, not repeated in its heading.
 

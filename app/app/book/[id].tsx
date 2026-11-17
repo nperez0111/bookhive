@@ -1,4 +1,5 @@
 import { BackNavigationHeader } from "@/components/BackNavigationHeader";
+import { HeaderAction } from "@/components/HeaderAction";
 import { ReadingProgressCard } from "@/components/book-detail/ReadingProgressCard";
 import { useReadingProgressDraft } from "@/components/book-detail/useReadingProgressDraft";
 import { progressDraftPayload } from "@/components/book-detail/progressDraft";
@@ -307,9 +308,21 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
     <View style={[styles.mainContainer, { backgroundColor, paddingBottom: bottom }]}>
       {/* Back Navigation Header */}
       <BackNavigationHeader
-        title={book.title}
-        subtitle={formatAuthors(book.authors)}
-        centered
+        title="Book details"
+        rightElement={
+          <View style={styles.headerActions}>
+            <HeaderAction
+              tone="neutral"
+              accessibilityLabel="Add to List"
+              onPress={() => setAddToListVisible(true)}
+            >
+              <Ionicons name="list-outline" size={20} color={colors.primaryText} />
+            </HeaderAction>
+            <HeaderAction tone="neutral" accessibilityLabel="Share book" onPress={handleShare}>
+              <Ionicons name="share-outline" size={20} color={colors.primaryText} />
+            </HeaderAction>
+          </View>
+        }
         onBackPress={
           fromStatus
             ? () => {
@@ -324,6 +337,14 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
         <View
           style={[styles.contentContainer, wide ? page : reading, { paddingBottom: 20 + bottom }]}
         >
+          <View style={[styles.bookIdentity, reading]}>
+            <ThemedText accessibilityRole="header" type="title" style={styles.bookTitle}>
+              {book.title}
+            </ThemedText>
+            <ThemedText style={[styles.bookAuthor, { color: colors.secondaryText }]}>
+              {formatAuthors(book.authors)}
+            </ThemedText>
+          </View>
           <View style={wide && styles.bookOverview}>
             {/* Book Cover and Info Section */}
             <Animated.View
@@ -462,63 +483,6 @@ function BookInfoContent({ hiveId, fromStatus }: { hiveId: HiveId; fromStatus?: 
                     <ThemedText>Clear reading status</ThemedText>
                   </Pressable>
                 )}
-              </Animated.View>
-
-              <Animated.View
-                style={styles.actionButtons}
-                entering={FadeInDown.delay(80).duration(220)}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Share book"
-                  style={[
-                    styles.actionButton,
-                    {
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                  onPress={handleShare}
-                >
-                  <Ionicons
-                    name="share-outline"
-                    size={20}
-                    color={colorScheme === "dark" ? "white" : colors.text}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.actionButtonText,
-                      { color: colorScheme === "dark" ? "white" : colors.text },
-                    ]}
-                  >
-                    Share
-                  </ThemedText>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Add to List"
-                  style={[
-                    styles.actionButton,
-                    {
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                  onPress={() => setAddToListVisible(true)}
-                >
-                  <Ionicons
-                    name="list-outline"
-                    size={20}
-                    color={colorScheme === "dark" ? "white" : colors.text}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.actionButtonText,
-                      { color: colorScheme === "dark" ? "white" : colors.text },
-                    ]}
-                  >
-                    Add to List
-                  </ThemedText>
-                </Pressable>
               </Animated.View>
             </View>
           </View>
@@ -830,6 +794,21 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     marginBottom: 24,
   },
+  bookIdentity: {
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 24,
+  },
+  bookTitle: {
+    fontSize: 26,
+    lineHeight: 34,
+    textAlign: "center",
+  },
+  bookAuthor: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: "center",
+  },
   bookOverview: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -876,25 +855,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actionButtons: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 24,
-  },
-  actionButton: {
-    minHeight: 44,
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 6,
+    gap: 8,
   },
   descriptionSection: {
     marginBottom: 24,

@@ -38,7 +38,23 @@ jest.mock("react-native-reanimated", () => {
   };
 });
 jest.mock("@/components/ui/TabBarBackground", () => ({ useBottomTabOverflow: () => 0 }));
-jest.mock("@/components/BackNavigationHeader", () => ({ BackNavigationHeader: () => null }));
+jest.mock("@/components/BackNavigationHeader", () => ({
+  BackNavigationHeader: ({
+    title,
+    rightElement,
+  }: {
+    title: string;
+    rightElement?: React.ReactNode;
+  }) => {
+    const { Text, View } = jest.requireActual("react-native");
+    return (
+      <View>
+        <Text>{title}</Text>
+        {rightElement}
+      </View>
+    );
+  },
+}));
 jest.mock("../BookActionCard", () => {
   const { View } = jest.requireActual("react-native");
   const { BookActionCard } = jest.requireActual("../BookActionCard");
@@ -173,6 +189,19 @@ it("uses deterministic fallback identities for records without URIs", async () =
     "value",
     "Keep this review draft",
   );
+});
+
+it("keeps long book titles in scrolling content rather than the fixed header", async () => {
+  mockData.book.title =
+    "A very long book title with a subtitle that needs several lines on an iPhone";
+  await render(<BookInfo />);
+  expect(screen.getByText("Book details")).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Share book" })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "Add to List" })).toHaveLength(1);
+  const title = screen.getByRole("header", { name: mockData.book.title });
+  expect(title.props.numberOfLines).toBeUndefined();
+  expect(title.props.adjustsFontSizeToFit).not.toBe(true);
+  expect(screen.getByText("Author")).toBeTruthy();
 });
 
 it("lets catalogue rating metadata reflow at accessibility text sizes without truncating or shrinking text", async () => {

@@ -1,5 +1,14 @@
 import React, { useState, useRef } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { CreateListModal } from "@/components/CreateListModal";
@@ -7,6 +16,7 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/context/auth";
 import { useUserLists, useAddToList } from "@/hooks/useBookhiveQuery";
+import { useSheetEntrance } from "@/hooks/useSheetEntrance";
 
 interface AddToListSheetProps {
   visible: boolean;
@@ -19,6 +29,9 @@ export function AddToListSheet({ visible, onClose, hiveId }: AddToListSheetProps
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const sheetVisible = visible && !createModalVisible;
+  const entrance = useSheetEntrance(sheetVisible);
+  const { height } = useWindowDimensions();
   const [addingUri, setAddingUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const adding = useRef(false);
@@ -56,110 +69,124 @@ export function AddToListSheet({ visible, onClose, hiveId }: AddToListSheetProps
 
   return (
     <>
-      <Modal
-        visible={visible && !createModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={close}
-      >
-        <Pressable style={styles.backdrop} onPress={close} />
-        <View
-          style={[
-            styles.content,
-            {
-              backgroundColor: colors.cardBackground,
-              borderColor: colors.cardBorder,
-            },
-          ]}
-        >
-          <View style={styles.header}>
-            <ThemedText type="heading" style={{ color: colors.primaryText }}>
-              Add to List
-            </ThemedText>
-            <Pressable onPress={close} disabled={addingUri !== null} hitSlop={8}>
-              <Ionicons name="close" size={24} color={colors.secondaryText} />
-            </Pressable>
-          </View>
-
-          <ThemedText type="caption" style={{ color: colors.secondaryText, marginBottom: 12 }}>
-            Add this catalogue book to a public list, not a private ebook shelf.
-          </ThemedText>
-          {error ? (
-            <ThemedText accessibilityRole="alert" style={{ color: colors.error }}>
-              {error}
-            </ThemedText>
-          ) : null}
-
-          <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
-            {listsQuery.isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.primary} />
+      <Modal visible={sheetVisible} animationType="none" transparent onRequestClose={close}>
+        {sheetVisible && (
+          <View style={styles.overlay}>
+            <Animated.View style={[StyleSheet.absoluteFill, { opacity: entrance }]}>
+              <Pressable
+                style={styles.backdrop}
+                onPress={close}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss"
+              />
+            </Animated.View>
+            <Animated.View
+              style={[
+                styles.content,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.cardBorder,
+                  transform: [
+                    {
+                      translateY: entrance.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [height, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.header}>
+                <ThemedText type="heading" style={{ color: colors.primaryText }}>
+                  Add to List
+                </ThemedText>
+                <Pressable onPress={close} disabled={addingUri !== null} hitSlop={8}>
+                  <Ionicons name="close" size={24} color={colors.secondaryText} />
+                </Pressable>
               </View>
-            ) : listsQuery.isError ? (
-              <View style={styles.emptyState}>
+
+              <ThemedText type="caption" style={{ color: colors.secondaryText, marginBottom: 12 }}>
+                Add this catalogue book to a public list, not a private ebook shelf.
+              </ThemedText>
+              {error ? (
                 <ThemedText accessibilityRole="alert" style={{ color: colors.error }}>
-                  Couldn&apos;t load your lists.
+                  {error}
                 </ThemedText>
-                <Pressable
-                  onPress={() => listsQuery.refetch()}
-                  style={{ minHeight: 40, justifyContent: "center" }}
-                >
-                  <ThemedText style={{ color: colors.primary }}>Try again</ThemedText>
-                </Pressable>
-              </View>
-            ) : lists.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ThemedText
-                  style={{ color: colors.secondaryText, textAlign: "center" }}
-                  type="body"
-                >
-                  No lists yet. Create one to get started!
-                </ThemedText>
-              </View>
-            ) : (
-              lists.map((list) => (
-                <Pressable
-                  key={list.uri}
-                  style={[styles.listItem, { borderBottomColor: colors.cardBorder }]}
-                  onPress={() => handleAddToList(list.uri)}
-                  disabled={addingUri !== null}
-                >
-                  <View style={styles.listItemContent}>
-                    <Ionicons name="list" size={20} color={colors.primary} />
-                    <View style={styles.listItemText}>
-                      <ThemedText
-                        style={{ color: colors.primaryText }}
-                        type="label"
-                        numberOfLines={1}
-                      >
-                        {list.name}
-                      </ThemedText>
-                      <ThemedText style={{ color: colors.tertiaryText }} type="caption">
-                        {list.itemCount ?? 0} books
-                      </ThemedText>
-                    </View>
-                  </View>
-                  {addingUri === list.uri ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                  )}
-                </Pressable>
-              ))
-            )}
-          </ScrollView>
+              ) : null}
 
-          <Pressable
-            style={[styles.createNewButton, { borderColor: colors.primary }]}
-            onPress={() => setCreateModalVisible(true)}
-            disabled={addingUri !== null}
-          >
-            <Ionicons name="add" size={20} color={colors.primary} />
-            <ThemedText style={{ color: colors.primary }} type="label">
-              Create New List
-            </ThemedText>
-          </Pressable>
-        </View>
+              <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+                {listsQuery.isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : listsQuery.isError ? (
+                  <View style={styles.emptyState}>
+                    <ThemedText accessibilityRole="alert" style={{ color: colors.error }}>
+                      Couldn&apos;t load your lists.
+                    </ThemedText>
+                    <Pressable
+                      onPress={() => listsQuery.refetch()}
+                      style={{ minHeight: 40, justifyContent: "center" }}
+                    >
+                      <ThemedText style={{ color: colors.primary }}>Try again</ThemedText>
+                    </Pressable>
+                  </View>
+                ) : lists.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <ThemedText
+                      style={{ color: colors.secondaryText, textAlign: "center" }}
+                      type="body"
+                    >
+                      No lists yet. Create one to get started!
+                    </ThemedText>
+                  </View>
+                ) : (
+                  lists.map((list) => (
+                    <Pressable
+                      key={list.uri}
+                      style={[styles.listItem, { borderBottomColor: colors.cardBorder }]}
+                      onPress={() => handleAddToList(list.uri)}
+                      disabled={addingUri !== null}
+                    >
+                      <View style={styles.listItemContent}>
+                        <Ionicons name="list" size={20} color={colors.primary} />
+                        <View style={styles.listItemText}>
+                          <ThemedText
+                            style={{ color: colors.primaryText }}
+                            type="label"
+                            numberOfLines={1}
+                          >
+                            {list.name}
+                          </ThemedText>
+                          <ThemedText style={{ color: colors.tertiaryText }} type="caption">
+                            {list.itemCount ?? 0} books
+                          </ThemedText>
+                        </View>
+                      </View>
+                      {addingUri === list.uri ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                      )}
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+
+              <Pressable
+                style={[styles.createNewButton, { borderColor: colors.primary }]}
+                onPress={() => setCreateModalVisible(true)}
+                disabled={addingUri !== null}
+              >
+                <Ionicons name="add" size={20} color={colors.primary} />
+                <ThemedText style={{ color: colors.primary }} type="label">
+                  Create New List
+                </ThemedText>
+              </Pressable>
+            </Animated.View>
+          </View>
+        )}
       </Modal>
 
       <CreateListModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} />
@@ -168,6 +195,7 @@ export function AddToListSheet({ visible, onClose, hiveId }: AddToListSheetProps
 }
 
 const styles = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",

@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
-  AccessibilityInfo,
   Animated,
   Modal,
   Pressable,
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { useSheetEntrance } from "@/hooks/useSheetEntrance";
 
 export type SheetAction = {
   key: string;
@@ -44,25 +44,7 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Acti
   const colors = Colors[colorScheme ?? "light"];
   const { bottom } = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const [entrance] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    entrance.setValue(0);
-    if (!visible) return;
-    let active = true;
-    const reveal = (reduced: boolean) => {
-      if (!active) return;
-      entrance.stopAnimation();
-      if (reduced) entrance.setValue(1);
-      else Animated.timing(entrance, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-    };
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", reveal);
-    AccessibilityInfo.isReduceMotionEnabled().then(reveal, () => reveal(true));
-    return () => {
-      active = false;
-      subscription.remove();
-      entrance.stopAnimation();
-    };
-  }, [visible, entrance]);
+  const entrance = useSheetEntrance(visible);
 
   const visibleActions = actions.filter(Boolean);
 
