@@ -117,7 +117,7 @@ export const AppPage: FC = () => (
         <div class="mx-auto max-w-[300px] overflow-hidden rounded-[2rem] border border-border shadow-xl">
           <Screenshot
             name="home"
-            alt="BookHive Home on iPhone: currently reading, reading totals, want-to-read books and the four main tabs"
+            alt="BookHive Home on iPhone with currently reading covers, reading totals, shelves and the four main tabs"
             width={600}
             height={1304}
             eager
@@ -140,7 +140,7 @@ export const AppPage: FC = () => (
           More finding your next book.
         </h2>
         <p class="mt-4 leading-relaxed text-muted-foreground">
-          Start with Home for your currently reading, want-to-read and recently finished books. My
+          Start with Home for your currently reading books, reading totals and recent activity. My
           Books, Discover and Profile keep everything else close by.
         </p>
       </div>
