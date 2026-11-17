@@ -183,7 +183,7 @@ function Screenshot({
   return (
     <>
       {(["light", "dark"] as const).map((theme) => {
-        const file = theme === "dark" ? `${name}-dark` : name;
+        const file = `${name}${theme === "dark" ? "-dark" : ""}-20261117`;
         return (
           <picture class={`app-screenshot-${theme}`}>
             <source type="image/webp" srcset={`/screenshots/app/${file}.webp`} />

@@ -19,8 +19,9 @@ unpublished shared-colour and iPad-layout changes, not proof of a new store bina
 | `progress`     | `progress.png`     | 440 × 957      |
 | `ipad-home`    | `ipad-home.png`    | 1240 × 1653    |
 
-Each stem has a light image and a `-dark` counterpart; the page follows the active
-site theme. Discover genuinely shows this local catalogue's empty genre state.
+Each stem has a light image and a `-dark` counterpart, followed by the capture revision
+`-20261117` before `.png`/`.webp`. New filenames bypass stale CDN images from earlier
+captures. The page follows the active site theme. Discover genuinely shows this local catalogue's empty genre state.
 All source images were visually reviewed before selection. The progress
 editor is unsaved; no reading data was modified for this page. Captures retain
 their full composition and aspect ratio, with no reconstructed text or UI.

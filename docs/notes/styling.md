@@ -14,7 +14,9 @@ the main marketing page. Hero emphasis uses colour rather than a separate italic
 no extra font request or client island is needed.
 The seven native captures each have light/dark `<picture>` variants selected by the same
 root theme class, with WebP sources, PNG fallbacks and intrinsic dimensions. Only the
-Home variants are eager/high priority. Decorative device
+Home variants are eager/high priority. Screenshot filenames carry a capture revision on both
+formats; bump it when replacing captures so CDN/browser caches cannot retain an older
+image under a light/dark filename. Decorative device
 frames and the hero arch are CSS, not replacement app imagery; the gallery unstaggering
 and stacked tablet/FAQ layouts keep narrow screens inside the viewport.
 

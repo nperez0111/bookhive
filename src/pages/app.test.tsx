@@ -58,7 +58,7 @@ test("both theme variants have genuine WebP sources, PNG fallbacks and matching 
   let webpBytes = 0;
   for (const [, picture] of pictures) {
     const image = picture!.match(
-      /src="(\/screenshots\/app\/([\w-]+)\.png)".*?alt="([^"]+)".*?width="(\d+)".*?height="(\d+)"/,
+      /src="(\/screenshots\/app\/([\w-]+-20261117)\.png)".*?alt="([^"]+)".*?width="(\d+)".*?height="(\d+)"/,
     );
     expect(image).not.toBeNull();
     const [, path, name, alt, width, height] = image!;
