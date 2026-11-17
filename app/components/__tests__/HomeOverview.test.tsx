@@ -5,6 +5,10 @@ import { BOOK_STATUS } from "@/constants";
 
 let mockBooks: any[] = [];
 let mockError: Error | null = null;
+let mockWide = false;
+jest.mock("@/hooks/useAdaptiveLayout", () => ({
+  useAdaptiveLayout: () => ({ wide: mockWide, page: {} }),
+}));
 jest.mock("expo-router", () => ({
   useRouter: () => jest.requireMock("expo-router").router,
   router: { push: jest.fn(), navigate: jest.fn() },
@@ -38,7 +42,50 @@ jest.mock("@/components/GradientView", () => ({
 beforeEach(() => {
   mockBooks = [];
   mockError = null;
+  mockWide = false;
   jest.clearAllMocks();
+});
+
+it("gives tablet reading a labelled spotlight without losing the other previews", async () => {
+  mockWide = true;
+  mockBooks = Array.from({ length: 8 }, (_, index) => ({
+    hiveId: `bk_${index}`,
+    title: `Book ${index}`,
+    authors: "Writer",
+    status: BOOK_STATUS.READING,
+  }));
+  await render(<HomeScreen />);
+  expect(screen.getByTestId("tablet-reading-panel")).toBeTruthy();
+  expect(screen.getByText("Book 0")).toBeTruthy();
+  expect(screen.getAllByText("Writer").length).toBeGreaterThan(0);
+  expect(screen.getByLabelText("Open Book 3, by Writer")).toBeTruthy();
+  expect(screen.queryByLabelText("Open Book 4, by Writer")).toBeNull();
+  await fireEvent.press(screen.getByRole("button", { name: "View your reading" }));
+  expect(router.push).toHaveBeenLastCalledWith("/book/bk_0");
+});
+
+it("returns to cover previews when the tablet window narrows or text grows", async () => {
+  mockWide = true;
+  mockBooks = [
+    { hiveId: "bk_a", title: "Current book", authors: "Writer", status: BOOK_STATUS.READING },
+  ];
+  const { rerender } = await render(<HomeScreen />);
+  expect(screen.getByText("On your nightstand")).toBeTruthy();
+  mockWide = false;
+  await rerender(<HomeScreen />);
+  expect(screen.queryByTestId("tablet-reading-panel")).toBeNull();
+  expect(screen.queryByText("On your nightstand")).toBeNull();
+  await fireEvent.press(screen.getByLabelText("Open Current book, by Writer"));
+  expect(router.push).toHaveBeenLastCalledWith("/book/bk_a");
+});
+
+it("keeps tablet empty states actionable and explains the missing activity", async () => {
+  mockWide = true;
+  await render(<HomeScreen />);
+  expect(screen.getByText("Your reading updates will appear here.")).toBeTruthy();
+  await fireEvent.press(screen.getByText("Find a book"));
+  expect(router.navigate).toHaveBeenLastCalledWith("/explore");
+  expect(screen.getByLabelText("Create your first shelf")).toBeTruthy();
 });
 
 it("limits book previews and keeps the complete reading shelf one tap away", async () => {

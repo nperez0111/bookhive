@@ -97,7 +97,11 @@ overlapping an already-expanded progress editor when the page is reopened.
 `hooks/useAdaptiveLayout.ts` sizes content from the current window, not the device
 model, so rotation and Split View use the same rules. Tablet pages have centered,
 bounded gutters; reading/forms use a narrower 760-point lane. Home uses independent
-dashboard columns, catalogue results use two columns, and cover grids derive their
+dashboard panels: a full-width currently-reading spotlight with title/author,
+book-detail action and reading stats, followed by separate shelf/community and
+recent-activity lanes. Additional currently-reading previews stay compact and
+read-only; the four-book limit and complete shelf entry point remain unchanged.
+These panels use semantic card surfaces, not new theme colors. Catalogue results use two columns, and cover grids derive their
 column count from available width and text scale. Larger accessibility text stacks
 dashboard content. FlatLists change their key when the column count changes.
 Shared headers keep full-width separators while their controls align to the page.

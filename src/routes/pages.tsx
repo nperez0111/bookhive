@@ -17,7 +17,6 @@ import { Home } from "../pages/home";
 import { FeedPage } from "../pages/feed";
 import { AppPage } from "../pages/app";
 import { Layout } from "../pages/layout";
-import { SimpleNavbar } from "../pages/simple-navbar";
 import { LibraryImport } from "../pages/import";
 import { Explore } from "../pages/explore";
 import { GenresDirectory } from "../pages/genres";
@@ -113,10 +112,7 @@ const app = new Hono<AppEnv>()
         description="Track your reading, rate and review books, discover genres and authors, share public shelves, and manage a private ebook library with BookHive for iPhone and iPad."
         image="/og/app"
       >
-        <SimpleNavbar isPds={false} />
-        <div class="mx-auto max-w-5xl px-4 py-12">
-          <AppPage />
-        </div>
+        <AppPage />
       </Layout>,
     );
   })

@@ -102,7 +102,7 @@ export const Layout: FC<
             const dark = stored === "dark" || (!stored && prefersDark);
             document.documentElement.classList.toggle("dark", dark);
             const meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute("content", dark ? "#422006" : "#f9eabc");
+            if (meta) meta.setAttribute("content", dark ? "#271e19" : "#f9eabc");
           })();
         </script>
         ${inlineCss

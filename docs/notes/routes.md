@@ -117,6 +117,8 @@ OAuth handle resolution.
   no in-app reader or Android store release is advertised. Keeps the App Store destination,
   `/og/app` image and explicit `Layout url={c.req.url}` metadata. `/` on
   `app.bookhive.buzz` (or with a truthy `?app=`) redirects here in `mainRouter`.
+  AppPage owns its own header, semantic main, local editorial styling and shared theme toggle;
+  render it directly in Layout rather than nesting it in the ordinary SimpleNavbar/content shell.
   The refined captures include local responsive work; deploying this page does not release
   those native changes, which still require the mobile release checks.
 - `/import` → `src/pages/import.tsx` — CSV import page, SSE progress

@@ -3,6 +3,26 @@
 Background for `src/routes/main.tsx`'s `jsxRenderer` shell and `src/index.css`. Read this before
 touching `<main>`'s classes or basecoat button variants.
 
+## App landing is a self-contained editorial surface
+
+`src/pages/app.tsx` owns `/app`'s header, semantic main and trusted static inline stylesheet
+(rendered with `raw`). Every selector is scoped to `.app-site`/`.app-*`; colours derive
+from the shared site tokens, with no separate landing-page palette. Dark appearance follows the
+existing root `.dark` class and uses the shared `ThemeToggle`/`ThemeToggleScript`.
+Headlines inherit the site's sans-serif family, with bold, tightly tracked headings matching
+the main marketing page. Hero emphasis uses colour rather than a separate italic type style;
+no extra font request or client island is needed.
+The seven native captures each have light/dark `<picture>` variants selected by the same
+root theme class, with WebP sources, PNG fallbacks and intrinsic dimensions. Only the
+Home variants are eager/high priority. Decorative device
+frames and the hero arch are CSS, not replacement app imagery; the gallery unstaggering
+and stacked tablet/FAQ layouts keep narrow screens inside the viewport.
+
+The November 17 landing pass visually checked mobile, tablet and desktop captures in both
+appearances, with additional control/device-bound and horizontal-overflow checks at 320,
+390, 768, 1024 and 1440px. Native FAQ disclosures and the shared theme switch were exercised;
+all links, summaries and buttons retain at least 40px-tall targets.
+
 ## The app shell scroller — never put `overflow-*-auto` on `<main>`
 
 Every app page is wrapped in

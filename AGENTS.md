@@ -138,38 +138,38 @@ login recovery remains nonblocking and logs failures. List ingestion/backfill/re
 
 Each file exports a Hono JSX component rendered server-side.
 
-| File                  | Renders                                                                       |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`                             |
-| `navbar.tsx`          | Top nav bar with account disclosure on desktop/mobile, search mount point     |
-| `simple-navbar.tsx`   | Simplified nav bar variant                                                    |
-| `sidebar.tsx`         | Flat navigation: Home, My Books, Shelves, Discover, Activity, Ebooks          |
-| `home.tsx`            | Reading overview: reading, want-to-read, newest finished books                |
-| `myBooks.tsx`         | Wide tracked-book management workspace with search, filters, views and import |
-| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects)                            |
-| `searchResults.tsx`   | Search results                                                                |
-| `bookInfo.tsx`        | Book detail                                                                   |
-| `profile.tsx`         | User profile + shelves                                                        |
-| `shelves.tsx`         | Book shelves view; inline-JS Save/Cancel ordering for ranked shelves          |
-| `comments.tsx`        | Comments/reviews                                                              |
-| `feed.tsx`            | Activity feed                                                                 |
-| `readingStats.tsx`    | Reading stats by year                                                         |
-| `settings.tsx`        | Account settings                                                              |
-| `explore.tsx`         | Explore hub                                                                   |
-| `genres.tsx`          | Genre directory                                                               |
-| `genreBooks.tsx`      | Books by genre (paginated, sortable)                                          |
-| `genreEmoji.ts`       | Re-exports shared web/native genre emoji mapping from `core/genreEmoji.ts`    |
-| `authorBooks.tsx`     | Books by author (paginated)                                                   |
-| `authorDirectory.tsx` | Author directory                                                              |
-| `import.tsx`          | CSV import page                                                               |
-| `library.tsx`         | Personal library                                                              |
-| `login.tsx`           | Login form                                                                    |
-| `signup.tsx`          | Sign up form                                                                  |
-| `app.tsx`             | iPhone/iPad app landing; four tabs, reading, community and private ebooks     |
-| `privacy-policy.tsx`  | Privacy policy                                                                |
-| `terms.tsx`           | Terms of service (`/legal`)                                                   |
-| `pds.tsx`             | PDS info page                                                                 |
-| `error.tsx`           | Error page                                                                    |
+| File                  | Renders                                                                         |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `layout.tsx`          | HTML shell — meta tags, assets, `<head>`/`<body>`                               |
+| `navbar.tsx`          | Top nav bar with account disclosure on desktop/mobile, search mount point       |
+| `simple-navbar.tsx`   | Simplified nav bar variant                                                      |
+| `sidebar.tsx`         | Flat navigation: Home, My Books, Shelves, Discover, Activity, Ebooks            |
+| `home.tsx`            | Reading overview: reading, want-to-read, newest finished books                  |
+| `myBooks.tsx`         | Wide tracked-book management workspace with search, filters, views and import   |
+| `marketing.tsx`       | Marketing landing (signed-out only; `/` redirects)                              |
+| `searchResults.tsx`   | Search results                                                                  |
+| `bookInfo.tsx`        | Book detail                                                                     |
+| `profile.tsx`         | User profile + shelves                                                          |
+| `shelves.tsx`         | Book shelves view; inline-JS Save/Cancel ordering for ranked shelves            |
+| `comments.tsx`        | Comments/reviews                                                                |
+| `feed.tsx`            | Activity feed                                                                   |
+| `readingStats.tsx`    | Reading stats by year                                                           |
+| `settings.tsx`        | Account settings                                                                |
+| `explore.tsx`         | Explore hub                                                                     |
+| `genres.tsx`          | Genre directory                                                                 |
+| `genreBooks.tsx`      | Books by genre (paginated, sortable)                                            |
+| `genreEmoji.ts`       | Re-exports shared web/native genre emoji mapping from `core/genreEmoji.ts`      |
+| `authorBooks.tsx`     | Books by author (paginated)                                                     |
+| `authorDirectory.tsx` | Author directory                                                                |
+| `import.tsx`          | CSV import page                                                                 |
+| `library.tsx`         | Personal library                                                                |
+| `login.tsx`           | Login form                                                                      |
+| `signup.tsx`          | Sign up form                                                                    |
+| `app.tsx`             | Editorial iPhone/iPad landing; genuine theme-matched captures and shared tokens |
+| `privacy-policy.tsx`  | Privacy policy                                                                  |
+| `terms.tsx`           | Terms of service (`/legal`)                                                     |
+| `pds.tsx`             | PDS info page                                                                   |
+| `error.tsx`           | Error page                                                                      |
 
 Page utilities: `src/pages/utils/script.ts` (inline JS helper), `src/pages/utils/viewTransitions.ts` (snapshot name deduplication; see `docs/notes/styling.md`), `src/pages/utils/actorLinkId.ts` (readable usable-handle URLs, DID fallback for invalid/unavailable handles). URL building lives in `src/lib/buildUrl.ts`.
 

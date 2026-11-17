@@ -54,24 +54,24 @@ export const Colors = {
     shadowMedium: "rgba(0, 0, 0, 0.12)",
   },
   dark: {
-    text: "#fafaf9", // stone-50
-    background: "#3f2b08",
+    text: "#f5eddf",
+    background: "#271e19",
     tint: tintColorDark,
-    icon: "#d5bf95",
-    tabIconDefault: "#d5bf95",
+    icon: "#c2b3a2",
+    tabIconDefault: "#c2b3a2",
     tabIconSelected: tintColorDark,
 
     // Card and UI colors for dark mode
-    cardBackground: "#4d3510",
-    cardBorder: "#735322",
+    cardBackground: "#30251f",
+    cardBorder: "#f0ae6f",
     buttonBackground: "rgba(245, 158, 11, 0.1)",
     buttonBorder: "rgba(245, 158, 11, 0.25)",
 
     // Text hierarchy for dark mode
-    primaryText: "#fafaf9", // stone-50
-    secondaryText: "#d5bf95",
-    tertiaryText: "#c4ac80",
-    placeholderText: "#c4ac80",
+    primaryText: "#f5eddf",
+    secondaryText: "#c2b3a2",
+    tertiaryText: "#c2b3a2",
+    placeholderText: "#c2b3a2",
 
     // Accent colors for dark mode
     primary: "#f59e0b", // amber-500 (--primary dark)
@@ -95,9 +95,9 @@ export const Colors = {
     pressedBackground: "rgba(245, 158, 11, 0.25)",
 
     // Surface layers for dark mode
-    surfacePrimary: "#4d3510",
-    surfaceSecondary: "#594019",
-    surfaceTertiary: "#674b20",
+    surfacePrimary: "#30251f",
+    surfaceSecondary: "#382b23",
+    surfaceTertiary: "#554236",
 
     // Shadow colors for dark mode
     shadowLight: "rgba(0, 0, 0, 0.3)",
