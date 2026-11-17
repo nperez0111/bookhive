@@ -314,7 +314,7 @@ export const AppPage: FC = () => (
             id="tracking-title"
             class="text-3xl font-bold tracking-tight text-balance sm:text-4xl"
           >
-            Every book gets a verdict.
+            Your reading, chapter by chapter.
           </h2>
           <p class="mt-5 leading-relaxed text-muted-foreground">
             Loved it? Left it halfway? Set a reading status, mark books you own, and give your
