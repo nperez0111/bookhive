@@ -115,9 +115,9 @@ OAuth handle resolution.
   tracking/history, discovery, public community/shelves and separate private ebooks.
   Genuine optimized phone/iPad captures and provenance live in `public/screenshots/app/`;
   no in-app reader or Android store release is advertised. Keeps the App Store destination,
-  `/og/app?v=20261118` image and explicit `Layout url={c.req.url}` metadata. The app
+  `/og/app?v=20261119` image and explicit `Layout url={c.req.url}` metadata. The app
   preview uses the shared brown/cream brand palette and genuine, revisioned My Books
-  and book-detail captures. Bump the image revision when changing the card so cached
+  and book-detail captures with the App Store download badge. Bump the image revision when changing the card so cached
   social previews can request a fresh image. `/` on
   `app.bookhive.buzz` (or with a truthy `?app=`) redirects here in `mainRouter`.
   AppPage owns its own header, semantic main, local editorial styling and shared theme toggle;

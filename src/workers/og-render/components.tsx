@@ -632,7 +632,11 @@ export function AppOgCard({ origin }: AppOgCardProps) {
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 24, fontWeight: 600 }}>For iPhone & iPad</div>
+          <img
+            src={`${origin}/download_app_store.svg`}
+            alt="Download on the App Store"
+            style={{ width: 180, height: 60 }}
+          />
           <div style={{ fontSize: 20, color: "#c2b3a2" }}>app.bookhive.buzz</div>
         </div>
       </div>

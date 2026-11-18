@@ -110,7 +110,7 @@ const app = new Hono<AppEnv>()
         url={c.req.url}
         title="BookHive for iPhone & iPad | Track, Discover & Share Books"
         description="Track your reading, rate and review books, discover genres and authors, share public shelves, and manage a private ebook library with BookHive for iPhone and iPad."
-        image="/og/app?v=20261118"
+        image="/og/app?v=20261119"
       >
         <AppPage />
       </Layout>,
