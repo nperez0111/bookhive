@@ -602,50 +602,77 @@ export function AppOgCard({ origin }: AppOgCardProps) {
         display: "flex",
         width: OG_WIDTH,
         height: OG_HEIGHT,
-        backgroundColor: COLORS.bg,
+        backgroundColor: "#271e19",
         fontFamily: "Geist",
-        padding: 0,
-        alignItems: "stretch",
+        position: "relative",
+        overflow: "hidden",
+        color: "#f9eabc",
       }}
     >
-      {/* Left: mascot + phone mockup hint */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 400,
-          flexShrink: 0,
-          backgroundColor: COLORS.card,
-          borderRight: `2px solid ${COLORS.border}`,
-        }}
-      >
-        <img src={`${origin}/barry_alone_no_bg.svg`} style={{ width: 280, height: 280 }} />
-      </div>
-      {/* Right: text + App Store badge */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
+          width: 650,
+          padding: "52px 0 48px 60px",
           justifyContent: "space-between",
-          padding: "50px 56px",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <img src={`${origin}/barry_alone_no_bg.svg`} style={{ width: 52, height: 52 }} />
+          <div style={{ fontSize: 32, fontWeight: 700 }}>BookHive</div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ color: COLORS.text, fontSize: 56, fontWeight: 700, lineHeight: 1.1 }}>
-            BookHive for iPhone
+          <div style={{ fontSize: 66, fontWeight: 700, lineHeight: 1.08 }}>A little more buzz.</div>
+          <div style={{ fontSize: 66, fontWeight: 700, lineHeight: 1.08, color: "#f0ae6f" }}>
+            A lot more books.
           </div>
-          <div style={{ color: COLORS.textMuted, fontSize: 28, lineHeight: 1.45 }}>
-            Manage, organize, and review your books anywhere. Follow friends, leave comments, and
-            discover your next great read — now on iOS.
+          <div style={{ fontSize: 27, lineHeight: 1.4, color: "#c2b3a2", maxWidth: 500 }}>
+            Track your reading. Find your next favourite.
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <img src={`${origin}/download_app_store.svg`} style={{ height: 54 }} />
-          <BrandMark size={30} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 24, fontWeight: 600 }}>For iPhone & iPad</div>
+          <div style={{ fontSize: 20, color: "#c2b3a2" }}>app.bookhive.buzz</div>
         </div>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: 704,
+          top: 64,
+          width: 268,
+          height: 582,
+          borderRadius: 32,
+          border: "6px solid #554236",
+          overflow: "hidden",
+          backgroundColor: "#f9eabc",
+        }}
+      >
+        <img
+          src={`${origin}/screenshots/app/my-books-20261117.png`}
+          style={{ width: 256, height: 557 }}
+        />
+      </div>
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          left: 974,
+          top: 160,
+          width: 224,
+          height: 488,
+          borderRadius: 28,
+          border: "6px solid #554236",
+          overflow: "hidden",
+          backgroundColor: "#271e19",
+        }}
+      >
+        <img
+          src={`${origin}/screenshots/app/book-details-dark-20261117.png`}
+          style={{ width: 212, height: 461 }}
+        />
       </div>
     </div>
   );
