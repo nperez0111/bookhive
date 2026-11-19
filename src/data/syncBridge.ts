@@ -1,6 +1,8 @@
 import type { Database } from "../db";
 import type { HiveId } from "../types";
-import { statusFromProgress, toPercent } from "../core/bookProgress";
+import { toPercent } from "../core/bookProgress";
+import { nextReadingState } from "../core/bookLifecycle";
+import { BOOK_STATUS } from "../constants";
 import { matchSyncDocumentForUser, NO_HIVE_MATCH } from "./syncMatching";
 import { filenameKey } from "../core/filenameMatching";
 import type { SyncProgressData } from "../types";
@@ -12,9 +14,10 @@ export const KOSYNC_PROVIDER = "kosync";
 /**
  * Bridge e-reader progress onto the user's BookHive book: writes bookProgress to
  * `user_book` optimistically (not dependent on the firehose) and queues a
- * deferred PDS write. No-op if the user does not track this book. `percentage`
- * is the KOReader fraction (0..1); the persisted `percent` is clamped to the
- * lexicon's 0..100 integer range.
+ * deferred PDS write. No-op if the user does not track this book; the library's
+ * sync triage surfaces the matched document for an explicit add instead.
+ * `percentage` is the KOReader fraction (0..1); the persisted `percent` is
+ * clamped to the lexicon's 0..100 integer range.
  */
 export async function bridgeProgressToUserBook(
   db: Database,
@@ -40,7 +43,7 @@ export async function bridgeProgressToUserBook(
     }
     const userBook = await tx
       .selectFrom("user_book")
-      .select(["uri", "status"])
+      .select(["uri", "status", "startedAt", "finishedAt"])
       .where("userDid", "=", userDid)
       .where("hiveId", "=", hiveId)
       .executeTakeFirst();
@@ -51,9 +54,24 @@ export async function bridgeProgressToUserBook(
 
     const updates: Record<string, unknown> = { bookProgress };
     // Zero percent is excluded: an e-reader reports it for a book merely opened, not yet reading.
-    const inferred = percent > 0 ? statusFromProgress(userBook.status, { percent }) : undefined;
-    if (inferred) {
-      updates["status"] = inferred;
+    // Terminal books keep their dates; a stray page-turn only advances the position.
+    const terminal =
+      userBook.status === BOOK_STATUS.FINISHED || userBook.status === BOOK_STATUS.ABANDONED;
+    if (percent > 0 && !terminal) {
+      // The same transition every other write uses, so the sync path also stamps
+      // `startedAt`/`finishedAt` instead of only moving the status.
+      const state = nextReadingState(
+        {
+          status: userBook.status,
+          startedAt: userBook.startedAt,
+          finishedAt: userBook.finishedAt,
+          previousReads: null,
+        },
+        { bookProgress: { percent } },
+      );
+      updates["status"] = state.status;
+      updates["startedAt"] = state.startedAt;
+      updates["finishedAt"] = state.finishedAt;
     }
 
     await tx.updateTable("user_book").set(updates).where("uri", "=", userBook.uri).execute();

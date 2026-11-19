@@ -34,8 +34,9 @@ Regression tests accompany these changes. Detailed invariants live in
    needs transport-enforced cancellation or process replacement, not an unsafe timer unlock.
 2. **Implemented: sync association winners** (`data/syncBridge.ts`); see `e-reader-and-sync.md`.
    Optimistic progress now uses the canonical percentage-aware status inference, including 100%
-   completion and preservation of terminal statuses. Still open: partial commits in manual linking
-   that creates a new tracked book and the wider association/publication races below.
+   completion with its finish date and preservation of terminal statuses. Still open: partial
+   commits in manual linking that creates a new tracked book and the wider association/publication
+   races below.
 3. **Book write concurrency** (`services/getBook.ts`, `routes/lib.ts`): bulk overwrite and
    hiveBookUri backfill need fresh-record CAS/remerge, not stale whole-record updates. Existing
    interactive `bookRecordWrite` is the model. Advisory book locks need atomic ownership and

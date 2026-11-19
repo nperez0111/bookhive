@@ -16,16 +16,44 @@ const MiniProgress: FC<{ percentage: number }> = ({ percentage }) => {
   );
 };
 
+/** One decision row shared by the two prompt sections above the grid. */
+const PromptRow: FC<{
+  doc: SyncDoc;
+  action: { label: string; onClick: (doc: SyncDoc) => void };
+  onDismiss?: (document: string) => void;
+}> = ({ doc, action, onDismiss }) => (
+  <li class="flex flex-wrap items-center gap-3 py-2.5">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-sm font-medium text-foreground">{syncDocName(doc)}</p>
+      <p class="mt-0.5 truncate text-xs text-muted-foreground">{syncDocMeta(doc)}</p>
+      <MiniProgress percentage={doc.percentage} />
+    </div>
+    <div class="flex shrink-0 items-center gap-2">
+      <button type="button" class="btn btn-sm min-h-10" onClick={() => action.onClick(doc)}>
+        {action.label}
+      </button>
+      {onDismiss && (
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm min-h-10"
+          onClick={() => onDismiss(doc.document)}
+        >
+          Not on BookHive
+        </button>
+      )}
+    </div>
+  </li>
+);
+
 /**
- * Documents the e-reader is tracking that we can't place: no uploaded file with
- * a matching hash, no linked BookHive book, and not yet dismissed. Shown above
- * the grid because each one is a decision the user needs to make once.
+ * Matched documents whose book is not in the user's library. Auto-matching only
+ * links the catalogue book; adding it is an explicit decision, made one row at
+ * a time, because it creates a real PDS record.
  */
-export const SyncTriage: FC<{
+export const UnaddedBooks: FC<{
   docs: SyncDoc[];
-  onLink: (doc: SyncDoc) => void;
-  onDismiss: (document: string) => void;
-}> = ({ docs, onLink, onDismiss }) => {
+  onAdd: (doc: SyncDoc) => void;
+}> = ({ docs, onAdd }) => {
   if (docs.length === 0) return null;
 
   return (
@@ -36,31 +64,52 @@ export const SyncTriage: FC<{
           : `${docs.length} books from your e-reader aren't in your library`}
       </h2>
       <p class="mt-1 text-xs text-muted-foreground">
-        We're tracking their progress but don't know what they are. Match them to a BookHive book,
-        or tell us they aren't on BookHive.
+        We matched these, but they aren't in your library yet. Add a book to keep the progress your
+        e-reader already reported.
       </p>
-
       <ul class="divide-border mt-3 divide-y">
         {docs.map((doc) => (
-          <li key={doc.document} class="flex flex-wrap items-center gap-3 py-2.5">
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium text-foreground">{syncDocName(doc)}</p>
-              <p class="mt-0.5 truncate text-xs text-muted-foreground">{syncDocMeta(doc)}</p>
-              <MiniProgress percentage={doc.percentage} />
-            </div>
-            <div class="flex shrink-0 items-center gap-2">
-              <button type="button" class="btn btn-sm min-h-10" onClick={() => onLink(doc)}>
-                Link to book
-              </button>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm min-h-10"
-                onClick={() => onDismiss(doc.document)}
-              >
-                Not on BookHive
-              </button>
-            </div>
-          </li>
+          <PromptRow
+            key={doc.document}
+            doc={doc}
+            action={{ label: "Add to library", onClick: onAdd }}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+/**
+ * Documents with no BookHive counterpart yet. Unlike the matched list above,
+ * these need the user to pick the book (or dismiss them).
+ */
+export const UnlinkedBooks: FC<{
+  docs: SyncDoc[];
+  onLink: (doc: SyncDoc) => void;
+  onDismiss: (document: string) => void;
+}> = ({ docs, onLink, onDismiss }) => {
+  if (docs.length === 0) return null;
+
+  return (
+    <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50/60 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+      <h2 class="text-sm font-semibold text-foreground">
+        {docs.length === 1
+          ? "1 book from your e-reader we couldn't match"
+          : `${docs.length} books from your e-reader we couldn't match`}
+      </h2>
+      <p class="mt-1 text-xs text-muted-foreground">
+        We're tracking their progress but don't know which BookHive book they are. Match them, or
+        tell us they aren't on BookHive.
+      </p>
+      <ul class="divide-border mt-3 divide-y">
+        {docs.map((doc) => (
+          <PromptRow
+            key={doc.document}
+            doc={doc}
+            action={{ label: "Link to book", onClick: onLink }}
+            onDismiss={onDismiss}
+          />
         ))}
       </ul>
     </div>

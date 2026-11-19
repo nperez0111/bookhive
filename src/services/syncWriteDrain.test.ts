@@ -93,6 +93,18 @@ describe("durable sync writes", () => {
     }
   });
 
+  it("discards an untracked entry without creating a book", async () => {
+    await enqueue('{"percent":50}', "bk_untracked");
+
+    expect(await drain(async () => {})).toMatchObject({
+      selected: 1,
+      attempted: 0,
+      failed: 0,
+      remaining: 0,
+    });
+    expect(await fixture.db.selectFrom("user_book").selectAll().execute()).toHaveLength(1);
+  });
+
   it("reports a failed revision and remaining backlog without swallowing its reason", async () => {
     await enqueue("old");
     expect(
