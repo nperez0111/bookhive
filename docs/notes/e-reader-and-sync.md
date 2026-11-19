@@ -160,6 +160,11 @@ only for returned documents. A manual link or `bk_none` dismissal that wins befo
 must not be overwritten. The later bridge transaction rechecks both association and source progress,
 so a relink or newer push that lands before bridging suppresses the obsolete bridge.
 
+Matched documents are not added automatically. `matchSyncDocumentForUser` links the catalogue book,
+but `bridgeProgressToUserBook` no-ops without a `user_book` row, so a fuzzy match cannot create a
+PDS record. `listSyncDocuments` reports `tracked`; the library lists matched-but-untracked documents
+with an Add action, which runs `POST /library/sync/link` and applies the stored progress.
+
 - **A KOSync `document` id is not necessarily a content hash.** KOReader's checksum method is a
   user setting: `BINARY` (default) is a partial MD5 over the file, but `FILENAME` is
   `md5(basename)` — users switch to it precisely because their files aren't byte-identical across

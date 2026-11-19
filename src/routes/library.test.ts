@@ -116,6 +116,7 @@ type DocumentPayload = {
   hiveId: string | null;
   bookTitle: string | null;
   dismissed: boolean;
+  tracked: boolean;
   hasFile: boolean;
   percentage: number;
   device: string | null;
@@ -214,6 +215,39 @@ describe("GET /library/sync/documents", () => {
 
     const [doc] = await getDocuments(app);
     expect(doc?.hasFile).toBe(false);
+  });
+
+  it("does not mark an auto-matched document as tracked until the book is in the library", async () => {
+    await seedHiveBook(db, "bk_matched" as HiveId);
+    await seedSyncDocument(db, { documentHash: "hash-matched", hiveId: "bk_matched" as HiveId });
+
+    const [doc] = await getDocuments(app);
+    expect(doc?.hiveId).toBe("bk_matched");
+    expect(doc?.bookTitle).toBe("A Synced Book");
+    expect(doc?.tracked).toBe(false);
+  });
+
+  it("reports tracked once the linked book is in the user's library", async () => {
+    await seedHiveBook(db, "bk_matched" as HiveId);
+    await seedSyncDocument(db, { documentHash: "hash-matched", hiveId: "bk_matched" as HiveId });
+    await db
+      .insertInto("user_book")
+      .values({
+        uri: `at://${DID}/buzz.bookhive.book/tracked`,
+        cid: "cid",
+        userDid: DID,
+        hiveId: "bk_matched" as HiveId,
+        title: "A Synced Book",
+        authors: "An Author",
+        status: WANTTOREAD,
+        owned: 0,
+        createdAt: now,
+        indexedAt: now,
+      })
+      .execute();
+
+    const [doc] = await getDocuments(app);
+    expect(doc?.tracked).toBe(true);
   });
 
   it("surfaces the sentinel as dismissed with a null hiveId", async () => {

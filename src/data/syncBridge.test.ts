@@ -77,6 +77,49 @@ describe("bridgeProgressToUserBook", () => {
     },
   );
 
+  it("stamps startedAt when progress promotes a want-to-read book to reading", async () => {
+    await bridgeProgressToUserBook(db, DID, HIVE_ID, 0.42);
+
+    const row = await db
+      .selectFrom("user_book")
+      .select(["status", "startedAt", "finishedAt"])
+      .where("uri", "=", URI)
+      .executeTakeFirst();
+    expect(row?.status).toBe(READING);
+    expect(row?.startedAt).toBeTruthy();
+    expect(row?.finishedAt).toBeNull();
+  });
+
+  it("stamps finishedAt when a 100% push completes the book", async () => {
+    await bridgeProgressToUserBook(db, DID, HIVE_ID, 1);
+
+    const row = await db
+      .selectFrom("user_book")
+      .select(["status", "finishedAt"])
+      .where("uri", "=", URI)
+      .executeTakeFirst();
+    expect(row?.status).toBe(FINISHED);
+    expect(row?.finishedAt).toBeTruthy();
+  });
+
+  it("keeps an already-finished book's finishedAt on a stray page-turn", async () => {
+    await db
+      .updateTable("user_book")
+      .set({ status: FINISHED, finishedAt: "2026-01-02T00:00:00.000Z" })
+      .where("uri", "=", URI)
+      .execute();
+
+    await bridgeProgressToUserBook(db, DID, HIVE_ID, 0.1);
+
+    const row = await db
+      .selectFrom("user_book")
+      .select(["status", "finishedAt"])
+      .where("uri", "=", URI)
+      .executeTakeFirst();
+    expect(row?.status).toBe(FINISHED);
+    expect(row?.finishedAt).toBe("2026-01-02T00:00:00.000Z");
+  });
+
   it("ignores the dismissed sentinel even if a user_book somehow carries it", async () => {
     // The lookup would normally miss anyway, so seed the pathological row that
     // makes the guard load-bearing: without it this would write progress and
@@ -113,6 +156,7 @@ describe("bridgeProgressToUserBook", () => {
   it("no-ops when the user does not track the book", async () => {
     await bridgeProgressToUserBook(db, DID, "bk_untracked" as HiveId, 0.5);
     expect(await db.selectFrom("sync_write_queue").selectAll().execute()).toEqual([]);
+    expect(await db.selectFrom("user_book").selectAll().execute()).toHaveLength(1);
   });
 
   it("rolls back optimistic progress if durable enqueue fails", async () => {

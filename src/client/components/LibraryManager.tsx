@@ -4,8 +4,8 @@ import type { HiveBook } from "../../types";
 import { SearchPalette } from "./SearchPalette";
 import { PersonalBookCard } from "./library/PersonalBookCard";
 import { ShelfTabs } from "./library/ShelfTabs";
-import { AlsoTracking, SyncTriage } from "./library/SyncDocumentSections";
-import type { PersonalBook, Shelf, SyncDoc } from "./library/types";
+import { AlsoTracking, UnaddedBooks, UnlinkedBooks } from "./library/SyncDocumentSections";
+import { partitionSyncDocs, type PersonalBook, type Shelf, type SyncDoc } from "./library/types";
 import { formatBytes } from "../../lib/formatBytes";
 import { BookOpen } from "../../pages/components/icons";
 import { ProgressMeter } from "../../pages/components/ProgressMeter";
@@ -245,6 +245,21 @@ export const LibraryManager: FC = () => {
     }
   };
 
+  /** Auto-matched document whose book isn't in the library yet: add it with its stored progress. */
+  const handleAddDocument = async (doc: SyncDoc) => {
+    if (!doc.hiveId) return;
+    try {
+      const res = await postJson("/library/sync/link", {
+        document: doc.document,
+        hiveId: doc.hiveId,
+      });
+      if (!res.ok) throw new Error("Failed");
+      fetchDocs();
+    } catch {
+      // the row keeps its "Add to library" button
+    }
+  };
+
   // ── Sync document actions ──
 
   // Mark a document as having no BookHive counterpart. There is no un-dismiss action — linking the document to a book overwrites the sentinel.
@@ -387,17 +402,17 @@ export const LibraryManager: FC = () => {
 
   // ── Partition the sync documents ──
 
-  // Documents backed by a file are already represented by their grid card.
-  const orphanDocs = docs.filter((d) => !d.hasFile);
-  const triageDocs = orphanDocs.filter((d) => !d.hiveId && !d.dismissed);
-  const trackedDocs = orphanDocs.filter((d) => d.hiveId || d.dismissed);
+  // Adding a matched book is always the user's explicit choice; a `hiveId`
+  // alone only means we know which catalogue book the document is.
+  const { unadded, unlinked, tracked: trackedDocs } = partitionSyncDocs(docs);
 
   const isEmptyGrid = !error && books !== null && books.length === 0;
 
   return (
     <div>
-      <SyncTriage
-        docs={triageDocs}
+      <UnaddedBooks docs={unadded} onAdd={(doc) => void handleAddDocument(doc)} />
+      <UnlinkedBooks
+        docs={unlinked}
         onLink={startLinkDoc}
         onDismiss={(document) => void dismissDocument(document)}
       />
