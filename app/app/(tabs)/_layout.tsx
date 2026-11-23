@@ -8,10 +8,12 @@ import { HapticTab } from "@/components/HapticTab";
 import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/context/auth";
+import { useSansFont } from "@/context/typography";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const fontFamily = useSansFont();
   const { isAuthenticated } = useAuth();
   const { bottom } = useSafeAreaInsets();
 
@@ -30,6 +32,7 @@ export default function TabLayout() {
         tabBarBackground: TabBarBackground,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
+          ...(fontFamily ? { fontFamily } : {}),
           fontSize: 12,
           fontWeight: "600",
         },

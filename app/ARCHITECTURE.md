@@ -303,6 +303,12 @@ streaming copies wait for settlement. A retry then requires reselecting the file
   text on accent treatments. Explicitly theme the native iOS date spinner.
   `ThemedTextInput` defaults placeholders to the app theme too; native defaults
   can be unreadable when the app's dark/light preference differs from iOS's.
+- `context/typography.tsx` registers the bundled [Allo v1.0.3](https://github.com/joshpuckett/allo/releases/tag/v1.0.3)
+  static faces with Expo Font. Use `ThemedText` for app copy and `AppTextInput`
+  for inputs with their own colors (`ThemedTextInput` adds theme colors). App
+  text uses system typography until Allo loads, and keeps it if loading fails;
+  never gate splash dismissal on fonts. Explicit families (e.g. Space Mono for
+  credential displays) still win. Fonts and their license live in `assets/fonts/`.
 - `ActionSheet` replaces many-button alerts (especially Android);
   both Cancel and backdrop dismissal expose named native button roles.
   The status modal's containing backdrop is non-accessible so iOS does not group

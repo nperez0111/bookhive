@@ -3,6 +3,15 @@
 Background for `src/routes/main.tsx`'s `jsxRenderer` shell and `src/index.css`. Read this before
 touching `<main>`'s classes or basecoat button variants.
 
+## Website typography
+
+The shared Tailwind `--font-sans` token in `src/index.css` uses self-hosted
+[Allo v1.0.3](https://github.com/joshpuckett/allo/releases/tag/v1.0.3). The Friendly variable
+file keeps optical sizing and weights 100–900 at the default roundness in a smaller download.
+The regular oblique only loads when used. Vite emits hashed font assets from `src/fonts/`;
+the upstream SIL Open Font License ships in `public/fonts/`. Monospace is unchanged.
+The [native app](../../app/ARCHITECTURE.md) bundles static faces from the same release.
+
 ## App landing is a self-contained editorial surface
 
 `src/pages/app.tsx` owns `/app`'s header, semantic main and trusted static inline stylesheet

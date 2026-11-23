@@ -3,7 +3,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,6 +11,7 @@ import {
   Switch,
 } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { useCreateList, useUpdateList } from "@/hooks/useBookhiveQuery";
@@ -120,7 +120,7 @@ export function CreateListModal({ visible, onClose, editList }: CreateListModalP
               <ThemedText type="label" style={{ color: colors.secondaryText, marginBottom: 6 }}>
                 Name
               </ThemedText>
-              <TextInput
+              <AppTextInput
                 value={name}
                 editable={!isPending}
                 onChangeText={setName}
@@ -143,7 +143,7 @@ export function CreateListModal({ visible, onClose, editList }: CreateListModalP
               <ThemedText type="label" style={{ color: colors.secondaryText, marginBottom: 6 }}>
                 Description (optional)
               </ThemedText>
-              <TextInput
+              <AppTextInput
                 value={description}
                 editable={!isPending}
                 onChangeText={setDescription}
@@ -179,7 +179,7 @@ export function CreateListModal({ visible, onClose, editList }: CreateListModalP
               <ThemedText type="label" style={{ marginBottom: 6 }}>
                 Tags (comma-separated)
               </ThemedText>
-              <TextInput
+              <AppTextInput
                 accessibilityLabel="List tags, comma-separated"
                 value={tags}
                 onChangeText={setTags}

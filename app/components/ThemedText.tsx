@@ -1,5 +1,6 @@
 import { Text, type TextProps, StyleSheet } from "react-native";
 
+import { useSansFont } from "@/context/typography";
 import { useThemeColor } from "@/hooks/useThemeColor";
 
 export type ThemedTextProps = TextProps & {
@@ -28,11 +29,12 @@ export function ThemedText({
   ...rest
 }: ThemedTextProps) {
   const color = useThemeColor({ light: lightColor, dark: darkColor }, themeSource);
+  const fontFamily = useSansFont();
 
   return (
     <Text
       style={[
-        { color },
+        { color, fontFamily },
         type === "default" ? styles.default : undefined,
         type === "title" ? styles.title : undefined,
         type === "defaultSemiBold" ? styles.defaultSemiBold : undefined,

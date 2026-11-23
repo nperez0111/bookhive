@@ -1,17 +1,10 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
 import { ThemedButton } from "@/components/ThemedButton";
 import { HeaderAction } from "@/components/HeaderAction";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
@@ -69,7 +62,7 @@ function LanguagePickerContent({
         <ThemedText style={{ fontSize: 14, lineHeight: 20, color: colors.secondaryText }}>
           Filters catalogue search and discovery, not your tracked books or ebooks.
         </ThemedText>
-        <TextInput
+        <AppTextInput
           accessibilityLabel="Search languages"
           placeholder="Search languages"
           value={search}

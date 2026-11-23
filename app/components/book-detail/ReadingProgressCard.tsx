@@ -1,8 +1,9 @@
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { formatDistanceToNow } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import type { BookProgress } from "../../../src/types";
@@ -93,7 +94,7 @@ export function ReadingProgressCard({
                   <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
                     {label}
                   </ThemedText>
-                  <TextInput
+                  <AppTextInput
                     accessibilityLabel={label}
                     value={draft.fields[field]}
                     editable={!isBusy}
@@ -109,7 +110,7 @@ export function ReadingProgressCard({
           ))}
           <View style={styles.field}>
             <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Percent</ThemedText>
-            <TextInput
+            <AppTextInput
               accessibilityLabel="Percent complete"
               value={draft.percentInput}
               editable={!isBusy}

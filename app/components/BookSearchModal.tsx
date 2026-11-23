@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FadeInImage } from "@/components/FadeInImage";
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { Colors } from "@/constants/Colors";
 import { getBaseUrl } from "@/context/auth";
 import { useSearchBooks } from "@/hooks/useBookhiveQuery";
@@ -119,7 +119,7 @@ export function BookSearchModal({
             ]}
           >
             <Ionicons name="search" size={18} color={colors.tertiaryText} />
-            <TextInput
+            <AppTextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Search by title or author"

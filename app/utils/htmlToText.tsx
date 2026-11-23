@@ -6,6 +6,7 @@
 
 import React from "react";
 import { Text, Linking } from "react-native";
+import { useSansFont } from "@/context/typography";
 
 const DEFAULT_STYLES = {
   b: { fontWeight: "bold" as const },
@@ -224,15 +225,16 @@ export function HtmlToText({
   containerStyle,
   numberOfLines,
 }: HtmlToTextProps): React.ReactElement {
+  const fontFamily = useSansFont();
   if (!html || typeof html !== "string") {
-    return <Text style={style}>No description available</Text>;
+    return <Text style={[{ fontFamily }, style]}>No description available</Text>;
   }
 
   const elements = parseHtmlToTree(html);
   const components = renderElements(elements, style, "root");
 
   return (
-    <Text numberOfLines={numberOfLines} style={[containerStyle, style]}>
+    <Text numberOfLines={numberOfLines} style={[{ fontFamily }, containerStyle, style]}>
       {components}
     </Text>
   );

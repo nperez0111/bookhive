@@ -1,8 +1,9 @@
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { ThemedView } from "@/components/ThemedView";
 import { useBottomTabOverflow } from "@/components/ui/TabBarBackground";
 import { useSearchBooks } from "@/hooks/useBookhiveQuery";
@@ -85,7 +86,7 @@ export default function SearchScreen() {
             color={colors.secondaryText}
             style={{ marginHorizontal: 12 }}
           />
-          <TextInput
+          <AppTextInput
             style={[
               styles.searchInput,
               {
