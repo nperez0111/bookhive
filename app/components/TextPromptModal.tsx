@@ -6,11 +6,11 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { AppTextInput } from "@/components/AppTextInput";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
@@ -110,7 +110,7 @@ export function TextPromptModal({
               {label}
             </ThemedText>
           ) : null}
-          <TextInput
+          <AppTextInput
             value={value}
             onChangeText={(text) => {
               if (!busy && !submission.current.active) setValue(text);

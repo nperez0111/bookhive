@@ -1,8 +1,9 @@
 import React, { useRef, useState } from "react";
-import { View, Pressable, TextInput, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { ThemedText } from "./ThemedText";
+import { AppTextInput } from "./AppTextInput";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
 import { StarRating } from "./StarRating";
@@ -199,7 +200,7 @@ export const BookActionCard: React.FC<BookActionCardProps> = (props) => {
         const { review, reviewText, onReviewTextChange, onReviewSave } = props;
         return (
           <>
-            <TextInput
+            <AppTextInput
               style={[
                 styles.reviewInput,
                 {

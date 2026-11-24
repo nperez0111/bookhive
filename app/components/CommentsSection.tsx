@@ -7,7 +7,8 @@ import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { AppTextInput } from "./AppTextInput";
 import { ThemedButton } from "./ThemedButton";
 import { ThemedText } from "./ThemedText";
 import { StarDisplay } from "./StarDisplay";
@@ -216,7 +217,7 @@ const CommentEntry: React.FC<{
       {/* Comment Text */}
       {isEditing ? (
         <View style={styles.editForm}>
-          <TextInput
+          <AppTextInput
             style={[
               styles.editInput,
               {
@@ -315,7 +316,7 @@ const CommentEntry: React.FC<{
       {/* Reply Form */}
       {showReplyForm && (
         <View ref={replyFormRef} style={styles.replyForm}>
-          <TextInput
+          <AppTextInput
             style={[
               styles.replyInput,
               {

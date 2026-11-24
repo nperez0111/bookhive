@@ -1,5 +1,6 @@
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/constants/Colors";
+import { useSansFont } from "@/context/typography";
 
 /** The same centered, transparent mark as the native splash. No entrance motion. */
 export function LaunchScreen({
@@ -10,6 +11,7 @@ export function LaunchScreen({
   message?: string;
 }) {
   const colors = Colors[theme];
+  const fontFamily = useSansFont();
   return (
     <View testID="launch-screen" style={[styles.screen, { backgroundColor: colors.background }]}>
       <Image
@@ -19,11 +21,11 @@ export function LaunchScreen({
         accessible={false}
       />
       <View style={styles.caption}>
-        <Text style={[styles.name, { color: colors.text }]}>BookHive</Text>
+        <Text style={[styles.name, { color: colors.text, fontFamily }]}>BookHive</Text>
         <Text
           accessibilityRole="progressbar"
           accessibilityLiveRegion="polite"
-          style={[styles.message, { color: colors.secondaryText }]}
+          style={[styles.message, { color: colors.secondaryText, fontFamily }]}
         >
           {message}
         </Text>

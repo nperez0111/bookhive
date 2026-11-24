@@ -3,7 +3,26 @@
 
 @config '../tailwind.config.js';
 
+@font-face {
+  font-family: "Allo";
+  src: url("./fonts/AlloVariableFriendly.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Allo";
+  src: url("./fonts/Allo-Oblique.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
 @theme {
+  --font-sans:
+    "Allo", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
   --color-sand: #f9eabc;
   --color-sand-dark: #998a5c;
 }

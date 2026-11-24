@@ -21,6 +21,7 @@ import { AuthProvider, authSession, useAuth, getBaseUrl } from "@/context/auth";
 import { accountCacheKey, epochStorage } from "@/context/authSession";
 import { LanguageProvider } from "@/context/language";
 import { ThemeProvider, useTheme } from "@/context/theme";
+import { TypographyProvider } from "@/context/typography";
 import { View, Platform, AppState } from "react-native";
 import { LaunchScreen } from "@/components/LaunchScreen";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -166,7 +167,9 @@ function AccountCache({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutContent />
+      <TypographyProvider>
+        <RootLayoutContent />
+      </TypographyProvider>
     </ThemeProvider>
   );
 }
