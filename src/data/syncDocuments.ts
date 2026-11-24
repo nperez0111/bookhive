@@ -59,6 +59,12 @@ export type SyncDocumentView = {
   hiveId: string | null;
   bookTitle: string | null;
   dismissed: boolean;
+  /**
+   * True when the user actually tracks the linked book. Auto-matching links the
+   * catalogue book without adding it to the library, so `hiveId` alone is not
+   * enough to decide whether the sync is actionable.
+   */
+  tracked: boolean;
   /** True when an uploaded file matches this document — the library grid already shows it. */
   hasFile: boolean;
 };
@@ -72,6 +78,7 @@ function toView(row: {
   updatedAt: string;
   hiveId: string | null;
   bookTitle?: string | null;
+  tracked?: unknown;
   hasFile?: unknown;
 }): SyncDocumentView {
   const data = parseSyncProgress(row.progressData);
@@ -90,6 +97,7 @@ function toView(row: {
     hiveId: dismissed ? null : row.hiveId,
     bookTitle: dismissed ? null : (row.bookTitle ?? null),
     dismissed,
+    tracked: !dismissed && Boolean(row.tracked),
     hasFile: Boolean(row.hasFile),
   };
 }
@@ -128,6 +136,20 @@ export async function listSyncDocuments({
         )
         .as("hasFile"),
     )
+    // The auto-matcher links a catalogue book even when the user does not track
+    // it, so the UI needs this to offer "add to library" rather than assume the
+    // linked book is already on a shelf.
+    .select((eb) =>
+      eb
+        .exists(
+          eb
+            .selectFrom("user_book")
+            .select("user_book.uri")
+            .whereRef("user_book.userDid", "=", "sync_document.userDid")
+            .whereRef("user_book.hiveId", "=", "sync_document.hiveId"),
+        )
+        .as("tracked"),
+    )
     .where("sync_document.userDid", "=", userDid)
     .where("sync_document.provider", "=", KOSYNC_PROVIDER)
     .orderBy("sync_document.updatedAt", "desc")
@@ -158,6 +180,17 @@ export async function getSyncDocument({
       "sync_document.hiveId as hiveId",
       "hive_book.title as bookTitle",
     ])
+    .select((eb) =>
+      eb
+        .exists(
+          eb
+            .selectFrom("user_book")
+            .select("user_book.uri")
+            .whereRef("user_book.userDid", "=", "sync_document.userDid")
+            .whereRef("user_book.hiveId", "=", "sync_document.hiveId"),
+        )
+        .as("tracked"),
+    )
     .where("sync_document.userDid", "=", userDid)
     .where("sync_document.provider", "=", KOSYNC_PROVIDER)
     .where("sync_document.documentHash", "=", document)

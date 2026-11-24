@@ -49,9 +49,26 @@ export type SyncDoc = {
   bookTitle: string | null;
   /** The user asserted this document has no BookHive counterpart. */
   dismissed: boolean;
+  /** The linked book is in the user's library. Auto-match can link one without tracking it. */
+  tracked: boolean;
   /** A file with the same content hash exists in the library, so the grid owns it. */
   hasFile: boolean;
 };
+
+/**
+ * Split the sync documents the grid doesn't already own into the three sections
+ * the library renders: matched-but-not-added (needs an explicit "Add"), not
+ * matched (needs "Link"), and already tracking (a status link only).
+ */
+export function partitionSyncDocs(docs: SyncDoc[]) {
+  // Documents backed by a file are already represented by their grid card.
+  const visible = docs.filter((doc) => !doc.hasFile);
+  return {
+    unadded: visible.filter((doc) => !doc.dismissed && doc.hiveId && !doc.tracked),
+    unlinked: visible.filter((doc) => !doc.dismissed && !doc.hiveId),
+    tracked: visible.filter((doc) => doc.dismissed || (doc.hiveId && doc.tracked)),
+  };
+}
 
 export const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;

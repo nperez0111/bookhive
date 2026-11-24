@@ -325,6 +325,7 @@ app.get("/sync/documents", async (c) => {
     hiveId: doc.hiveId,
     bookTitle: doc.bookTitle,
     dismissed: doc.dismissed,
+    tracked: doc.tracked,
     hasFile: doc.hasFile,
   }));
 
